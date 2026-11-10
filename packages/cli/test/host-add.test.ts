@@ -61,7 +61,7 @@ describe('host add', () => {
     expect(ssh.remoteCalls().find((w) => w.includes('enroll'))).toEqual([SVALL, 'worker', 'enroll', '--home-machine', MAC, '--home-name', mac, '--fleet-id', FLEET, '--home-platform', registry.localMachine().platform]);
     // worker.json there takes, on its stdin, the token this fleet's daemon opens the link with
     expect(fs.readFileSync(input, 'utf8')).toBe(tokenFor(resolvePaths(fleet), REMOTE));
-    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'ok', detail: `trift serves this fleet as a worker of ${mac}; systemctl --user restart svall-svalld@private.service` });
+    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'ok', detail: 'trift serves this fleet as a worker of this Mac; systemctl --user restart svall-svalld@private.service' });
     expect(ssh.remoteCalls().some((w) => w.includes('gateway'))).toBe(false);
     // this fleet's daemon links it without waiting for its next start
     expect(refreshed).toBe(1);
@@ -218,12 +218,11 @@ describe('host add', () => {
     expect(step('ssh').at(-1)!.run).toBeUndefined();
   });
 
-  it('a Mac home read in another machine\'s window names itself by its name, not "this Mac"', async () => {
+  it('a run on a Mac home names it by its word, not by its registry name', async () => {
     const d = deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'Permission denied (publickey).', batch: true }) });
-    const me = d.registry.localMachine().name;
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, d);
-    expect(step('ssh').at(-1)).toMatchObject({ detail: `${me} cannot log in to trift.test: Permission denied (publickey).`, action: expect.stringMatching(new RegExp(`^on ${me}, run `)) });
-    expect(JSON.stringify(step('ssh'))).not.toContain('this Mac');
+    expect(step('ssh').at(-1)).toMatchObject({ detail: 'this Mac cannot log in to trift.test: Permission denied (publickey).', action: expect.stringMatching(/^on this Mac, run /) });
+    expect(JSON.stringify(step('ssh'))).not.toContain(d.registry.localMachine().name);
   });
 
   it('a relayed run names the home by the word its relay passes, as the window\'s machine calls it', async () => {

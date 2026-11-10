@@ -586,7 +586,7 @@ async function enrol(master: SshMaster, o: { name: string; machine: MachineId; s
   } finally { unlock(); }
   if (r.code !== 0) throw new StepError(`svall worker enroll exited ${r.code ?? `on ${r.signal}`}: ${r.stderr.trim().replace(/^svall: /, '').slice(0, 400) || 'no output'}`);
   const last = r.stdout.trim().split('\n').at(-1);
-  return { value: undefined, detail: `${o.name} serves this fleet as a worker of ${home}${last ? `; ${last}` : ''}${o.off}` };
+  return { value: undefined, detail: `${o.name} serves this fleet as a worker of ${homeWord()}${last ? `; ${last}` : ''}${o.off}` };
 }
 
 const signedWord = (signed?: boolean): string => (signed ? 'signed' : 'unsigned');
@@ -636,8 +636,8 @@ function claimName(registry: MachineRegistry, o: AddOptions): Outcome<Registered
 
 /** What a home with no one at its ssh says of a machine it cannot log in to; the fix is that home's own key, as no key leaves the Mac. */
 // a relayed run on a Mac home is read in another machine's window, where this Mac is that one
-function noLogin(ssh: string, said: string, d: HostDeps): StepError {
-  const here = homeWord() === 'this Mac' ? d.registry.localMachine().name : homeWord();
+function noLogin(ssh: string, said: string): StepError {
+  const here = homeWord();
   if (!['auth', 'host_key'].includes(classifySsh(said))) return new StepError(`${here} cannot reach ${ssh}${said ? `: ${said}` : ''}`, `check Tailscale on both machines, then ssh ${ssh} from ${here}`);
   return new StepError(`${here} cannot log in to ${ssh}${said ? `: ${said}` : ''}`, noLoginFix(here, ssh), keyLine(ssh));
 }
@@ -661,7 +661,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       const { code, stderr } = said;
       batch = said.batch === true;
       if (code !== 0) {
-        if (batch) throw noLogin(o.ssh, stderr, d);
+        if (batch) throw noLogin(o.ssh, stderr);
         throw new StepError(`ssh ${o.ssh} exited ${code}${stderr ? `: ${stderr}` : ''}`,
           `run ssh ${o.ssh} once in Terminal and answer its host key and login there, then add the machine again`);
       }
@@ -673,7 +673,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       try {
         opened = await d.openMaster(o.ssh);
       } catch (err) {
-        if (batch && err instanceof SshError) throw noLogin(o.ssh, err.message, d);
+        if (batch && err instanceof SshError) throw noLogin(o.ssh, err.message);
         if (err instanceof SshError && err.kind === 'auth') {
           throw new StepError(`ssh refused the login to ${o.ssh}: every step from here logs in without a password or passphrase prompt`,
             `install a key there with ssh-copy-id ${o.ssh}, keep its passphrase in the keychain with ssh-add --apple-use-keychain and add UseKeychain yes and AddKeysToAgent yes to ~/.ssh/config so ssh still finds it after a restart, then add the machine again`);
