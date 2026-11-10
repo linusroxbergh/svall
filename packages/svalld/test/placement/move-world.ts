@@ -82,6 +82,8 @@ class Box {
   lines: { paneId: string; text: string }[] = [];
   keys: { paneId: string; text: string }[] = [];
   screens = new Map<string, string[]>();
+  /** the trust dialog a Claude started here shows, if any */
+  trustAsks?: string[];
   /** the SessionStart a pane's trust dialog holds back until trusted */
   private asking = new Map<string, () => void>();
   /** what an agent started by a line does: by default it reports its SessionStart */
@@ -124,6 +126,7 @@ class Box {
       if (!w || !sid) return;
       w.job = job;
       const start = () => this.started?.(w.name, sid);
+      if (this.trustAsks && /^claude\b/.test(job)) this.screens.set(paneId, [...this.trustAsks]);
       // a Claude asking to trust its folder starts its session once trusted
       if (this.screens.get(paneId)?.some((r) => r.includes('Quick safety check'))) this.asking.set(paneId, start);
       else setImmediate(start);
@@ -223,7 +226,7 @@ const put = (file: string, data: string): void => {
  * is this test's HOME, holding nothing yet; both daemons run here, linked over w1's real link.sock.
  */
 export function moveWorld(o: {
-  agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push' | 'settled'>; opencode?: boolean; agentRunsThere?: boolean;
+  agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push' | 'settled'>; opencode?: boolean; agentRunsThere?: boolean; agentRunsHere?: boolean;
   busy?: boolean; pollMs?: number;
 } = {}) {
   const base = fs.realpathSync(makeHome());
@@ -311,6 +314,7 @@ export function moveWorld(o: {
   }
 
   const config = Config.parse({});
+  const agentRunsHere = !!o.agentRunsHere;
   const { mirror } = o;
   const homePaths = resolvePaths(makeHome());
   const workerPaths = resolvePaths(makeHome());
@@ -430,7 +434,7 @@ export function moveWorld(o: {
       store: mortal(store, life), fleet: mortal(fleet, life), links: mortal(links, life), me: H, paths: homePaths,
       git: mortalGit(hooklessGit, life), agents: async () => [macProbe], release: RELEASE, homedir: mac,
       tmux: mortal(mac1.tmux, life) as unknown as Tmux, viewers, processes: mac1.processes, kill: mortal(mac1, life).kill, clock, log: silentLogger,
-      moves: mortal(new MoveFiles(homePaths.moves), life), watchMs: 5000, cli: opencode.mac.run,
+      moves: mortal(new MoveFiles(homePaths.moves), life), watchMs: 5000, cli: opencode.mac.run, agentRunning: async () => agentRunsHere,
     });
     await fleet.reconcileNow();
     links.start();

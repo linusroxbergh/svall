@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { ApiError, LeftBehind, MoveId, ObjectName, Sha256, type AgentKind, type MachineId } from '@svall/protocol';
-import { processes as allProcesses, runsAgent } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import { boundary } from '../failpoints.js';
 import type { RestDeps } from './rest.js';
@@ -12,20 +11,16 @@ import type { HomeConnection } from '../link/worker.js';
 import { cloneGit, must, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import type { Paths } from '../paths.js';
-import { clean, holds } from '../path-tools.js';
 import type { Store } from '../store.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, branchAhead, fileSha, holdsWhole, verifyBundle } from './bundle.js';
 import { carriedFrom } from './checks.js';
 import {
-  blobIds, changedSince, checkSessions, CloneLocks, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, newWorktree, packMove, placeSessions, refused,
-  removeWorktree, restRobot, serversLeft, takeBack, takenBack, unpack, wake, type AbortAnswer, type Made, type ReturnSheet,
+  blobIds, changedSince, checkSessions, CloneLocks, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, makeMission, missionFolder, MoveFiles, MoveJournal, newWorktree,
+  packMove, placeSessions, refused, removeWorktree, restRobot, seedLanding, serversLeft, takeBack, takenBack, unmakeMission, unpack, wake, type AbortAnswer, type Made, type ReturnSheet,
 } from './move-steps.js';
-import { seedTrust, trustRecordFile } from './trust.js';
 
 const WATCH_MS = 60_000;
-// the home waits for an activate a minute past the agent's watch; trust a mirror holds up longer is left to the dialog
-const TRUST_MS = 30_000;
 
 export type PrepareDeps = {
   store: Store;
@@ -198,13 +193,7 @@ export class PrepareService {
         placeSessions(j.sessions ?? [], path.join(stage, 'session'));
       });
       await importSessions(j.sessions ?? [], path.join(stage, 'session'), paths, path.join(this.files.dir, 'held'), run);
-      const mission = this.mission(j);
-      let first: string | undefined;
-      for (let p = mission; p && !fs.existsSync(p); p = path.dirname(p)) first = p;
-      if (mission && first) {
-        made({ folder: first });
-        try { fs.mkdirSync(mission, { recursive: true }); } catch (e) { throw new Error(`${mission} cannot be made on ${this.name}: ${(e as Error).message}`); }
-      }
+      makeMission(j, this.d.homedir, made, `on ${this.name}`);
       // the robot is here at the move's generation, marked as this machine's own record until the commit's snapshot
       // replaces it, which keeps what this machine holds of it
       boundary('worker.prepare.journal', () => {
@@ -236,12 +225,6 @@ export class PrepareService {
     await newWorktree({ clone, root: paths.root, m: j.manifest!, detach: true, where: this.name, git, made });
   }
 
-  // mission control's folder, which a machine the fleet has not come to yet may lack; never the user's home or a folder above it
-  private mission(j: MoveJournal): string | undefined {
-    const f = j.plan.mission && !j.plan.clone ? j.plan.paths.cwd : undefined;
-    return f && !holds(clean(f), clean(this.d.homedir)) ? f : undefined;
-  }
-
   // what the home's commit made this machine's: trust for the clone, the robot's terminals opened, its agent watched
   private async activate(id: string): Promise<{ ok: true; asks?: true } | { ok: false; error: string }> {
     const j = this.journal(id);
@@ -252,21 +235,10 @@ export class PrepareService {
       return { ok: false, error: `${this.name} has not taken ${this.d.homeWord()}'s record of the move yet; retry` };
     }
     if (j.phase === 'commit') this.save({ ...j, phase: 'activate' });
-    const seeded = new Set<AgentKind>();
-    // mission control's folder is trusted as a clone, and recorded as the fleet's for uninstall to take back
-    const mission = this.mission(j);
-    const folder = j.plan.clone || mission;
-    if (folder) {
-      const probes = await this.d.agents();
-      for (const kind of new Set([c.agent?.kind, c.second?.agent?.kind].filter((k) => k !== undefined))) {
-        const agentHome = probes.find((p) => p.kind === kind)?.home;
-        if (!agentHome) continue;
-        const agentRunning = () => (this.d.agentRunning ?? running)(kind);
-        const r = await boundary('worker.activate.trust', () => seedTrust(kind, folder, { agentHome, homedir: this.d.homedir, agentRunning, waitMs: TRUST_MS, ...(mission && { recordFile: trustRecordFile(this.d.paths.home) }) }))
-          .catch((e: Error) => this.d.log.error(`move ${id}: trust for ${folder} was not seeded: ${e.message}`));
-        if (r === 'seeded') seeded.add(kind);
-      }
-    }
+    // mission control's folder is trusted as a clone is
+    const seeded = await seedLanding(j, c, j.plan.clone || missionFolder(j, this.d.homedir), {
+      agents: this.d.agents, homedir: this.d.homedir, fleetHome: this.d.paths.home, log: this.d.log, failpoint: 'worker.activate.trust', ...(this.d.agentRunning && { agentRunning: this.d.agentRunning }),
+    });
     const { store, fleet, tmux, log } = this.d;
     const trust = !!c.agent && !seeded.has(c.agent.kind);
     let asks = false;
@@ -307,10 +279,7 @@ export class PrepareService {
       out = fingerprint ? { fingerprint } : { kept: true };
     } else if (m) await removeWorktree(clone, paths.root, m, made, git);
     for (const f of made.files ?? []) fs.rmSync(f, { force: true });
-    // only what is still empty of the folders the move made
-    for (let p = paths.cwd; made.folder && holds(clean(made.folder), clean(p)); p = path.dirname(p)) {
-      try { fs.rmdirSync(p); } catch { break; }
-    }
+    unmakeMission(j);
     this.d.store.update((d) => {
       const c = d.robots[j.robotId];
       if (c?.machine === this.d.me && c.placement?.generation === j.generation) delete c.machine;
@@ -383,4 +352,3 @@ export class PrepareService {
 }
 
 // whether an agent of `kind` runs on this machine, which would write its config over a seed
-const running = async (kind: AgentKind): Promise<boolean> => (await allProcesses()).some((p) => runsAgent(p.args, kind));

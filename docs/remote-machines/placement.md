@@ -166,7 +166,9 @@ Mission control's robots stay on the home and have no move button.
 - **Trust of the folder.** The first move into a clone on the worker trusts its main checkout, and so every worktree in
   it, in the agent's own settings there (Claude's `~/.claude.json`, Codex's `config.toml`), while no agent of that kind
   runs there; otherwise the agent's "Trust this folder?" question is answered for it as it opens, Enter only once the
-  trusting choice is marked. A question it cannot read so is yours: the robot's note says its terminal asks. Bypass-mode consent
+  trusting choice is marked. A question it cannot read so is yours: the robot's note says its terminal asks. Mission
+  control's folder is trusted so wherever its robots land, on the home coming back too, and on the home a robot coming
+  back has its question answered so. Bypass-mode consent
   and Codex's trust of Svall's hooks are yours to give, once per machine.
 
 ## What stays

@@ -3,28 +3,28 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { ApiError, MachineId, MoveId, MovePhase, ObjectName, Robot, TransferSession, type LeftBehind, type Refusal } from '@svall/protocol';
+import { ApiError, MachineId, MoveId, MovePhase, ObjectName, Robot, TransferSession, type AgentKind, type LeftBehind, type Refusal } from '@svall/protocol';
 import { AGENTS } from '../agents.js';
-import { unsaved } from '../dormancy.js';
+import { processes as allProcesses, runsAgent, unsaved } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import { DurableJson } from '../durable.js';
 import { boundary, type Failpoint } from '../failpoints.js';
 import { sha256Hex } from '../hash.js';
 import { ProcessTable } from '../processes.js';
 import { classifyTerminals, RestJournal, restTerminals, serversGone, type Classified, type RestChoices, type RestDeps } from './rest.js';
-import { cliRunner, installSession, sessionAdapter } from '../sessions/registry.js';
+import { cliRunner, installSession, sessionAdapter, type AgentProber } from '../sessions/registry.js';
 import { SessionError, type CliRun, type SessionAdapter } from '../sessions/types.js';
 import { must, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import { installedScripts } from '../paths.js';
 import type { Store } from '../store.js';
-import { clean, realPath } from '../path-tools.js';
+import { clean, holds, realPath } from '../path-tools.js';
 import { noServer, type Tmux } from '../tmux/tmux.js';
 import { BundleManifest, buildBundle, CREDENTIAL_GLOBS, fingerprintOf, isCredential, untrackedFiles, untrackedOnly, wasCredential } from './bundle.js';
 import { MovePlan, type Carried } from './checks.js';
 import { refuseUncarried } from './convert.js';
 import { sessionLanding } from './paths.js';
-import { answerTrustPrompt, asksOwnQuestion, nap } from './trust.js';
+import { answerTrustPrompt, asksOwnQuestion, nap, seedTrust, trustRecordFile } from './trust.js';
 
 const exec = promisify(execFile);
 
@@ -522,4 +522,58 @@ export async function wake(w: Wake, j: MoveJournal): Promise<string | undefined>
     unheard();
     unwatched();
   }
+}
+
+// a robot's landing: mission control's folder made before the commit, and trust for its agents where it lands
+
+// the home waits for an activate a minute past the agent's watch; trust a mirror holds up longer is left to the dialog
+const TRUST_MS = 30_000;
+
+/** Mission control's folder a move lands the robot in, which that machine may lack; never the user's home or a folder above it. */
+export function missionFolder(j: MoveJournal, homedir: string): string | undefined {
+  const f = j.plan.mission && !j.plan.clone ? j.plan.paths.cwd : undefined;
+  return f && !holds(clean(f), clean(homedir)) ? f : undefined;
+}
+
+/** Makes mission control's folder, the first of it that was not there journaled first, so an abort takes back only that; one that cannot be made refuses the move. */
+export function makeMission(j: MoveJournal, homedir: string, made: (m: Made) => void, where: string): void {
+  const mission = missionFolder(j, homedir);
+  let first: string | undefined;
+  for (let p = mission; p && !fs.existsSync(p); p = path.dirname(p)) first = p;
+  if (!mission || !first) return;
+  made({ folder: first });
+  try { fs.mkdirSync(mission, { recursive: true }); } catch (e) { throw new Error(`${mission} cannot be made ${where}: ${(e as Error).message}`); }
+}
+
+/** What of mission control's folder the move made goes, as far as it still holds nothing. */
+export function unmakeMission(j: MoveJournal): void {
+  const { folder } = j.made ?? {};
+  for (let p = j.plan.paths.cwd; folder && holds(clean(folder), clean(p)); p = path.dirname(p)) {
+    try { fs.rmdirSync(p); } catch { break; }
+  }
+}
+
+const running = async (kind: AgentKind): Promise<boolean> => (await allProcesses()).some((p) => runsAgent(p.args, kind));
+
+/**
+ * Trust for the robot's agents in `folder`, seeded while no agent of that kind runs; mission control's is recorded as the fleet's
+ * for uninstall to take back. The kinds seeded, whose trust question no one need answer.
+ */
+export async function seedLanding(j: MoveJournal, c: Robot, folder: string | undefined, o: {
+  agents: AgentProber; homedir: string; fleetHome: string; log: Logger; agentRunning?: (kind: AgentKind) => Promise<boolean>; failpoint?: Failpoint;
+}): Promise<Set<AgentKind>> {
+  const seeded = new Set<AgentKind>();
+  if (!folder) return seeded;
+  const mission = folder === missionFolder(j, o.homedir);
+  const probes = await o.agents();
+  for (const kind of new Set([c.agent?.kind, c.second?.agent?.kind].filter((k) => k !== undefined))) {
+    const agentHome = probes.find((p) => p.kind === kind)?.home;
+    if (!agentHome) continue;
+    const seed = () => seedTrust(kind, folder, {
+      agentHome, homedir: o.homedir, agentRunning: () => (o.agentRunning ?? running)(kind), waitMs: TRUST_MS, ...(mission && { recordFile: trustRecordFile(o.fleetHome) }),
+    });
+    const r = await (o.failpoint ? boundary(o.failpoint, seed) : seed()).catch((e: Error) => o.log.error(`move ${j.id}: trust for ${folder} was not seeded: ${e.message}`));
+    if (r === 'seeded') seeded.add(kind);
+  }
+  return seeded;
 }

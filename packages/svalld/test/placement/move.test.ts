@@ -8,7 +8,7 @@ import { armFailpoints, type Edge, type Failpoint } from '../../src/failpoints.j
 import { hooklessGit, type GitRunner } from '../../src/links/git.js';
 import { fingerprintOf } from '../../src/placement/bundle.js';
 import { trustRecordFile } from '../../src/placement/trust.js';
-import { TRUST_ASKED } from '../../src/placement/move-steps.js';
+import { MoveFiles, TRUST_ASKED } from '../../src/placement/move-steps.js';
 import type { AgentProbe, AgentProber } from '../../src/sessions/registry.js';
 import { hasGit } from '../git-fixture.js';
 import { cleanHomes, waitForPolls } from '../helpers.js';
@@ -467,6 +467,56 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     await home.placement.start('c_1', H);
     expect(home.store.state.robots.c_1).toMatchObject({ cwd: own });
     expect(home.store.state.robots.c_1.machine).toBeUndefined();
+  });
+
+  // mission control's robot gone to w1 in the fleet's own folder, whose folder here is then gone
+  const crewAway = async (o: Parameters<typeof open>[0] = {}) => {
+    const w = open({ notInRepo: true, ...o });
+    const home = await w.start();
+    const own = path.join(w.homePaths.home, 'home');
+    fs.mkdirSync(own, { recursive: true });
+    home.store.update((d) => { d.home.cwd = own; });
+    crew(w, own);
+    await home.placement.start('c_1', W, { homeMove: 'hm_abcdefghij' });
+    fs.rmSync(own, { recursive: true });
+    return { w, home, own };
+  };
+
+  it('mission control\'s robot coming back lands in the fleet\'s folder here, made before the commit, and its trust question answered where no seed could be', async () => {
+    const { w, home, own } = await crewAway({ agentRunsHere: true });
+    w.mac1.trustAsks = TRUST_DIALOG;
+    const id = await home.placement.start('c_1', H);
+    expect(new MoveFiles(w.homePaths.moves).read(id)?.plan.mission).toBe(true);
+    expect(fs.statSync(own).isDirectory()).toBe(true);
+    expect(home.store.state.robots.c_1).toMatchObject({ cwd: own });
+    await until(() => expect(w.mac1.keys.map((k) => k.text)).toEqual(['Down', '\r']));
+    expect(home.store.state.robots.c_1.note).not.toContain(TRUST_ASKED);
+  });
+
+  it('mission control\'s robot coming back has its trust seeded here while no agent runs, and recorded as the fleet\'s', async () => {
+    const { w, home, own } = await crewAway();
+    fs.writeFileSync(path.join(w.macClaude, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true }));
+    await home.placement.start('c_1', H);
+    expect(JSON.parse(fs.readFileSync(path.join(w.macClaude, '.claude.json'), 'utf8')).projects[fs.realpathSync(own)]).toEqual({ hasTrustDialogAccepted: true });
+    expect(JSON.parse(fs.readFileSync(trustRecordFile(w.homePaths.home), 'utf8'))).toMatchObject([{ kind: 'claude', key: fs.realpathSync(own) }]);
+    expect(w.mac1.keys).toEqual([]);
+  });
+
+  it('mission control\'s robot coming back to a trust question it cannot read leaves it to the person, and its note says so', async () => {
+    const { w, home } = await crewAway({ agentRunsHere: true });
+    w.mac1.trustAsks = TRUST_DIALOG.map((r) => r.replace('Yes, I trust this folder', 'Yes, trust it'));
+    const id = await home.placement.start('c_1', H);
+    expect(home.placement.status(id).phase).toBe('done');
+    expect(home.store.state.robots.c_1.note).toContain(TRUST_ASKED);
+    expect(w.mac1.keys).toEqual([]);
+  });
+
+  it('a way back called off before its commit takes back mission control\'s folder it made here', async () => {
+    const { home, own } = await crewAway();
+    at('move.journal.commit', 'before', () => { expect(fs.statSync(own).isDirectory()).toBe(true); throw new Error('the disk is full'); });
+    await expect(home.placement.start('c_1', H)).rejects.toThrow('the disk is full');
+    await until(() => expect(home.store.state.robots.c_1.moving).toBeUndefined());
+    expect(fs.existsSync(own)).toBe(false);
   });
 
   it('a robot of mission control\'s that works elsewhere, the user\'s home included, gets no folder made and no trust there', async () => {
