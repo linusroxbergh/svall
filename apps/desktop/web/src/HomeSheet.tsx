@@ -5,7 +5,7 @@ import { CloseX } from './CloseX.js';
 import { dialogKeys, useApp } from './hooks.js';
 import { onThisMac, stepLabel } from './host.js';
 import { startHost } from './hostRun.js';
-import { Mark } from './icons.js';
+import { Caret, Mark } from './icons.js';
 import { blockersOf, INTERRUPT_AFTER_MS, interruptOf, KEPT, type Interrupt } from './MoveSheet.js';
 import { MobilePanel } from './PhonePanel.js';
 
@@ -110,6 +110,12 @@ export function HomeSheet() {
         {!run && refused && [refused, ...refused.more ?? []].map((b) => (
           <div key={b.reason} className="host-note" data-testid="home-refusal"><span><span data-testid="home-reason">{onThisMac(b.reason)}</span><span className="modal-sub">{onThisMac(b.action)}</span></span></div>
         ))}
+        {!run && refused && refused.details.length > 0 && (
+          <details className="modal-more" data-testid="home-details">
+            <summary><Caret dir="right" />details</summary>
+            <div className="modal-more-body">{refused.details.map((d) => <span key={d}>{d}</span>)}</div>
+          </details>
+        )}
         {!run && crewSaid?.map((b) => {
           const answerable = interruptOf(b.action);
           return (

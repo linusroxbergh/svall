@@ -169,6 +169,14 @@ describe('the sheet of a home move', () => {
     expect(row).not.toContain('svall fleet');
   });
 
+  it('a refusal\'s raw words sit behind details', async () => {
+    answer({ 'fleet.homeCheck': { ok: false, sheet: SHEET, refusal: { reason: 'Tailscale is not running on studio', action: 'start it there: sudo systemctl start tailscaled', details: ['Command failed: tailscale status --json'] } } });
+    await open();
+    expect(screen.getByTestId('home-reason').textContent).toBe('Tailscale is not running on studio');
+    expect(screen.getByTestId('home-details').textContent).toContain('Command failed: tailscale status --json');
+    expect(screen.getByTestId('home-refusal').textContent).not.toContain('Command failed');
+  });
+
   it('a refusal calls this machine this Mac', async () => {
     answer({ 'fleet.homeCheck': { ok: false, sheet: SHEET, refusal: { reason: 'this machine has no Tailscale: not running', action: 'install Tailscale and sign in', details: [] } } });
     await open();

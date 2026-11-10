@@ -33,10 +33,15 @@ type Status = {
   User?: Record<string, { ID?: number; LoginName?: string }>;
 };
 
+/** A Tailscale that is installed and whose status does not run: its daemon is stopped. */
+export class TailscaleStopped extends Error {}
+
 /** The name this Mac answers to on the tailnet, also the origin the phone loads the page from, and the login it is
  *  signed in as; a tagged Mac belongs to no login. */
 export async function tailnetSelf(d: MobileDeps, bin: string): Promise<{ host: string; owner?: string }> {
-  const status = JSON.parse(await d.run(bin, ['status', '--json'])) as Status;
+  let said: string;
+  try { said = await d.run(bin, ['status', '--json']); } catch (e) { throw new TailscaleStopped((e as Error).message); }
+  const status = JSON.parse(said) as Status;
   if (status.BackendState !== 'Running') throw new Error(`tailscale is not connected${status.BackendState ? ` (${status.BackendState})` : ''}; sign in and try again`);
   const host = status.Self?.DNSName?.replace(/\.$/, '');
   if (!host) throw new Error('tailscale did not report a name for this machine');

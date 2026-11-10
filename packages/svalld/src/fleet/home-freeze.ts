@@ -4,7 +4,7 @@ import { ApiError, HOME_ISLAND, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type Ado
 import { readFleetConfig } from '../config.js';
 import { writeDurable } from '../durable.js';
 import type { Logger } from '../log.js';
-import { realDeps, resolveTailscale, tailnetSelf, type Mobile, type MobileDeps } from '../mobile.js';
+import { realDeps, resolveTailscale, tailnetSelf, TailscaleStopped, type Mobile, type MobileDeps } from '../mobile.js';
 import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
 import { releaseVersion } from '../release.js';
@@ -285,7 +285,7 @@ export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; 
     const m = o.tailscale ?? realDeps();
     const self = await tailnetSelf(m, await resolveTailscale(m));
     tailscale = { host: self.host };
-  } catch (e) { tailscale = { error: (e as Error).message }; }
+  } catch (e) { tailscale = { error: (e as Error).message, ...(e instanceof TailscaleStopped && { stopped: true as const }) }; }
   let freeKb: number | undefined;
   try { const s = fs.statfsSync(p.home); freeKb = Math.floor((s.bavail * s.bsize) / 1024); } catch { /* the check says it could not read it */ }
   let fleetKb: number | undefined;
@@ -342,8 +342,12 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   if (to.freeKb !== undefined && to.freeKb < needKb) fail(`${goesTo} has ${Math.floor(to.freeKb / 1024)} MB free, and taking the fleet takes ${mb(needKb)} MB`, i.back ? 'free some space here' : 'free some space there');
   if (from.moving) fail(`the fleet is moving already (${from.moving})`, 'finish or call off that move first');
   if (to.moving) fail(i.back ? `this machine is still taking a move (${to.moving})` : `${toName} is still leaving a move (${to.moving})`, 'finish or call off that move first');
-  if (there.tailscale.error) fail(`${far} has no Tailscale: ${there.tailscale.error}`, 'install Tailscale there and sign in');
-  if (here.tailscale.error) fail(`this machine has no Tailscale: ${here.tailscale.error}`, 'install Tailscale and sign in');
+  // a stopped one's own words go behind details
+  const details = [there, here].flatMap((f) => (f.tailscale.stopped ? [f.tailscale.error!] : []));
+  if (there.tailscale.stopped) fail(`Tailscale is not running on ${far}`, 'start it there: sudo systemctl start tailscaled');
+  else if (there.tailscale.error) fail(`${far} has no Tailscale: ${there.tailscale.error}`, 'install Tailscale there and sign in');
+  if (here.tailscale.stopped) fail('Tailscale is not running on this machine', process.platform === 'darwin' ? 'open the Tailscale app' : 'start it: sudo systemctl start tailscaled');
+  else if (here.tailscale.error) fail(`this machine has no Tailscale: ${here.tailscale.error}`, 'install Tailscale and sign in');
   const sheet: HomeSheet = {
     here: robots.filter((r) => (r.machine ?? from.machineId) === from.machineId && state.islands[r.islandId]?.kind !== 'home').length,
     there: robots.filter((r) => r.machine === to.machineId).length,
@@ -352,7 +356,7 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   };
   if (!failed.length) return { ok: true, sheet };
   const [first, ...more] = failed;
-  const refusal: Refusal = { ...first, details: [], ...(more.length && { more }) };
+  const refusal: Refusal = { ...first, details, ...(more.length && { more }) };
   return { ok: false, refusal, sheet };
 }
 

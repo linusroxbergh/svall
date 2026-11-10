@@ -908,6 +908,19 @@ describe('the check', () => {
     if (!r.ok) expect(r.refusal.action).toMatch(/add it again from studio/);
   });
 
+  it('a Tailscale installed and stopped says it is not running and how to start it, its own words behind details; one not installed says so', async () => {
+    const paths = resolvePaths(makeHome());
+    const raw = 'Command failed: tailscale status --json\nfailed to connect to local tailscaled; it doesn\'t appear to be running';
+    const tailscale = (installed: boolean) => ({ exists: () => false, read: () => undefined, run: (_c: string, a: string[]) => (installed && a[0] === 'version' ? Promise.resolve('1.80') : Promise.reject(new Error(raw))) });
+    const stopped = await homeFacts(paths, { me: STUDIO, role: 'worker', fleetId: FLEET, tailscale: tailscale(true) });
+    expect(stopped.tailscale).toEqual({ error: raw, stopped: true });
+    const r = homeCheck(input({ to: { ...facts({ machineId: STUDIO }), tailscale: stopped.tailscale } }));
+    expect(r).toMatchObject({ ok: false, refusal: { reason: 'Tailscale is not running on studio', action: 'start it there: sudo systemctl start tailscaled', details: [raw] } });
+    const missing = await homeFacts(paths, { me: STUDIO, role: 'worker', fleetId: FLEET, tailscale: tailscale(false) });
+    expect(missing.tailscale.stopped).toBeUndefined();
+    expect(homeCheck(input({ to: { ...facts({ machineId: STUDIO }), tailscale: missing.tailscale } }))).toMatchObject({ ok: false, refusal: { reason: expect.stringMatching(/^studio has no Tailscale: tailscale not found/), details: [] } });
+  });
+
   it('counts an absent workers.json as no worker, and refuses on one it cannot read', async () => {
     const paths = resolvePaths(makeHome());
     const said = () => homeFacts(paths, { me: MAC, role: 'home', fleetId: FLEET, tailscale: {} as never });
