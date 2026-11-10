@@ -201,9 +201,12 @@ export function toggleIsland(d: ActionDeps, id: string): void {
   d.api.call('island.update', { id, collapsed: !island.collapsed }).catch(toast(d));
 }
 
-// one the map makes on its own, as a banner gives it room back, says nothing when refused, as a home frozen for a move refuses it
+// one the map makes on its own says nothing when refused, as a home frozen for a move refuses it, or cut off by svalld's
+// restart; any other failure of it is logged
 export function arrangeIslands(d: ActionDeps, aspect?: number, homeRoom?: number, automatic = false): void {
-  d.api.call('island.arrange', { aspect, homeRoom }).catch(automatic ? () => {} : toast(d));
+  d.api.call('island.arrange', { aspect, homeRoom }).catch(automatic ? (e: Error) => {
+    if (!refused(e) && e.message !== 'svalld connection closed') console.warn(`island.arrange: ${e.message}`);
+  } : toast(d));
 }
 
 // without a cell the daemon picks the spot

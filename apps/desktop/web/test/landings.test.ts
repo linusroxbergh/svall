@@ -81,4 +81,13 @@ describe('the app log', () => {
       { type: 'log', text: 'toast error: svalld connection closed' },
     ]);
   });
+
+  it('takes the same toast shown twice in a row twice', () => {
+    const store = createAppStore();
+    const sent: unknown[] = [];
+    logToasts({ store, bridge: { send: (m) => { sent.push(m); } } });
+    store.getState().showToast('svalld connection closed');
+    store.getState().showToast('svalld connection closed');
+    expect(sent).toHaveLength(2);
+  });
 });
