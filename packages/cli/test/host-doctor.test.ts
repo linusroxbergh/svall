@@ -42,6 +42,9 @@ describe('host doctor', () => {
     await expect(consentHost('trift', { item: 'codex:mcp:nope', on: true }, d)).rejects.toThrow('no setting codex:mcp:nope on trift; svall host doctor trift lists them');
     await expect(consentHost('trift', { item: 'claude:mcp:linear', on: true, fields: ['env.X'] }, d))
       .rejects.toThrow('claude:mcp:linear on trift has no field env.X; svall host doctor trift lists its fields');
+    const named = { ...d, fleet: { ...d.fleet, profile: 'work' } };
+    await expect(consentHost('trift', { item: 'codex:mcp:nope', on: true }, named)).rejects.toThrow('no setting codex:mcp:nope on trift; svall -p work host doctor trift lists them');
+    await expect(consentHost('trift', { item: 'claude:mcp:linear', on: true, fields: ['env.X'] }, named)).rejects.toThrow('svall -p work host doctor trift lists its fields');
     await expect(consentHost('trift', { item: 'claude:mcp:linear', on: false, fields: ['env.LINEAR_API_KEY'] }, d)).rejects.toThrow('off unticks every field of the item; leave out --field');
     expect(consent).not.toHaveBeenCalled();
     await consentHost('trift', { item: 'claude:mcp:linear', on: true, fields: ['env.LINEAR_API_KEY'] }, d);

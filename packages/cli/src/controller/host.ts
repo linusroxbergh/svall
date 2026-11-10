@@ -1057,9 +1057,9 @@ export async function consentHost(name: string, o: { item: string; on: boolean; 
   const entry = need(d.registry, name);
   if (o.fields && !o.on) throw new StepError('off unticks every field of the item; leave out --field');
   const listed = (await d.setupRows(entry.id, 0)).find((r) => r.tick?.item === o.item)?.tick?.fields;
-  if (!listed) throw new StepError(`no setting ${o.item} on ${name}; svall host doctor ${name} lists them`);
+  if (!listed) throw new StepError(`no setting ${o.item} on ${name}; ${hostCmd(d)} doctor ${name} lists them`);
   const unknown = (o.fields ?? []).filter((f) => !listed.includes(f));
-  if (unknown.length) throw new StepError(`${o.item} on ${name} has no field ${unknown.join(', ')}; svall host doctor ${name} lists its fields`);
+  if (unknown.length) throw new StepError(`${o.item} on ${name} has no field ${unknown.join(', ')}; ${hostCmd(d)} doctor ${name} lists its fields`);
   return d.consent(entry.id, o.item, o.fields ?? listed, o.on);
 }
 

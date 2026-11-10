@@ -229,6 +229,8 @@ describe('svall fleet join', () => {
     Date.now = () => (now += 30_000);
     try {
       expect((await joinHome({ ssh: 'ada@studio' }, stale)).stopped).toBe('snapshot');
+      const named = { ...stale, target: { ...stale.target, name: 'work', managed: true } };
+      expect(JSON.stringify(await joinHome({ ssh: 'ada@studio' }, named))).toContain('svall -p work doctor, and svall -p work host doctor studio');
     } finally { Date.now = clock; }
   });
 

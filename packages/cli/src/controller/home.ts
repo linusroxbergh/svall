@@ -35,6 +35,8 @@ const TOLD_MS = 60_000;
 
 const ENROLL_TIMEOUT = 30_000;
 const SNAPSHOT_MS = 90_000;
+// a command for this fleet, by the -p that names it
+const svallOf = (t: Target, args: string): string => { const p = farProfile(t); return `svall ${p ? `-p ${p} ` : ''}${args}`; };
 const POLL_MS = 500;
 
 /** What `svall version --json` says of the fleet home there. */
@@ -208,7 +210,7 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
             return { value: undefined, detail: `${enrolled.homeName}'s fleet is here` };
           }
         }
-        throw new StepError(`${enrolled.homeName} sent no snapshot in ${SNAPSHOT_MS / 1000} s`, `svall doctor, and svall host doctor ${enrolled.homeName}`);
+        throw new StepError(`${enrolled.homeName} sent no snapshot in ${SNAPSHOT_MS / 1000} s`, `${svallOf(d.target, 'doctor')}, and ${svallOf(d.target, `host doctor ${enrolled.homeName}`)}`);
       });
       await run.step('seed', async () => {
         const name = enrolled.homeName;
@@ -629,7 +631,7 @@ async function finishBack(run: Runner, d: MoveDeps, adoption: AdoptDeps, id: Hom
       const state = await withClient(d.client, (c) => c.call('state.get', {})).catch(() => undefined);
       if (state?.machines?.[o.from]?.reachable) return { value: undefined, detail: 'The fleet runs on this machine. Open the phone from its new QR code once.' };
     }
-    return { value: undefined, status: 'warn' as const, detail: `the fleet runs on this machine; ${o.name} has not linked yet`, action: `svall host doctor ${o.name}`, say: `Check ${o.name} under Machines` };
+    return { value: undefined, status: 'warn' as const, detail: `the fleet runs on this machine; ${o.name} has not linked yet`, action: svallOf(d.target, `host doctor ${o.name}`), say: `Check ${o.name} under Machines` };
   });
 }
 
