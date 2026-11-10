@@ -22,13 +22,13 @@ const call = async <T = unknown>(ctx: Ctx, method: string, params: object): Prom
 const SVALL_RULES = { allow: ['Bash(svall status:*)', 'Bash(svall robot new:*)'] };
 const MAC_RULES = { allow: ['Bash(git:*)', 'Bash(npm test:*)'], deny: ['Read(./.env)'] };
 
-// a server as `svall setup` leaves it: no one's setup, only Svall's permission rules, its hooks and the profiles a fleet starts with
+// a server as `svall setup` and a Claude Code login leave it: no one's setup, only Svall's permission rules, its hooks, the profiles a fleet starts with and Claude Code's theme
 function emptyServer() {
   const home = farHome();
   for (const dir of [home.claudeDir, home.codexDir, home.opencodeDir]) fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync(home.overrides, { recursive: true, force: true });
   put(home.claudeJson, JSON.stringify({ oauthAccount: { a: 1 } }));
-  put(path.join(home.claudeDir, 'settings.json'), JSON.stringify({ hooks: { Stop: [] }, statusLine: { type: 'command', command: '/x' }, permissions: SVALL_RULES }));
+  put(path.join(home.claudeDir, 'settings.json'), JSON.stringify({ hooks: { Stop: [] }, statusLine: { type: 'command', command: '/x' }, permissions: SVALL_RULES, theme: 'dark' }));
   put(path.join(home.codexDir, 'rules/svall.rules'), '# Managed by Svall: robot command permissions\n');
   seedAgentProfiles(home.agentProfiles!);
   return home;
@@ -148,6 +148,18 @@ describe('a home with no agent setup yet', () => {
     const plan = mirrorPlan(emptyServer());
     expect(holdsSetup(plan)).toBe(false);
     expect(holdsSetup({ ...plan, ...held })).toBe(true);
+  });
+
+  it('takes the theme Claude Code writes at its first start for no setup', () => {
+    const plan = mirrorPlan(emptyServer());
+    expect(plan.settings).toEqual({ permissions: SVALL_RULES, theme: 'dark' });
+    expect(holdsSetup(plan)).toBe(false);
+  });
+
+  it('counts a theme beside any other setting', () => {
+    const plan = mirrorPlan(emptyServer());
+    expect(holdsSetup({ ...plan, settings: { ...plan.settings, model: 'opus' } })).toBe(true);
+    expect(holdsSetup({ ...plan, settings: { theme: 'dark', feedbackSurveyState: { lastShownTime: 1 } } })).toBe(true);
   });
 
   it('takes no empty folder for a setup, and carries no rule of Codex\'s, Svall\'s or a person\'s', async () => {

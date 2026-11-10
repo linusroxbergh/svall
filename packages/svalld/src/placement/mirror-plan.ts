@@ -298,7 +298,8 @@ function writtenUnasked(p: MirrorPlan): { list(to: string): boolean; clone(s: st
 
 /** Whether what a plan carries is an agent setup of a person's making. Anything unsure of counts, as a home that holds one is never seeded. */
 export function holdsSetup(p: MirrorPlan): boolean {
-  const { permissions, ...settings } = p.settings;
+  // Claude Code writes `theme` at its first start, unasked
+  const { permissions, theme, ...settings } = p.settings;
   const { list, clone } = writtenUnasked(p);
   return p.files.some((f) => !leftBySetup(f) && !list(f.to) && !clone(f.from)) || p.servers.length > 0 || p.plugins.some((r) => !r.files.every(clone)) || p.configs.length > 0 || Object.keys(settings).length > 0 || (permissions !== undefined && !svallAllows(permissions))
     || Object.keys(p.settingsEnv).length > 0 || Object.keys(p.codex ?? {}).length > 0 || p.opencode.some((d) => Object.keys(d.doc).length > 0) || !p.unreadable.every(clone) || !p.skipped.every(clone);
