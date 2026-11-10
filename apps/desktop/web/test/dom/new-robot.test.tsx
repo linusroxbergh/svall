@@ -120,6 +120,9 @@ test('a typed path the home refuses is said in the dialog, with the home\'s name
   expect(screen.getByTestId('new-robot-create').hasAttribute('disabled')).toBe(false);
   fireEvent.change(folder(), { target: { value: '/home/linus/app' } });
   expect(screen.queryByTestId('new-robot-refused')).toBeNull();
+  fireEvent.change(folder(), { target: { value: '~/fartest-file.txt' } });
+  await create();
+  expect(screen.getByTestId('new-robot-refused').textContent).toBe('~/fartest-file.txt is not a folder on studio');
 });
 
 test('another refusal is the home\'s own words, on the toast', async () => {
