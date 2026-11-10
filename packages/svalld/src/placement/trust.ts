@@ -130,6 +130,16 @@ export async function removeOwnedTrust(recordFile: string, homedir: string): Pro
 // a dialog's choice row: the pointer if it marks it, the choice's number, its text
 const CHOICE = /^\s*(?:[❯›>]\s*)?(?:(\d+)\.\s+)?(.*?)\s*$/;
 
+/** Resolves once the pane shows a numbered choice under any question but the trust one, which no one here answers; or once `signal` aborts. */
+export async function asksOwnQuestion(tmux: Pick<Tmux, 'screen'>, paneId: string, adapter: Pick<SessionAdapter, 'trustQuestion'>, signal: AbortSignal): Promise<void> {
+  while (!signal.aborted) {
+    const rows = await tmux.screen(paneId).then((s) => s.rows, () => [] as string[]);
+    const trust = adapter.trustQuestion !== undefined && rows.some((r) => r.includes(adapter.trustQuestion!));
+    if (!trust && rows.some((r) => /^\s*[❯›>]\s*\d+\.\s+\S/.test(r))) return;
+    await nap(POLL_MS, signal);
+  }
+}
+
 /**
  * Watches a pane for `forMs` for the agent's trust question and, once the question and its answer as a choice below it
  * show, picks the answer and confirms, once. A CLI whose adapter gives no question and answer is never answered.

@@ -24,7 +24,7 @@ import { BundleManifest, buildBundle, CREDENTIAL_GLOBS, fingerprintOf, isCredent
 import { MovePlan, type Carried } from './checks.js';
 import { refuseUncarried } from './convert.js';
 import { sessionLanding } from './paths.js';
-import { answerTrustPrompt, nap } from './trust.js';
+import { answerTrustPrompt, asksOwnQuestion, nap } from './trust.js';
 
 const exec = promisify(execFile);
 
@@ -492,7 +492,11 @@ export async function wake(w: Wake, j: MoveJournal): Promise<string | undefined>
     if (w.trust) watchTrust(w, j, c.name, pane, adapter);
     // a CLI that reports no session until its first turn is up once its window is
     if (!adapter.sessionStartOnResume) return undefined;
-    return await Promise.race([started, dormant, nap(w.watchMs, watch.signal).then(() => undefined)]);
+    // a question of the agent's own, as a first run asks, waits on a person in its terminal, not on the move
+    const asks = asksOwnQuestion(w.tmux, pane, adapter, watch.signal).then(() => {
+      if (!watch.signal.aborted) w.log.info(`move ${j.id}: ${c.name} asks a question of its own in its terminal, which the move does not wait on`);
+    });
+    return await Promise.race([started, dormant, asks.then(() => undefined), nap(w.watchMs, watch.signal).then(() => undefined)]);
   } finally {
     watch.abort();
     unheard();

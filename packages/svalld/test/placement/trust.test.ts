@@ -237,7 +237,30 @@ function codexToWake() {
   return { o, typed, heard, run, started: () => { for (const fn of heard) fn('c_1', undefined, 'x'); } };
 }
 
+// a Claude robot to wake whose pane shows `rows`, which reports its session as it starts
+function claudeToWake(rows: string[]) {
+  const robot = { id: 'c_1', name: 'crew', revive: { command: 'claude --resume x' }, agent: { kind: 'claude', sessionId: 'x', status: 'idle', lastActivityAt: 0 } } as unknown as Robot;
+  const store = { state: { robots: { c_1: robot } }, subscribe: () => () => {} };
+  const fleet = {
+    reviveRobot: async () => { robot.tmux = { windowId: '@1', paneId: '%1' }; },
+    openSecond: async () => {},
+    onSessionStart: () => () => {},
+  };
+  const tmux = { screen: async () => ({ rows, cursor: 0, shown: true, command: 'claude' }), sendBytes: async () => {} };
+  const j = { id: 'mv_0123456789', robotId: 'c_1' } as MoveJournal;
+  return () => wake({ store, fleet, tmux, log: silentLogger, watchMs: 5000, trust: true } as unknown as Parameters<typeof wake>[0], j);
+}
+
 describe('wake', () => {
+  it("waits on no question of the agent's own, as its first run asks, which a person answers in its terminal; the trust question it waits on", async () => {
+    const began = Date.now();
+    expect(await claudeToWake(['Claude in Chrome extension detected', '', '❯ 1. Yes, use it', '  2. No'])()).toBeUndefined();
+    expect(Date.now() - began).toBeLessThan(2000);
+    const trusting = claudeToWake([claudeAdapter.trustQuestion!, '', '❯ 1. Yes, proceed', '  2. No, exit']);
+    const still = await Promise.race([trusting().then(() => 'ended'), new Promise((resolve) => setTimeout(() => resolve('waiting'), 1500))]);
+    expect(still).toBe('waiting');
+  });
+
   it('counts a Codex robot up once its window opens, which reports no session until its first turn, and answers its trust question after', async () => {
     const w = codexToWake();
     const began = Date.now();
