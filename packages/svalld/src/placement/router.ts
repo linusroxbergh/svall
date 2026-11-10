@@ -1,11 +1,12 @@
 import os from 'node:os';
 import { z } from 'zod';
-import { AGENT_UPDATE, AGENT_UPDATE_MS, AgentKind, ApiError, Column, farRootOf, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
+import { AGENT_UPDATE, AGENT_UPDATE_MS, AgentKind, ApiError, Column, ContextItem, farRootOf, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
 import { loseSecond, markDormant } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import type { HomeLinks } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import { hooklessGit } from '../links/git.js';
+import { settleItems } from '../context/items.js';
 import type { Logger } from '../log.js';
 import { cliRunner } from '../sessions/registry.js';
 import type { CliRun } from '../sessions/types.js';
@@ -74,6 +75,13 @@ export class Router {
     const { robots } = this.o.store.state;
     if (!Object.hasOwn(robots, robotId) || this.runsHere(robots[robotId])) return undefined;
     return robots[robotId].machine ?? this.o.home?.id;
+  }
+
+  /** On the home, a placed robot's context items settled on the machine it runs on, whose files its paths name; undefined for a robot here. */
+  settleContext(robotId: string, items: ContextItem[], current: ContextItem[]): Promise<ContextItem[]> | undefined {
+    const at = this.placedAt(robotId);
+    if (!at || !this.o.links) return undefined;
+    return this.o.links.call<ContextItem[]>(at, 'context.settle', { items, current }, { timeoutMs: callMs('robot.update', {}) });
   }
 
   /** The machine a workspace id's folder is on, when that is another one: a placed robot's, or the worker a clone's root id names. */
@@ -257,6 +265,11 @@ export function workerCalls(o: {
     },
     'robot.close': forget,
     'robot.forget': forget,
+    // a robot's context paths name files on this machine, ~ included
+    'context.settle': async (raw) => {
+      const p = z.object({ items: z.array(ContextItem), current: z.array(ContextItem) }).parse(raw);
+      return settleItems(p.items, p.current);
+    },
     'scribe.run': async (raw) => {
       const p = ScribeRun.safeParse(raw);
       if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));

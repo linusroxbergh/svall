@@ -688,9 +688,10 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => { for (const c of Object.values(d.robots)) if (c.agentProfile === from) c.agentProfile = to; });
   }
 
+  /** `settled`: the context as the robot's own machine settled it, when that is another one. */
   updateRobot(id: string, patch: {
     name?: string; note?: string; instructions?: string; agentProfile?: string; islandId?: string; context?: ContextItem[]; removed?: string[]; figure?: number;
-  }): Robot {
+  }, settled?: ContextItem[]): Robot {
     const current = this.robot(id);
     if (patch.islandId) this.island(patch.islandId);
     if (patch.agentProfile) this.checkAgentProfile(patch.agentProfile);
@@ -698,7 +699,7 @@ export class Fleet extends EventEmitter<Events> {
     const clash = patch.name !== undefined && Object.values(this.deps.store.state.robots)
       .find((c) => c.id !== id && c.name.toLowerCase() === patch.name!.toLowerCase());
     if (clash) throw new Invalid(`another robot is already called ${clash.name}`);
-    const context = patch.context && settleItems(patch.context, current.context);
+    const context = patch.context && (settled ?? settleItems(patch.context, current.context));
     this.deps.store.update((d) => {
       const c = d.robots[id];
       if (patch.name !== undefined) c.name = patch.name;

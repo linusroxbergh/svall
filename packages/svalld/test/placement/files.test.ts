@@ -74,6 +74,16 @@ describe('files of a robot on a worker', () => {
     }
   });
 
+  it('a placed robot\'s context path is settled on its machine, ~ included, and none is while that machine does not answer', async () => {
+    const { w, tree } = await linked();
+    const update = (ref: string) => dispatch({ id: 1, method: 'robot.update', params: { id: 'c_1', context: [{ kind: 'file', ref, label: '', source: 'manual' }] } }, w.home.ctx);
+    expect(await update(path.join(tree, 'a.txt'))).toMatchObject({ result: { context: [{ ref: path.join(tree, 'a.txt'), kind: 'file' }] } });
+    expect(await update(path.join(tree, 'gone.txt'))).toMatchObject({ error: { code: 'invalid', message: `no such file or folder: ${path.join(tree, 'gone.txt')}` } });
+    w.home.links.stop();
+    expect(await update(tree)).toMatchObject({ error: { code: 'not_reachable' } });
+    expect(w.home.store.state.robots.c_1.context.map((c) => c.ref)).toEqual([path.join(tree, 'a.txt')]);
+  });
+
   it('a 1.5 MB file reads whole over the link', async () => {
     const { w, tree } = await linked();
     fs.writeFileSync(path.join(tree, 'big.txt'), 'x'.repeat(1_572_864));
