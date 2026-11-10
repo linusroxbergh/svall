@@ -166,9 +166,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   const config = loadConfig(paths, log.info);
   if (configRelinked(paths)) log.info(`${paths.legacyConfig} is not read: it links to the file ${paths.legacyConfig}.bak does, which ${paths.fleetConfig} and ${paths.nodeConfig} were split out of; link those instead`);
   const worker = opts.worker ? workerOptions(paths) : undefined;
-  // this machine's registry names the home wherever it holds a record, as every window and command here does; the home's own name only where it holds none
+  // this machine's registry names the home wherever it holds a record, as every window and command here does, read each time; the home's own name only where it holds none
   const registeredName = (id: string): string | undefined => { try { return readRegistry().find((m) => m.id === id)?.record.name; } catch { return undefined; } };
-  if (worker) worker.worker.homeName = registeredName(worker.worker.homeMachineId) ?? worker.worker.homeName;
   // a worker's docs are its home's, as the home last sent them
   if (worker) paths.docs = path.join(paths.cache, 'docs');
   const off = new Set<Off>(worker?.off ?? []);
@@ -289,9 +288,9 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   const outbox = worker && Outbox.open(paths, log);
   // a worker that opens the link itself: its tunnel to the home, which the home's link connects through
   const dial = worker?.worker.homeSsh ? new HomeDial({ paths, log, me, linked: (): boolean => connection?.connected() ?? false }) : undefined;
-  const homeApi = worker && new HomeApi({ log, worker: () => readWorkerFile(paths), dial, linked: (): boolean => connection?.connected() ?? false });
+  const homeApi = worker && new HomeApi({ log, worker: () => ({ ...readWorkerFile(paths), homeName: homeLabel() }), dial, linked: (): boolean => connection?.connected() ?? false });
   const connection = worker && outbox && new HomeConnection({
-    paths, worker: worker.worker, me, store, outbox, log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
+    paths, worker: { ...worker.worker, get homeName() { return homeLabel(); } }, me, store, outbox, log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
     onAcked: (dropped) => mutations?.acked(dropped),
     // the home's viewers watch and hold terminals here only while it is linked, and the mirror it sent waits for no other link
     onLink: (live) => {
@@ -349,7 +348,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   if (worker) calls['home.facts'] = (p) => homeFacts(paths, { paths: (p as { paths?: string[] }).paths, me, role: 'worker', fleetId: worker.worker.fleetId });
   if (connection && worker && workerDocs && farViewers && workerMirror && workerDrops) {
     const prepare = new PrepareService({
-      store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, homeWord: workerHomeWord, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
+      store, fleet, tmux, viewers: terminals, connection, me, get homeName() { return homeLabel(); }, homeWord: workerHomeWord, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
     });
     Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers, refuses: (p) => workspace.refuses(p) }), prepare.handlers, workerMirror.calls, workerDocs.handlers, workerDrops.calls);
     if (ownSetup) calls['config.copyToHome'] = () => ownSetup.push();

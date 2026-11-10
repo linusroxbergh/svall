@@ -4,12 +4,13 @@ import net from 'node:net';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import { emptyState, type LinkFrame, type MachineId, type Response } from '@svall/protocol';
+import { emptyState, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type LinkFrame, type MachineId, type Response } from '@svall/protocol';
 import { installFakeSsh } from '../../../cli/test/controller/fake-ssh.js';
 import { InvalidConfig } from '../../src/config.js';
 import { LinkStream } from '../../src/link/stream.js';
 import { silentLogger } from '../../src/log.js';
 import { startDaemon } from '../../src/main.js';
+import { releaseVersion } from '../../src/release.js';
 import { machineId, putRecord } from '../../src/machine.js';
 import { dialSocket, resolvePaths } from '../../src/paths.js';
 import { Store } from '../../src/store.js';
@@ -164,6 +165,36 @@ runIf('svalld --worker', () => {
     expect(await named()).toBe('linus-vault');
     putRecord(workerFile.homeMachineId as MachineId, { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/opt/svall' }, config);
     expect(await named()).toBe('studio');
+  });
+
+  it('reads the registry\'s name of its home each time, the home banner\'s too, as one running sees a record change', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const config = makeHome();
+    vi.stubEnv('SVALL_CONFIG_DIR', config);
+    const paths = resolvePaths(home);
+    fs.writeFileSync(paths.workerFile, JSON.stringify({ ...workerFile, homeName: 'linus-vault' }));
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
+    const record = (name: string) => putRecord(workerFile.homeMachineId as MachineId, { name, ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/opt/svall' }, config);
+    record('studio');
+    const d = await startDaemon({ home, port: 0, worker: true, log: silentLogger });
+    const api = await client(d.port, d.token);
+    const names = async () => [
+      ((await api.call('fleet.home')) as unknown as { result: { name: string } }).result.name,
+      ((await api.call('home.connection')) as unknown as { result: { name: string } }).result.name,
+    ];
+    try {
+      expect(await names()).toEqual(['studio', 'studio']);
+      record('atelier');
+      expect(await names()).toEqual(['atelier', 'atelier']);
+      // the home's record in the snapshot this worker takes, by that name too
+      const stream = new LinkStream(net.connect(paths.linkSock), { onFrame: () => {}, onClose: () => {} });
+      try {
+        stream.send({ t: 'hello', token: workerFile.token, release: releaseVersion(), schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION });
+        stream.send({ t: 'snapshot', version: 1, data: { version: 1, state: emptyState(), agentHomes: { claude: '/h/.claude', codex: '/h/.codex', opencode: '/h/.config/opencode' }, home: '/home/ada' } });
+        await vi.waitFor(() => expect(d.store.state.machines?.[workerFile.homeMachineId as MachineId]?.name).toBe('atelier'));
+      } finally { stream.close(); }
+    } finally { api.close(); await d.stop(); }
   });
 
   it('greets its home with the release svall version names, the version in release.json', async () => {
