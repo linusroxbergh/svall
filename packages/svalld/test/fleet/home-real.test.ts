@@ -117,7 +117,8 @@ runIf('a home move through real starts', () => {
       const paths = fleetHome();
       const d = await firstStart(paths);
       const vault = MachineId.parse('77777777-8888-9999-aaaa-bbbbbbbbbbbb');
-      putRecord(vault, { name: 'linus-vault', ssh: 'ada@vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' } as never);
+      // no ssh route, so the move cannot carry it
+      putRecord(vault, { name: 'linus-vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' } as never);
       issueToken(paths, vault);
       vi.spyOn(HomeLinks.prototype, 'call').mockResolvedValue({ machineId: STUDIO, release: 'r', protocol: 1, stateSchema: 1, clock: Date.now(), fleetHome: '/home/ada/.svall', tailscale: {} });
       expect(await d.ask('fleet.homeCheck', { to: STUDIO })).toMatchObject({ result: { refusal: { more: expect.arrayContaining([{ reason: `${vault} is a worker of this fleet too`, action: `remove ${vault} first; after the move, add it again from ${STUDIO}` }]) } } });
