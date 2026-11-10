@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { FleetState, MachineId, SetupRow } from '@svall/protocol';
-import { followLandings } from '../src/landings.js';
+import { followLandings, logToasts } from '../src/landings.js';
 import { createAppStore } from '../src/store/index.js';
 import { fleet } from './fixtures.js';
 
@@ -64,5 +64,21 @@ describe('a robot landing on a worker', () => {
     back.store.getState().setFleet(fleet());
     back.store.getState().setFleet(landed);
     expect(back.call).not.toHaveBeenCalled();
+  });
+});
+
+describe('the app log', () => {
+  it('takes each toast\'s tone and words, a toast shown again too, so one too brief to read can be read back', () => {
+    const store = createAppStore();
+    const sent: unknown[] = [];
+    logToasts({ store, bridge: { send: (m) => { sent.push(m); } } });
+    store.getState().showToast('svalld connection closed');
+    store.getState().showToast('studio is on studio', 'ok');
+    store.getState().showToast('svalld connection closed');
+    expect(sent).toEqual([
+      { type: 'log', text: 'toast error: svalld connection closed' },
+      { type: 'log', text: 'toast ok: studio is on studio' },
+      { type: 'log', text: 'toast error: svalld connection closed' },
+    ]);
   });
 });

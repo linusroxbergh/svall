@@ -1,5 +1,6 @@
 import { aside, asideLine, wayOn, type SetupRow } from '@svall/protocol';
 import type { Api } from './api.js';
+import type { Bridge } from './bridge.js';
 import { destinationName } from './placement.js';
 import type { AppStore } from './store/index.js';
 
@@ -26,5 +27,12 @@ export function followLandings(o: { store: AppStore; api: () => Pick<Api, 'call'
           { label: 'Show', run: () => o.store.getState().select(id, true) });
       }, () => {});
     }
+  });
+}
+
+/** Each toast's tone and words to the app's log. */
+export function logToasts(o: { store: AppStore; bridge: Pick<Bridge, 'send'> }): () => void {
+  return o.store.subscribe((s, prev) => {
+    if (s.toast && s.toast !== prev.toast) o.bridge.send({ type: 'log', text: `toast ${s.toast.tone}: ${s.toast.text}` });
   });
 }

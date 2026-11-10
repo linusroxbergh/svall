@@ -250,6 +250,8 @@ final class ShellRouter {
         case .copy(let text):
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
+        case .log(let text):
+            NSLog("page: %@", text)
         case .openConfig(let which):
             guard let path = which == "ghostty" ? GhosttyRuntime.configPath() : SvallHome.configPath() else {
                 NSLog("svall: no %@ config to open", which)

@@ -71,6 +71,8 @@ export type ToShell =
   // a file the editor cannot show: a picture, PDF or film in its own app, text in the text editor, anything else in Finder
   | { type: 'openFile'; path: string; machine?: string }
   | { type: 'copy'; text: string }
+  // a line for the app's log, as each toast's words and tone, which a toast too brief to read leaves behind
+  | { type: 'log'; text: string }
   | { type: 'openConfig'; which: 'ghostty' | 'fleet' }
   | { type: 'zoom'; factor: number; fontDelta: number }
   // a banner in Notification Center; a new one for the same session key replaces the last
