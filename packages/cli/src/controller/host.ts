@@ -492,11 +492,11 @@ function notOurs(v: RemoteVersion, name: string, d: HostDeps): StepError | undef
 const newerRelease = (a: string, b: string): boolean => compareVersions(a.replace(/-.*/, ''), b.replace(/-.*/, '')) === 1;
 
 /** Why the machine `ssh` reaches is not one to add as `name`: this Mac lists it under another name. */
-function listedAs(registry: MachineRegistry, id: string, o: { name: string; ssh: string }): StepError | undefined {
-  const listed = registry.get(id);
+function listedAs(d: Pick<HostDeps, 'registry' | 'fleet'>, id: string, o: { name: string; ssh: string }): StepError | undefined {
+  const listed = d.registry.get(id);
   if (!listed || listed.record.name === o.name) return undefined;
   return new StepError(`${o.ssh} reaches ${listed.record.name}, a machine already in this Mac's list`,
-    `svall host upgrade ${listed.record.name} sets it up again, or svall host remove ${listed.record.name} --forget and add it as ${o.name}`);
+    `${hostCmd(d)} upgrade ${listed.record.name} sets it up again, or ${hostCmd(d)} remove ${listed.record.name} --forget and add it as ${o.name}`);
 }
 
 /**
@@ -509,7 +509,7 @@ async function mayInstall(master: SshMaster, o: { name: string; ssh: string; sva
   const asked = o.asHome ? remoteJson<RemoteVersion>(master, o.svallBase, ['version', '--json'], 'svall version --json') : farHome(master, o.svallBase, d, o.machine);
   const far = await asked.catch((err: unknown) => { if (err instanceof StepError) return undefined; throw err; });
   if (!far) return;
-  const refused = listedAs(d.registry, far.machineId, o) ?? notOurs(far, o.name, d);
+  const refused = listedAs(d, far.machineId, o) ?? notOurs(far, o.name, d);
   if (refused) throw refused;
   if (o.asHome && far.role === 'worker') {
     const home = far.worker?.homeName ?? 'another home';
@@ -518,7 +518,7 @@ async function mayInstall(master: SshMaster, o: { name: string; ssh: string; sva
     const listed = d.registry.get(far.machineId) ? '' : `svall${p} host add ${o.name} --ssh ${o.ssh} lists it again, then `;
     throw new StepError(`${o.name} serves ${home} as a worker, so it cannot be a home`, servesUs(far, d) ? `${listed}svall${p} fleet home set ${o.name} makes it this fleet's home` : `remove ${o.name} from the fleet it serves on ${home} first`);
   }
-  if (o.adding && !o.asHome && servedHome(far.machineId, d)) throw new StepError(`${o.name} is this fleet's home, so it cannot be added as its worker`, `svall host upgrade ${o.name} takes it to this Mac's release`);
+  if (o.adding && !o.asHome && servedHome(far.machineId, d)) throw new StepError(`${o.name} is this fleet's home, so it cannot be added as its worker`, `${hostCmd(d)} upgrade ${o.name} takes it to this Mac's release`);
   if (newerRelease(far.release, o.version)) {
     throw new StepError(`${o.name} runs release ${far.release}, newer than ${o.version}, the one this Mac would install`, 'update svall on this Mac');
   }
@@ -619,7 +619,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         }
         throw new StepError((err as Error).message, `ssh ${o.ssh} and see what it answers`);
       }
-      if (held) await sameMachine(opened, held).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
+      if (held) await sameMachine(opened, held, d).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
       return { value: opened, detail: `connected to ${o.ssh}` };
     });
 
@@ -672,14 +672,14 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         // a machine with no svall to ask at the master step answers only once it is installed
         if (held && id.data !== held.id) {
           throw new StepError(`${o.ssh} now reaches machine ${id.data}, not ${o.name} (${held.id})`,
-            `point ${o.ssh} back at ${o.name}, or svall host remove ${o.name} --forget and add it again`);
+            `point ${o.ssh} back at ${o.name}, or ${hostCmd(d)} remove ${o.name} --forget and add it again`);
         }
-        const listed = listedAs(d.registry, id.data, o);
+        const listed = listedAs(d, id.data, o);
         if (listed) throw listed;
         d.runs?.(v.release);
         if (v.release !== companion.version) {
           throw new StepError(`${o.name} runs release ${v.release}, not ${companion.version}: its setup went back, as the daemon of ${companion.version} did not answer`,
-            `ssh ${o.ssh} and read the daemon log; ${o.name} runs release ${v.release}, the one its setup went back to; then ${held ? `svall host upgrade ${o.name}, or ` : ''}add the machine again`);
+            `ssh ${o.ssh} and read the daemon log; ${o.name} runs release ${v.release}, the one its setup went back to; then ${held ? `${hostCmd(d)} upgrade ${o.name}, or ` : ''}add the machine again`);
         }
         if (v.protocol !== d.controller.protocol) throw new StepError(`the release installed on ${o.name} cannot talk to this Mac's`);
         return { value: id.data, detail: `${o.name} runs release ${v.release}` };
@@ -736,10 +736,10 @@ type Registered = MachineEntry & { record: MachineRecord & { ssh: string } };
  * Refuses a far machine that answers as another than the registry names, as an ssh alias that now leads elsewhere
  * would. One whose `svall` fails is left to the step that needs it, so a broken install can still be repaired.
  */
-async function sameMachine(master: SshMaster, entry: Registered): Promise<void> {
+async function sameMachine(master: SshMaster, entry: Registered, d: Pick<HostDeps, 'fleet'>): Promise<void> {
   await identify(master, entry).catch((err: unknown) => {
     if (!(err instanceof MachineMismatch)) throw err;
-    throw new StepError(err.message, `point ${entry.record.ssh} back at ${entry.record.name}, or svall host remove ${entry.record.name} --forget`);
+    throw new StepError(err.message, `point ${entry.record.ssh} back at ${entry.record.name}, or ${hostCmd(d)} remove ${entry.record.name} --forget`);
   });
 }
 
@@ -808,7 +808,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
       found(home ? { name: 'worker', status: 'ok', detail: 'home of this fleet' }
         : refused ? { name: 'worker', status: 'fail', detail: refused.detail, action: refused.action }
           : servesUs(v, d) ? { name: 'worker', status: 'ok', detail: "runs this fleet's robots" }
-            : { name: 'worker', status: 'fail', detail: `does not run this fleet's robots yet: svall host upgrade ${entry.record.name} sets it up` });
+            : { name: 'worker', status: 'fail', detail: `does not run this fleet's robots yet: ${hostCmd(d)} upgrade ${entry.record.name} sets it up` });
     } catch (err) { found(failed('release', err)); }
     start('versions');
     try {
@@ -824,7 +824,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     try {
       far = await homeProbe(master);
       const n = entry.record.name;
-      found(far.home !== entry.record.home ? { name: 'home', status: 'fail', detail: `${far.home} is ${far.user}'s home on ${n}, and the registry records ${entry.record.home}; svall host remove ${n}, then svall host add again` }
+      found(far.home !== entry.record.home ? { name: 'home', status: 'fail', detail: `${far.home} is ${far.user}'s home on ${n}, and the registry records ${entry.record.home}; ${hostCmd(d)} remove ${n}, then ${hostCmd(d)} add again` }
         : { name: 'home', status: 'ok', detail: `${far.home} for ${far.user}` });
     } catch (err) { found(failed('home', err)); }
     if (far && !checks.some((c) => c.name === 'linger')) {
@@ -857,14 +857,14 @@ const notChecked = (e: Error, name: string, d: HostDeps): SetupRow => ({
 const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string; run?: string } =>
   ({ status: (o.status ?? 'ok') as Check['status'], detail: [o.detail, o.action].filter(Boolean).join('; '), ...(o.run && { run: o.run }) });
 
-const rollbackTo = (name: string): string => `svall host upgrade ${name} --rollback <release> puts back a release kept there`;
+const rollbackTo = (name: string, d: Pick<HostDeps, 'fleet'>): string => `${hostCmd(d)} upgrade ${name} --rollback <release> puts back a release kept there`;
 
 /** The one master an upgrade or a rollback rides on, to the machine the registry names. */
 async function checkedMaster(d: HostDeps, entry: Registered): Promise<Outcome<SshMaster>> {
   const opened = await d.openMaster(entry.record.ssh).catch((err: unknown) => {
     throw new StepError((err as Error).message, `ssh ${entry.record.ssh} once in Terminal and see what it answers, then run this again`);
   });
-  await sameMachine(opened, entry).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
+  await sameMachine(opened, entry, d).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
   return { value: opened, detail: `connected to ${entry.record.ssh}` };
 }
 
@@ -932,7 +932,7 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
         const runs = !replaced ? `${name} runs release ${now}${now === before ? ', the one it ran before' : `, not ${before}, the one it ran before`}`
           : `${name} ran a release named ${before} before, which this install replaced; ${now === before ? 'no other release is kept there, so it runs the new one' : `it runs release ${now}, the newest one kept there`}`;
         const action = `ssh ${entry.record.ssh} and read the daemon log; ${runs}`;
-        if (out instanceof Error) throw new StepError(out.message, `${action}; ${rollbackTo(name)}`);
+        if (out instanceof Error) throw new StepError(out.message, `${action}; ${rollbackTo(name, d)}`);
         return { value: undefined, status: 'warn' as const, detail: out.trim().split('\n').at(-1) ?? `current -> ${now}`, action };
       });
     } finally {
@@ -969,7 +969,7 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
     const fleetHome = dialedHome(entry.id, d);
     const master = await run.step('master', () => checkedMaster(d, entry));
     const base = entry.record.svallBase;
-    const runs = (now: string): string => `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${now}; ${rollbackTo(name)}`;
+    const runs = (now: string): string => `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${now}; ${rollbackTo(name, d)}`;
     try {
       const now = await run.step('rollback', async () => {
         const from = await currentRelease(master, base);
@@ -1020,6 +1020,9 @@ function svallFor(home: string, homedir: string, args: string): string {
   if (profile !== PRIVATE && !isProfileName(profile)) return `SVALL_HOME=${shq(home)} svall ${args}`;
   return `svall ${profile === PRIVATE ? '' : `-p ${profile} `}${args}`;
 }
+
+// a host command for this run's fleet, by the -p it was run with
+const hostCmd = (d: Pick<HostDeps, 'fleet'>): string => `svall ${d.fleet.profile ? `-p ${d.fleet.profile} ` : ''}host`;
 
 // this run's fleet by the -p it was run with, any other by its home
 const svallAt = (home: string, d: HostDeps, args: string): string =>
@@ -1077,7 +1080,7 @@ const ServedBy = WorkerFile.pick({ homeMachineId: true, homeName: true });
 /** Refuses the far uninstall, which stops every fleet there, while a fleet home there serves another Mac or one cannot be read. */
 async function sharedWith(master: SshMaster, entry: Registered, d: HostDeps): Promise<void> {
   const { name, ssh, home } = entry.record;
-  const forget = `svall host remove ${name} --forget drops the route and leaves the machine untouched; once no other Mac uses it, ${onThere(ssh, 'svall uninstall')}`;
+  const forget = `${hostCmd(d)} remove ${name} --forget drops the route and leaves the machine untouched; once no other Mac uses it, ${onThere(ssh, 'svall uninstall')}`;
   const unread = (why: string) => new StepError(`${why}, so whether ${name} serves another Mac is not known, and svall uninstall there stops every fleet on it`, forget);
   const out = await probe(master, sh('svall-workers', WORKERS, home), 'the worker.json files there').catch((err: Error) => { throw unread(err.message); });
   const others = new Set<string>();
@@ -1113,12 +1116,12 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
       try {
         master = await d.openMaster(ssh);
         const reached = entry as Registered;
-        await sameMachine(master, reached);
+        await sameMachine(master, reached, d);
         await sharedWith(master, reached, d);
         const r = await master.run([shq(svallExe(entry.record.svallBase)), 'uninstall'], { timeoutMs: PROBE_TIMEOUT });
         if (r.code !== 0) {
           throw new StepError(`svall uninstall exited ${r.code} on ${ssh}: ${r.stderr.trim().slice(0, 400) || 'no output'}`,
-            `${onThere(ssh, 'svall uninstall')} and see what stops it; svall host remove ${name} --forget drops the route and leaves the machine as it is`);
+            `${onThere(ssh, 'svall uninstall')} and see what stops it; ${hostCmd(d)} remove ${name} --forget drops the route and leaves the machine as it is`);
         }
         // its last line can name a command for that machine, such as the rm -rf of the fleets it kept
         const lines = r.stdout.trim().split('\n');
@@ -1126,7 +1129,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
       } catch (err) {
         if (err instanceof StepError) throw err;
         throw new StepError(`${ssh} could not be reached: ${(err as Error).message}`,
-          `svall host remove ${name} --forget drops the route and leaves the machine untouched`);
+          `${hostCmd(d)} remove ${name} --forget drops the route and leaves the machine untouched`);
       } finally {
         await master?.close().catch(() => undefined);
       }

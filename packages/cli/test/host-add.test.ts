@@ -143,7 +143,17 @@ describe('host add', () => {
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
     expect(out.stopped).toBe('release');
     expect(step('release').at(-1)?.detail).toBe("trift is this fleet's home, so it cannot be added as its worker");
+    expect(step('release').at(-1)?.action).toBe("svall host upgrade trift takes it to this Mac's release");
     expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+  });
+
+  it('a named fleet\'s refusal names its profile in the command it gives, as a copied one would act on the private fleet', async () => {
+    fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: FLEET, token: 't'.repeat(48), homeName: 'trift' }));
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: FLEET }) });
+    healthy();
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry: MachineRegistry.load(path.join(work, 'config')), fleet: { home: fleet, profile: 'fartest' } }));
+    expect(out.stopped).toBe('release');
+    expect(step('release').at(-1)?.action).toBe("svall -p fartest host upgrade trift takes it to this Mac's release");
   });
 
   it('--as-home goes on over the fleet\'s own home, as a first run\'s join that stopped short leaves it, so Try again reaches the join', async () => {
