@@ -80,7 +80,8 @@ export async function relay(home: FarHome, args: string[], o: { open(destination
   let master: Far;
   try { master = await o.open(home.ssh); } catch (e) { return stop(`${home.name} did not answer: ${(e as Error).message}`, 'try again once it answers'); }
   try {
-    const svall = ['env', shq(`SVALL_HOME=${home.fleetHome}`), shq(svallExe(home.svallBase))];
+    // the far run's words name the home as this machine does
+    const svall = ['env', shq(`SVALL_HOME=${home.fleetHome}`), shq(`SVALL_HOME_WORD=${home.name}`), shq(svallExe(home.svallBase))];
     let release: string;
     try {
       ({ release } = await farFleet(master, { svall, name: home.name, ssh: home.ssh, machine: home.machine, fleetId: home.fleetId, as: 'home', timeoutMs: IDENTITY_MS }));

@@ -226,6 +226,14 @@ describe('host add', () => {
     expect(JSON.stringify(step('ssh'))).not.toContain('this Mac');
   });
 
+  it('a relayed run names the home by the word its relay passes, as the window\'s machine calls it', async () => {
+    vi.stubEnv('SVALL_HOME_WORD', 'studio');
+    try {
+      await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'Permission denied (publickey).', batch: true }) }));
+      expect(step('ssh').at(-1)).toMatchObject({ detail: 'studio cannot log in to trift.test: Permission denied (publickey).', action: expect.stringMatching(/^on studio, run /) });
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it('has nothing for a machine of another architecture but what the relay names, and fetches nothing', async () => {
     healthy();
     const fetch = vi.fn();

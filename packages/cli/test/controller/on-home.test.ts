@@ -78,6 +78,7 @@ describe('a host command on a fleet whose home is far', () => {
     const f = far([], { code: 0 });
     await run(f);
     expect(f.argv[0].join(' ')).toContain('SVALL_HOME=/home/ada/.svall');
+    expect(f.argv[0]).toContain("'SVALL_HOME_WORD=studio'");
     expect(f.argv[0].slice(-7)).toEqual(['--json', "'host'", "'add'", "'box'", "'--ssh'", "'ada@box'", "'--relayed'"]);
     expect(f.closed()).toBe(1);
   });
@@ -193,7 +194,7 @@ describe('a host command on a fleet whose home is far', () => {
     it('asks before any command, of the fleet there by its folder', async () => {
       const f = far([], { code: 0 });
       await run(f);
-      expect(f.asked[0]).toEqual(['env', `'SVALL_HOME=/home/ada/.svall'`, `'${dial.homeSvallBase}/current/bin/svall'`, 'version', '--json']);
+      expect(f.asked[0]).toEqual(['env', `'SVALL_HOME=/home/ada/.svall'`, `'SVALL_HOME_WORD=studio'`, `'${dial.homeSvallBase}/current/bin/svall'`, 'version', '--json']);
       expect(f.argv).toHaveLength(1);
     });
 
