@@ -434,6 +434,29 @@ describe('a frozen home', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it('a beat while an ask hangs starts no second ask, and the next follows that one\'s answer at the first wait', async () => {
+    vi.useFakeTimers();
+    try {
+      let net = 'wifi off';
+      const pending: ((a: AdoptAnswer) => void)[] = [];
+      const { d } = setup();
+      const freeze = new HomeFreeze({ ...d, network: () => net, ask: () => new Promise<AdoptAnswer>((resolve) => { pending.push(resolve); }) }, marker());
+      freeze.start();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(pending).toHaveLength(1);
+      net = 'wifi on';
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(pending).toHaveLength(1);
+      pending[0]({ status: 'pending', phase: 'unreachable', detail: 'studio does not answer' });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(pending).toHaveLength(2);
+      pending[1]({ status: 'pending', phase: 'adopting', detail: 'installing' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(freeze.status().moving?.answer).toBe('installing');
+      freeze.stop();
+    } finally { vi.useRealTimers(); }
+  });
+
   it('a driver gone under a marker leaves it asking', async () => {
     vi.useFakeTimers();
     try {
@@ -953,6 +976,16 @@ describe('the check', () => {
     const missing = await homeFacts(paths, { me: STUDIO, role: 'worker', fleetId: FLEET, tailscale: tailscale(false) });
     expect(missing.tailscale.stopped).toBeUndefined();
     expect(homeCheck(input({ to: { ...facts({ machineId: STUDIO }), tailscale: missing.tailscale } }))).toMatchObject({ ok: false, refusal: { reason: expect.stringMatching(/^studio has no Tailscale: tailscale not found/), details: [] } });
+  });
+
+  it('a stopped Tailscale is started as each machine\'s platform starts it, this machine\'s too, and its own words go behind details only when it leads', () => {
+    const raw = 'failed to connect to local tailscaled';
+    const down = { error: raw, stopped: true as const };
+    const check = (platforms: Record<string, string>, o = {}) => homeCheck(input({ platformOf: (id: string) => platforms[id], ...o }));
+    expect(check({ [STUDIO]: 'darwin' }, { to: { ...facts({ machineId: STUDIO }), tailscale: down } })).toMatchObject({ refusal: { action: 'open the Tailscale app there', details: [raw] } });
+    expect(check({ [MAC]: 'linux' }, { from: facts({ tailscale: down }) })).toMatchObject({ refusal: { reason: 'Tailscale is not running on this machine', action: 'start it: sudo systemctl start tailscaled', details: [raw] } });
+    expect(check({ [MAC]: 'darwin' }, { from: facts({ tailscale: down }) })).toMatchObject({ refusal: { action: 'open the Tailscale app', details: [raw] } });
+    expect(check({}, { linked: false, to: { ...facts({ machineId: STUDIO }), tailscale: down } })).toMatchObject({ refusal: { reason: 'studio is not reachable', details: [], more: [{ reason: 'Tailscale is not running on studio' }] } });
   });
 
   it('counts an absent workers.json as no worker, and refuses on one it cannot read', async () => {

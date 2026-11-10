@@ -61,6 +61,7 @@ export class HomeFreeze {
   private phase?: string;
   private timer?: NodeJS.Timeout;
   private askMs = FIRST_ASK_MS;
+  private asking = false;
   private stopped = false;
   private beat?: NodeJS.Timeout;
 
@@ -254,13 +255,16 @@ export class HomeFreeze {
     this.timer.unref?.();
   }
 
+  // one ask at a time, so an older answer never lands over a newer one; one in flight is followed by the next at the wait then set
   private ask(): void {
+    if (this.asking) return;
+    this.asking = true;
     // an outcome that could not be written, or that was refused, leaves the marker as it stands, so the asking goes on
     void this.settle('status').catch((e: Error) => {
       this.d.log.error(`how the move ended did not land here: ${e.message}`);
       this.answer = e.message;
       this.schedule();
-    });
+    }).finally(() => { this.asking = false; });
   }
 
   // a network that comes back, or a wake, is asked at once rather than at the end of the wait its absence built up
@@ -383,11 +387,12 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   if (to.freeKb !== undefined && to.freeKb < needKb) fail(`${goesTo} has ${Math.floor(to.freeKb / 1024)} MB free, and taking the fleet takes ${mb(needKb)} MB`, i.back ? 'free some space here' : 'free some space there');
   if (from.moving) fail(`the fleet is moving already (${from.moving})`, 'finish or call off that move first');
   if (to.moving) fail(i.back ? `this machine is still taking a move (${to.moving})` : `${toName} is still leaving a move (${to.moving})`, 'finish or call off that move first');
-  // a stopped one's own words go behind details
-  const details = [there, here].flatMap((f) => (f.tailscale.stopped ? [f.tailscale.error!] : []));
-  if (there.tailscale.stopped) fail(`Tailscale is not running on ${far}`, 'start it there: sudo systemctl start tailscaled');
+  // a stopped one's own words go behind details, when no reason before it leads
+  const details = failed.length ? [] : [there, here].flatMap((f) => (f.tailscale.stopped ? [f.tailscale.error!] : []));
+  const start = (platform: string | undefined, where: string): string => (platform === 'darwin' ? `open the Tailscale app${where}` : `start it${where}: sudo systemctl start tailscaled`);
+  if (there.tailscale.stopped) fail(`Tailscale is not running on ${far}`, start(i.platformOf?.(there.machineId), ' there'));
   else if (there.tailscale.error) fail(`${far} has no Tailscale: ${there.tailscale.error}`, 'install Tailscale there and sign in');
-  if (here.tailscale.stopped) fail('Tailscale is not running on this machine', process.platform === 'darwin' ? 'open the Tailscale app' : 'start it: sudo systemctl start tailscaled');
+  if (here.tailscale.stopped) fail('Tailscale is not running on this machine', start(i.platformOf?.(here.machineId) ?? process.platform, ''));
   else if (here.tailscale.error) fail(`this machine has no Tailscale: ${here.tailscale.error}`, 'install Tailscale and sign in');
   const sheet: HomeSheet = {
     here: robots.filter((r) => (r.machine ?? from.machineId) === from.machineId && state.islands[r.islandId]?.kind !== 'home').length,
