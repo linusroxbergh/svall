@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Blocker, MachineId, Result } from '@svall/protocol';
-import { app } from './boot.js';
+import { loadMobileStatus } from './actions.js';
+import { app, deps } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { dialogKeys, useApp } from './hooks.js';
 import { onThisMac, stepLabel } from './host.js';
@@ -80,10 +81,15 @@ export function HomeSheet() {
   const done = ended && !failed && run.code === 0;
   // the phone's link is the old home's until the new home answers for its own
   useEffect(() => { if (done) app.store.getState().setMobile(undefined); }, [done]);
+  // whether the old home served the phone, so the new one turns its link on
+  const served = useRef(false);
   if (!ask) return null;
   const { name, back } = ask;
   const shutUnlessRunning = () => { if (!(started && host?.running)) close(); };
-  const go = () => { if (startHost('home', { name: back ? 'local' : name, ...(interrupt && { interrupt: true }) })) setStarted(true); };
+  const go = () => {
+    served.current = !!app.store.getState().mobile?.serving;
+    if (startHost('home', { name: back ? 'local' : name, ...(interrupt && { interrupt: true }) })) setStarted(true);
+  };
   const refused = check && 'ok' in check && !check.ok ? check.refusal : undefined;
   const sheet = check && 'sheet' in check ? check.sheet : undefined;
   const crewSaid = mission && !mission.length ? [] : crew;
@@ -155,7 +161,7 @@ export function HomeSheet() {
         {done && (
           <div data-testid="home-done">
             <div className="host-note">The fleet runs on {back ? 'this Mac' : name}. Open the phone from its new QR code once.</div>
-            {reached ? <MobilePanel /> : <div className="host-note" data-testid="home-reaching">Reaching the fleet on {back ? 'this Mac' : name}…</div>}
+            {reached ? <><MobilePanel />{served.current && <PhoneWait name={back ? 'this Mac' : name} />}</> : <div className="host-note" data-testid="home-reaching">Reaching the fleet on {back ? 'this Mac' : name}…</div>}
             <div className="acts"><button className="btn pri" data-testid="home-finish" autoFocus onClick={close}>Done</button></div>
           </div>
         )}
@@ -164,4 +170,24 @@ export function HomeSheet() {
       </div>
     </div>
   );
+}
+
+// the new home turns its phone link on within seconds of taking the fleet, which the window's one read on reconnect may come before
+const PHONE_ASK_MS = 2000;
+const PHONE_WAIT_MS = 30_000;
+
+/** Asks the new home's phone link again until it serves or says why not, for a while, then says what the sheet waits on. */
+function PhoneWait({ name }: { name: string }) {
+  const settled = useApp((s) => !!s.mobile && (s.mobile.serving || !!s.mobile.error || !!s.mobile.reason));
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    if (settled) return;
+    const began = Date.now();
+    const t = window.setInterval(() => {
+      if (Date.now() - began >= PHONE_WAIT_MS) { window.clearInterval(t); setLate(true); return; }
+      loadMobileStatus(deps());
+    }, PHONE_ASK_MS);
+    return () => window.clearInterval(t);
+  }, [settled]);
+  return !settled && late ? <div className="host-note" data-testid="home-phone-wait">{name} has not turned its phone link on yet; Settings → Phone shows its QR code once it does.</div> : null;
 }

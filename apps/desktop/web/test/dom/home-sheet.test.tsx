@@ -93,6 +93,45 @@ describe('the sheet of a home move', () => {
     expect(store.getState().homeSheet).toBeUndefined();
   });
 
+  it('asks the new home\'s phone link again until it serves, as the one read on reconnect may come first', async () => {
+    const OLD = { serving: true, url: 'https://the-mac.tailnet.ts.net:8443', qr: 'data:image/png;base64,OLD', logins: [], phones: [] };
+    const NEW = { ...OLD, url: 'https://studio.tailnet.ts.net:8443', qr: 'data:image/png;base64,NEW' };
+    let now: object = { ...OLD, serving: false, qr: undefined };
+    call.mockImplementation((method: string) => Promise.resolve(method === 'mobile.get' ? now : method === 'fleet.homeCheck' ? { ok: true, sheet: SHEET } : {}));
+    act(() => { store.getState().setMobile(OLD as never); store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
+    await open();
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByTestId('home-go'));
+      for (const st of ['check', 'pause', 'copy', 'adopt', 'join', 'probe']) step(st, 'ok');
+      await act(async () => { store.getState().hostDone('home', 0); await vi.advanceTimersByTimeAsync(0); });
+      expect(screen.getByTestId('home-done').querySelector('img')).toBeNull();
+      now = NEW;
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+      expect(screen.getByTestId('home-done').querySelector('img')?.getAttribute('src')).toBe(NEW.qr);
+      expect(screen.queryByTestId('home-phone-wait')).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('past half a minute with the new home\'s phone link still off, says what it waits on', async () => {
+    const OLD = { serving: true, url: 'https://the-mac.tailnet.ts.net:8443', qr: 'data:image/png;base64,OLD', logins: [], phones: [] };
+    answer({ 'fleet.homeCheck': { ok: true, sheet: SHEET }, 'mobile.get': { ...OLD, serving: false, qr: undefined } });
+    act(() => { store.getState().setMobile(OLD as never); store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
+    await open();
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByTestId('home-go'));
+      for (const st of ['check', 'pause', 'copy', 'adopt', 'join', 'probe']) step(st, 'ok');
+      await act(async () => { store.getState().hostDone('home', 0); await vi.advanceTimersByTimeAsync(0); });
+      expect(screen.queryByTestId('home-phone-wait')).toBeNull();
+      await act(async () => { await vi.advanceTimersByTimeAsync(31_000); });
+      expect(screen.getByTestId('home-phone-wait').textContent).toBe('studio has not turned its phone link on yet; Settings → Phone shows its QR code once it does.');
+      const asked = call.mock.calls.filter(([m]) => m === 'mobile.get').length;
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+      expect(call.mock.calls.filter(([m]) => m === 'mobile.get').length).toBe(asked);
+    } finally { vi.useRealTimers(); }
+  });
+
   it('holds the old home\'s QR back while the window follows the new home with no socket to it yet', async () => {
     const OLD = { serving: true, url: 'https://the-mac.tailnet.ts.net:8443', qr: 'data:image/png;base64,OLD', logins: [], phones: [] };
     const NEW = { ...OLD, url: 'https://studio.tailnet.ts.net:8443', qr: 'data:image/png;base64,NEW' };
