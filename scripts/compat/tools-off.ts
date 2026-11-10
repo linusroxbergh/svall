@@ -16,6 +16,7 @@ import { claudeRunner, type Call, type Runner } from '../../packages/svalld/src/
 const CALL: Call = { effort: 'low', schema: { type: 'object', properties: { answer: { type: 'string' } }, required: ['answer'], additionalProperties: false }, timeoutMs: 180_000 };
 
 const OUT_OF_QUOTA = /usage limit|rate.?limit|\b429\b/i;
+const TIMED_OUT = / timed out after \d+ms$/;
 
 const retroRunner = (kind: AgentKind, cwd: string): Runner =>
   kind === 'claude' ? claudeRunner({ cwd, envFile: path.join(cwd, '.env'), retro: true })
@@ -39,7 +40,9 @@ export async function toolsOff(kind: AgentKind, o: { run?: Runner } = {}): Promi
     try {
       // the runner's empty cwd outlives `dir`, as OpenCode deletes its session from there after the call returns
       const run = o.run ?? retroRunner(kind, path.join(os.tmpdir(), 'svall-tools-off'));
-      ({ text } = await run('Do what the user asks.', prompt, { ...CALL, model: AGENTS[kind].scribeModel }));
+      const ask = () => run('Do what the user asks.', prompt, { ...CALL, model: AGENTS[kind].scribeModel });
+      // one stalled request says nothing about the release; a CLI that hangs again does
+      ({ text } = await ask().catch((e: Error) => (TIMED_OUT.test(e.message) ? ask() : Promise.reject(e))));
     } catch (e) {
       const m = (e as Error).message;
       // an account out of quota says nothing about the release, so it reads as a vendor that couldn't be checked
