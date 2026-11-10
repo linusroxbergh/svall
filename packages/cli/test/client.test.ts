@@ -6,6 +6,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { ProtocolMismatch } from '@svall/svalld/fleets';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
 import { PART_BYTES, PROTOCOL_VERSION } from '@svall/protocol';
+import { machineId } from '@svall/svalld/machine';
 import { ApiError, Client } from '../src/client.js';
 
 afterEach(cleanHomes);
@@ -28,6 +29,29 @@ describe('Client', () => {
 
     const client = await Client.connect(home);
     await expect(client.call('state.get', {})).rejects.toThrow(/connection closed/);
+    await new Promise((r) => wss.close(r));
+  });
+
+  it('says this machine of a home frozen for a move to it, and names any other', async () => {
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    await new Promise((r) => wss.once('listening', r));
+    wss.on('connection', (ws) => {
+      let authed = false;
+      ws.on('message', (raw) => {
+        if (!authed) { authed = true; ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } })); return; }
+        const { id, params } = JSON.parse(raw.toString()) as { id: number; params: { to: string } };
+        ws.send(JSON.stringify({ id, error: { code: 'frozen', message: 'the fleet is moving to linuss-macbook-pro; try again once it has', data: { to: params.to } } }));
+      });
+    });
+    const home = makeHome();
+    const { port } = wss.address() as { port: number };
+    fs.writeFileSync(path.join(home, 'port'), String(port));
+    fs.writeFileSync(path.join(home, 'token'), 't');
+    const client = await Client.connect(home);
+    const here = process.platform === 'darwin' ? 'this Mac' : 'this machine';
+    await expect(client.call('state.get', { to: machineId() } as never)).rejects.toThrow(`the fleet is moving to ${here}; try again once it has`);
+    await expect(client.call('state.get', { to: '66666666-7777-8888-9999-aaaaaaaaaaaa' } as never)).rejects.toThrow('the fleet is moving to linuss-macbook-pro; try again once it has');
+    client.close();
     await new Promise((r) => wss.close(r));
   });
 
