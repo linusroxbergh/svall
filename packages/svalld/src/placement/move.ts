@@ -28,7 +28,7 @@ import { destinationPaths } from './paths.js';
 import { addLine } from './replay.js';
 import {
   blobIds, changedSince, checkSessions, CloneLocks, holding, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, newWorktree,
-  packMove, placeSessions, refused, removeWorktree, restRobot, serversLeft, takeBack, takenBack, unpack, wake, type AbortAnswer, type Failure, type Made, type RestSide, type ReturnSheet,
+  packMove, placeSessions, refused, removeWorktree, restRobot, serversLeft, takeBack, takenBack, TRUST_ASKED, unpack, wake, type AbortAnswer, type Failure, type Made, type RestSide, type ReturnSheet,
 } from './move-steps.js';
 
 const JOURNALED: Record<MovePhase, Failpoint> = {
@@ -83,7 +83,7 @@ export type PlacementDeps = {
   agents: AgentProber;
   release: string;
   homedir: string;
-  tmux: RestDeps['tmux'] & Pick<Tmux, 'screen' | 'sendBytes'>;
+  tmux: RestDeps['tmux'] & Pick<Tmux, 'screen' | 'sendBytes' | 'sendKey'>;
   viewers: RestDeps['viewers'];
   processes?: RestDeps['processes'];
   kill?: RestDeps['kill'];
@@ -684,7 +684,8 @@ export class Placement {
       const s = await this.d.links.call<{ phase: string }>(j.to, 'move.state', { id: j.id });
       if (s.phase === 'done') return undefined;
       if (s.phase !== 'commit' && s.phase !== 'activate') return `${this.name(j.to)} holds nothing prepared for move ${j.id}`;
-      const r = await this.d.links.call<{ ok: boolean; error?: string }>(j.to, 'move.activate', { id: j.id }, { timeoutMs: (this.d.watchMs ?? WATCH_MS) + 60_000 });
+      const r = await this.d.links.call<{ ok: boolean; error?: string; asks?: true }>(j.to, 'move.activate', { id: j.id }, { timeoutMs: (this.d.watchMs ?? WATCH_MS) + 60_000 });
+      if (r.ok && r.asks) this.d.store.update((d) => { if (d.robots[j.robotId]) addLine(d.robots[j.robotId], TRUST_ASKED); });
       return r.ok ? undefined : r.error ?? 'the robot did not start';
     } catch (e) {
       return (e as Error).message;

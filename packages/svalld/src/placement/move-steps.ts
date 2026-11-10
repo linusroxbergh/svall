@@ -438,22 +438,35 @@ export async function leaveAgain(left: LeftBehind, m: BundleManifest, made: Made
 type Wake = {
   store: Pick<Store, 'state' | 'subscribe'>;
   fleet: Pick<Fleet, 'reviveRobot' | 'openSecond' | 'onSessionStart'>;
-  tmux: Pick<Tmux, 'screen' | 'sendBytes'>;
+  tmux: Pick<Tmux, 'screen' | 'sendBytes' | 'sendKey'>;
   log: Logger;
   watchMs: number;
   open?: Failpoint;
   /** Whether the agent may ask to trust its folder, which no seed answered. */
   trust?: boolean;
+  /** Told when the robot's terminal asks to trust its folder and the move leaves that to a person. */
+  asks?: () => void;
 };
 
-// answers the agent's trust question if it shows before the robot's session reports its start or `watchMs` passes
-function watchTrust(w: Wake, j: MoveJournal, name: string, pane: string, adapter: SessionAdapter): void {
+// answers the agent's trust question if it shows before the robot's session reports its start or `watchMs` passes; whether
+// it was left to a person
+async function watchTrust(w: Wake, j: MoveJournal, name: string, pane: string, adapter: SessionAdapter): Promise<boolean> {
   const stop = new AbortController();
   const unheard = w.fleet.onSessionStart((robotId, term) => { if (robotId === j.robotId && term === undefined) stop.abort(); });
-  void answerTrustPrompt(w.tmux, pane, adapter, { forMs: w.watchMs, signal: stop.signal })
-    .catch((e: Error) => w.log.error(`move ${j.id}: ${name}'s trust question went unwatched: ${e.message}`))
-    .finally(unheard);
+  try {
+    if (await answerTrustPrompt(w.tmux, pane, adapter, { forMs: w.watchMs, signal: stop.signal }) !== 'unread') return false;
+    w.log.info(`move ${j.id}: ${name}'s terminal asks to trust its folder, which the move leaves to a person`);
+    return true;
+  } catch (e) {
+    w.log.error(`move ${j.id}: ${name}'s trust question went unwatched: ${(e as Error).message}`);
+    return false;
+  } finally {
+    unheard();
+  }
 }
+
+/** The line a robot's note takes when its terminal asks to trust its folder after a move. */
+export const TRUST_ASKED = 'its terminal asks to trust its folder since the move; answer it there';
 
 /**
  * Opens the terminals the rest closed and watches `watchMs` for the robot's session to start, answering its trust question if
@@ -491,14 +504,19 @@ export async function wake(w: Wake, j: MoveJournal): Promise<string | undefined>
     const pane = w.store.state.robots[id]?.tmux?.paneId;
     const adapter = agent && sessionAdapter(agent.kind);
     if (!adapter || !pane) return undefined;
-    if (w.trust) watchTrust(w, j, c.name, pane, adapter);
+    const trusting = w.trust ? watchTrust(w, j, c.name, pane, adapter).then((left) => { if (left) w.asks?.(); }) : undefined;
     // a CLI that reports no session until its first turn is up once its window is
     if (!adapter.sessionStartOnResume) return undefined;
     // a question of the agent's own, as a first run asks, waits on a person in its terminal, not on the move
     const asks = asksOwnQuestion(w.tmux, pane, adapter, watch.signal).then(() => {
       if (!watch.signal.aborted) w.log.info(`move ${j.id}: ${c.name} asks a question of its own in its terminal, which the move does not wait on`);
     });
-    return await Promise.race([started, dormant, asks.then(() => undefined), nap(w.watchMs, watch.signal).then(() => undefined)]);
+    let own = false;
+    const woken = await Promise.race([started, dormant, asks.then(() => { own = true; return undefined; }), nap(w.watchMs, watch.signal).then(() => undefined)]);
+    // a session that came up stopped the trust watch, and a question of its own comes past the trust one; else the watch ends
+    // within the same wait
+    if (!own) await trusting;
+    return woken;
   } finally {
     watch.abort();
     unheard();

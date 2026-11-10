@@ -30,7 +30,7 @@ const TRUST_MS = 30_000;
 export type PrepareDeps = {
   store: Store;
   fleet: Pick<Fleet, 'reviveRobot' | 'openSecond' | 'onSessionStart'>;
-  tmux: RestDeps['tmux'] & Pick<Tmux, 'screen' | 'sendBytes'>;
+  tmux: RestDeps['tmux'] & Pick<Tmux, 'screen' | 'sendBytes' | 'sendKey'>;
   viewers: RestDeps['viewers'];
   connection: Pick<HomeConnection, 'sendBlob' | 'receiveBlob'>;
   me: MachineId;
@@ -243,7 +243,7 @@ export class PrepareService {
   }
 
   // what the home's commit made this machine's: trust for the clone, the robot's terminals opened, its agent watched
-  private async activate(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  private async activate(id: string): Promise<{ ok: true; asks?: true } | { ok: false; error: string }> {
     const j = this.journal(id);
     if (j.phase === 'done') return { ok: true };
     if (j.phase !== 'commit' && j.phase !== 'activate') throw new ApiError('invalid', `move ${id} is ${j.phase} on ${this.name}`);
@@ -269,13 +269,15 @@ export class PrepareService {
     }
     const { store, fleet, tmux, log } = this.d;
     const trust = !!c.agent && !seeded.has(c.agent.kind);
-    const error = await wake({ store, fleet, tmux, log, watchMs: this.d.watchMs ?? WATCH_MS, open: 'worker.activate.open', trust }, { ...j, phase: 'activate' });
+    let asks = false;
+    const error = await wake({ store, fleet, tmux, log, watchMs: this.d.watchMs ?? WATCH_MS, open: 'worker.activate.open', trust, asks: () => { asks = true; } }, { ...j, phase: 'activate' });
     if (error !== undefined) {
       this.save({ ...j, phase: 'activate', error });
       return { ok: false, error };
     }
     this.save({ ...j, phase: 'done' });
-    return { ok: true };
+    // the home's note says the robot's terminal asks to trust its folder
+    return asks ? { ok: true, asks: true } : { ok: true };
   }
 
   // before anything ran here: what this move made goes and what it changed is put back, and the robot's record goes; on

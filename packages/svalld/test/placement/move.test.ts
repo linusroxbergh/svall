@@ -8,6 +8,7 @@ import { armFailpoints, type Edge, type Failpoint } from '../../src/failpoints.j
 import { hooklessGit, type GitRunner } from '../../src/links/git.js';
 import { fingerprintOf } from '../../src/placement/bundle.js';
 import { trustRecordFile } from '../../src/placement/trust.js';
+import { TRUST_ASKED } from '../../src/placement/move-steps.js';
 import type { AgentProbe, AgentProber } from '../../src/sessions/registry.js';
 import { hasGit } from '../git-fixture.js';
 import { cleanHomes, waitForPolls } from '../helpers.js';
@@ -25,7 +26,8 @@ afterEach(async () => {
 const open = (o: Parameters<typeof moveWorld>[0] = {}): MoveWorld => { const w = moveWorld(o); worlds.push(w); return w; };
 
 // Claude's question to trust its folder, as the robot's pane on the worker shows it
-const TRUST_DIALOG = [' Quick safety check: Is this a project you created or one you trust?', '', ' ❯ 1. No, exit', '   2. Yes, I trust this folder'];
+// as Claude Code 2.1.322 draws it: no numbers, the pointer on the choice that exits
+const TRUST_DIALOG = [' Quick safety check: Is this a project you created or one you trust?', '', ' ❯ No, exit', '   Yes, I trust this folder', '', ' Enter to confirm · Esc to cancel'];
 
 const SID3 = '2d3e4f50-6172-4384-95a6-c7d8e9f0a1b2';
 
@@ -420,8 +422,20 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     w.vault.screens.set('%1', TRUST_DIALOG);
     const home = await w.start();
     await home.placement.start('c_1', W);
-    await until(() => { expect(w.vault.keys).toEqual([{ paneId: '%1', text: '2' }, { paneId: '%1', text: '\r' }]); });
+    await until(() => { expect(w.vault.keys).toEqual([{ paneId: '%1', text: 'Down' }, { paneId: '%1', text: '\r' }]); });
+    await until(() => expect(w.worker.store.state.robots.c_1.agent?.status).not.toBe('dormant'));
+    expect(w.vault.screens.get('%1')).toEqual([]);
     expect(JSON.parse(fs.readFileSync(path.join(w.far, '.claude.json'), 'utf8')).projects).toBeUndefined();
+  });
+
+  it('a trust question it cannot read is left to the person, and the robot\'s note says its terminal asks', async () => {
+    const w = open({ agentRunsThere: true });
+    w.vault.screens.set('%1', TRUST_DIALOG.map((r) => r.replace('Yes, I trust this folder', 'Yes, trust it')));
+    const home = await w.start();
+    const id = await home.placement.start('c_1', W);
+    expect(home.placement.status(id).phase).toBe('done');
+    expect(home.store.state.robots.c_1.note).toContain(TRUST_ASKED);
+    expect(w.vault.keys).toEqual([]);
   });
 
   it('a worker that seeded trust never looks for the trust question, nor types into the pane', async () => {

@@ -10,7 +10,9 @@ import type { Tmux } from '../tmux/tmux.js';
 import { editUserFiles, readUserFile, type UserFile, type UserFileEdit } from '../user-file.js';
 
 const POLL_MS = 500;
-const [UP, DOWN, ENTER] = ['\x1b[A', '\x1b[B', '\r'];
+const ENTER = '\r';
+// how long a confirmed answer has to take the dialog off the screen
+const LEAVE_MS = 5_000;
 
 type TrustRecord = { file: string; target: string; key: string } & (
   { kind: 'claude'; projectExisted: boolean; projectsExisted: boolean; before?: unknown }
@@ -129,11 +131,13 @@ export async function removeOwnedTrust(recordFile: string, homedir: string): Pro
 
 // a dialog's choice row: the pointer if it marks it, the choice's number, its text
 const CHOICE = /^\s*(?:[❯›>]\s*)?(?:(\d+)\.\s+)?(.*?)\s*$/;
+// a pane's rows as they read, without the colours a capture keeps
+const plain = (rows: string[]): string[] => rows.map((r) => r.replace(/\x1b\[[0-9;:]*m/g, ''));
 
 /** Resolves once the pane shows a numbered choice under any question but the trust one, which no one here answers; or once `signal` aborts. */
 export async function asksOwnQuestion(tmux: Pick<Tmux, 'screen'>, paneId: string, adapter: Pick<SessionAdapter, 'trustQuestion'>, signal: AbortSignal): Promise<void> {
   while (!signal.aborted) {
-    const rows = await tmux.screen(paneId).then((s) => s.rows, () => [] as string[]);
+    const rows = await tmux.screen(paneId).then((s) => plain(s.rows), () => [] as string[]);
     const trust = adapter.trustQuestion !== undefined && rows.some((r) => r.includes(adapter.trustQuestion!));
     // the selection pointer alone, as a past prompt shows after `> `
     if (!trust && rows.some((r) => /^\s*[❯›]\s*\d+\.\s+\S/.test(r))) return;
@@ -141,28 +145,49 @@ export async function asksOwnQuestion(tmux: Pick<Tmux, 'screen'>, paneId: string
   }
 }
 
+// the trust question as a dialog on screen, a choice under it marked by the selection pointer: the answer's row, -1 where none
+// reads so, and the pointer's
+function trustDialog(rows: string[], question: string, answer: string): { at: number; pointer: number; number?: string } | undefined {
+  const asked = rows.findIndex((r) => r.includes(question));
+  const pointer = asked < 0 ? -1 : rows.findIndex((r, i) => i > asked && /^\s*[❯›>]\s+\S/.test(r));
+  if (pointer < 0) return undefined;
+  const at = rows.findIndex((r, i) => i > asked && CHOICE.exec(r)?.[2] === answer);
+  return { at, pointer, ...(at >= 0 && { number: CHOICE.exec(rows[at])?.[1] }) };
+}
+
 /**
- * Watches a pane for `forMs` for the agent's trust question and, once the question and its answer as a choice below it
- * show, picks the answer and confirms, once. A CLI whose adapter gives no question and answer is never answered.
+ * Watches a pane for `forMs` for the agent's trust question and picks its answer: by the answer's own number where its row has
+ * one, else by stepping the pointer onto it, read after each key. Enter goes only while the pointer is read on the answer, so
+ * nothing confirms another choice; `answered` once the dialog has left the screen. `unread`: the question showed, and was not
+ * answered so, which is the person's to answer. A CLI whose adapter gives no question and answer is never answered.
  */
 export async function answerTrustPrompt(
-  tmux: Pick<Tmux, 'screen' | 'sendBytes'>, paneId: string, adapter: Pick<SessionAdapter, 'trustQuestion' | 'trustAnswer'>, o: { forMs: number; signal?: AbortSignal },
-): Promise<'answered' | 'none'> {
+  tmux: Pick<Tmux, 'screen' | 'sendBytes' | 'sendKey'>, paneId: string, adapter: Pick<SessionAdapter, 'trustQuestion' | 'trustAnswer'>, o: { forMs: number; signal?: AbortSignal },
+): Promise<'answered' | 'unread' | 'none'> {
   const { trustQuestion: question, trustAnswer: answer } = adapter;
   if (!question || !answer) return 'none';
+  let [seen, numbered, steps] = [false, false, 0];
+  let confirmed: number | undefined;
   for (const end = Date.now() + o.forMs; !o.signal?.aborted;) {
-    const { rows } = await tmux.screen(paneId);
-    const asked = rows.findIndex((r) => r.includes(question));
-    const at = asked < 0 ? -1 : rows.findIndex((r, i) => i > asked && CHOICE.exec(r)?.[2] === answer);
-    if (at >= 0) {
-      // the answer's own number picks it; a dialog that numbers none is walked from the choice the pointer marks
-      const number = CHOICE.exec(rows[at])?.[1];
-      const pointer = rows.findIndex((r, i) => i > asked && /^\s*[❯›>]\s/.test(r));
-      const keys = number ? [number] : pointer >= 0 ? Array<string>(Math.abs(at - pointer)).fill(at > pointer ? DOWN : UP) : [];
-      for (const k of [...keys, ENTER]) await tmux.sendBytes(paneId, Buffer.from(k));
-      return 'answered';
+    const d = trustDialog(plain((await tmux.screen(paneId)).rows), question, answer);
+    if (!d) {
+      if (seen) return confirmed !== undefined || numbered ? 'answered' : 'none';
+    } else {
+      seen = true;
+      if (confirmed !== undefined) {
+        if (Date.now() - confirmed > LEAVE_MS) return 'unread';
+      } else if (d.at >= 0 && d.pointer === d.at) {
+        await tmux.sendBytes(paneId, Buffer.from(ENTER));
+        confirmed = Date.now();
+      } else if (d.number && !numbered) {
+        await tmux.sendBytes(paneId, Buffer.from(d.number));
+        numbered = true;
+      } else if (d.at >= 0 && steps < Math.abs(d.at - d.pointer) + 2) {
+        await tmux.sendKey(paneId, d.at > d.pointer ? 'Down' : 'Up');
+        steps++;
+      }
     }
-    if (Date.now() + POLL_MS > end) return 'none';
+    if (Date.now() + POLL_MS > end) return seen ? 'unread' : 'none';
     await nap(POLL_MS, o.signal);
   }
   return 'none';
