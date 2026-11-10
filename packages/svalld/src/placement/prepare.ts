@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { ApiError, LeftBehind, MoveId, ObjectName, Sha256, type AgentKind, type MachineId } from '@svall/protocol';
+import { ApiError, HOME_ISLAND, LeftBehind, MoveId, ObjectName, Sha256, type AgentKind, type MachineId } from '@svall/protocol';
 import { processes as allProcesses, runsAgent } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import { boundary } from '../failpoints.js';
@@ -239,14 +239,18 @@ export class PrepareService {
     }
     if (j.phase === 'commit') this.save({ ...j, phase: 'activate' });
     const seeded = new Set<AgentKind>();
-    if (j.plan.clone) {
+    // mission control's folder is the fleet's, which a machine the fleet has not come to yet may lack; its trust is seeded as a clone's
+    const mission = !c.repo && c.islandId === HOME_ISLAND ? j.plan.paths.cwd : undefined;
+    if (mission) fs.mkdirSync(mission, { recursive: true });
+    const folder = j.plan.clone || mission;
+    if (folder) {
       const probes = await this.d.agents();
       for (const kind of new Set([c.agent?.kind, c.second?.agent?.kind].filter((k) => k !== undefined))) {
         const agentHome = probes.find((p) => p.kind === kind)?.home;
         if (!agentHome) continue;
         const agentRunning = () => (this.d.agentRunning ?? running)(kind);
-        const r = await boundary('worker.activate.trust', () => seedTrust(kind, j.plan.clone, { agentHome, homedir: this.d.homedir, agentRunning, waitMs: TRUST_MS }))
-          .catch((e: Error) => this.d.log.error(`move ${id}: trust for ${j.plan.clone} was not seeded: ${e.message}`));
+        const r = await boundary('worker.activate.trust', () => seedTrust(kind, folder, { agentHome, homedir: this.d.homedir, agentRunning, waitMs: TRUST_MS }))
+          .catch((e: Error) => this.d.log.error(`move ${id}: trust for ${folder} was not seeded: ${e.message}`));
         if (r === 'seeded') seeded.add(kind);
       }
     }

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FleetState, INTERRUPT_ACTIONS, moveSummary } from '@svall/protocol';
+import { FleetState, HOME_ISLAND, INTERRUPT_ACTIONS, moveSummary } from '@svall/protocol';
 import { AGENTS } from '../../src/agents.js';
 import { RESUME_NOTE } from '../../src/dormancy.js';
 import { armFailpoints, type Edge, type Failpoint } from '../../src/failpoints.js';
@@ -422,6 +422,21 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     w.vault.screens.set('%1', TRUST_DIALOG);
     const home = await w.start();
     await home.placement.start('c_1', W);
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(w.vault.keys).toEqual([]);
+  });
+
+  it('mission control\'s robot makes its folder where it goes, which that machine may not have yet, and its trust is seeded there as a clone\'s', async () => {
+    const w = open({ notInRepo: true });
+    w.vault.screens.set('%1', TRUST_DIALOG);
+    const home = await w.start();
+    for (const s of [w.worker.store, w.home.store]) s.update((d) => { if (d.robots.c_1) d.robots.c_1.islandId = HOME_ISLAND; });
+    const folder = path.join(w.far, 'notes');
+    expect(fs.existsSync(folder)).toBe(false);
+    await home.placement.start('c_1', W, { homeMove: 'hm_abcdefghij' });
+    expect(w.worker.store.state.robots.c_1).toMatchObject({ machine: W, cwd: folder });
+    expect(fs.statSync(folder).isDirectory()).toBe(true);
+    expect(JSON.parse(fs.readFileSync(path.join(w.far, '.claude.json'), 'utf8')).projects[fs.realpathSync(folder)]).toEqual({ hasTrustDialogAccepted: true });
     await new Promise((resolve) => setTimeout(resolve, 700));
     expect(w.vault.keys).toEqual([]);
   });
