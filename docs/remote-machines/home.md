@@ -160,7 +160,7 @@ taking the fleet, if the old one served; if Tailscale refuses it there, the move
 
 A move refuses until it can go through: the other machine linked, on the same release, with Tailscale, its clock within 5
 minutes and room for three copies of the fleet's files; those files under about 180 MB, the most a move carries either way; no
-robot moving, and no other worker but a Linux one with an ssh route, which goes with the fleet: remove any other, and after the move
+worker being enrolled ("a worker is being enrolled"); no robot moving, and no other worker but a Linux one with an ssh route, which goes with the fleet: remove any other, and after the move
 add it again from the new home, or join from it with `svall fleet join` if it is a Mac. A path in `fleet.json` under the old home's
 account goes in as `~/…`, and the sheet says which of those the new home does not have yet. Mission control's folder is the
 exception when it is the fleet's own, `home` in the fleet's folder (`~/.svall/home`, `~/.svall-<fleet>/home` for a named fleet):
