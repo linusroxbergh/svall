@@ -15,7 +15,7 @@ import { ADOPT_KEY, crashAt, crashesFired, disarmCrash, MAC, movedOut, POINTS_OF
 import type { Client } from '../src/client.js';
 import { homeMoveLock } from '../../svalld/src/kernel-lock.js';
 import { finishFlow } from '../src/commands/fleet.js';
-import { abortBack, abortHome, bringCrewBack, enrolmentFor, moveHomeBack, moveHomeOut, resumeHome, type MoveDeps } from '../src/controller/home.js';
+import { abortBack, abortHome, bringCrewBack, enrolmentFor, moveHomeBack, moveHomeOut, resumeHome, thisMachine, type MoveDeps } from '../src/controller/home.js';
 import type { StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import type { SshMaster } from '../src/controller/ssh.js';
@@ -686,7 +686,7 @@ describe('fleet home set local', () => {
     const stop = telling(w, master);
     await moveHomeBack(deps);
     stop();
-    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe('2 robots stay on studio, 1 here; defaultCwd becomes ~/code, which this machine does not have yet');
+    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe(`2 robots stay on studio, 1 here; defaultCwd becomes ~/code, which ${thisMachine()} does not have yet`);
   }, 30_000);
 
   it('names at its check a worker that does not answer, as joining the machine that takes the fleet back', async () => {
@@ -694,9 +694,13 @@ describe('fleet home set local', () => {
     const stop = telling(w, master);
     await moveHomeBack(deps);
     stop();
-    const here = process.platform === 'darwin' ? 'this Mac' : 'this machine';
-    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe(`2 robots stay on studio, 1 here; albumap does not answer; it joins ${here} when it does`);
+    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe(`2 robots stay on studio, 1 here; albumap does not answer; it joins ${thisMachine()} when it does`);
   }, 30_000);
+
+  it('calls this machine one word in a sentence, this Mac on a Mac and this machine elsewhere', () => {
+    expect(thisMachine('darwin')).toBe('this Mac');
+    expect(thisMachine('linux')).toBe('this machine');
+  });
 
   it('a check that refuses freezes nothing there and owes nothing, as no mark was ever sent', async () => {
     const { w, deps, far } = await workerHere(undefined, {}, { checkRefused: true });

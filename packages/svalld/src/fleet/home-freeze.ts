@@ -397,7 +397,7 @@ const publicHalf = (i: Pick<HomeCheckInput, 'back' | 'farSsh'>, ssh: string): st
   return i.back ? `cat ~/.ssh/id_ed25519.pub | ssh ${i.farSsh} "ssh ${ssh} ${AUTHORIZED}"` : `ssh ${i.farSsh} cat .ssh/id_ed25519.pub | ssh ${ssh} ${AUTHORIZED}`;
 };
 
-/** Every reason the fleet cannot move now, each with its action, and what it would move. A reason names the other machine, and this one as this machine. */
+/** Every reason the fleet cannot move now, each with its action, and what it would move. A reason names the other machine, and this one as this machine, or as this Mac on a Mac where it speaks of the move's workers. */
 export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   const { state, from, to, toName } = i;
   const far = i.back ?? toName;

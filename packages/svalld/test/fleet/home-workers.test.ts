@@ -175,6 +175,22 @@ describe('the check of a move with another worker', () => {
     }
   });
 
+  it.each([['darwin', 'this Mac', 'this Mac'], ['linux', 'this machine', 'this home']] as const)('on %s, the move\'s worker lines call this machine %s, and the home it leaves %s', (platform, taker, leaver) => {
+    const was = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    Object.defineProperty(process, 'platform', { ...was, value: platform });
+    try {
+      const reasons = (o: Parameters<typeof check>[0]) => { const r = check(o); if (r.ok) throw new Error('passed'); return [r.refusal, ...(r.refusal.more ?? [])]; };
+      const [auth] = reasons({ reach: { [W]: { ok: false, kind: 'auth', why: 'refused', ssh: 'ada@box' } }, back: 'studio' });
+      expect(auth.reason).toBe(`${taker} cannot log in to box: refused`);
+      expect(auth.action).toMatch(new RegExp(`^on ${taker}, run `));
+      const [cut] = reasons({ reach: { [W]: { ok: false, kind: 'unreachable', why: 'No route', ssh: 'ada@box' } }, linked: true, back: 'studio' });
+      expect(cut).toMatchObject({ reason: `${taker} cannot reach box, which studio reaches: No route`, action: `check Tailscale on both machines, then ssh ada@box from ${taker}` });
+      expect(reasons({ reach: null, back: 'studio' }).map((m) => m.reason)).toContain(`${taker} could not be asked whether it reaches the other workers`);
+      const [out] = reasons({ reach: { [W]: { ok: false, kind: 'unreachable', why: 'No route', ssh: 'ada@box' } }, linked: true });
+      expect(out.reason).toBe(`studio cannot reach box, which ${leaver} reaches: No route`);
+    } finally { Object.defineProperty(process, 'platform', was); }
+  });
+
   describe('the words of a login that fails', () => {
     const refused = { [W]: { ok: false, kind: 'auth', why: 'refused', ssh: 'ada@box' } };
 
