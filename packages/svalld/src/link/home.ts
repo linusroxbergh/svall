@@ -113,7 +113,7 @@ export function socketTransport(o: { paths: Pick<Paths, 'dialSockets'> }): Trans
 }
 
 // what a link dials and runs by: a record that says otherwise of any of these is linked anew
-const ROUTE = ['dial', 'ssh', 'svallBase', 'home'] as const;
+const ROUTE = ['dial', 'ssh', 'svallBase'] as const;
 
 /** One worker as the home holds it: a stream that reconnects with backoff, and how far the home has taken its outbox. */
 export class WorkerLink {

@@ -373,6 +373,24 @@ describe('a worker that dials in', () => {
     expect(readWorkersOwed(w.homePaths)?.workers[W]).toBeUndefined();
   });
 
+  it.each([
+    ['who dials', { dial: 'worker' as const }],
+    ['where svall is', { svallBase: '/Users/ada/.svall-elsewhere' }],
+  ])('is linked anew when its record changes %s alone', async (_what, change) => {
+    let entry: MachineEntry = { id: W, record: { ...record, ssh: 'mac' } };
+    const w = await world({
+      machines: () => [entry],
+      connect: async () => { const stream = net.connect(w.workerPaths.linkSock); await once(stream, 'connect'); return { stream, via: { ssh: 'mac', controlSocket: '/tmp/m' } }; },
+    });
+    w.links.start();
+    await until(() => expect(w.links.for(W)?.synced).toBe(true));
+    const held = w.links.for(W);
+    entry = { id: W, record: { ...record, ssh: 'mac', ...change } };
+    w.links.refresh();
+    expect(w.links.for(W)).toBeDefined();
+    expect(w.links.for(W)).not.toBe(held);
+  });
+
   it('keeps the link of a record that says the same at each refresh, however often the registry is read anew', async () => {
     const w = await world({
       machines: () => [{ id: W, record: { ...record, ssh: 'mac' } }],
