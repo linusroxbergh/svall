@@ -7,6 +7,8 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetId, MachineId, emptyState } from '@svall/protocol';
 import { PassThrough } from 'node:stream';
+import { readWorkersOwed } from '../../src/fleet/home-move.js';
+import { settleOwed, writeOwed } from '../../src/fleet/home-workers.js';
 import { HomeLinks, socketTransport, sshTransport, type Transport } from '../../src/link/home.js';
 import { SshMaster } from '../../src/link/ssh.js';
 import { HomeConnection } from '../../src/link/worker.js';
@@ -37,7 +39,7 @@ const errors = (): Logger & { lines: string[] } => {
 };
 
 /** A home and a worker that dials it; `tunnel()` binds the home's socket onto the worker's link.sock, as sshd does for -R. */
-async function world(o: { machines?: () => MachineEntry[]; connect?: Transport; log?: Logger; mirror?: { push: () => Promise<{ sent: number }>; settled: () => Promise<unknown> }; onEvent?: () => Promise<void>; onLink?: (live: boolean) => void; held?: () => boolean } = {}) {
+async function world(o: { machines?: () => MachineEntry[]; connect?: Transport; log?: Logger; mirror?: { push: () => Promise<{ sent: number }>; settled: () => Promise<unknown> }; onEvent?: () => Promise<void>; onLink?: (live: boolean) => void; held?: () => boolean; onGreeted?: (machine: MachineId) => void } = {}) {
   const homePaths = resolvePaths(makeHome());
   const workerPaths = resolvePaths(makeHome());
   const token = issueToken(homePaths, W);
@@ -75,7 +77,7 @@ async function world(o: { machines?: () => MachineEntry[]; connect?: Transport; 
     paths: homePaths, store: home, log: o.log ?? silentLogger, release: '1.2.3', machines: o.machines ?? (() => [dialing]),
     connect: o.connect ?? (() => Promise.reject(new Error('the home never ssh-es to a worker that dials in'))),
     dialIn: (e) => { tries++; return dialIn(e); },
-    onReport: () => {}, onEvent: o.onEvent ?? (async () => {}), onInventory: async () => {}, held: o.held,
+    onReport: () => {}, onEvent: o.onEvent ?? (async () => {}), onInventory: async () => {}, held: o.held, onGreeted: o.onGreeted,
     snapshot: () => ({ version: 1, state: home.state, agentHomes: { claude: '/c', codex: '/x', opencode: '/o' }, home: '/home/ada' }),
     ...(o.mirror && { mirror: o.mirror }),
   });
@@ -344,5 +346,43 @@ describe('a worker that dials in', () => {
     w.links.refresh();
     await until(() => expect(!w.links.for(W)?.dialsIn && w.links.for(W)?.synced).toBe(true));
     expect(ssh).toBe(2);
+  });
+
+  it('is linked anew by a route its record put back, as after a move, and what the home owes it ends on that greeting', async () => {
+    let entry: MachineEntry = { id: W, record: { ...record, ssh: 'elsewhere' } };
+    const asked: string[] = [];
+    const w = await world({
+      machines: () => [entry],
+      connect: async (e) => {
+        asked.push(e.record.ssh!);
+        if (e.record.ssh !== 'mac') throw new Error('elsewhere reaches another machine than mac');
+        const stream = net.connect(w.workerPaths.linkSock);
+        await once(stream, 'connect');
+        return { stream, via: { ssh: 'mac', controlSocket: '/tmp/m' } };
+      },
+      onGreeted: (m) => settleOwed(w.homePaths, m),
+    });
+    writeOwed(w.homePaths, 'hm_abcdefghij', [W]);
+    w.links.start();
+    await until(() => expect(asked).toContain('elsewhere'));
+    // the registry as the next read gives it, a new object with the route put back
+    entry = { id: W, record: { ...record, ssh: 'mac' } };
+    w.links.refresh();
+    await until(() => expect(w.links.for(W)?.synced).toBe(true));
+    expect(asked.at(-1)).toBe('mac');
+    expect(readWorkersOwed(w.homePaths)?.workers[W]).toBeUndefined();
+  });
+
+  it('keeps the link of a record that says the same at each refresh, however often the registry is read anew', async () => {
+    const w = await world({
+      machines: () => [{ id: W, record: { ...record, ssh: 'mac' } }],
+      connect: async () => { const stream = net.connect(w.workerPaths.linkSock); await once(stream, 'connect'); return { stream, via: { ssh: 'mac', controlSocket: '/tmp/m' } }; },
+    });
+    w.links.start();
+    await until(() => expect(w.links.for(W)?.synced).toBe(true));
+    const held = w.links.for(W);
+    for (let i = 0; i < 3; i++) w.links.refresh();
+    expect(w.links.for(W)).toBe(held);
+    expect(held?.synced).toBe(true);
   });
 });

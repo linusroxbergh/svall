@@ -112,6 +112,9 @@ export function socketTransport(o: { paths: Pick<Paths, 'dialSockets'> }): Trans
   };
 }
 
+// what a link dials and runs by: a record that says otherwise of any of these is linked anew
+const ROUTE = ['dial', 'ssh', 'svallBase', 'home'] as const;
+
 /** One worker as the home holds it: a stream that reconnects with backoff, and how far the home has taken its outbox. */
 export class WorkerLink {
   readonly machine: MachineId;
@@ -159,6 +162,11 @@ export class WorkerLink {
   /** Whether the worker opens the link itself, into its socket in this fleet home. */
   get dialsIn(): boolean {
     return this.entry.record.dial === 'worker';
+  }
+
+  /** Whether this link dials and runs by the route `entry` gives. */
+  routedAs(entry: MachineEntry): boolean {
+    return ROUTE.every((k) => this.entry.record[k] === entry.record[k]);
   }
 
   connected(): boolean {
@@ -577,8 +585,8 @@ export class HomeLinks {
       for (const link of this.links.values()) if (!tokenFor(this.o.paths, link.machine)) link.close();
       for (const entry of this.o.machines()) {
         const held = this.links.get(entry.id);
-        // a worker whose record now says otherwise of who dials is linked anew the other way
-        if (held && held.dialsIn !== (entry.record.dial === 'worker')) {
+        // a worker whose record now says otherwise of who dials, or of where it is reached, is linked anew by the record as it stands
+        if (held && !held.routedAs(entry)) {
           held.stop();
           this.links.delete(entry.id);
         }
