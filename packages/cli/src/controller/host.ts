@@ -854,7 +854,6 @@ const failed = (name: string, err: unknown): Check => ({ name, status: 'fail', d
 /** Whether a machine on `release` runs this Mac's, as a development build takes any release for its own. */
 export const sameRelease = (release: string, controller: HostDeps['controller']): boolean => controller.release === 'dev' || release === controller.release;
 
-/** `svall host doctor`: the companion's own doctor plus what only the controller can check, each emitted as a step once found. */
 /** What `joining` says once the re-enrol lands or JOIN_MS passes. */
 async function joinSettled(machine: MachineId, d: Pick<HostDeps, 'joining'>): Promise<string | undefined> {
   const until = Date.now() + JOIN_MS;
@@ -865,6 +864,7 @@ async function joinSettled(machine: MachineId, d: Pick<HostDeps, 'joining'>): Pr
   }
 }
 
+/** `svall host doctor`: the companion's own doctor plus what only the controller can check, each emitted as a step once found. */
 export async function doctorHost(name: string, d: HostDeps): Promise<HostReport> {
   const entry = need(d.registry, name);
   // a link that is down is retried now, so the rows read last find it up if the machine answers
