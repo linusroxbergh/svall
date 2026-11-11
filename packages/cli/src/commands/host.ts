@@ -78,6 +78,7 @@ function realDeps(emit: (e: StepEvent) => void, dir: string, fleet: Target): Hos
     refreshLinks: () => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.refresh', {})).then(() => undefined, () => undefined),
     setupRows: (machine, waitMs) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.setup', { machine, waitMs })).then((r) => r.rows),
     consent: (machine, item, fields, on) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.consent', { machine, item, fields, on })).then((r) => r.rows),
+    joining: (machine) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.list', {})).then((r) => r.machines.find((m) => m.id === machine)?.joining, () => undefined),
   };
 }
 

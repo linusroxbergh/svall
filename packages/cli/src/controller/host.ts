@@ -31,6 +31,9 @@ import { classifySsh, SshError, type SshMaster } from './ssh.js';
 const PROBE_TIMEOUT = 30_000;
 // the enrolment there waits on systemd to restart the fleet's daemon and on that daemon to answer
 const ENROL_TIMEOUT = 120_000;
+// how long a check waits for a re-enrol it set off to land, and how often it asks
+const JOIN_MS = 30_000;
+const JOIN_POLL_MS = 500;
 const FREE_FLOOR_KB = 5 * 1024 * 1024;
 
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
@@ -72,6 +75,8 @@ export type HostDeps = {
   setupRows(machine: MachineId, waitMs: number): Promise<SetupRow[]>;
   /** ticks or unticks `fields` of `item` for the machine in this fleet's mirror, and answers its setup rows */
   consent(machine: MachineId, item: string, fields: string[], on: boolean): Promise<SetupRow[]>;
+  /** why the re-enrol this fleet's daemon owes the machine has not landed yet, '' before it says; undefined once it owes none */
+  joining(machine: MachineId): Promise<string | undefined>;
 };
 
 export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean };
@@ -850,6 +855,16 @@ const failed = (name: string, err: unknown): Check => ({ name, status: 'fail', d
 export const sameRelease = (release: string, controller: HostDeps['controller']): boolean => controller.release === 'dev' || release === controller.release;
 
 /** `svall host doctor`: the companion's own doctor plus what only the controller can check, each emitted as a step once found. */
+/** What `joining` says once the re-enrol lands or JOIN_MS passes. */
+async function joinSettled(machine: MachineId, d: Pick<HostDeps, 'joining'>): Promise<string | undefined> {
+  const until = Date.now() + JOIN_MS;
+  for (;;) {
+    const why = await d.joining(machine);
+    if (why === undefined || Date.now() >= until) return why;
+    await new Promise((r) => setTimeout(r, JOIN_POLL_MS));
+  }
+}
+
 export async function doctorHost(name: string, d: HostDeps): Promise<HostReport> {
   const entry = need(d.registry, name);
   // a link that is down is retried now, so the rows read last find it up if the machine answers
@@ -867,6 +882,8 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     const base = entry.record.svallBase;
     let report: RemoteDoctor | undefined;
     start('doctor');
+    // the refresh sets off a re-enrol owed to the machine, which restarts its fleet there: the rows read what it leaves
+    const joining = await joinSettled(entry.id, d);
     try {
       const { env, flags } = farFleet(entry.id, d);
       report = await remoteJson<RemoteDoctor>(master, base, [...flags, 'doctor', '--json'], 'svall doctor --json', env);
@@ -893,7 +910,8 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
       found(home ? { name: 'worker', status: 'ok', detail: 'home of this fleet' }
         : refused ? { name: 'worker', status: 'fail', detail: refused.detail, action: refused.action }
           : servesUs(v, d) ? { name: 'worker', status: 'ok', detail: "runs this fleet's robots" }
-            : { name: 'worker', status: 'fail', detail: `does not run this fleet's robots yet: ${hostCmd(d)} upgrade ${entry.record.name} sets it up` });
+            : joining !== undefined ? { name: 'worker', status: 'warn', detail: `has not joined ${homeWord()} yet${joining ? `: ${joining}` : ''}` }
+              : { name: 'worker', status: 'fail', detail: `does not run this fleet's robots yet: ${hostCmd(d)} upgrade ${entry.record.name} sets it up` });
     } catch (err) { found(failed('release', err)); }
     start('versions');
     try {

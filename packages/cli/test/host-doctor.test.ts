@@ -117,6 +117,43 @@ describe('host doctor', () => {
     expect(ssh.remoteCalls().filter((w) => w.includes('version')).at(-1)).toEqual([SVALL, '-p', 'work', 'version', '--json']);
   });
 
+  describe('a machine this fleet owes a re-enrol', () => {
+    const replies = (worker?: object) => {
+      ssh.clearReplies();
+      ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+      ssh.reply(['svall-space'], { stdout: DF });
+      ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, ...(worker && { worker }) }) });
+    };
+
+    it('waits for the re-enrol its refresh set off before it reads the worker, which joined at once', async () => {
+      replies();
+      const asked: string[] = [];
+      const report = await doctorHost('trift', deps({
+        registry: registered(),
+        joining: (m) => {
+          asked.push(m);
+          // it lands on the second ask, and the machine serves this fleet from then on
+          if (asked.length < 2) return Promise.resolve('');
+          replies(SERVES);
+          return Promise.resolve(undefined);
+        },
+      }));
+      expect(asked).toEqual([REMOTE, REMOTE]);
+      expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: "runs this fleet's robots" });
+    });
+
+    it('reads one still owed once the wait is over as joining, with its reason and no upgrade', async () => {
+      replies();
+      let now = Date.now();
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+      try {
+        const report = await doctorHost('trift', deps({ registry: registered(), joining: () => { now += 10_000; return Promise.resolve('No route to host'); } }));
+        expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'warn', detail: 'has not joined this Mac yet: No route to host' });
+      } finally { clock.mockRestore(); }
+    });
+  });
+
   it("says the fleet's home, which this machine serves as a worker, is home of this fleet, and asks no agent setup rows of it", async () => {
     fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: FLEET, token: 't'.repeat(48), homeName: 'trift' }));
     const setupRows = vi.fn(() => Promise.resolve([unticked('claude:mcp:linear')]));

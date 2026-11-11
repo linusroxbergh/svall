@@ -92,6 +92,7 @@ export function deps(o: Partial<HostDeps> = {}): HostDeps {
     refreshLinks: () => { refreshed++; return Promise.resolve(); },
     setupRows: () => Promise.resolve([]),
     consent: () => Promise.resolve([]),
+    joining: () => Promise.resolve(undefined),
     ...o,
   };
 }
