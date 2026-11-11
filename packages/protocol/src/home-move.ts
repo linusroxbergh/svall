@@ -77,6 +77,8 @@ export const HomeFacts = z.object({
   paths: z.record(z.string(), z.boolean()).optional(), workers: z.array(z.string()).optional(), rewrites: z.array(HomeRewrite).optional(),
   // on a home: the workers a move would carry, as what takes the fleet comes back has no registry of its own for them
   carried: z.array(HomeWorker).optional(),
+  // on a home: a worker is being enrolled there, which its freeze would refuse
+  enrolling: z.literal(true).optional(),
 });
 export type HomeFacts = z.infer<typeof HomeFacts>;
 

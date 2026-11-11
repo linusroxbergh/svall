@@ -343,6 +343,9 @@ export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; 
   let fleetKb: number | undefined;
   if (o.role === 'home') try { fleetKb = carriedKb(p); } catch { /* the check refuses a fleet it cannot measure */ }
   const workers = workersOf(p);
+  // let go at once: the check says so before anything moves, and the pause refuses one that begins after it
+  const unlock = o.role === 'home' ? await enrolLock(p.home) : () => undefined;
+  unlock?.();
   return {
     machineId: o.me, ...(o.fleetId && { fleetId: o.fleetId as HomeFacts['fleetId'] }), release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA_VERSION,
     clock: Date.now(), ...(freeKb !== undefined && { freeKb }), ...(fleetKb !== undefined && { fleetKb }), fleetHome: p.home as HomeFacts['fleetHome'],
@@ -350,6 +353,7 @@ export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; 
     ...(o.paths && { paths: Object.fromEntries(o.paths.map((f) => [f, fs.existsSync(expandHome(f))])) }), ...(workers && { workers }),
     ...(o.role === 'home' && { rewrites: configRewrites(p, os.homedir()) }),
     ...(o.carried && { carried: o.carried }),
+    ...(!unlock && { enrolling: true as const }),
   };
 }
 
@@ -402,6 +406,7 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   else if (!i.synced) fail(`${far} is still catching up`, 'try again in a moment');
   if (from.release !== to.release || from.protocol !== to.protocol || from.stateSchema !== to.stateSchema) fail(`${far} runs ${there.release}, this machine ${here.release}`, 'upgrade it under Machines');
   for (const r of robots.filter((c) => c.moving)) fail(`${r.name} is moving`, 'wait for its move to finish');
+  if (from.enrolling) fail('a worker is being enrolled', 'try again in a moment');
   if (!from.workers) fail(`${i.back ?? 'this machine'} cannot read which workers this fleet has`, `fix ${from.fleetHome}/workers.json`);
   const others = (from.workers ?? []).filter((m) => m !== to.machineId && m !== from.machineId);
   // a machine that could not be asked says nothing of a worker it would carry; one it would not, as a second Mac, is refused all the same

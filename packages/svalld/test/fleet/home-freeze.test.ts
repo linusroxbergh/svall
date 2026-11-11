@@ -1056,6 +1056,22 @@ describe('the check', () => {
     expect(check({}, { linked: false, to: { ...facts({ machineId: STUDIO }), tailscale: down } })).toMatchObject({ refusal: { reason: 'studio is not reachable', details: [], more: [{ reason: 'Tailscale is not running on studio' }] } });
   });
 
+  it('refuses while the home is enrolling a worker, as an add under way does, and lets the lock go at once', async () => {
+    const paths = resolvePaths(makeHome());
+    const said = () => homeFacts(paths, { me: MAC, role: 'home', fleetId: FLEET, tailscale: {} as never });
+    const held = (await enrolLock(paths.home))!;
+    const busy = await said();
+    held();
+    expect(busy.enrolling).toBe(true);
+    expect(homeCheck(input({ from: { ...facts({}), enrolling: busy.enrolling } }))).toMatchObject({ ok: false, refusal: { reason: 'a worker is being enrolled', action: 'try again in a moment' } });
+    const free = await said();
+    expect(free.enrolling).toBeUndefined();
+    expect(homeCheck(input({ from: { ...facts({}), enrolling: free.enrolling } })).ok).toBe(true);
+    const after = await enrolLock(paths.home);
+    expect(after).toBeDefined();
+    after?.();
+  });
+
   it('counts an absent workers.json as no worker, and refuses on one it cannot read', async () => {
     const paths = resolvePaths(makeHome());
     const said = () => homeFacts(paths, { me: MAC, role: 'home', fleetId: FLEET, tailscale: {} as never });
