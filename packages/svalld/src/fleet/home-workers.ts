@@ -30,6 +30,15 @@ const farKind = (e: unknown): NonNullable<HomeReach['kind']> => {
   return kind === 'auth' || kind === 'host_key' || kind === 'unreachable' ? kind : 'other';
 };
 
+// what ssh said of a refused login, past its "could not reach" and its advice of a terminal here, which the fix replaces
+const loginSaid = (why: string): string => why.replace(/^ssh could not reach \S+: /, '').replace(/; run ssh \S+ once in a terminal, then try again$/, '').replace(/\.$/, '');
+
+const notReached = (e: unknown, ssh: string): HomeReach => {
+  const kind = farKind(e);
+  const why = (e as Error).message;
+  return { ok: false, ssh, kind, why: kind === 'auth' || kind === 'host_key' ? loginSaid(why) : why };
+};
+
 // what asks a person, and is not tried again by itself
 const STOPS = ['auth', 'host_key', 'machine', 'fleet'];
 
@@ -42,13 +51,13 @@ async function reachOne(w: HomeWorker, o: { fleetId: string; release: string; he
   if (o.held.some((h) => h.id !== w.id && h.record.name === name)) return { ok: false, ssh, kind: 'name', why: `another machine goes by ${name} there` };
   if (!ssh) return { ok: false, ssh, kind: 'other', why: `there is no ssh route to ${name} there` };
   let master: Far;
-  try { master = await o.open(ssh); } catch (e) { return { ok: false, ssh, kind: farKind(e), why: (e as Error).message }; }
+  try { master = await o.open(ssh); } catch (e) { return notReached(e, ssh); }
   try {
     const v = await farFleet(master, { svall: svallOn(record, w.profile), name, ssh, machine: w.id, fleetId: o.fleetId, as: 'worker', timeoutMs: PROBE_MS });
     if (v.release !== o.release) return { ok: false, ssh, kind: 'release', why: `it runs ${v.release}, and the fleet ${o.release}` };
     return { ok: true, ssh };
   } catch (e) {
-    return { ok: false, ssh, kind: farKind(e), why: (e as Error).message };
+    return notReached(e, ssh);
   } finally { await master.close().catch(() => undefined); }
 }
 
@@ -110,8 +119,7 @@ export function startRejoins(o: {
 
   const notTaken = (machine: string, kind: string, why: string, ssh: string): false => {
     if (STOPS.includes(kind)) refused.add(machine);
-    // ssh's own advice, a terminal on this machine, is what this home cannot use
-    return failed(machine, kind === 'auth' || kind === 'host_key' ? `${why.replace(/; run ssh \S+ once in a terminal, then try again$/, '')}; ${noLoginFix(o.name(), ssh)}` : why);
+    return failed(machine, kind === 'auth' || kind === 'host_key' ? `${loginSaid(why)}; ${noLoginFix(o.name(), ssh)}` : why);
   };
 
   async function enrol(machine: MachineId, entry: MachineEntry): Promise<boolean> {

@@ -397,6 +397,10 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   const far = i.back ?? toName;
   const [there, here] = i.back ? [from, to] : [to, from];
   const goesTo = i.back ? 'this machine' : toName;
+  // the words of a move's workers: a Mac names itself as its window does
+  const mac = process.platform === 'darwin';
+  const taker = i.back && mac ? 'this Mac' : goesTo;
+  const leaver = i.back ?? (mac ? 'this Mac' : 'this home');
   const failed: { reason: string; action: string }[] = [];
   const waits: NonNullable<HomeSheet['waits']> = [];
   const fail = (reason: string, action: string): void => { failed.push({ reason, action }); };
@@ -411,7 +415,7 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   const others = (from.workers ?? []).filter((m) => m !== to.machineId && m !== from.machineId);
   // a machine that could not be asked says nothing of a worker it would carry; one it would not, as a second Mac, is refused all the same
   const unasked = (m: string): boolean => i.reach === null && (!i.carried || i.carried.includes(m));
-  if (i.linked && others.some(unasked)) fail(`${goesTo} could not be asked whether it reaches the other workers`, 'try again in a moment');
+  if (i.linked && others.some(unasked)) fail(`${taker} could not be asked whether it reaches the other workers`, 'try again in a moment');
   for (const m of others.filter((w) => !unasked(w))) {
     const name = state.machines?.[m as MachineId]?.name ?? m;
     const r = i.reach?.[m];
@@ -422,8 +426,8 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
       fail(`${name} is a worker of this fleet too`, `remove ${name} first; after the move, ${again}`);
     } else if (r.ok) continue;
     else if (r.kind === 'unreachable' && !i.linkedTo?.(m)) waits.push({ id: m as MachineId, name });
-    else if (r.kind === 'auth' || r.kind === 'host_key') fail(`${goesTo} cannot log in to ${name}: ${r.why}`, noLoginFix(goesTo, r.ssh, publicHalf(i, r.ssh)));
-    else if (r.kind === 'unreachable') fail(`${goesTo} cannot reach ${name}, which ${i.back ?? 'this home'} reaches: ${r.why}`, `check Tailscale on both machines, then ssh ${r.ssh} from ${goesTo}`);
+    else if (r.kind === 'auth' || r.kind === 'host_key') fail(`${taker} cannot log in to ${name}: ${r.why}`, noLoginFix(taker, r.ssh, publicHalf(i, r.ssh)));
+    else if (r.kind === 'unreachable') fail(`${taker} cannot reach ${name}, which ${leaver} reaches: ${r.why}`, `check Tailscale on both machines, then ssh ${r.ssh} from ${taker}`);
     else fail(`${name}: ${r.why}`, r.kind === 'release' ? UPGRADE_ACTION : 'fix it, or remove it first');
   }
   if (Math.abs(from.clock - to.clock) > CLOCK_SKEW_MS) fail(`${far}'s clock and this machine's are more than 5 minutes apart`, 'set the one that is wrong: on a server, ssh there, then sudo timedatectl set-ntp on');

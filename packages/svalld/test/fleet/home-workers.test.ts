@@ -24,6 +24,8 @@ const FLEET = crypto.randomUUID();
 const ID = 'hm_abcdefghij' as never;
 const record: MachineRecord = { name: 'box', ssh: 'ada@box', platform: 'linux', arch: 'arm64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' };
 const worker: HomeWorker = { id: W, record, profile: 'private' };
+// what the machine taking the fleet back calls itself in its own window
+const HERE = process.platform === 'darwin' ? 'this Mac' : 'this machine';
 
 // a master that answers each command by its own result: `svall version --json` by what it is handed, and the enrol as ssh would
 const masterOf = (version: object | string, enroll: { code: number | null; signal?: string | null; stderr?: string } = { code: 0 }) => {
@@ -56,6 +58,17 @@ describe('what the machine that would take the fleet finds of a worker', () => {
     ['unreachable', new SshError('unreachable', 'No route to host')],
   ])('a login that fails as %s says so', async (kind, e) => {
     expect((await reach(() => Promise.reject(e)))[W]).toMatchObject({ ok: false, kind, why: e.message, ssh: 'ada@box' });
+  });
+
+  it.each(['auth', 'host_key'] as const)('a refused login (%s) keeps what ssh said of it alone, and the check reads it in words of the machine taking the fleet', async (kind) => {
+    const e = new SshError(kind, 'ssh could not reach ada@box: ada@box: Permission denied (publickey,password).; run ssh ada@box once in a terminal, then try again');
+    const reach_ = await reach(() => Promise.reject(e));
+    expect(reach_[W]).toMatchObject({ ok: false, kind, why: 'ada@box: Permission denied (publickey,password)' });
+    const r = homeCheck({ state: { robots: {}, islands: {}, machines: { [W]: { name: 'box', reachable: true, since: 0 } } } as unknown as FleetState, from: { machineId: OTHER, release: '1.2.3', protocol: 1, stateSchema: 1, clock: 1, fleetHome: '/f', tailscale: {}, workers: [W], fleetKb: 1 } as never, to: { machineId: ME, release: '1.2.3', protocol: 1, stateSchema: 1, clock: 1, fleetHome: '/f', tailscale: {} } as never, toName: 'albumap', back: 'studio', linked: true, synced: true, fromIsHome: true, reach: reach_, linkedTo: () => true });
+    if (r.ok) throw new Error('passed');
+    expect(r.refusal.reason).toBe(`${HERE} cannot log in to box: ada@box: Permission denied (publickey,password)`);
+    expect(r.refusal.action).toMatch(new RegExp(`^on ${HERE}, run `));
+    expect(JSON.stringify(r.refusal)).not.toMatch(/could not reach|\.;|once in a terminal/);
   });
 
   it('one on another release, one answering as another machine and one of another fleet are named', async () => {
@@ -117,7 +130,7 @@ describe('the check of a move with another worker', () => {
 
   it('one linked to this home that the new home cannot reach is refused, as what stands between them is a route to fix', () => {
     const r = check({ reach: { [W]: { ok: false, kind: 'unreachable', why: 'No route to host', ssh: 'ada@box' } }, linked: true });
-    expect(r).toMatchObject({ ok: false, refusal: { reason: expect.stringContaining('studio cannot reach box') } });
+    expect(r).toMatchObject({ ok: false, refusal: { reason: `studio cannot reach box, which ${process.platform === 'darwin' ? 'this Mac' : 'this home'} reaches: No route to host` } });
   });
 
   it.each(['auth', 'host_key'])('a refused login (%s) is refused whether or not it is linked, with the line that fixes it', (kind) => {
@@ -175,7 +188,7 @@ describe('the check of a move with another worker', () => {
     it('on the way back, hand on this machine\'s own key over the home that reaches the worker, naming no machine as ssh would not', () => {
       const r = check({ reach: refused, back: 'studio', farSsh: 'ada@studio.tail' });
       if (r.ok) throw new Error('passed');
-      expect(r.refusal.action).toContain('on this machine, run');
+      expect(r.refusal.action).toContain(`on ${HERE}, run`);
       expect(r.refusal.action).toContain(`cat ~/.ssh/id_ed25519.pub | ssh ada@studio.tail "ssh ada@box 'cat >> .ssh/authorized_keys'"`);
       expect(r.refusal.action).not.toContain('ssh this machine');
     });
@@ -189,7 +202,7 @@ describe('the check of a move with another worker', () => {
 
     it('a worker this machine cannot reach names who can', () => {
       const r = check({ reach: { [W]: { ok: false, kind: 'unreachable', why: 'No route', ssh: 'ada@box' } }, linked: true, back: 'studio' });
-      expect(r).toMatchObject({ ok: false, refusal: { reason: 'this machine cannot reach box, which studio reaches: No route' } });
+      expect(r).toMatchObject({ ok: false, refusal: { reason: `${HERE} cannot reach box, which studio reaches: No route` } });
     });
   });
 
@@ -441,11 +454,10 @@ describe('the workers a new home owes an enrolment', () => {
 
   it('a login ssh refused says this home\'s fix alone, not ssh\'s own of a terminal here', async () => {
     const p = setup('adopted');
-    const said = 'ssh could not reach ada@box: ada@box: Permission denied (publickey).';
-    const s = run(p, () => Promise.reject(new SshError('auth', `${said}; run ssh ada@box once in a terminal, then try again`)));
+    const s = run(p, () => Promise.reject(new SshError('auth', 'ssh could not reach ada@box: ada@box: Permission denied (publickey).; run ssh ada@box once in a terminal, then try again')));
     await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toBeDefined());
     s.stop();
-    expect(owedWorkers(p)[W]?.why).toBe(`${said}; ${noLoginFix('studio', 'ada@box')}`);
+    expect(owedWorkers(p)[W]?.why).toBe(`ada@box: Permission denied (publickey); ${noLoginFix('studio', 'ada@box')}`);
   });
 
   it('a cause that comes back once the worker was enrolled is said again', async () => {
