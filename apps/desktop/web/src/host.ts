@@ -53,7 +53,7 @@ const PHASES = [
   { phase: 'prerequisites', label: 'What it needs', steps: ['os', 'home', 'tools', 'space', 'linger', 'git'] },
   {
     phase: 'svall', label: 'Svall there', steps: [
-      'release', 'upload', 'install', 'tmux', 'uninstall', 'keys', 'service', 'identity', 'enrol', 'systemd', 'worker',
+      'release', 'relay', 'upload', 'install', 'tmux', 'uninstall', 'keys', 'service', 'identity', 'enrol', 'systemd', 'worker',
       'daemon env', 'daemon node', 'daemon path', 'svalld', 'node', 'path', 'hooks', 'codex hooks', 'codex sandbox', 'opencode plugin', 'hook receiver',
       'config', 'machine id', 'doctor', 'svall',
     ],
@@ -115,7 +115,7 @@ export function replaceRows(run: HostRun, rows: HostStep[], names: MachineNames 
 export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (s.action ? [s.action] : []));
 
 const STEP_LABEL: Record<string, string> = {
-  name: 'Name', machine: 'Machine', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
+  name: 'Name', machine: 'Machine', relay: 'The home', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
   space: 'Free space', linger: 'Runs after logout', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
   service: 'Services', identity: 'Installed release', enrol: 'Worker', seed: 'Your agent setup', claude: 'Claude Code',
   codex: 'Codex', opencode: 'OpenCode', versions: 'Agent versions', probe: 'Final check', rollback: 'Rollback', registry: 'Machine list',
@@ -203,6 +203,12 @@ export function outcomeOf(run: HostRun): RunOutcome {
 
 export const machineName = (value: string): boolean => MachineRecord.shape.name.safeParse(value).success;
 export const sshDestination = (value: string): boolean => MachineRecord.shape.ssh.safeParse(value).success;
+
+/** What a terminal on a far home types to run `run` on a machine of that home: a login's port comes back over each hop, and a `cd` is left with a shell there. */
+export const overHome = (ssh: string, run: string, forward?: number): string => {
+  const there = run.startsWith('cd ') ? `${run}; exec "$SHELL" -l` : run;
+  return `ssh -t ${forward ? `-L ${forward}:localhost:${forward} ` : ''}${ssh} '${there.replaceAll("'", "'\\''")}'`;
+};
 
 /** The port a login there waits for the browser on, which a forward from this Mac reaches: the row's own, or Codex's 1455. */
 export const loginForward = (run: string, forward?: number): number | undefined => forward ?? (/^codex login\s*$/.test(run) ? 1455 : undefined);

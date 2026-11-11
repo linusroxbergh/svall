@@ -21,6 +21,7 @@ const STEPS = (name: string, back: boolean): [string, string][] => [
   ['adopt', back ? 'This Mac takes over' : `${name} takes over`],
   ['join', back ? `${name} joins` : 'This Mac joins'],
   ['probe', 'Reconnect'],
+  ['workers', 'The other workers join'],
 ];
 // any move's id lets mission control's robots be checked, which moves nothing
 const CHECK_MOVE = 'hm_crewcheck0';
@@ -107,6 +108,7 @@ export function HomeSheet() {
               ? `${sheet.there} here, ${sheet.here} on ${name}`
               : `${sheet.here} here, ${sheet.there} on ${name}`}.</span>
             {sheet.mission.length > 0 && <span className="modal-sub" data-testid="home-mission">Mission control's {sheet.mission.length === 1 ? 'robot moves' : `${sheet.mission.length} robots move`} to {back ? 'this Mac' : name} first.</span>}
+            {sheet.waits?.map((w) => <span key={w.id} className="modal-sub" data-testid="home-waits">{w.name} does not answer; it joins {back ? 'this Mac' : name} when it does.</span>)}
             {sheet.rewrites.map((r) => <span key={r.key} className="modal-sub" data-testid="home-rewrite">{r.key} {r.kept ? 'is' : 'becomes'} {r.to}{r.lacks && `, which ${back ? 'this Mac' : name} does not have yet`}</span>)}
           </div>
         )}
@@ -143,7 +145,8 @@ export function HomeSheet() {
               const row = at(step);
               const now = !row ? 'todo' : row.status === 'start' ? 'doing' : row.status === 'fail' ? 'failed' : row.status === 'warn' ? 'warned' : 'done';
               if (failed && now === 'todo') return null;
-              if (row?.status === 'skip') return null;
+              // a move that carried no other worker shows none of this row
+              if (row?.status === 'skip' || (!row && step === 'workers')) return null;
               const said = now === 'failed' || now === 'warned' ? row : undefined;
               const todo = said && (said.say ?? said.action);
               return (

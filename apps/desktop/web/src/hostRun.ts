@@ -10,6 +10,7 @@ export function startHost(op: HostOp, args: HostArgs): boolean {
     return false;
   }
   s.hostStarted(op, args);
-  app.bridge.send({ type: 'host.start', op, args });
+  const { id, ...named } = args;
+  app.bridge.send({ type: 'host.start', op, args: id ? { ...named, name: id } : named });
   return true;
 }

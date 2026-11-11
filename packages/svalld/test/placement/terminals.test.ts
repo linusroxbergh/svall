@@ -12,7 +12,7 @@ import { REMOTE_SCREEN_BYTES } from '../../src/placement/far-viewers.js';
 import type { Store } from '../../src/store.js';
 import type { Viewer } from '../../src/terminals.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
-import { homeScreenCall, homeTails, ScreenTails, sendHomeTails } from '../../src/worker/screens.js';
+import { homeScreenCall, homeTails, relayScreen, ScreenTails, sendHomeTails } from '../../src/worker/screens.js';
 import { H, W, placed, stopWorlds, until, world } from './world.js';
 
 afterEach(async () => {
@@ -256,6 +256,37 @@ describe('the terminal of a robot on a worker', () => {
     expect(terminals.lastScreen('c_8')).toBeUndefined();
     screen('c_7');
     expect(terminals.lastScreen('c_7')).toBeUndefined();
+  });
+
+  it('a worker that dials in keeps the last screen of a robot on another worker, the home relaying it, for as long as it runs there', () => {
+    const OTHER = crypto.randomUUID() as MachineId;
+    const w = world({ worker: { robots: { c_9: { ...placed({ id: 'c_9' }), machine: OTHER } } } });
+    const { terminals, store } = w.worker;
+    const answer = homeScreenCall(terminals, H);
+    void answer({ id: 'c_9', text: 'on the other worker', at: 3, machine: OTHER });
+    expect(terminals.lastScreen('c_9')).toEqual({ text: 'on the other worker', at: 3 });
+    store.update((d) => { delete d.robots.c_9.machine; });
+    expect(terminals.lastScreen('c_9')).toBeUndefined();
+  });
+
+  it('a home relays a worker\'s screen to every other worker that dials in, and to no other', () => {
+    const DIALS = crypto.randomUUID() as MachineId;
+    const call = vi.fn((_m: MachineId, _method: string, _p: unknown) => Promise.resolve({}));
+    const links = { connectedWorkers: () => [W, DIALS], for: (m: MachineId) => ({ dialsIn: m === DIALS }), call };
+    relayScreen(links as never, { id: 'c_1', text: 'held', at: 1 }, W);
+    expect(call.mock.calls).toEqual([[DIALS, 'screen.home', { id: 'c_1', text: 'held', at: 1, machine: W }]]);
+    call.mockClear();
+    relayScreen(links as never, { id: 'c_1', text: 'held', at: 1 }, DIALS);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('a home sends a worker that dials in the screens it holds of other workers as it links, none of its own', async () => {
+    const DIALS = crypto.randomUUID() as MachineId;
+    const call = vi.fn((_m: MachineId, _method: string, _p: unknown) => Promise.resolve({}));
+    const links = { pushSnapshot: () => Promise.resolve(1), for: () => ({ dialsIn: true, took: () => Promise.resolve() }), call };
+    const held = [{ id: 'c_w', text: 'on the worker', at: 2, machine: W }, { id: 'c_d', text: 'its own', at: 2, machine: DIALS }];
+    await sendHomeTails({ store: { state: { robots: {} } } as unknown as Store, tmux: { capture: vi.fn() }, runsHere: () => false, links: links as never, held: () => held }, DIALS);
+    expect(call.mock.calls).toEqual([[DIALS, 'screen.home', held[0]]]);
   });
 
   it('a home sends a worker that dials in a tail of each robot on it as that worker links, hook or no hook, and none to any other', async () => {

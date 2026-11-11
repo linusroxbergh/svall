@@ -26,7 +26,8 @@ export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 // the machines robots run on: what the shell may run `svall host …` for, and with what
 export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'home' | 'home-retry' | 'home-abort' | 'home-crew' | 'join';
 // interrupt: a person chose that what mission control's robots run is interrupted
-export type HostArgs = { name: string; ssh?: string; forget?: boolean; asHome?: boolean; interrupt?: boolean };
+// id: what the command names a far home's machine by, as this Mac's registry could hold its name for another
+export type HostArgs = { name: string; id?: string; ssh?: string; forget?: boolean; asHome?: boolean; interrupt?: boolean };
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain;
 // forward: the port its login waits on there; tick: what a row of the mirror's report copies once ticked
@@ -34,7 +35,8 @@ export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'] };
 // one machine as `svall host list --json` gives it: no ssh for this Mac, and its last check
 export type MachineRow = {
-  name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string;
+  // far: a machine of the far home this fleet follows, `ssh` as that home reaches it
+  name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string; far?: true;
   check?: { at: number; failed: number; warned: number; release?: string };
 };
 

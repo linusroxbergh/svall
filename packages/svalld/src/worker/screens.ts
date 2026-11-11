@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { MachineId, Robot } from '@svall/protocol';
+import { MachineId, type Robot } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { HomeLinks } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
@@ -7,8 +7,8 @@ import type { Store } from '../store.js';
 import type { TerminalHub } from '../terminals.js';
 import type { Tmux } from '../tmux/tmux.js';
 
-/** What a worker sends its home of a robot's pane after a hook: its last lines, and when they were read. */
-export const ScreenNotice = z.object({ id: z.string(), text: z.string(), at: z.number() });
+/** What a worker sends its home of a robot's pane after a hook: its last lines, and when they were read. `machine`: where it runs, on one the home relays from another worker. */
+export const ScreenNotice = z.object({ id: z.string(), text: z.string(), at: z.number(), machine: MachineId.optional() });
 
 /**
  * The last lines of each robot's pane on this machine, sent after a hook to the machine that shows them while this one is out
@@ -71,6 +71,11 @@ export function homeTails(o: { fleet: Pick<Fleet, 'on' | 'off'>; store: Store; t
   });
 }
 
+/** A worker's screen on to every other worker that dials the home, as its window shows it while that home is out of reach. */
+export function relayScreen(links: Pick<HomeLinks, 'connectedWorkers' | 'for' | 'call'>, s: z.infer<typeof ScreenNotice>, from: MachineId): void {
+  for (const m of links.connectedWorkers()) if (m !== from && links.for(m)?.dialsIn) links.call(m, 'screen.home', { ...s, machine: from }).catch(() => {});
+}
+
 // a link that never takes it leaves its worker with what hooks send
 const TAKE_MS = 30_000;
 
@@ -78,7 +83,7 @@ const TAKE_MS = 30_000;
  * A tail of each robot here to a worker that has just linked, past the limit: its hub holds nothing of a robot with no hook
  * since, and keeps a screen only of a robot its store knows, so the tails wait until it has taken the fleet.
  */
-export async function sendHomeTails(o: { store: Store; tmux: Pick<Tmux, 'capture'>; runsHere: (c: Robot) => boolean; links: Pick<HomeLinks, 'for' | 'call' | 'pushSnapshot'> }, machine: MachineId, lines = 40): Promise<void> {
+export async function sendHomeTails(o: { store: Store; tmux: Pick<Tmux, 'capture'>; runsHere: (c: Robot) => boolean; links: Pick<HomeLinks, 'for' | 'call' | 'pushSnapshot'>; held?: () => { id: string; text: string; at: number; machine: MachineId }[] }, machine: MachineId, lines = 40): Promise<void> {
   const link = o.links.for(machine);
   if (!link?.dialsIn) return;
   let timer: NodeJS.Timeout | undefined;
@@ -92,11 +97,12 @@ export async function sendHomeTails(o: { store: Store; tmux: Pick<Tmux, 'capture
     const text = (await o.tmux.capture(c.tmux!.paneId, lines).catch(() => undefined))?.toString('utf8');
     if (text !== undefined) await o.links.call(machine, 'screen.home', { id: c.id, text, at }).catch(() => {});
   }));
+  await Promise.all((o.held?.() ?? []).filter((s) => s.machine !== machine).map((s) => o.links.call(machine, 'screen.home', s).catch(() => {})));
 }
 
 /** What a worker does with a screen from its home: the hub holds it for a window that loses that home. */
 export const homeScreenCall = (terminals: Pick<TerminalHub, 'sawHomeScreen'>, home: MachineId) => (p: unknown): Promise<unknown> => {
   const s = ScreenNotice.parse(p);
-  terminals.sawHomeScreen(s.id, s.text, s.at, home);
+  terminals.sawHomeScreen(s.id, s.text, s.at, s.machine ?? home, home);
   return Promise.resolve({});
 };

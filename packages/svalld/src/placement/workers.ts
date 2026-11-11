@@ -5,6 +5,8 @@ import { MachineId } from '@svall/protocol';
 import { writeDurable } from '../durable.js';
 import { readRegistry } from '../machine.js';
 import type { Paths } from '../paths.js';
+import { svallExe } from '../release.js';
+import { shq } from '../text.js';
 
 // `profile`: the fleet's on that worker, where it is named apart from this one's
 const Workers = z.record(MachineId, z.object({ token: z.string().min(32), addedAt: z.number(), profile: z.string().optional() }));
@@ -24,6 +26,17 @@ function read(paths: Paths): Workers {
     throw new Error(`invalid ${paths.workersFile}: ${(e as Error).message}`, { cause: e });
   }
 }
+
+/** What a home runs on a worker over its own ssh to make it this fleet's, the token on its stdin. */
+export const enrollArgv = (o: { svallBase: string; profile?: string; home: MachineId; homeName: string; fleetId: string; homePlatform: string }): string[] => [
+  shq(svallExe(o.svallBase)), ...(o.profile ? ['-p', shq(o.profile)] : []), 'worker', 'enroll', '--home-machine', shq(o.home), '--home-name', shq(o.homeName), '--fleet-id', shq(o.fleetId), '--home-platform', shq(o.homePlatform),
+];
+
+/** What makes this machine a key if it has none, and copies it to `ssh`, whose prompt also takes the host key. */
+export const keyLine = (ssh: string): string => `test -f ~/.ssh/id_ed25519 || ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519; ssh-copy-id ${shq(ssh)}`;
+
+/** The fix for a machine `here` cannot log in to; `by`: a line that hands one taking keys alone the public half, where the caller knows the way. */
+export const noLoginFix = (here: string, ssh: string, by?: string): string => `on ${here}, run ${keyLine(ssh)}, then try again; a machine that takes keys alone needs ${here}'s ~/.ssh/id_ed25519.pub added to its .ssh/authorized_keys by hand${by ? `: ${by}` : ''}`;
 
 /** A new token for `machine` to accept this home by, in place of any it held. */
 export function issueToken(paths: Paths, machine: MachineId): string {

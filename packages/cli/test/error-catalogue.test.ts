@@ -7,6 +7,7 @@ const read = (rel: string): string => fs.readFileSync(new URL(rel, import.meta.u
 const CATALOGUE = read('../../../docs/remote-machines/errors.md');
 const SSH = read('../../svalld/src/link/ssh.ts');
 const HOST = read('../src/controller/host.ts');
+const ON_HOME = read('../src/controller/on-home.ts');
 const DOCTOR = read('../src/commands/doctor.ts');
 const PREFLIGHT = read('../src/commands/preflight.ts');
 
@@ -57,7 +58,7 @@ const CODES: Record<string, () => string[]> = {
   '## Connection errors': () => union(SSH, 'export type SshErrorKind ='),
   '### Step statuses': () => union(HOST, 'export type StepStatus ='),
   // an agent's step and check are named by its kind; Add Machine checks only the agents a move carries
-  '### Steps': () => [...named.steps(HOST), ...HANDOVER_KINDS],
+  '### Steps': () => [...named.steps(HOST), ...[...ON_HOME.matchAll(/step: '(\w+)'/g)].map((m) => m[1]), ...HANDOVER_KINDS],
   '### Doctor checks': () => [...named.checks(DOCTOR), ...named.checks(PREFLIGHT), ...named.checks(HOST), ...AGENT_KINDS],
 };
 

@@ -618,6 +618,12 @@ describe('a window and the fleet\'s home', () => {
     expect(toHome).toHaveBeenCalledTimes(1);
   });
 
+  it('machines.list says what a move owes each worker, and when its last try ended', async () => {
+    const machines = { [W]: { name: 'mac', reachable: false, since: 0 } };
+    const owed = local({}, { store: { state: { machines, robots: {} } }, workersOwed: () => ({ [W]: { why: 'No route to host', tried: 5 } }) });
+    expect(await dispatch({ id: 1, method: 'machines.list', params: {} }, owed)).toMatchObject({ result: { machines: [{ id: HOME }, { id: W, joining: 'No route to host', joinTried: 5 }] } });
+  });
+
   it('machines.list names each role and platform, the home first, whichever machine answers', async () => {
     const machines = { [W]: { name: 'mac', reachable: true, since: 0, release: '0.21' } };
     const robots = { a: {}, b: { machine: W }, c: { machine: HOME } };

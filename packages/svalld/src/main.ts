@@ -2,7 +2,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { MachineId, type HomeFacts, type HomeMoving, type ParsedParams, type Robot } from '@svall/protocol';
+import { z } from 'zod';
+import { HomeReach, HomeWorker, MachineId, type HomeFacts, type HomeMoving, type ParsedParams, type Robot } from '@svall/protocol';
 import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
@@ -15,7 +16,8 @@ import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { homeCheck, homeFacts, HomeFreeze } from './fleet/home-freeze.js';
 import { askAcross, factsAcross, phoneWithReason, startDeliveries } from './fleet/home-far.js';
-import { driverKey, homeGate, landed, oldHomeName, readOwed } from './fleet/home-move.js';
+import { carriedWorkers, driverKey, homeGate, landed, oldHomeName, owedWorkers, readOwed } from './fleet/home-move.js';
+import { reachWorkers, settleOwed, startRejoins, type Rejoins } from './fleet/home-workers.js';
 import { workerProfile } from './placement/workers.js';
 import { bootId } from './processes.js';
 import { agentProber, realProbeDeps } from './sessions/registry.js';
@@ -68,7 +70,7 @@ import { readWorkerFile, workerOptions, workerStubs, type Off } from './worker/m
 import { WorkerMutations } from './worker/mutations.js';
 import { WorkerPhone } from './worker/phone.js';
 import { Outbox } from './worker/outbox.js';
-import { homeScreenCall, homeTails, ScreenNotice, ScreenTails, sendHomeTails } from './worker/screens.js';
+import { homeScreenCall, homeTails, relayScreen, ScreenNotice, ScreenTails, sendHomeTails } from './worker/screens.js';
 import { applyReport, type RobotSync } from './worker/snapshot.js';
 import { fleetConfigFile } from './workspace/fleet-config.js';
 import { Workspace } from './workspace/workspace.js';
@@ -79,6 +81,8 @@ export type Daemon = { port: number; token: string; store: Store; fleet: Fleet; 
 
 // how long a usage reading stands before the panel's next open pays for another
 const USAGE_TTL_MS = 60_000;
+// a worker's login and its answer, each worker at once, as the sheet's check waits
+const REACH_MS = 60_000;
 const LOOK_AGAIN_MS = 30_000;
 
 export function readOrCreateToken(file: string): string {
@@ -248,6 +252,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   });
   // while the fleet moves, what a worker sends but its running fields stays in its outbox
   let holding = false;
+  let rejoins: Rejoins | undefined;
   const links = worker ? undefined : new HomeLinks({
     paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log, profileOf: profileOn }), dialIn: socketTransport({ paths }),
     onReport: (r, machine) => { if (applyReport(store, r, machine) === 'applied') replay?.reported(r.robotId); },
@@ -262,7 +267,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     onNotify: (kind, data, machine) => {
       if (kind === 'screen') {
         const s = ScreenNotice.parse(data);
-        return terminals.sawScreen(s.id, s.text, s.at, machine);
+        if (terminals.sawScreen(s.id, s.text, s.at, machine)) relayScreen(links!, s, machine);
+        return;
       }
       if (kind !== 'viewer') return;
       const { key, ev } = ViewerNotice.parse(data);
@@ -273,9 +279,10 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     onSynced: (machine) => {
       for (const again of [remoteWatches?.reopen(machine), terminals.reopen(machine)]) again?.catch((e: Error) => log.error(`${machine}: ${e.message}`));
       void phone?.sync(machine);
-      void sendHomeTails({ store, tmux, links: links!, runsHere: (c) => router.runsHere(c) }, machine);
+      void sendHomeTails({ store, tmux, links: links!, runsHere: (c) => router.runsHere(c), held: () => terminals.heldScreens() }, machine);
       void landed({ paths }, machine).catch((e: Error) => log.error(`${machine}: ${e.message}`));
     },
+    onGreeted: (machine) => settleOwed(paths, machine),
     onLost: (machine) => terminals.lostMachine(machine),
     snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir }, home: os.homedir() }),
     mirror: homeMirror,
@@ -315,7 +322,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     homeName: () => homeLabel(), stateFile: paths.mirrorState, pushFailed: () => workerMirror?.failed(),
   });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
-  const workerHomeWord = () => (worker ? homeWordOnWorker(homeLabel(), !!worker.worker.homeSsh) : 'this Mac');
+  const workerHomeWord = () => (worker ? homeWordOnWorker(homeLabel(), !!worker.worker.homeSsh, worker.worker.homePlatform) : 'this Mac');
   const router = new Router({
     store, me, log, links, ...(replay && { replay, homedir: os.homedir() }), ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection, word: workerHomeWord } }),
   });
@@ -346,6 +353,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     calls['home.thaw'] = () => { mutations.setFrozen(false); workerDocs.setPaused(false); return Promise.resolve({}); };
   }
   if (worker) calls['home.facts'] = (p) => homeFacts(paths, { paths: (p as { paths?: string[] }).paths, me, role: 'worker', fleetId: worker.worker.fleetId });
+  // the home asks before a move here: this daemon is what would dial each of its workers afterwards. A worker that dials out is never asked: it probes in its own process
+  if (worker && !worker.worker.homeSsh) calls['home.reach'] = (p) => reachWorkers(z.array(HomeWorker).parse(p), { fleetId: worker.worker.fleetId, release: releaseVersion(), held: registered() });
   if (connection && worker && workerDocs && farViewers && workerMirror && workerDrops) {
     const prepare = new PrepareService({
       store, fleet, tmux, viewers: terminals, connection, me, get homeName() { return homeLabel(); }, homeWord: workerHomeWord, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
@@ -408,6 +417,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     links: {
       barrier: (m, ms) => links.barrier(m, ms),
       hold: (on) => { holding = on; if (!on) links.released(); },
+      quiet: () => links.quiet(),
       call: (m, method, params) => links.call(m, method, params),
     },
     background,
@@ -427,13 +437,18 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       const toName = ownName();
       const from = far ?? { ...here, machineId: worker_.homeMachineId, tailscale: {} };
       const back = homeLabel();
-      return homeCheck({ state: store.state, from, to: here, toName, back, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), fromIsHome: to === me, platformOf });
+      const reach = far ? await reachWorkers((far.carried ?? []).filter((w) => w.id !== me), { fleetId: worker_.fleetId, release: here.release, held: registered() }) : null;
+      return homeCheck({ state: store.state, from, to: here, toName, back, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), fromIsHome: to === me, platformOf, reach, linkedTo: (m) => store.state.machines?.[m as MachineId]?.reachable === true, ...(worker_.homeSsh && { farSsh: worker_.homeSsh }) });
     }
-    const here = await homeFacts(paths, { me, role: 'home', fleetId });
+    const here = await homeFacts(paths, { me, role: 'home', fleetId, ...(freeze?.movingId && { moving: freeze.movingId }) });
     const link = links?.for(to);
     const name = store.state.machines?.[to]?.name ?? to;
     const far = await links!.call<HomeFacts>(to, 'home.facts', { paths: here.rewrites?.map((r) => r.to) ?? [] }).catch(() => undefined);
-    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, fromIsHome: true, platformOf });
+    // homeCheck refuses a workers.json that cannot be read
+    const carried = (carriedWorkers(paths, registered(), profile) ?? []).filter((w) => w.id !== to);
+    const reach = !far ? null : !carried.length ? {} : await links!.call<unknown>(to, 'home.reach', carried, { timeoutMs: REACH_MS }).then((r) => z.record(z.string(), HomeReach).safeParse(r).data ?? null, () => null);
+    const farSsh = registered().find((m) => m.id === to)?.record.ssh;
+    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, fromIsHome: true, platformOf, reach, carried: carried.map((w) => w.id), linkedTo: (m) => links?.for(m as MachineId)?.connected() ?? false, ...(farSsh && { farSsh }) });
   };
   // a move coming here that its driver left, or an outcome the old home has yet to hear. `unmarked`: its driver writes the key before the mark, so with none no mark can stand
   const homeWaits = () => {
@@ -502,7 +517,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: (m) => (profileOn(m) === PRIVATE ? '' : `-p ${isProfileName(profileOn(m)) ? profileOn(m) : shq(profileOn(m))} `),
-      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(ownSetup && { workerSetup: ownSetup }), fleetHome,
+      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(ownSetup && { workerSetup: ownSetup }), fleetHome, workersOwed: () => (worker ? {} : owedWorkers(paths)), rejoinsAgain: () => rejoins?.again(),
       ...(!worker && { fleetConfig: fleetConfigFile(paths, log, refused) }), freeze, homeChecks, homeWaits,
       registered: () => new Map(registered().map((m) => [m.id, m.record])),
     });
@@ -550,6 +565,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     if (links && placement) {
       links.start();
       teardown.push(() => links.stop(), () => placement.stop());
+      rejoins = startRejoins({ paths, me, name: ownName, platform: process.platform, fleetId: () => readFleetConfig(paths).id, log, records: registered, refresh: () => links.refresh(), frozen: () => freeze?.active ?? false });
+      teardown.push(() => rejoins?.stop());
       // a move a stop left unfinished: undone before its commit, run on after it; one whose worker is down waits for it
       await placement.recoverMoves().catch((e: Error) => log.error(`moves: ${e.message}`));
     }

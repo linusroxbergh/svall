@@ -10,6 +10,7 @@ import { configRewrites, homeCheck, homeFacts, HomeFreeze, type FreezeDeps } fro
 import { phoneWithReason } from '../../src/fleet/home-far.js';
 import { addEnrol, createMarker, journalLines, MAX_ARCHIVE, MAX_CARRIED_KB, phoneOwed, readMarker, servedPhone } from '../../src/fleet/home-move.js';
 import { realStages } from '../../src/durable.js';
+import { enrolLock } from '../../src/kernel-lock.js';
 import { silentLogger } from '../../src/log.js';
 import { putRecord, registryFile } from '../../src/machine.js';
 import { mobileControl } from '../../src/mobile.js';
@@ -103,6 +104,40 @@ describe('a frozen home', () => {
     d.store.state.robots.placed.moving = { id: 'mv_0123456789', to: STUDIO, phase: 'rest' } as never;
     await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toThrow(/placed is moving/);
     expect(freeze.active).toBe(false);
+  });
+
+  it('an enrol under way refuses the freeze, which thaws what it paused', async () => {
+    const { freeze, log, paths } = setup();
+    const enrolling = await enrolLock(paths.home);
+    await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toMatchObject({ code: 'busy', message: 'a worker is being enrolled; try again in a moment' });
+    enrolling?.();
+    expect(freeze.active).toBe(false);
+    expect(log).toEqual(['pause', 'hold false', 'home.thaw', 'resume']);
+  });
+
+  it('holds the enrol lock from the freeze until it thaws, or the daemon stops, so no token goes out meanwhile', async () => {
+    const free = async (p: string) => { const got = await enrolLock(p); got?.(); return got !== undefined; };
+    const thawed = setup();
+    await thawed.freeze.freeze(ID, STUDIO, holder);
+    expect(await free(thawed.paths.home)).toBe(false);
+    await thawed.freeze.thaw(ID);
+    expect(await free(thawed.paths.home)).toBe(true);
+    const stopped = setup();
+    await stopped.freeze.freeze(ID, STUDIO, holder);
+    stopped.freeze.mark(marker());
+    expect(await free(stopped.paths.home)).toBe(false);
+    stopped.freeze.stop();
+    expect(await free(stopped.paths.home)).toBe(true);
+  });
+
+  it('lets the enrol lock go when its driver leaves while the freeze takes it', async () => {
+    const { freeze, paths } = setup();
+    const going = freeze.freeze(ID, STUDIO, holder);
+    freeze.left(holder);
+    await expect(going).rejects.toThrow('went away');
+    const got = await enrolLock(paths.home);
+    got?.();
+    expect(got).toBeDefined();
   });
 
   it('thaws when its driver goes away before the marker, with the phone it served', async () => {
@@ -474,6 +509,35 @@ describe('a frozen home', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it('the cut waits on what any worker\'s link was applying as the hold began', async () => {
+    const { d } = setup();
+    let done!: () => void;
+    const order: string[] = [];
+    const quiet = new Promise<void>((r) => { done = r; });
+    const flush = d.store.flush.bind(d.store);
+    const freeze = new HomeFreeze({ ...d, store: Object.assign(Object.create(d.store) as typeof d.store, { flush: () => { order.push('flush'); return flush(); } }), links: { ...d.links, hold: (on) => { if (on) order.push('hold'); }, quiet: () => { order.push('quiet'); return quiet; } } });
+    const going = freeze.freeze(ID, STUDIO, holder);
+    await vi.waitFor(() => expect(order).toEqual(['hold', 'quiet']));
+    done();
+    await going;
+    expect(order).toEqual(['hold', 'quiet', 'flush']);
+  });
+
+  it('a driver that goes away while the links go quiet stops the freeze there, with nothing flushed and the phone left on', async () => {
+    const { d, log } = setup({ serving: true });
+    let done!: () => void;
+    const quiet = new Promise<void>((r) => { done = r; });
+    const flush = vi.fn(() => Promise.resolve(true));
+    const freeze = new HomeFreeze({ ...d, store: Object.assign(Object.create(d.store) as typeof d.store, { flush }), links: { ...d.links, quiet: () => quiet } });
+    const going = freeze.freeze(ID, STUDIO, holder);
+    await vi.waitFor(() => expect(log).toContain('hold true'));
+    freeze.left(holder);
+    done();
+    await expect(going).rejects.toMatchObject({ code: 'not_frozen' });
+    expect(flush).not.toHaveBeenCalled();
+    expect(log).not.toContain('phone false');
+  });
+
   it('a freeze that fails after its driver left leaves a freeze begun since', async () => {
     const { d, log } = setup();
     let open!: (ok: boolean) => void;
@@ -526,9 +590,11 @@ describe('a frozen home', () => {
 
     it('while it reads the phone: no holder left dead, nothing frozen', async () => {
       let open!: (s: MobileStatus) => void;
-      const { freeze, log } = setup({ phone: new Promise((r) => { open = r; }) });
+      const { freeze, log, d } = setup({ phone: new Promise((r) => { open = r; }) });
+      const read = vi.spyOn(d.phone, 'get');
       const freezing = freeze.freeze(ID, STUDIO, holder);
       expect(freeze.refusal('robot.update')?.code).toBe('frozen');
+      await vi.waitFor(() => expect(read).toHaveBeenCalled());
       freeze.left(holder);
       await vi.waitFor(() => expect(log).toContain('resume'));
       open(phoneAt(false));
@@ -539,10 +605,12 @@ describe('a frozen home', () => {
     });
 
     it('while what the home had taken drains: the worker is never told', async () => {
-      const { freeze, log } = setup();
+      const { freeze, log, d } = setup();
+      const read = vi.spyOn(d.phone, 'get');
       const ended = freeze.admit('robot.update')!;
       const freezing = freeze.freeze(ID, STUDIO, holder);
-      await vi.waitFor(() => expect(log).toContain('pause'));
+      // the phone is read just before the drain
+      await vi.waitFor(() => expect(read).toHaveBeenCalled());
       freeze.left(holder);
       await vi.waitFor(() => expect(log).toContain('resume'));
       ended();
@@ -951,7 +1019,7 @@ describe('the check', () => {
   it('refuses a second worker of either kind, by decision, naming how to bring it along', () => {
     const r = homeCheck(input({ from: facts({ workers: [STUDIO, '99999999-7777-8888-9999-aaaaaaaaaaaa'] }) }));
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.refusal.action).toMatch(/add it again from studio/);
+    if (!r.ok) expect(r.refusal.action).toMatch(/svall fleet join on it if it is a Mac/);
   });
 
   it('gives a second worker only the way back its platform takes, and both where this machine has no record of it', () => {
@@ -986,6 +1054,35 @@ describe('the check', () => {
     expect(check({ [MAC]: 'linux' }, { from: facts({ tailscale: down }) })).toMatchObject({ refusal: { reason: 'Tailscale is not running on this machine', action: 'start it: sudo systemctl start tailscaled', details: [raw] } });
     expect(check({ [MAC]: 'darwin' }, { from: facts({ tailscale: down }) })).toMatchObject({ refusal: { action: 'open the Tailscale app', details: [raw] } });
     expect(check({}, { linked: false, to: { ...facts({ machineId: STUDIO }), tailscale: down } })).toMatchObject({ refusal: { reason: 'studio is not reachable', details: [], more: [{ reason: 'Tailscale is not running on studio' }] } });
+  });
+
+  it('refuses while the home is enrolling a worker, as an add under way does, and lets the lock go at once', async () => {
+    const paths = resolvePaths(makeHome());
+    const said = () => homeFacts(paths, { me: MAC, role: 'home', fleetId: FLEET, tailscale: {} as never });
+    const held = (await enrolLock(paths.home))!;
+    const busy = await said();
+    held();
+    expect(busy.enrolling).toBe(true);
+    expect(homeCheck(input({ from: { ...facts({}), enrolling: busy.enrolling } }))).toMatchObject({ ok: false, refusal: { reason: 'a worker is being enrolled', action: 'try again in a moment' } });
+    const free = await said();
+    expect(free.enrolling).toBeUndefined();
+    expect(homeCheck(input({ from: { ...facts({}), enrolling: free.enrolling } })).ok).toBe(true);
+    const after = await enrolLock(paths.home);
+    expect(after).toBeDefined();
+    after?.();
+  });
+
+  it('leads with the move on a home in its own move, whose freeze holds the enrol lock, and probes no enrol', async () => {
+    const paths = resolvePaths(makeHome());
+    const held = (await enrolLock(paths.home))!;
+    try {
+      const f = await homeFacts(paths, { me: MAC, role: 'home', fleetId: FLEET, tailscale: {} as never, moving: 'hm_abcdefghij' });
+      expect(f.moving).toBe('hm_abcdefghij');
+      expect(f.enrolling).toBeUndefined();
+      const r = homeCheck(input({ from: { ...facts({}), moving: f.moving, enrolling: f.enrolling } }));
+      expect(r).toMatchObject({ ok: false, refusal: { reason: 'the fleet is moving already (hm_abcdefghij)' } });
+      expect(JSON.stringify(r)).not.toContain('a worker is being enrolled');
+    } finally { held(); }
   });
 
   it('counts an absent workers.json as no worker, and refuses on one it cannot read', async () => {

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MachineId, PROTOCOL_VERSION, type SetupRow } from '@svall/protocol';
 import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
+import { joiningOf } from '../src/commands/host.js';
 import { consentHost, doctorHost, rowStep, type HostReport, type StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import {
@@ -115,6 +116,72 @@ describe('host doctor', () => {
     const named = await doctorHost('trift', deps({ registry: registered(), fleet: { home: fleet, profile: 'work' } }));
     expect(named.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: "runs this fleet's robots" });
     expect(ssh.remoteCalls().filter((w) => w.includes('version')).at(-1)).toEqual([SVALL, '-p', 'work', 'version', '--json']);
+  });
+
+  describe('a machine this fleet owes a re-enrol', () => {
+    const replies = (worker?: object) => {
+      ssh.clearReplies();
+      ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+      ssh.reply(['svall-space'], { stdout: DF });
+      ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, ...(worker && { worker }) }) });
+    };
+
+    it('waits for the re-enrol its refresh set off before it reads the worker, which joined at once', async () => {
+      replies();
+      const asked: string[] = [];
+      const report = await doctorHost('trift', deps({
+        registry: registered(),
+        joining: (m) => {
+          asked.push(m);
+          // it lands on the second ask, and the machine serves this fleet from then on
+          if (asked.length < 2) return Promise.resolve({ why: '' });
+          replies(SERVES);
+          return Promise.resolve(undefined);
+        },
+      }));
+      expect(asked).toEqual([REMOTE, REMOTE]);
+      expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: "runs this fleet's robots" });
+    });
+
+    it('reads one still owed once the wait is over as joining, with its reason and no upgrade', async () => {
+      replies();
+      let now = Date.now();
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+      try {
+        const report = await doctorHost('trift', deps({ registry: registered(), joining: () => { now += 10_000; return Promise.resolve({ why: 'No route to host' }); } }));
+        expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'warn', detail: 'has not joined this Mac yet: No route to host' });
+      } finally { clock.mockRestore(); }
+    });
+
+    it('stops waiting once a try that ended after it began says why, as one that cannot land does at once', async () => {
+      replies();
+      let asks = 0;
+      const report = await doctorHost('trift', deps({
+        registry: registered(),
+        // the first answer is of a try before this check; the next, of the one its refresh set off
+        joining: () => Promise.resolve({ why: 'No route to host', tried: ++asks < 2 ? 1 : Date.now() }),
+      }));
+      expect(asks).toBe(2);
+      expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'warn', detail: 'has not joined this Mac yet: No route to host' });
+    });
+
+    it('reads a machine that serves this fleet, or one another fleet holds, as it is, whatever is owed it', async () => {
+      const owed = () => Promise.resolve({ why: 'No route to host', tried: Date.now() });
+      replies(SERVES);
+      expect((await doctorHost('trift', deps({ registry: registered(), joining: owed }))).checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: "runs this fleet's robots" });
+      replies({ homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET });
+      expect((await doctorHost('trift', deps({ registry: registered(), joining: owed }))).checks.find((c) => c.name === 'worker')).toEqual({
+        name: 'worker', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action: 'on bea-mbp, run svall host remove trift',
+      });
+    });
+
+    it('reads what is owed the machine asked from its own row of machines.list', () => {
+      const rows = [{ id: OTHER_MAC, joining: 'gone', joinTried: 5 }, { id: REMOTE, joining: '' }, { id: 'third' }];
+      expect(joiningOf(rows, REMOTE)).toEqual({ why: '' });
+      expect(joiningOf(rows, OTHER_MAC)).toEqual({ why: 'gone', tried: 5 });
+      expect(joiningOf(rows, 'third')).toBeUndefined();
+    });
   });
 
   it("says the fleet's home, which this machine serves as a worker, is home of this fleet, and asks no agent setup rows of it", async () => {

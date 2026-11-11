@@ -213,6 +213,14 @@ describe('svall worker', () => {
     expect(JSON.parse(fs.readFileSync(paths.fleetConfig, 'utf8')).id).toBe(own);
   });
 
+  it('a worker its home dials keeps the platform of that home, which needs none of a dial\'s other flags', async () => {
+    const t = { name: 'plain', home: makeHome(), managed: false };
+    const paths = resolvePaths(t.home);
+    const me = crypto.randomUUID();
+    await enrollHere(t, { homeMachine: crypto.randomUUID(), homeName: 'studio', fleetId: crypto.randomUUID(), homePlatform: 'linux' }, { platform: 'linux', token: async () => 'a'.repeat(48), daemonUp: async () => true, out: () => {}, me: () => me, load: async () => {} });
+    expect(JSON.parse(fs.readFileSync(paths.workerFile, 'utf8')).homePlatform).toBe('linux');
+  });
+
   it('enroll on a Mac restarts the fleet\'s launchd agent and waits for its daemon, as systemd does on Linux', async () => {
     const bin = makeHome();
     const calls = path.join(bin, 'calls');

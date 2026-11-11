@@ -5,7 +5,7 @@ import type { HostArgs, HostOp, HostStep } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
 import {
-  asideStep, groupSteps, machineName, machineNames, OP_TITLE, outcomeOf, plainStep, plural, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun,
+  asideStep, groupSteps, loginForward, machineName, machineNames, OP_TITLE, outcomeOf, overHome, plainStep, plural, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun,
 } from './host.js';
 import { useApp, useMeasure } from './hooks.js';
 import { startHost } from './hostRun.js';
@@ -13,19 +13,23 @@ import { MachineTerminal } from './MachineTerminal.js';
 import { answers } from './placement.js';
 import { placeTip } from './settings.js';
 import { Caret, Mark, More } from './icons.js';
+import type { App } from './store/index.js';
 import { VarField } from './VarField.js';
 
 // the machine's own setup, which installing this Mac's release there runs again
 const SETUP = /^svall(-dev)? setup$/;
+const isFarHome = (s: App): boolean => { const id = s.machines?.find((m) => m.name === s.hostMachine)?.id; return !!id && id === s.via?.home; };
 const FORGET = /\bhost remove \S+ --forget\b/;
 // what a failed row runs again as it ran; a home move goes back through its sheet, with its check and its words
 const RUN_AGAIN = new Set<HostOp>(['add', 'upgrade', 'rollback', 'remove']);
+const farId = (args: HostArgs): { id?: string } => (args.id ? { id: args.id } : {});
 
 /** What can be done to a machine in the registry, each on that machine and in the panel that follows it. `id`: the machine's,
  * where the row knows it, as a far home names itself otherwise than the registry; the registry's name is what svall takes. */
 export function MachineActions({ id: rowId, name: shown, home = false, worker = false }: { id?: string; name: string; home?: boolean; worker?: boolean }) {
   const running = useApp((s) => !!s.host?.running);
   const row = useApp((s) => s.machines?.find((m) => (rowId ? m.id === rowId : m.name === shown)));
+  const release = useApp((s) => (row?.far && s.via ? `${s.via.name ?? 'the home'}'s` : "this Mac's"));
   const name = row?.name ?? shown;
   // a terminal needs the destination the registry has for it, which the page may not have read yet
   const reachable = !!row?.ssh;
@@ -72,8 +76,9 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
       ...(above ? { bottom: window.innerHeight - at.top + 4 } : { top: at.bottom + 4 }) });
   });
   const store = () => app.store.getState();
-  const run = (op: HostOp) => { store().toggleHost(true, name); startHost(op, { name }); };
-  const ask = (forget: boolean) => { store().toggleHost(true, name); store().confirmHost({ name, forget }); };
+  const far = row?.far ? { id: row.id } : {};
+  const run = (op: HostOp) => { store().toggleHost(true, name); startHost(op, { name, ...far }); };
+  const ask = (forget: boolean) => { store().toggleHost(true, name); store().confirmHost({ name, forget, ...far }); };
   const item = (fn: () => void) => () => { close(); fn(); };
   return (
     <span className="machine-acts" ref={box}>
@@ -81,7 +86,7 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
       <button ref={more} className="btn sm" data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label="More for this machine" onClick={() => setOpen(!open)}><More /></button>
       {open && (
         <div ref={menu} className="machine-menu menu popover" role="menu" style={place}>
-          <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip="Install this Mac's release there" onClick={item(() => run('upgrade'))}>Upgrade to this Mac's release</button>
+          <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip={`Install ${release} release there`} onClick={item(() => run('upgrade'))}>Upgrade to {release} release</button>
           <button role="menuitem" className="menu-item" data-testid="machine-terminal" disabled={running || !reachable} data-tip="A terminal on this machine, for what Svall leaves to you there"
             onClick={item(() => store().openHostTerminal(name))}>Open a terminal there</button>
           {worker && id && (
@@ -125,7 +130,7 @@ function Outcome({ run }: { run: HostRun }) {
       <div className="acts">
         {o.next === 'rollback' && (
           <button className="btn" data-testid="host-rollback" data-tip="Put back the release the machine ran before"
-            onClick={() => startHost('rollback', { name })}>{OP_TITLE.rollback} {name}</button>
+            onClick={() => startHost('rollback', { name, ...farId(run.args) })}>{OP_TITLE.rollback} {name}</button>
         )}
         <button className="btn" data-testid="host-done" onClick={() => app.store.getState().toggleHost(false)}>Done</button>
       </div>
@@ -133,11 +138,12 @@ function Outcome({ run }: { run: HostRun }) {
   );
 }
 
-type Terminal = (command: string, forward?: number) => void;
+type Terminal = (command: string, forward?: number, step?: string) => void;
 
 function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: Terminal }) {
   const name = run.args.name;
-  const id = useApp((s) => s.machines?.find((m) => m.name === name)?.id);
+  // the run's own far id, as this Mac's registry may give its name to another machine
+  const id = useApp((s) => run.args.id ?? s.machines?.find((m) => m.name === name)?.id);
   // the tick asked for while svalld pushes it, and an agent update under way there
   const [asked, setAsked] = useState<boolean>();
   const [updating, setUpdating] = useState(false);
@@ -154,6 +160,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   const idle = !run.running;
   // no upgrade from a row while the machine runs a newer release or serves another Mac
   const noUpgrade = run.steps.some((s) => (s.step === 'release' || s.step === 'worker') && s.action);
+  const release = useApp((s) => (s.via?.name && s.via.home !== id ? `${s.via.name}'s` : "this Mac's"));
   // the rows svalld answers a change with go to the run the change was made in, known by its args, which its rows keep,
   // or to a check of the machine since
   const take = () => {
@@ -183,7 +190,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
     setFailed(undefined);
     (there ? app.api().call('machines.updateAgents', { machine, kinds: there }) : Promise.resolve({}))
       .then(() => mac && app.api().call('machines.updateAgents', { kinds: mac }))
-      .then(() => { if (!app.store.getState().host?.running) startHost('doctor', { name }); },
+      .then(() => { if (!app.store.getState().host?.running) startHost('doctor', { name, ...farId(run.args) }); },
         (e: Error) => setFailed(plainStep(e.message, machineNames(app.store.getState().machines))))
       .finally(() => setUpdating(false));
   };
@@ -201,7 +208,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       {/* a program row keeps its install command's terminal beside the box that says the machine does not need it */}
       {notNeeded(row) && row.run && terminal && idle && (
         <button className="btn sm" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
-          onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>
+          onClick={() => terminal(row.run!, row.forward, row.step)}>Open terminal</button>
       )}
       {row.tick ? (
         // a tick under way keeps the box, and focus on it, and takes no second change
@@ -214,22 +221,22 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
           data-tip={`Runs ${[updates && `${row.run} on ${name}`, onMac && `${onMac.map((k) => AGENT_UPDATE[k]).join(' && ')} on this Mac`].filter(Boolean).join(', then ')}, then checks again`}
           onClick={() => update(id as MachineId, updates, onMac)}>Update</button>
       ) : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && !row.action && idle ? (
-        <button className="btn sm" data-testid="host-upgrade" data-tip="Install this Mac's release there" onClick={() => startHost('upgrade', { name })}>Upgrade</button>
+        <button className="btn sm" data-testid="host-upgrade" data-tip={`Install ${release} release there`} onClick={() => startHost('upgrade', { name, ...farId(run.args) })}>Upgrade</button>
       ) : run.op === 'doctor' && row.step === 'worker' && row.status === 'fail' && !noUpgrade && idle ? (
-        <button className="btn sm" data-testid="host-worker" data-tip={`Install this Mac's release there and run this fleet's robots on ${name}`}
-          onClick={() => startHost('upgrade', { name })}>Set up</button>
+        <button className="btn sm" data-testid="host-worker" data-tip={`Install ${release} release there and run this fleet's robots on ${name}`}
+          onClick={() => startHost('upgrade', { name, ...farId(run.args) })}>Set up</button>
       ) : run.op === 'doctor' && row.run && SETUP.test(row.run) && run.steps.some((s) => s.step === 'release' && s.status === 'ok') && !noUpgrade && idle ? (
-        <button className="btn sm" data-testid={`host-repair-${row.step}`} data-tip={`Install this Mac's release on ${name} again, whose setup puts this right`}
-          onClick={() => startHost('upgrade', { name })}>Repair</button>
+        <button className="btn sm" data-testid={`host-repair-${row.step}`} data-tip={`Install ${release} release on ${name} again, whose setup puts this right`}
+          onClick={() => startHost('upgrade', { name, ...farId(run.args) })}>Repair</button>
       ) : row.step.startsWith('mirror:var:') && row.status === 'warn' && row.action && id && idle ? (
         <VarField machine={id as MachineId} name={name} varName={row.step.slice('mirror:var:'.length)} here={row.here} testid={`host-var-${row.step}`}
           take={() => { setFailed(undefined); return take(); }} failed={(m) => fail(new Error(m))} />
       ) : row.status === 'fail' && row.action && FORGET.test(row.action) && id && idle ? (
         <button className="btn sm" data-testid={`host-forget-${row.step}`} data-tip={`Drop the route to ${name}, leaving the machine untouched`}
-          onClick={() => app.store.getState().confirmHost({ name, forget: true })}>Forget</button>
+          onClick={() => app.store.getState().confirmHost({ name, forget: true, ...farId(run.args) })}>Forget</button>
       ) : row.run && terminal && idle ? (
         <button className="btn sm" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
-          onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>
+          onClick={() => terminal(row.run!, row.forward, row.step)}>Open terminal</button>
       ) : RUN_AGAIN.has(run.op) && !row.action && row.status === 'fail' && idle ? (
         <button className="btn sm" data-testid={`host-again-${row.step}`} onClick={() => startHost(run.op, run.args)}>Try again</button>
       ) : null}
@@ -292,17 +299,18 @@ function Checklist({ run, terminal, open: { fine, setup }, unfold }: { run: Host
 
 // from: an add that stopped short, whose name and ssh fill the form in again
 function AddForm({ running, from }: { running: boolean; from?: HostArgs }) {
+  const home = useApp((s) => s.via?.name);
   const [name, setName] = useState(from?.name ?? '');
   const [ssh, setSsh] = useState(from?.ssh ?? '');
   return (
     <>
       <div className="host-note" data-testid="host-intro">
-        <span>Svall installs itself on the machine over ssh and lists what is left for you to do.</span>
+        <span>{home ? `${home} installs Svall on the machine over its own ssh` : 'Svall installs itself on the machine over ssh'} and lists what is left for you to do.</span>
         <span>The machine needs:</span>
         <ul>
           <li>Ubuntu 22.04 LTS or newer, with systemd</li>
           <li>x86-64 or arm64</li>
-          <li>An account you reach over ssh, with any home</li>
+          <li>{home ? `An account ${home} reaches over ssh with its own key, with any home` : 'An account you reach over ssh, with any home'}</li>
         </ul>
       </div>
       <div className="host-form">
@@ -333,6 +341,11 @@ export function HostSetup() {
   const terminal = useApp((s) => s.hostTerminal);
   // the registry's destination, or the one an add not yet in the registry was given
   const ssh = useApp((s) => s.machines?.find((m) => m.name === s.hostMachine)?.ssh ?? (s.host?.args.name === s.hostMachine ? s.host?.args.ssh : undefined));
+  // a machine of a far home is reached through that home, whose own ssh knows it
+  const homeSsh = useApp((s) => (s.via && !isFarHome(s) ? s.machines?.find((m) => m.id === s.via!.home)?.ssh : undefined));
+  const homeLabel = useApp((s) => s.via?.name);
+  const forward = homeSsh && terminal?.run && !terminal.bare ? loginForward(terminal.run, terminal.forward) : terminal?.forward;
+  const typed = !homeSsh || terminal?.bare ? terminal?.run : terminal?.run ? overHome(ssh!, terminal.run, forward) : `ssh ${ssh}`;
   const shut = useRef<HTMLButtonElement>(null);
   // kept while a terminal there stands in for the checklist, and folded again once the panel closes
   const [unfolded, unfold] = useState<Open>(SHUT);
@@ -364,7 +377,7 @@ export function HostSetup() {
   const ended = () => {
     if (!terminal?.fromPanel) { app.store.getState().toggleHost(false); return; }
     app.store.getState().closeHostTerminal();
-    if (known && machine && !running) startHost('doctor', { name: machine });
+    if (known && machine && !running) startHost('doctor', { name: machine, ...(shown && farId(shown.args)) });
   };
   const close = () => {
     if (term) ended();
@@ -379,9 +392,9 @@ export function HostSetup() {
           <CloseX ref={shut} onClose={close} testid="host-close" />
         </div>
         <div className="host-body">
-          {term ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} forward={terminal.forward} back={!!terminal.fromPanel && known} onEnd={ended} /> : (
+          {term ? <MachineTerminal name={machine} on={homeSsh ? homeLabel : undefined} ssh={homeSsh ?? ssh} run={typed} forward={forward} back={!!terminal.fromPanel && known} onEnd={ended} /> : (
             <>
-              {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions name={machine} home={isHome} worker={isWorker} /></div>}
+              {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions id={shown?.args.id} name={machine} home={isHome} worker={isWorker} /></div>}
               {confirm && (
                 <div className="host-note" data-testid="host-confirm" data-op={confirm.forget ? 'forget' : 'remove'}>
                   <span>
@@ -390,7 +403,7 @@ export function HostSetup() {
                   </span>
                   <div className="acts">
                     <button className="btn dan" data-testid="host-confirm-yes"
-                      onClick={() => startHost('remove', confirm.forget ? { name: confirm.name, forget: true } : { name: confirm.name })}>
+                      onClick={() => startHost('remove', { name: confirm.name, ...(confirm.forget && { forget: true }), ...(confirm.id && { id: confirm.id }) })}>
                       {confirm.forget ? 'Forget' : 'Remove'} {confirm.name}
                     </button>
                     <button className="btn" data-testid="host-confirm-no"
@@ -399,7 +412,8 @@ export function HostSetup() {
                 </div>
               )}
               {shown && (
-                <Checklist run={shown} terminal={machine && ssh ? (run, forward) => app.store.getState().openHostTerminal(machine, run, forward) : undefined}
+                // the fix of a home that cannot log in is that home's own
+                <Checklist run={shown} terminal={machine && ssh ? (line, port, step) => app.store.getState().openHostTerminal(machine, line, port, step === 'ssh' || step === 'master') : undefined}
                   open={unfolded} unfold={unfold} />
               )}
             </>

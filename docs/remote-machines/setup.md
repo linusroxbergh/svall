@@ -13,7 +13,7 @@ machine needs, how to add it, and how to look after it.
 | | Mac | Linux machine |
 | --- | --- | --- |
 | System | macOS 15 or newer | Ubuntu LTS 22.04 or newer, x86-64 or arm64. Ubuntu 24.04 is the tested release; a release other than an LTS is a warning, and an older Ubuntu or any other system is refused. |
-| Svall | The app (see the [README](../../README.md#quickstart)) | Installed by `svall host add` from the Mac. It brings its own Node and tmux and needs no clone, pnpm or build tools. |
+| Svall | The app (see the [README](../../README.md#quickstart)) | Installed by `svall host add` from the Mac, or from a server that is the fleet's home. It brings its own Node and tmux and needs no clone, pnpm or build tools. |
 | Services | launchd, as for any fleet | systemd user services, with lingering on so the fleet keeps running after you log out; `svall host add` turns it on |
 | Tools | Git | Git (`sudo apt install git`) |
 | Network | Tailscale, and OpenSSH to the Linux account with a key ssh can use without asking (Tailscale SSH works); a password gets only past the first login | Tailscale |
@@ -297,6 +297,26 @@ The app on such a Mac opens on the home: see [A fleet whose home is a server](ho
 The socket, `w/<12 hex>.sock` in the home's fleet home, is a Unix socket like the
 hook socket and longer: with a Mac on either end a home's account home can be at most 76 bytes for the private fleet, and
 80 with Linux on both, and `fleet enroll-worker` refuses a longer one, saying how much shorter it must be.
+
+## A Linux worker of a server home
+
+With the fleet's home on a server, Settings → Machines → **Add machine** and `svall host add box --ssh ada@box` on the Mac run on that home. So do **Check**, **Upgrade**, **Remove** and `svall host doctor`, `upgrade`, `consent` and
+`remove` of its workers, and their steps come back to the panel or the terminal as they run. `svall host list` lists them from the home, as `box`'s ssh destination is the home's, not this Mac's. Those of the home itself run from the Mac.
+
+The home logs in to the new machine with its own ssh: its key and its `known_hosts`, never the Mac's. Its daemon runs with no ssh agent, so that takes a key with no passphrase on the server, or Tailscale SSH. The first add
+often stops at "studio cannot log in to ada@box". **Open terminal** opens one on studio with the fix typed:
+
+```sh
+test -f ~/.ssh/id_ed25519 || ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519; ssh-copy-id 'ada@box'
+```
+
+Answer its prompts, then add the machine again. If `box` takes keys alone, add studio's `~/.ssh/id_ed25519.pub` to its `.ssh/authorized_keys` by hand. From a Mac that logs in to both: `ssh ada@studio cat .ssh/id_ed25519.pub | ssh ada@box 'cat >> .ssh/authorized_keys'`. Every
+terminal for `box` itself opens on studio too, with an `ssh` to it typed, and a sign-in that waits on a port forwards it on both hops. Each run first checks that the home answers as the machine and the fleet this fleet's `worker.json` names, and stops on the `relay` step if not.
+
+The home installs its own release on a machine of its own architecture, keeping its signature. For another architecture the Mac copies the signed archive it carries to the home over its own connection and names it with `--release`, for the same release only; the home checks its
+signature and removes the copy as the run ends, and any a stopped run left after a day. Nothing is downloaded. A CLI that carries none, as Svall Dev or a tarball's, and a run by hand on the server are told to name one with `--release`, a path on the home. Stop or quitting the app ends the run there, and leaves what a Stop always left. A link that drops with no word, as a Mac whose lid closes, may leave the run to finish on the server. Adding again goes on from either.
+
+The worker's `worker.json` names the home and its platform, so it calls a Linux home by name.
 
 ## A server as the fleet's home
 

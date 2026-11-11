@@ -189,9 +189,9 @@ function Machines() {
   const registered = new Map(machines?.map((m) => [m.id, m]));
   const known = new Set<string>(fleetRows?.map((m) => m.id));
   const rows = [
-    ...fleetRows?.map((f) => ({ id: f.id, name: registered.get(f.id)?.name ?? f.name, role: f.role as string | undefined, dialsIn: f.dialsIn, robots: f.robots as number | undefined, ssh: registered.get(f.id)?.ssh, check: registered.get(f.id)?.check })) ?? [],
+    ...fleetRows?.map((f) => ({ id: f.id, name: registered.get(f.id)?.name ?? f.name, role: f.role as string | undefined, dialsIn: f.dialsIn, robots: f.robots as number | undefined, ssh: registered.get(f.id)?.ssh, check: registered.get(f.id)?.check, joining: f.joining })) ?? [],
     // on a registry here and not yet a machine of this fleet
-    ...machines?.filter((m) => m.ssh && !known.has(m.id)).map((m) => ({ id: m.id, name: m.name, role: undefined, dialsIn: undefined, robots: undefined, ssh: m.ssh, check: m.check })) ?? [],
+    ...machines?.filter((m) => m.ssh && !known.has(m.id)).map((m) => ({ id: m.id, name: m.name, role: undefined, dialsIn: undefined, robots: undefined, ssh: m.ssh, check: m.check, joining: undefined })) ?? [],
   ];
   // a home on this Mac with no worker is what it always was
   const shown = !via && !rows.some((r) => r.role !== 'home') ? [] : rows;
@@ -204,12 +204,12 @@ function Machines() {
         <div key={m.id} className="machine" data-testid={`machine-${m.name}`} data-role={m.role}>
           <div className="row">
             <span><b>{m.id === via?.machine || (m.role === 'home' && !via) ? 'this Mac' : m.name}</b> {[m.role, m.ssh].filter(Boolean).join(' · ')}{m.robots ? ` · ${m.robots} ${m.robots === 1 ? 'robot' : 'robots'}` : ''}</span>
-            <b className="machine-said">
-              {[m.check?.release ? `release ${m.check.release}` : '', m.role === 'home' ? '' : m.check ? checked(m.check) : m.ssh ? 'not checked yet' : m.dialsIn ? 'dials in' : '']
+            <b className="machine-said" data-testid={m.joining === undefined ? undefined : `machine-joining-${m.name}`}>
+              {[m.joining !== undefined ? `has not joined yet${m.joining ? `: ${m.joining}` : ''}` : '', m.check?.release ? `release ${m.check.release}` : '', m.role === 'home' ? '' : m.check ? checked(m.check) : m.ssh ? 'not checked yet' : m.dialsIn ? 'dials in' : '']
                 .filter(Boolean).join(' · ')}
             </b>
           </div>
-          {m.ssh && (via ? m.role === 'home' : m.role !== 'home') && <MachineActions id={m.id} name={m.name} home={m.role === 'home'} worker={m.role === 'worker' && !m.dialsIn} />}
+          {m.ssh && (via ? m.role === 'home' || registered.get(m.id)?.far : m.role !== 'home') && <MachineActions id={m.id} name={m.name} home={m.role === 'home'} worker={!via && m.role === 'worker' && !m.dialsIn} />}
         </div>
       ))}
       {error && (
@@ -218,9 +218,9 @@ function Machines() {
           <b><button className="btn sm" data-testid="machines-reload" onClick={list}>Read again</button></b>
         </div>
       )}
-      {!via && (
+      {(!via || via.online) && (
         <div className="row">
-          <span>another machine<Info id="hosts">Svall installs itself on a Linux machine over ssh and reports what is left to do. From a terminal: <code>svall host</code></Info></span>
+          <span>another machine<Info id="hosts">{via ? `${via.name ?? 'The home'} installs Svall on a Linux machine over its own ssh and reports what is left to do.` : 'Svall installs itself on a Linux machine over ssh and reports what is left to do.'} From a terminal: <code>svall host</code></Info></span>
           <b><button className="btn sm" data-testid="machine-add" onClick={() => app.store.getState().toggleHost(true)}>Add machine</button></b>
         </div>
       )}

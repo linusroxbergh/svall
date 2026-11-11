@@ -100,7 +100,7 @@ export const STUDIO_RECORD = { name: 'studio', ssh: 'ada@studio', platform: 'lin
  * robot of its own, a worker's copy and the phone's record. `sameId`: studio goes by the fleet's id, as a joined worker or a way back's destination does.
  * `fleets`: the fleet's folder on each, in its user's home.
  */
-export async function world(o: { sameId?: boolean; fleets?: [string, string] } = {}): Promise<{ mac: Side; studio: Side; manifest: HomeManifest; archive: { bytes: Buffer; sha256: string }; enrolment: (t: string, m: HomeManifest) => Enrolment }> {
+export async function world(o: { sameId?: boolean; fleets?: [string, string]; workers?: HomeManifest['workers'] } = {}): Promise<{ mac: Side; studio: Side; manifest: HomeManifest; archive: { bytes: Buffer; sha256: string }; enrolment: (t: string, m: HomeManifest) => Enrolment }> {
   const mac = side(MAC, o.fleets?.[0]);
   const studio = side(STUDIO, o.fleets?.[1]);
   const state: FleetState = {
@@ -141,7 +141,7 @@ export async function world(o: { sameId?: boolean; fleets?: [string, string] } =
   await studio.daemon.start();
   await mac.daemon.stop();
   const [macHome, studioHome] = o.fleets ? [path.dirname(mac.paths.home), path.dirname(studio.paths.home)] : [MAC_RECORD.home, '/home/ada'];
-  const manifest: HomeManifest = { id: ID, fleetId: FLEET as never, from: MAC, to: STUDIO, toName: 'studio', toHome: studioHome as never, record: { ...MAC_RECORD, home: macHome } as never, phone: { serving: true, logins: ['ada@tailnet'] }, adoptKeySha256: ADOPT_SHA };
+  const manifest: HomeManifest = { id: ID, fleetId: FLEET as never, from: MAC, to: STUDIO, toName: 'studio', toHome: studioHome as never, record: { ...MAC_RECORD, home: macHome } as never, ...(o.workers && { workers: o.workers }), phone: { serving: true, logins: ['ada@tailnet'] }, adoptKeySha256: ADOPT_SHA };
   const packed = await packFleet(mac.paths, manifest);
   await mac.daemon.start();
   const enrolment = (token: string, m: HomeManifest): Enrolment => ({
@@ -185,6 +185,7 @@ export const POINTS_OF = {
   move: ['adopt.staging', 'adopt.staged', 'adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started', 'restore.restarting', 'adopt.committed', 'restore.file', 'restore.done', 'abort.recorded', 'join.kept', 'join.state', 'join.docs', 'join.worker', 'join.done', 'mark.written'],
   back: ['enrol.written', 'deliver.owed', 'deliver.told'],
   driver: ['move.paused', 'move.copied', 'move.marked', 'move.joined'],
+  rejoin: ['rejoin.enrolling', 'rejoin.enrolled', 'rejoin.done'],
 } as const satisfies Record<string, readonly HomeFailpoint[]>;
 export const pointsOf = Object.values(POINTS_OF).flat() as HomeFailpoint[];
 if (pointsOf.length !== HOME_FAILPOINTS.length || HOME_FAILPOINTS.some((p) => !pointsOf.includes(p))) throw new Error('POINTS_OF does not name every failpoint once');

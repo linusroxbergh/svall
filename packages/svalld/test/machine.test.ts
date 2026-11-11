@@ -92,10 +92,15 @@ describe('what a home calls its own machine', () => {
   });
 
   it('a worker calls its home by name, but a server its Mac home dials calls that Mac this Mac', () => {
-    expect(homeWordOnWorker('ada-mac', false, 'linux')).toBe('this Mac');
-    expect(homeWordOnWorker('studio', true, 'darwin')).toBe('studio');
+    expect(homeWordOnWorker('ada-mac', false, 'darwin', 'linux')).toBe('this Mac');
+    expect(homeWordOnWorker('studio', true, 'linux', 'darwin')).toBe('studio');
     // a Mac worker is this Mac itself, so the Mac that dials it goes by name
-    expect(homeWordOnWorker('ada-mac', false, 'darwin')).toBe('ada-mac');
+    expect(homeWordOnWorker('ada-mac', false, 'darwin', 'darwin')).toBe('ada-mac');
+  });
+
+  it('a Linux worker of a Linux home calls it by name, and a file naming no platform was enrolled by a Mac', () => {
+    expect(homeWordOnWorker('studio', false, 'linux', 'linux')).toBe('studio');
+    expect(homeWordOnWorker('ada-mac', false, undefined, 'linux')).toBe('this Mac');
   });
 });
 

@@ -100,6 +100,26 @@ describe('host remove', () => {
     expect(refreshLinks).toHaveBeenCalledOnce();
   });
 
+  it('refuses a worker that dials in while a sibling fleet that dials it too is enrolling, and every fleet keeps its token', async () => {
+    const { enrolLock } = await import('@svall/svalld/kernel-lock');
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.put(REMOTE, { name: 'ada-mac', platform: 'darwin', arch: 'arm64', home: HOME, svallBase: BASE, dial: 'worker' });
+    registry.save();
+    const ours = issueToken(resolvePaths(fleet), REMOTE);
+    const sibling = resolvePaths(path.join(work, '.svall-work'));
+    fs.mkdirSync(sibling.home);
+    fs.writeFileSync(sibling.fleetConfig, JSON.stringify({ id: OTHER_FLEET }));
+    const theirs = issueToken(sibling, REMOTE);
+    const held = await enrolLock(sibling.home);
+    const busy = await removeHost('ada-mac', {}, deps({ registry }));
+    held?.();
+    expect(busy.stopped).toBe('registry');
+    expect(step('registry').at(-1)).toMatchObject({ status: 'fail', detail: 'this home is enrolling a worker, or moving the fleet', action: 'try again in a moment' });
+    expect(tokenFor(sibling, REMOTE)).toBe(theirs);
+    expect(tokenFor(resolvePaths(fleet), REMOTE)).toBe(ours);
+    expect(registry.get('ada-mac')).toBeDefined();
+  });
+
   it('refuses a worker that dials in while a robot here runs on it', async () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.put(REMOTE, { name: 'ada-mac', platform: 'darwin', arch: 'arm64', home: HOME, svallBase: BASE, dial: 'worker' });
@@ -242,6 +262,21 @@ describe('host remove', () => {
     expect(step('uninstall').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`trift.test now reaches machine ${OTHER_MAC}, not trift (${REMOTE})`) });
     expect(ssh.remoteCalls().some((w) => w.includes('uninstall'))).toBe(false);
     expect(registry.get('trift')).toBeDefined();
+  });
+
+  it('removes a worker of this fleet that still names the home the fleet left', async () => {
+    ssh.clearReplies();
+    const far = path.join(work, 'far');
+    const base = `${far}/.local/share/svall`;
+    fs.mkdirSync(`${base}/current/bin`, { recursive: true });
+    fs.writeFileSync(`${base}/current/bin/svall`, `#!/bin/sh\ncase "$1" in version) printf '%s\\n' '${JSON.stringify({ machineId: REMOTE }, null, 2)}' ;; uninstall) echo removed ;; esac\n`, { mode: 0o755 });
+    fs.mkdirSync(path.join(far, '.svall'), { recursive: true });
+    fs.writeFileSync(path.join(far, '.svall', 'worker.json'), JSON.stringify({ homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: FLEET, token: TOKEN }));
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: far, svallBase: base }, REMOTE);
+    ssh.execute({});
+    expect((await removeHost('trift', {}, deps({ registry }))).stopped).toBeUndefined();
+    expect(registry.get('trift')).toBeUndefined();
   });
 
   it('uninstalls nothing on a machine where a fleet home serves another Mac, or whose fleet homes cannot be read, as svall uninstall there stops every fleet on it', async () => {

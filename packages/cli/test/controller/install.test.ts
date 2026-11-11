@@ -6,8 +6,8 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PROTOCOL_VERSION } from '@svall/protocol';
 import {
-  bootstrapSetup, companionAsset, companionCache, downloadCompanion, inspectCompanion,
-  requireCompatible, uploadArchive,
+  bootstrapSetup, carriedCompanion, companionAsset, companionCache, downloadCompanion, inspectCompanion, noCompanion, ownCompanion,
+  requireCompatible, uploadArchive, wantedCompanion,
 } from '../../src/controller/install.js';
 import { SshMaster } from '../../src/controller/ssh.js';
 import { companionArchive, ephemeralSigner, smuggledArchive, type ArchiveOptions } from './archive.js';
@@ -65,7 +65,7 @@ describe('the companion archive', () => {
 
   it('refuses a release the controller does not run itself', async () => {
     const c = await inspect(makeArchive({ version: '9.9.9', signed: true }));
-    expect(() => requireCompatible(c, { ...CONTROLLER, arch: 'arm64' })).toThrow("is release 9.9.9, not this controller's 1.2.3; a worker runs this Mac's release");
+    expect(() => requireCompatible(c, { ...CONTROLLER, arch: 'arm64' })).toThrow("is release 9.9.9, not this controller's 1.2.3; a worker runs its home's release");
   });
 
   it('lets a development controller install any archive of its own protocol', async () => {
@@ -140,6 +140,50 @@ describe('where the companion comes from', () => {
     }));
     expect(companionAsset(root, 'linux-arm64')).toEqual({ url: 'https://example.test/c-arm64.tar.gz', sha256: 'aa', unsignedBuild: false });
     expect(companionAsset(root, 'linux-x64')).toBeUndefined();
+  });
+
+  it('makes a companion of this machine\'s own installed release, which a controller takes as it is, for its own platform alone', async () => {
+    const root = releaseRoot();
+    const tree = path.join(root, 'prefix');
+    fs.mkdirSync(tree, { recursive: true });
+    execFileSync('tar', ['-xzf', makeArchive({ platform: 'linux-arm64', signed: true }), '-C', tree]);
+    const own = path.join(tree, 'releases', '1.2.3');
+    const made = ownCompanion(own, 'linux-arm64', path.join(root, 'cache'));
+    expect(made?.unsignedBuild).toBe(false);
+    const c = await inspect(made!.archive);
+    expect(c).toMatchObject({ version: '1.2.3', platform: 'linux-arm64', signed: true });
+    expect(ownCompanion(own, 'linux-x64', path.join(root, 'cache'))).toBeUndefined();
+    expect(ownCompanion(root, 'linux-arm64', path.join(root, 'cache'))).toBeUndefined();
+  });
+
+  it('names the archive it carries for a platform, and none it only names on the network or has lost', () => {
+    const root = releaseRoot();
+    fs.mkdirSync(path.join(root, 'companions'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'companions', 'c.tar.gz'), 'held');
+    fs.writeFileSync(path.join(root, 'release.json'), JSON.stringify({ version: '1.2.3', companions: { 'linux-arm64': { url: 'https://example.test/c.tar.gz', sha256: 'aa' }, 'linux-x64': { url: 'companions/c.tar.gz', sha256: 'bb' } } }));
+    expect(carriedCompanion(root, 'linux-x64')).toBe(path.join(root, 'companions', 'c.tar.gz'));
+    expect(carriedCompanion(root, 'linux-arm64')).toBeUndefined();
+    expect(carriedCompanion(root, 'linux-riscv64')).toBeUndefined();
+    fs.rmSync(path.join(root, 'companions', 'c.tar.gz'));
+    expect(carriedCompanion(root, 'linux-x64')).toBeUndefined();
+  });
+
+  it('knows a far step that lacks a companion, and no other', () => {
+    expect(wantedCompanion({ step: 'release', status: 'fail', detail: noCompanion('linux-arm64') })).toBe('linux-arm64');
+    expect(wantedCompanion({ step: 'release', status: 'ok', detail: noCompanion('linux-arm64') })).toBeUndefined();
+    expect(wantedCompanion({ step: 'upload', status: 'fail', detail: noCompanion('linux-arm64') })).toBeUndefined();
+    expect(wantedCompanion({ step: 'release', status: 'fail', detail: 'the archive is another' })).toBeUndefined();
+  });
+
+  it('an archive that cannot be put in place leaves no part of it', () => {
+    const base = fs.mkdtempSync(path.join(work, 'own-'));
+    const root = path.join(base, 'releases', '1.2.3');
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(path.join(root, 'release.json'), JSON.stringify({ version: '1.2.3', platform: 'linux-arm64' }));
+    const dir = path.join(base, 'cache');
+    fs.mkdirSync(path.join(dir, 'svall-own-1.2.3-linux-arm64.tar.gz', 'taken'), { recursive: true });
+    expect(() => ownCompanion(root, 'linux-arm64', dir)).toThrow();
+    expect(fs.readdirSync(dir)).toEqual(['svall-own-1.2.3-linux-arm64.tar.gz']);
   });
 
   it('finds a companion the release carries, pinned relative to its root, inside the release wherever it is', async () => {

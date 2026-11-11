@@ -114,6 +114,7 @@ export function resolvePaths(home: string = svallHome()) {
     homeDeliver: path.join(home, 'home-deliver.json'),
     // what a freeze turned off of the phone link, until it is back or the fleet has gone
     homeServed: path.join(home, 'home-served.json'),
+    workersOwed: path.join(home, 'workers-owed.json'),
     // each home move's journal, on either side of it
     homeMoves: path.join(home, 'journal', 'home'),
   };

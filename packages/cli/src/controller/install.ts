@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -44,7 +45,7 @@ export function requireCompatible(c: CompanionArchive, o: { release: string; pro
   if (c.protocol !== o.protocol) throw new Error(`${c.archive} speaks protocol ${c.protocol}, not this controller's ${o.protocol}`);
   // a development controller has no release of its own to match, so the protocol is the whole agreement
   if (o.release !== 'dev' && c.version !== o.release) {
-    throw new Error(`${c.archive} is release ${c.version}, not this controller's ${o.release}; a worker runs this Mac's release`);
+    throw new Error(`${c.archive} is release ${c.version}, not this controller's ${o.release}; a worker runs its home's release`);
   }
   if (!c.signed && !o.allowUnsigned) throw new Error(`${c.archive} carries no signature; install it with --allow-unsigned or get a signed release`);
 }
@@ -60,6 +61,37 @@ export function companionAsset(releaseRoot: string, platform: string): { url: st
   if (typeof asset?.url !== 'string' || typeof asset.sha256 !== 'string') return undefined;
   const url = new URL(asset.url, pathToFileURL(path.join(releaseRoot, path.sep))).href;
   return { url, sha256: asset.sha256, unsignedBuild: manifest.unsigned === true };
+}
+
+const NO_COMPANION = /^this build publishes no companion for (linux-[a-z0-9]+);/;
+
+export const noCompanion = (platform: string): string => `this build publishes no companion for ${platform}; name one with --release <archive>`;
+
+/** The platform a far run's step says it has no companion for: what a relay can answer with the archive it carries. */
+export const wantedCompanion = (step: { step?: unknown; status?: unknown; detail?: unknown }): string | undefined =>
+  (step.step === 'release' && step.status === 'fail' && typeof step.detail === 'string' ? NO_COMPANION.exec(step.detail)?.[1] : undefined);
+
+/** The archive this release holds for `platform` on this machine; none for one it names only on the network, as nothing is downloaded for a home. */
+export function carriedCompanion(releaseRoot: string, platform: string): string | undefined {
+  const asset = companionAsset(releaseRoot, platform);
+  if (!asset?.url.startsWith('file:')) return undefined;
+  const file = fileURLToPath(asset.url);
+  return fs.existsSync(file) ? file : undefined;
+}
+
+/** This machine's own installed release as a companion for `platform`, signed sums and all; none for another platform, or for a checkout. */
+export function ownCompanion(releaseRoot: string, platform: string, dir: string): { archive: string; unsignedBuild: boolean } | undefined {
+  const manifest = readManifest(releaseRoot) as { platform?: unknown; unsigned?: unknown } | undefined;
+  const releases = path.dirname(releaseRoot);
+  if (manifest?.platform !== platform || path.basename(releases) !== 'releases') return undefined;
+  fs.mkdirSync(dir, { recursive: true });
+  const archive = path.join(dir, `svall-own-${path.basename(releaseRoot)}-${platform}.tar.gz`);
+  const part = `${archive}.part-${process.pid}`;
+  try {
+    execFileSync('tar', ['-czf', part, '-C', path.dirname(releases), `releases/${path.basename(releaseRoot)}`], { timeout: TAR_TIMEOUT });
+    fs.renameSync(part, archive);
+  } finally { fs.rmSync(part, { force: true }); }
+  return { archive, unsignedBuild: manifest.unsigned === true };
 }
 
 const sha256Of = (body: Buffer): string => crypto.createHash('sha256').update(body).digest('hex');
@@ -92,14 +124,14 @@ export async function downloadCompanion(o: { url: string; sha256: string; dir: s
   return dest;
 }
 
-async function remote(master: SshMaster, argv: string[], what: string, timeoutMs: number): Promise<string> {
+async function remote(master: Pick<SshMaster, 'run'>, argv: string[], what: string, timeoutMs: number): Promise<string> {
   const r = await master.run(argv, { timeoutMs });
   if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `${what} exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`);
   return r.stdout;
 }
 
 /** Streams the archive onto the far machine. The far shell is handed one word for the path. */
-export async function uploadArchive(master: SshMaster, o: { archive: string; remote: string }): Promise<void> {
+export async function uploadArchive(master: Pick<SshMaster, 'run'>, o: { archive: string; remote: string }): Promise<void> {
   const dir = path.posix.dirname(o.remote);
   await remote(master, ['mkdir', '-p', shq(dir)], `mkdir -p ${dir}`, TAR_TIMEOUT);
   const data = fs.readFileSync(o.archive);

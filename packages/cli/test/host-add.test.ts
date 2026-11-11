@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -5,8 +6,10 @@ import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { PROTOCOL_VERSION } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
-import { tokenFor } from '@svall/svalld/placement/workers';
-import { addHost } from '../src/controller/host.js';
+import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
+import { hostLock } from '@svall/svalld/kernel-lock';
+import { addHost, removeHost, rollbackHost, upgradeHost } from '../src/controller/host.js';
+import { wantedCompanion } from '../src/controller/install.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { companionArchive, ephemeralSigner } from './controller/archive.js';
 import {
@@ -35,7 +38,7 @@ describe('host add', () => {
       'df -Pk "$HOME"', 'l=$(loginctl show-us',
     ]);
     expect(order.slice(6)).toEqual([
-      'svall version', 'mkdir -p', 'cat > "$1"', 'mkdir -p', 'PATH=/usr/bin:/bin:/', 'svall setup', 'rm -rf',
+      'svall version', '[ -d "$1" ] || exit ', 'mkdir -p', 'cat > "$1"', 'mkdir -p', 'PATH=/usr/bin:/bin:/', 'svall setup', 'rm -rf',
       'sh -c', 'svall doctor', 'svall version', '[ -f "$1/$2" ] && ec', 'svall version', 'svall worker',
       'claude --version', 'claude auth', 'codex --version', 'codex login', 'opencode --version', 'opencode auth',
       'svall connection-info', 'svall version', 'sh -c',
@@ -57,10 +60,10 @@ describe('host add', () => {
 
     expect(out).toEqual({ result: 'ready', actions: [] });
     const mac = registry.localMachine().name;
-    expect(ssh.remoteCalls().find((w) => w.includes('enroll'))).toEqual([SVALL, 'worker', 'enroll', '--home-machine', MAC, '--home-name', mac, '--fleet-id', FLEET]);
+    expect(ssh.remoteCalls().find((w) => w.includes('enroll'))).toEqual([SVALL, 'worker', 'enroll', '--home-machine', MAC, '--home-name', mac, '--fleet-id', FLEET, '--home-platform', registry.localMachine().platform]);
     // worker.json there takes, on its stdin, the token this fleet's daemon opens the link with
     expect(fs.readFileSync(input, 'utf8')).toBe(tokenFor(resolvePaths(fleet), REMOTE));
-    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'ok', detail: `trift serves this fleet as a worker of ${mac}; systemctl --user restart svall-svalld@private.service` });
+    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'ok', detail: 'trift serves this fleet as a worker of this Mac; systemctl --user restart svall-svalld@private.service' });
     expect(ssh.remoteCalls().some((w) => w.includes('gateway'))).toBe(false);
     // this fleet's daemon links it without waiting for its next start
     expect(refreshed).toBe(1);
@@ -138,9 +141,12 @@ describe('host add', () => {
 
   it('adds nothing over the fleet\'s own home, which would make it a worker of its worker', async () => {
     fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: FLEET, token: 't'.repeat(48), homeName: 'trift' }));
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: FLEET }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: FLEET }, null, 2) });
     healthy();
-    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
+    // listed, as the home it serves is past what a worker refuses
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     expect(out.stopped).toBe('release');
     expect(step('release').at(-1)?.detail).toBe("trift is this fleet's home, so it cannot be added as its worker");
     expect(step('release').at(-1)?.action).toBe("svall host upgrade trift takes it to this Mac's release");
@@ -149,9 +155,11 @@ describe('host add', () => {
 
   it('a named fleet\'s refusal names its profile in the command it gives, as a copied one would act on the private fleet', async () => {
     fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: FLEET, token: 't'.repeat(48), homeName: 'trift' }));
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: FLEET }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: FLEET }, null, 2) });
     healthy();
-    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry: MachineRegistry.load(path.join(work, 'config')), fleet: { home: fleet, profile: 'fartest' } }));
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry, fleet: { home: fleet, profile: 'fartest' } }));
     expect(out.stopped).toBe('release');
     expect(step('release').at(-1)?.action).toBe("svall -p fartest host upgrade trift takes it to this Mac's release");
   });
@@ -200,6 +208,41 @@ describe('host add', () => {
     events.length = 0;
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, { ...off, interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'no route' }) });
     expect(step('tailscale')).toEqual([]);
+  });
+
+  it('a home with no terminal asks nothing, and says its own key is what is missing, with the line that fixes it', async () => {
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'Permission denied (publickey).', batch: true }) }));
+    expect(out.stopped).toBe('ssh');
+    expect(step('ssh').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringMatching(/cannot log in to trift\.test: Permission denied/), run: expect.stringContaining("ssh-copy-id 'trift.test'") });
+    events.length = 0;
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'ssh: connect to host trift.test port 22: No route to host', batch: true }) }));
+    expect(step('ssh').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringMatching(/cannot reach trift\.test/) });
+    expect(step('ssh').at(-1)!.run).toBeUndefined();
+  });
+
+  it('a run on a Mac home names it by its word, not by its registry name', async () => {
+    const d = deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'Permission denied (publickey).', batch: true }) });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, d);
+    expect(step('ssh').at(-1)).toMatchObject({ detail: 'this Mac cannot log in to trift.test: Permission denied (publickey).', action: expect.stringMatching(/^on this Mac, run /) });
+    expect(JSON.stringify(step('ssh'))).not.toContain(d.registry.localMachine().name);
+  });
+
+  it('a relayed run names the home by the word its relay passes, as the window\'s machine calls it', async () => {
+    vi.stubEnv('SVALL_HOME_WORD', 'studio');
+    try {
+      await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'Permission denied (publickey).', batch: true }) }));
+      expect(step('ssh').at(-1)).toMatchObject({ detail: 'studio cannot log in to trift.test: Permission denied (publickey).', action: expect.stringMatching(/^on studio, run /) });
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it('has nothing for a machine of another architecture but what the relay names, and fetches nothing', async () => {
+    healthy();
+    const fetch = vi.fn();
+    const out = await addHost({ name: 'trift', ssh: 'trift.test' }, deps({ fetch: fetch as never }));
+    expect(out.stopped).toBe('release');
+    expect(step('release').at(-1)).toMatchObject({ detail: 'this build publishes no companion for linux-arm64; name one with --release <archive>' });
+    expect(wantedCompanion(step('release').at(-1)!)).toBe('linux-arm64');
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('uploads and enrols nothing over a fleet home there that serves another Mac as a worker, and registers nothing', async () => {
@@ -591,4 +634,92 @@ esac
       expect(registry.list().filter((m) => m.record.name === 'trift').map((m) => m.id)).toEqual([REMOTE]);
     });
   });
+});
+
+describe('one add or upgrade of a machine at a time', () => {
+  const BUSY = { status: 'fail', detail: 'trift is being added or upgraded by another run', action: 'try again once it ends' };
+  const unreachable = { interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'no route' }) };
+
+  it('refuses a second run while another holds the machine, before it reaches it, and lets the next one through once it ends', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const unlock = (await hostLock(registry.dir, 'trift'))!;
+    const added = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry, ...unreachable }));
+    expect(added.stopped).toBe('name');
+    expect(step('name').at(-1)).toMatchObject(BUSY);
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
+    const upgraded = await upgradeHost('trift', { release: archive() }, deps({ registry }));
+    expect(upgraded.stopped).toBe('machine');
+    expect(step('machine').at(-1)).toMatchObject(BUSY);
+    expect(ssh.calls()).toEqual([]);
+    unlock();
+    events.length = 0;
+    // a run that ended, however far it got, holds the machine no longer
+    expect((await upgradeHost('trift', { release: archive() }, deps({ registry }))).stopped).not.toBe('machine');
+    const free = await hostLock(registry.dir, 'trift');
+    expect(free).toBeDefined();
+    free?.();
+  });
+
+  it('refuses a rollback or a remove of a machine another run holds, before it reaches or changes anything', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
+    registry.save();
+    issueToken(resolvePaths(fleet), REMOTE);
+    const unlock = (await hostLock(registry.dir, 'trift'))!;
+    try {
+      expect((await rollbackHost('trift', {}, deps({ registry }))).stopped).toBe('machine');
+      expect(step('machine').at(-1)).toMatchObject(BUSY);
+      events.length = 0;
+      expect((await removeHost('trift', {}, deps({ registry }))).stopped).toBe('machine');
+      expect(step('machine').at(-1)).toMatchObject(BUSY);
+      expect(ssh.calls()).toEqual([]);
+      expect(registry.get('trift')).toBeDefined();
+      expect(tokenFor(resolvePaths(fleet), REMOTE)).toBeDefined();
+    } finally { unlock(); }
+    // and each lets it go as it ends
+    await rollbackHost('trift', {}, deps({ registry }));
+    await removeHost('trift', { forget: true }, deps({ registry }));
+    const free = await hostLock(registry.dir, 'trift');
+    expect(free).toBeDefined();
+    free?.();
+  });
+
+  it('holds one machine by its name, and leaves another free', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const unlock = (await hostLock(registry.dir, 'trift'))!;
+    try {
+      const other = await hostLock(registry.dir, 'box');
+      expect(other).toBeDefined();
+      other?.();
+      expect((await addHost({ name: 'box', ssh: 'box.test', release: archive() }, deps({ registry, ...unreachable }))).stopped).toBe('ssh');
+    } finally { unlock(); }
+  });
+
+  it('lets the machine go when the run holding it dies', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const script = path.join(work, 'hold-machine.mts');
+    fs.writeFileSync(script, [
+      `import { hostLock } from ${JSON.stringify(path.join(import.meta.dirname, '../../svalld/src/kernel-lock.ts'))};`,
+      `process.stdout.write((await hostLock(${JSON.stringify(registry.dir)}, 'trift')) ? 'held\\n' : 'busy\\n');`,
+      'setInterval(() => undefined, 1000);',
+    ].join('\n'));
+    const child = spawn(process.execPath, ['--import', 'tsx', script], { cwd: path.resolve(import.meta.dirname, '../../..'), stdio: ['ignore', 'pipe', 'inherit'] });
+    const exited = new Promise((resolve) => { child.on('close', resolve); });
+    try {
+      const said = await new Promise<string>((resolve, reject) => {
+        child.stdout.on('data', (b: Buffer) => resolve(b.toString()));
+        setTimeout(() => reject(new Error('the holder said nothing')), 15_000);
+      });
+      expect(said).toBe('held\n');
+      expect((await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry, ...unreachable }))).stopped).toBe('name');
+    } finally { child.kill('SIGKILL'); }
+    await exited;
+    events.length = 0;
+    expect((await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry, ...unreachable }))).stopped).toBe('ssh');
+    expect(step('name').at(-1)?.status).toBe('ok');
+    // and that run, ended, holds it no longer
+    const free = await hostLock(registry.dir, 'trift');
+    expect(free).toBeDefined();
+    free?.();
+  }, 30_000);
 });

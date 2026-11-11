@@ -8,13 +8,14 @@ import { HomeCrash } from '@svall/svalld/failpoints';
 import { deliverOwed, startDeliveries } from '@svall/svalld/fleet/home-far';
 import { abortAdopt, driverAdoptKey, driverKey, installAdopt, journalLines, markKey, mintAdoptKey, packFleet, readMarker, readOwed } from '@svall/svalld/fleet/home-move';
 import { resolvePaths } from '@svall/svalld/paths';
+import { issueToken } from '@svall/svalld/placement/workers';
 import { machineId } from '@svall/svalld/machine';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
 import { ADOPT_KEY, crashAt, crashesFired, disarmCrash, MAC, movedOut, POINTS_OF, STUDIO, STUDIO_RECORD, putMarker } from '../../svalld/test/fleet/home-world.js';
 import type { Client } from '../src/client.js';
 import { homeMoveLock } from '../../svalld/src/kernel-lock.js';
 import { finishFlow } from '../src/commands/fleet.js';
-import { abortBack, abortHome, bringCrewBack, enrolmentFor, moveHomeBack, moveHomeOut, resumeHome, type MoveDeps } from '../src/controller/home.js';
+import { abortBack, abortHome, bringCrewBack, enrolmentFor, moveHomeBack, moveHomeOut, resumeHome, thisMachine, type MoveDeps } from '../src/controller/home.js';
 import type { StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import type { SshMaster } from '../src/controller/ssh.js';
@@ -25,7 +26,7 @@ const FAR_INFO = (id: string) => ({ fleetId: FLEET, machineId: id, release: '1.0
 type Called = { method: string; params: { op?: string; marker?: HomeMoving } & Record<string, unknown> };
 
 /** This fleet's daemon as the driver sees it. */
-function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; rewrites?: object[]; state?: object; crewRefused?: object; abort?: object; phone?: object } = {}) {
+function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; rewrites?: object[]; waits?: object[]; state?: object; crewRefused?: object; abort?: object; phone?: object } = {}) {
   const called: Called[] = [];
   const client = {
     call: (method: string, params: Called['params']) => {
@@ -35,9 +36,9 @@ function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; rew
       if (method === 'fleet.homeCheck') {
         return Promise.resolve(o.checkRefused
           ? { ok: false, refusal: { reason: 'studio is not reachable', action: 'try again when it is awake', details: [] } }
-          : { ok: true, sheet: { here: 2, there: 1, mission: [], toName: 'studio', rewrites: o.rewrites ?? [] } });
+          : { ok: true, sheet: { here: 2, there: 1, mission: [], toName: 'studio', rewrites: o.rewrites ?? [], ...(o.waits && { waits: o.waits }) } });
       }
-      if (method === 'state.get') return Promise.resolve(o.state ?? { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [MAC]: { name: 'mac', reachable: true, since: 1 } } });
+      if (method === 'state.get') return Promise.resolve(o.state ?? { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [machineId()]: { name: 'mac', reachable: true, since: 1 } } });
       if (method === 'fleet.freeze') return Promise.resolve({ phone: o.phone ?? { serving: false, logins: [] } });
       if (method === 'fleet.home') return Promise.resolve({ machine: machineId(), name: 'mac', mine: true, me: machineId(), fleetId: FLEET });
       if (method === 'robot.moveTo') return Promise.resolve({ moveId: 'mv_0123456789' });
@@ -101,7 +102,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const { deps, called, started } = outDeps(happy);
     const out = await moveHomeOut('studio', deps);
     expect(out.result).toBe('ready');
-    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
+    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
     expect(called.map((c) => (c.params.op ? `${c.method}:${c.params.op}` : c.method)).filter((m) => m !== 'state.get')).toEqual(['fleet.homeCheck', 'fleet.homeMove:open', 'fleet.freeze', 'fleet.homeMove:mark', 'fleet.homeMove:join']);
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(false);
     expect(started()).toBe(1);
@@ -112,6 +113,63 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     expect((await moveHomeOut('studio', deps)).result).toBe('ready');
     expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail)
       .toBe('2 robots stay here, 1 on studio; defaultCwd becomes ~/code, which studio does not have yet; onboarding.firstProject is ~/first, which studio does not have yet');
+  });
+
+  it('names at its check a worker that does not answer, in the sheet\'s words, before anything moves', async () => {
+    const { deps } = outDeps(happy, { rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }], waits: [{ id: crypto.randomUUID(), name: 'albumap' }] });
+    await moveHomeOut('studio', deps);
+    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail)
+      .toBe('2 robots stay here, 1 on studio; defaultCwd becomes ~/code, which studio does not have yet; albumap does not answer; it joins studio when it does');
+  });
+
+  it('names a worker that has not joined the new home, and the move stands', async () => {
+    const BOX = crypto.randomUUID();
+    let now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => (now += 30_000));
+    try {
+      const { deps } = outDeps(happy, { state: { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [BOX]: { name: 'box', reachable: false, since: 1 } } } });
+      deps.registry.put(BOX as never, { ...STUDIO_RECORD, name: 'box', ssh: 'ada@box' } as never);
+      deps.registry.save();
+      issueToken(resolvePaths(home), BOX as never);
+      const out = await moveHomeOut('studio', deps);
+      expect(out.stopped).toBeUndefined();
+      expect(events.filter((e) => e.step === 'workers').at(-1)).toMatchObject({ status: 'warn', detail: 'box has not joined studio yet; its row under Machines says why' });
+    } finally { clock.mockRestore(); }
+  });
+
+  it('a worker the move did not carry, as one removed once that the fleet still names, is not waited for', async () => {
+    const { deps } = outDeps(happy, { state: { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [crypto.randomUUID()]: { name: 'gone', reachable: false, since: 1 } } } });
+    await moveHomeOut('studio', deps);
+    expect(events.filter((e) => e.step === 'workers').at(-1)).toMatchObject({ status: 'skip' });
+  });
+
+  it('a fleet it cannot read is not a fleet whose workers have joined', async () => {
+    const BOX = crypto.randomUUID();
+    let now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => (now += 30_000));
+    try {
+      const { deps } = outDeps(happy, { state: { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [BOX]: { name: 'box-unread', reachable: true, since: 1 } } } });
+      deps.registry.put(BOX as never, { ...STUDIO_RECORD, name: 'box-unread', ssh: 'ada@box-unread' } as never);
+      deps.registry.save();
+      issueToken(resolvePaths(home), BOX as never);
+      const fails = deps.client;
+      let calls = 0;
+      deps.client = async () => {
+        const c = await fails();
+        return { ...c, close: () => c.close(), call: (m: string, p: unknown) => (m === 'state.get' && events.some((e) => e.step === 'probe' && e.status === 'ok') && calls++ >= 0 ? Promise.reject(new Error('down')) : (c.call as (m: string, p: unknown) => Promise<unknown>)(m, p)) } as never;
+      };
+      await moveHomeOut('studio', deps);
+      expect(events.filter((e) => e.step === 'workers').at(-1)).toMatchObject({ status: 'warn', detail: expect.stringContaining('did not say') });
+    } finally { clock.mockRestore(); }
+  });
+
+  it('a workers.json it cannot read stops the copy, with nothing sent', async () => {
+    const { deps } = outDeps(happy);
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(resolvePaths(home).workersFile, '{ torn');
+    const out = await moveHomeOut('studio', deps);
+    expect(out.result).toBe('actions');
+    expect(failed()).toMatchObject({ step: 'copy', detail: expect.stringContaining('cannot be read') });
   });
 
   it('a check that refuses freezes nothing, and says what to do', async () => {
@@ -355,7 +413,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const { deps } = outDeps((line, input) => { if (line.includes('--stage')) staged = input; return happy(line); }, { phone: { serving: true, logins: ['ada@tailnet'] } });
     await moveHomeOut('studio', deps);
     // the sheet waits on the new home's phone link by this step, which a freeze that found it off leaves out
-    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'phone:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
+    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'phone:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
     const dir = fs.mkdtempSync(path.join(home, 'tar-'));
     fs.writeFileSync(path.join(dir, 'in.tar'), Buffer.from(staged!, 'base64'));
     execFileSync('tar', ['-x', '-f', 'in.tar', 'home-move.json'], { cwd: dir });
@@ -523,7 +581,7 @@ describe('fleet home retry', () => {
     mintAdoptKey(resolvePaths(home), 'hm_abcdefghij');
     const out = await resumeHome(deps);
     expect(out.result).toBe('ready');
-    expect(ran()).toEqual(['adopt:ok', 'join:ok', 'probe:ok']);
+    expect(ran()).toEqual(['adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
     expect(lines.filter((l) => /'fleet' 'adopt' 'hm_abcdefghij' '--home-ssh' 'ada@studio'/.test(l))).toHaveLength(1);
     // the key its driver's journal holds, on stdin
     expect(inputs).toEqual([driverAdoptKey(resolvePaths(home), 'hm_abcdefghij')]);
@@ -628,8 +686,21 @@ describe('fleet home set local', () => {
     const stop = telling(w, master);
     await moveHomeBack(deps);
     stop();
-    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe('2 robots stay on studio, 1 here; defaultCwd becomes ~/code, which this machine does not have yet');
+    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe(`2 robots stay on studio, 1 here; defaultCwd becomes ~/code, which ${thisMachine()} does not have yet`);
   }, 30_000);
+
+  it('names at its check a worker that does not answer, as joining the machine that takes the fleet back', async () => {
+    const { w, deps, master } = await workerHere(undefined, {}, { waits: [{ id: crypto.randomUUID(), name: 'albumap' }] });
+    const stop = telling(w, master);
+    await moveHomeBack(deps);
+    stop();
+    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe(`2 robots stay on studio, 1 here; albumap does not answer; it joins ${thisMachine()} when it does`);
+  }, 30_000);
+
+  it('calls this machine one word in a sentence, this Mac on a Mac and this machine elsewhere', () => {
+    expect(thisMachine('darwin')).toBe('this Mac');
+    expect(thisMachine('linux')).toBe('this machine');
+  });
 
   it('a check that refuses freezes nothing there and owes nothing, as no mark was ever sent', async () => {
     const { w, deps, far } = await workerHere(undefined, {}, { checkRefused: true });
@@ -666,7 +737,7 @@ describe('fleet home set local', () => {
     const stop = telling(w, master);
     await moveHomeBack(deps);
     stop();
-    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'phone:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
+    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'phone:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
   }, 30_000);
 
   it('runs its steps in order, the outcome owed before the old home is marked, and tells it', async () => {
@@ -674,12 +745,32 @@ describe('fleet home set local', () => {
     const stop = telling(w, master);
     const out = await moveHomeBack(deps);
     stop();
-    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
+    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
     expect(out.result).toBe('ready');
     expect(order).toContain('fleet.homeMove:mark owed');
     expect(settled).toEqual(['adopted']);
     expect(readOwed(w.mac.paths)).toBeUndefined();
     expect(w.mac.daemon.role).toBe('home');
+  }, 30_000);
+
+  it('names a worker the way back carried that has not joined this machine, and the move stands', async () => {
+    const BOX = crypto.randomUUID();
+    const { w, deps, master } = await workerHere(undefined, {}, { state: { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1 }, [BOX]: { name: 'far-box', reachable: false, since: 1 } } } });
+    const run = master.run.bind(master);
+    // the old home's export carries the workers it holds
+    master.run = ((argv: string[], o?: { input?: string }) => run(argv, (argv.join(' ').includes("'export'")
+      ? { ...o, input: JSON.stringify({ ...JSON.parse(o!.input!), workers: [{ id: BOX, record: { ...STUDIO_RECORD, name: 'far-box', ssh: 'ada@far-box' }, profile: 'private' }] }) }
+      : o) as never)) as never;
+    let now = Date.now();
+    const clock = vi.spyOn(Date, 'now');
+    const emit = deps.emit;
+    deps.emit = (e) => { emit(e); if (e.step === 'probe' && e.status === 'ok') clock.mockImplementation(() => (now += 30_000)); };
+    const stop = telling(w, master);
+    try {
+      const out = await moveHomeBack(deps);
+      expect(out.stopped).toBeUndefined();
+    } finally { stop(); clock.mockRestore(); }
+    expect(events.filter((e) => e.step === 'workers').at(-1)).toMatchObject({ status: 'warn', detail: 'far-box has not joined this machine yet; its row under Machines says why' });
   }, 30_000);
 
   it('the manifest it sends the old home holds only the install key\'s hash, and this machine installs from its driver\'s journal', async () => {
@@ -784,7 +875,7 @@ describe('fleet home set local', () => {
     const stop = telling(w, master);
     expect((await resumeHome(deps)).result).toBe('ready');
     stop();
-    expect(ran()).toEqual(['check:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
+    expect(ran()).toEqual(['check:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
     expect(settled).toEqual(['adopted']);
     expect(w.mac.daemon.role).toBe('home');
   }, 30_000);

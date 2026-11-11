@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError } from '../../src/api.js';
 import type { HostStep } from '../../src/bridge.js';
 import { call, freshStore, sent, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
-const { HostSetup } = await import('../../src/HostSetup.js');
+const { HostSetup, MachineActions } = await import('../../src/HostSetup.js');
+const { terminalOn } = await import('../../src/MoveSheet.js');
 
 beforeEach(() => {
   freshStore();
@@ -77,6 +78,27 @@ test('the panel\'s menu is the row\'s: a worker of this Mac\'s home can take the
   expect(screen.queryByTestId('machine-make-home')).toBeNull();
   fireEvent.click(screen.getByTestId('machine-bring-back'));
   expect(store.getState().homeSheet).toEqual({ to: STUDIO, name: 'studio', back: true });
+});
+
+test('on a far home a machine\'s terminal opens on that home: an ssh to the machine typed ahead of what it runs, its login forwarded on each hop, and the home\'s own fix typed bare', () => {
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
+  const shown = () => sent.filter((m) => m.type === 'term.show').at(-1) as unknown as { machine: { ssh: string; type?: string; forward?: number } };
+  act(() => {
+    store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: HOME as never, name: 'studio', online: true });
+    store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }] as never);
+    store.getState().toggleHost(true);
+    store.getState().hostStarted('add', { name: 'box', ssh: 'ada@box' });
+    store.getState().hostStep('add', { step: 'ssh', status: 'fail', detail: 'studio cannot log in to ada@box', action: 'on studio, run this', run: 'ssh-copy-id ada@box' });
+    store.getState().hostStep('add', { step: 'codex', status: 'warn', detail: 'not logged in', action: 'ssh ada@box, then codex login', run: 'codex login' });
+    store.getState().hostDone('add', 1);
+  });
+  render(<HostSetup />);
+  fireEvent.click(screen.getByTestId('host-terminal-ssh'));
+  expect(shown().machine).toEqual({ ssh: 'ada@studio', type: 'ssh-copy-id ada@box' });
+  expect(screen.getByTestId('host-terminal-note').textContent).toContain('On studio,');
+  act(() => store.getState().closeHostTerminal());
+  fireEvent.click(screen.getByTestId('host-terminal-codex'));
+  expect(shown().machine).toEqual({ ssh: 'ada@studio', type: "ssh -t -L 1455:localhost:1455 ada@box 'codex login'", forward: 1455 });
 });
 
 test('Done in a terminal goes back to where it was opened: out of the panel, or to its checks, which run again', () => {
@@ -585,4 +607,152 @@ test('a variable row takes its value in a field, shown to no one, and Set sends 
   await act(async () => { fireEvent.click(screen.getByTestId('host-var-mirror:var:X-set')); });
   expect(screen.getByTestId('host-tick-failed-mirror:var:X').textContent).toBe('trift runs a release that cannot take a variable from here; upgrade it under Machines');
   expect((screen.getByTestId('host-var-mirror:var:X-value') as HTMLInputElement).value).toBe('');
+});
+
+describe('a terminal for a far worker, wherever it is opened from', () => {
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
+  const BOX = 'cccccccc-0000-4000-8000-000000000000';
+  const shown = () => sent.filter((m) => m.type === 'term.show').at(-1) as unknown as { machine: { ssh: string; type?: string; forward?: number } };
+  const far = () => {
+    store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: HOME as never, name: 'studio', online: true });
+    store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }, { id: BOX, name: 'box', ssh: 'ada@box', platform: 'linux-x64', far: true }] as never);
+  };
+
+  test.each([
+    ['a login, by its port', 'codex login', 1455, "ssh -t -L 1455:localhost:1455 ada@box 'codex login'", 1455],
+    ['a login with no port of its own, as Codex waits on its own', 'codex login', undefined, "ssh -t -L 1455:localhost:1455 ada@box 'codex login'", 1455],
+    ['a cd, which leaves a shell open there', "cd '/home/ada/code'", undefined, `ssh -t ada@box 'cd '\\''/home/ada/code'\\''; exec "$SHELL" -l'`, undefined],
+    ['any other command', 'svall worker env FOO', undefined, "ssh -t ada@box 'svall worker env FOO'", undefined],
+  ])('%s runs on the worker, by way of the home', (_what, run, forward, typed, port) => {
+    act(() => { far(); terminalOn('box', run, forward); });
+    render(<HostSetup />);
+    expect(shown().machine).toEqual({ ssh: 'ada@studio', type: typed, ...(port && { forward: port }) });
+    expect(screen.getByTestId('host-terminal-note').textContent).toContain('On studio,');
+  });
+
+  test('none typed is a shell on the worker', () => {
+    act(() => { far(); terminalOn('box'); });
+    render(<HostSetup />);
+    expect(shown().machine).toEqual({ ssh: 'ada@studio', type: 'ssh ada@box' });
+  });
+
+  test('the home itself and a Mac\'s own machine open as they always did', () => {
+    act(() => { far(); terminalOn('studio', 'svall setup'); });
+    render(<HostSetup />);
+    expect(shown().machine).toEqual({ ssh: 'ada@studio', type: 'svall setup' });
+  });
+
+  test('a far row runs by its id, while the panel goes by its name', () => {
+    act(() => { far(); store.getState().toggleHost(true, 'box'); });
+    render(<MachineActions id={BOX} name="box" />);
+    fireEvent.click(screen.getByTestId('machine-doctor'));
+    expect(sent.filter((m) => m.type === 'host.start').at(-1)).toMatchObject({ op: 'doctor', args: { name: BOX } });
+    expect(store.getState().hostMachine).toBe('box');
+    expect(store.getState().host?.args).toMatchObject({ name: 'box', id: BOX });
+  });
+
+  test('a far worker\'s own fix for its master, as its login, is typed bare on the home', () => {
+    act(() => {
+      far();
+      store.getState().toggleHost(true, 'box');
+      store.getState().hostStarted('doctor', { name: 'box', id: BOX });
+      store.getState().hostStep('doctor', { step: 'master', status: 'fail', detail: 'studio cannot log in to ada@box', action: 'on studio, run this', run: 'ssh-copy-id ada@box' });
+      store.getState().hostDone('doctor', 1);
+    });
+    render(<HostSetup />);
+    fireEvent.click(screen.getByTestId('host-terminal-master'));
+    expect(shown().machine).toEqual({ ssh: 'ada@studio', type: 'ssh-copy-id ada@box' });
+  });
+});
+
+describe('a far worker this Mac\'s registry names as it names its home', () => {
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
+  const BOX = 'cccccccc-0000-4000-8000-000000000000';
+  const started = () => sent.filter((m) => m.type === 'host.start').at(-1);
+  // the home's own row first, as `svall host list` gives this Mac's rows before the far home's
+  const collide = () => {
+    store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: HOME as never, name: 'studio', online: true });
+    store.getState().setMachines([{ id: HOME, name: 'box', ssh: 'ada@studio', platform: 'linux-x64' }, { id: BOX, name: 'box', ssh: 'ada@box', platform: 'linux-x64', far: true }] as never);
+  };
+  // a run of the far row, which went by its id, ended with `steps`
+  const ran = (op: 'doctor' | 'upgrade', steps: HostStep[]) => act(() => {
+    collide();
+    store.getState().toggleHost(true, 'box');
+    store.getState().hostStarted(op, { name: 'box', id: BOX });
+    for (const s of steps) store.getState().hostStep(op, s);
+    store.getState().hostDone(op, 1);
+  });
+
+  test('the panel\'s own Check and the check after its terminal go on by the id its run went by', () => {
+    ran('doctor', []);
+    render(<HostSetup />);
+    fireEvent.click(screen.getByTestId('machine-doctor'));
+    expect(started()).toMatchObject({ op: 'doctor', args: { name: BOX } });
+    act(() => {
+      store.getState().hostDone('doctor', 0);
+      store.getState().openHostTerminal('box', 'codex login');
+    });
+    fireEvent.click(screen.getByTestId('host-terminal-done'));
+    expect(started()).toMatchObject({ op: 'doctor', args: { name: BOX } });
+  });
+
+  test('a row\'s Upgrade and Forget go by that id', () => {
+    ran('doctor', [
+      { step: 'release', status: 'fail', detail: 'box runs 1.2.2' },
+      { step: 'master', status: 'fail', detail: 'nothing answers at ada@box', action: 'svall host remove box --forget' },
+    ]);
+    render(<HostSetup />);
+    fireEvent.click(screen.getByTestId('host-forget-master'));
+    expect(store.getState().hostConfirm).toEqual({ name: 'box', forget: true, id: BOX });
+    fireEvent.click(screen.getByTestId('host-upgrade'));
+    expect(started()).toMatchObject({ op: 'upgrade', args: { name: BOX } });
+  });
+
+  test.each([
+    ["a row's Set up", 'host-worker', 'upgrade', [{ step: 'worker', status: 'fail', detail: "does not run this fleet's robots yet: svall host upgrade box sets it up" }]],
+    ["a row's Repair", 'host-repair-hooks', 'upgrade', [
+      { step: 'release', status: 'ok', detail: '0.21.0, as on this Mac' },
+      { step: 'hooks', status: 'fail', detail: 'not installed in /home/ada/.claude/settings.json: svall setup', run: 'svall setup' },
+    ]],
+    ["the check after a row's Update", 'host-update-versions', 'doctor', [
+      { step: 'versions', status: 'warn', detail: 'claude 1.2.3 there, behind 1.2.4 on this Mac', action: 'ssh ada@box, then claude update', run: 'claude update' },
+    ]],
+  ] as const)('%s goes by that id', async (_what, button, op, steps) => {
+    ran('doctor', [...steps]);
+    render(<HostSetup />);
+    await act(async () => { fireEvent.click(screen.getByTestId(button)); });
+    expect(started()).toMatchObject({ op, args: { name: BOX } });
+  });
+
+  test('a row\'s Update and Forget act on the far worker, not the home this Mac names the same', async () => {
+    ran('doctor', [
+      { step: 'versions', status: 'warn', detail: 'claude 1.2.3 there, behind 1.2.4 on this Mac', action: 'ssh ada@box, then claude update', run: 'claude update' },
+      { step: 'master', status: 'fail', detail: 'nothing answers at ada@box', action: 'svall host remove box --forget' },
+    ]);
+    render(<HostSetup />);
+    fireEvent.click(screen.getByTestId('host-forget-master'));
+    expect(store.getState().hostConfirm).toEqual({ name: 'box', forget: true, id: BOX });
+    await act(async () => { fireEvent.click(screen.getByTestId('host-update-versions')); });
+    expect(call).toHaveBeenCalledWith('machines.updateAgents', expect.objectContaining({ machine: BOX }));
+    expect(call).not.toHaveBeenCalledWith('machines.updateAgents', expect.objectContaining({ machine: HOME }));
+  });
+
+  test('a Rollback after a failed upgrade goes by that id', () => {
+    ran('upgrade', [{ step: 'rollback', status: 'fail', detail: 'the release before did not start' }]);
+    render(<HostSetup />);
+    fireEvent.click(screen.getByTestId('host-rollback'));
+    expect(started()).toMatchObject({ op: 'rollback', args: { name: BOX } });
+  });
+
+  test.each([['Remove', 'machine-remove', {}], ['Forget', 'machine-forget', { forget: true }]] as const)('the row\'s %s asks by that id, and its yes runs by it', (_what, item, forget) => {
+    act(() => collide());
+    render(<MachineActions id={BOX} name="box" />);
+    fireEvent.click(screen.getByTestId('machine-more'));
+    fireEvent.click(screen.getByTestId(item));
+    expect(store.getState().hostConfirm).toEqual({ name: 'box', forget: 'forget' in forget, id: BOX });
+    cleanup();
+    render(<HostSetup />);
+    fireEvent.click(screen.getByTestId('host-confirm-yes'));
+    expect(started()).toEqual({ type: 'host.start', op: 'remove', args: { name: BOX, ...forget } });
+  });
 });

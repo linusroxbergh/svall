@@ -48,7 +48,7 @@ export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () =
   // the home's
   fleetConfig?: ReturnType<typeof fleetConfigFile>;
   // a move of the home as this daemon holds it, and what its check asks both machines
-  freeze?: HomeFreeze; homeChecks?: (to: MachineId) => Promise<Result<'fleet.homeCheck'>>; homeWaits?: () => Result<'fleet.homeMove'> };
+  workersOwed?: () => Record<string, { why?: string; tried?: number }>; rejoinsAgain?: () => void; freeze?: HomeFreeze; homeChecks?: (to: MachineId) => Promise<Result<'fleet.homeCheck'>>; homeWaits?: () => Result<'fleet.homeMove'> };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
 
@@ -177,12 +177,13 @@ const handlers: Handlers = {
   'robot.moveTo': async ({ homeMove, ...p }, ctx) => ({ moveId: await placementOf(ctx).start(p.id, p.machine, { ...p, ...(homeMove && ctx.freeze?.mayMoveCrew(homeMove, ctx.viewer) && { homeMove }) }) }),
   'robot.moveRetry': async (p, ctx) => { await placementOf(ctx).retry(p.moveId); return {}; },
   // the home first, whichever machine answers; a home holds no record of itself, and a worker's copy holds the home's
-  'machines.list': (_p, { store, fleetHome, registered, router }) => {
+  'machines.list': (_p, { store, fleetHome, registered, router, workersOwed }) => {
     const robots = Object.values(store.state.robots);
+    const owed = workersOwed?.() ?? {};
     const home = fleetHome?.();
     const known = registered?.();
     const workers = Object.entries(store.state.machines ?? {}).filter(([id]) => id !== home?.machine).map(([id, m]) => ({
-      id: id as MachineId, name: m.name, role: 'worker' as const, platform: known?.get(id)?.platform, ...(known?.get(id)?.dial === 'worker' && { dialsIn: true as const }), reachable: m.reachable, release: m.release,
+      id: id as MachineId, name: m.name, role: 'worker' as const, platform: known?.get(id)?.platform, ...(known?.get(id)?.dial === 'worker' && { dialsIn: true as const }), reachable: m.reachable, release: m.release, ...(owed[id] && { joining: owed[id].why ?? '' }), ...(owed[id]?.tried !== undefined && { joinTried: owed[id].tried }),
       robots: robots.filter((r) => r.machine === id).length,
     }));
     if (!home) return { machines: workers };
@@ -192,7 +193,7 @@ const handlers: Handlers = {
       reachable: home.mine || (router?.homeConnected ?? false), release: home.mine ? releaseVersion() : held?.release, robots: robots.filter((r) => r.machine === undefined || r.machine === home.machine).length,
     }, ...workers] };
   },
-  'machines.refresh': (_p, { links }) => { links?.refresh(); return {}; },
+  'machines.refresh': (_p, { links, rejoinsAgain }) => { links?.refresh(); rejoinsAgain?.(); return {}; },
   'machines.setup': (p, ctx) => setupOf(ctx, p.machine, p.waitMs ?? 0, p.robot, true),
   // the push goes after any under way and carries only what changed; one that fails leaves the tick saved for the next
   'machines.consent': async (p, ctx) => {

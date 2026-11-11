@@ -149,7 +149,7 @@ export function homeWord(platform: NodeJS.Platform = process.platform): string {
 }
 
 /** What a worker calls its home in a sentence: by name, but "this Mac" on a server that its Mac home dials. */
-export const homeWordOnWorker = (home: string, dials: boolean, platform: NodeJS.Platform = process.platform): string => (dials || platform === 'darwin' ? home : 'this Mac');
+export const homeWordOnWorker = (home: string, dials: boolean, homePlatform?: string, platform: NodeJS.Platform = process.platform): string => (dials || platform === 'darwin' || (homePlatform ?? 'darwin') !== 'darwin' ? home : 'this Mac');
 
 /** This installation's id, and when the file was made on other hardware, as a copy of another machine's is, both hardware ids. */
 export function machineIdentity(dir: string = configDir(), hardware: HardwareReader = hardwareId): { id: MachineId; hardware?: { stored: string; actual: string } } {

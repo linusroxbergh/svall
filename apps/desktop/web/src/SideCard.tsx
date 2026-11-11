@@ -118,7 +118,7 @@ export function SideCard({ id }: { id: string }) {
             aria-label="Star" {...buttonTry(refuse)} onClick={() => setStar(deps(), id, !starred)}><Star on={starred} size="lg" /></button>
         </div>
         {placed && <MachineLine name={placed} className="side-on" testid="side-machine" />}
-        {placed && away && <AwayLine name={placed} line={away} running={hostRunning} readOnly={readOnly} />}
+        {placed && away && <AwayLine name={placed} id={c.machine} line={away} running={hostRunning} readOnly={readOnly} />}
         {c.repo && (
           <div className="side-branch" data-testid="side-branch">
             <span className="mono">{c.repo.branch}</span>{c.repo.isWorktree && <span className="badge">wt</span>}
@@ -235,8 +235,10 @@ function Held({ id, n, promptId, refuse }: { id: string; n: number; promptId: st
 }
 
 // why the robot's machine is out of reach, and a check of it, whose release row offers the upgrade when it is the machine's to take
-function AwayLine({ name, line, running, readOnly }: { name: string; line: string; running: boolean; readOnly?: string }) {
-  const run = () => { app.store.getState().toggleHost(true, name); startHost('doctor', { name }); };
+function AwayLine({ name, id, line, running, readOnly }: { name: string; id?: string; line: string; running: boolean; readOnly?: string }) {
+  // a far home's machine goes by its id, as that home may name it as this Mac names another
+  const far = useApp((s) => !!id && !!s.machines?.find((m) => m.id === id)?.far);
+  const run = () => { app.store.getState().toggleHost(true, name); startHost('doctor', { name, ...(far && { id }) }); };
   return (
     <div className="side-away" data-testid="side-away">
       <span>{line}{readOnly && <small data-testid="side-away-read-only">{readOnly}</small>}</span>

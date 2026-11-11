@@ -90,6 +90,28 @@ esac
     return { base, now, registry, close: d.close, svall, archive: companionArchive(work, { signedBy: signer.key, svall: svall('1.2.3', PROTOCOL_VERSION) }) };
   }
 
+  it('sweeps what runs that stopped short left over a day ago, and nothing fresher, of another name or deeper', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+    const cache = `${work}/far/.cache/svall`;
+    const id = () => crypto.randomUUID();
+    const gone = [`companion-1.2.2-${id()}.tar.gz`, `staging-1.2.2-${id()}`];
+    const kept = [`companion-1.2.2-${id()}.tar.gz`, `staging-1.2.2-${id()}`, `companion-1.2.2-${id()}.tar.gz`, 'companion-1.2.2.tar.gz', 'staging-1.2.2', 'staging-1.2.2-not-a-run-id', 'notes.txt', 'nested'];
+    const nested = path.join('nested', `companion-1.2.2-${id()}.tar.gz`);
+    for (const d of [gone[1], kept[1], 'staging-1.2.2', 'staging-1.2.2-not-a-run-id', 'nested']) fs.mkdirSync(path.join(cache, d), { recursive: true });
+    for (const f of [gone[0], kept[0], kept[2], 'companion-1.2.2.tar.gz', 'notes.txt', nested]) fs.writeFileSync(path.join(cache, f), 'x');
+    const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000);
+    const age = (f: string, hours: number) => fs.utimesSync(path.join(cache, f), ago(hours), ago(hours));
+    // a day is the line: 25 h goes, 23 h stays, as another home's run may be under way that long
+    for (const f of gone) age(f, 25);
+    for (const f of kept.slice(0, 2)) age(f, 23);
+    for (const f of [...kept.slice(3), nested]) age(f, 48);
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(fs.readdirSync(cache).sort()).toEqual([...kept].sort());
+    expect(fs.existsSync(path.join(cache, nested))).toBe(true);
+  });
+
   it('installs a release that speaks a newer protocol with its own setup, and keeps it', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION - 1]] });
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
@@ -98,7 +120,7 @@ esac
     expect(far.now()).toBe('1.2.3');
     expect(JSON.stringify(events)).not.toContain(TOKEN);
     const setup = ssh.remoteCalls().find((w) => w.includes('setup'))!;
-    expect(setup[0]).toBe(`${work}/far/.cache/svall/staging-1.2.3/releases/1.2.3/bin/svall`);
+    expect(setup[0]).toMatch(new RegExp(`^${work}/far/\\.cache/svall/staging-1\\.2\\.3-[0-9a-f-]{36}/releases/1\\.2\\.3/bin/svall$`));
     expect(ssh.remoteCalls().some((w) => w.includes('--rollback'))).toBe(false);
   });
 
@@ -424,7 +446,7 @@ esac
 
     expect(out).toEqual({ result: 'ready', actions: [] });
     const mac = far.registry.localMachine().name;
-    expect(fs.readFileSync(path.join(home, '.svall', 'worker-args'), 'utf8').split('\n')).toEqual(['worker', 'enroll', '--home-machine', MAC, '--home-name', mac, '--fleet-id', FLEET, '']);
+    expect(fs.readFileSync(path.join(home, '.svall', 'worker-args'), 'utf8').split('\n')).toEqual(['worker', 'enroll', '--home-machine', MAC, '--home-name', mac, '--fleet-id', FLEET, '--home-platform', far.registry.localMachine().platform, '']);
     expect(fs.readFileSync(path.join(home, '.svall', 'worker-token'), 'utf8')).toBe(tokenFor(resolvePaths(fleet), REMOTE));
     expect(fs.readFileSync(systemctl, 'utf8')).toBe('--user disable --now svall-gateway.service\n--user daemon-reload\n');
     expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(false);
@@ -859,7 +881,29 @@ esac
     expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup'))).toBe(false);
   });
 
-  it('deletes the archive it uploaded and the release it unpacked once the release is installed', async () => {
+  it('uploads all the same when the sweep cannot run', async () => {
+    ssh.reply(['uname', '-sm'], { stdout: 'Linux aarch64\n' });
+    ssh.reply(['cat', '/etc/os-release'], { stdout: OS_RELEASE });
+    for (const m of ['cat > "$1"', 'mkdir', 'rm']) ssh.reply([m], {});
+    ssh.reply(['readlink'], { stdout: `${BASE}/releases/1.2.2\n` });
+    ssh.reply(['svall-unpack'], { stdout: 'pinned\n' });
+    ssh.reply(['setup', '--release'], { stdout: 'release 1.2.3 installed\n' });
+    ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    const openMaster = async (destination: string) => {
+      const m = await SshMaster.open({ destination, socketDir: ssh.socketDir });
+      const run = m.run.bind(m);
+      m.run = (argv, o) => (argv.some((w) => w.includes('svall-sweep')) ? Promise.reject(new Error('the sweep timed out')) : run(argv, o));
+      return m;
+    };
+    await upgradeHost('trift', { release: archive() }, deps({ registry: registered(), openMaster }));
+    await d.close();
+    expect(step('upload').at(-1)?.status).toBe('ok');
+    expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"'))).toBe(true);
+  });
+
+  it('deletes the archive it uploaded and the release it unpacked once the release is installed, each run only its own', async () => {
     ssh.reply(['uname', '-sm'], { stdout: 'Linux aarch64\n' });
     ssh.reply(['cat', '/etc/os-release'], { stdout: OS_RELEASE });
     ssh.reply(['cat > "$1"'], {});
@@ -871,9 +915,19 @@ esac
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-    await upgradeHost('trift', { release: archive() }, deps({ registry: registered() }));
+    const registry = registered();
+    await upgradeHost('trift', { release: archive() }, deps({ registry }));
+    await upgradeHost('trift', { release: archive() }, deps({ registry }));
     await d.close();
-    expect(ssh.remoteCalls()).toContainEqual(['rm', '-rf', `${HOME}/.cache/svall/staging-1.2.3`, `${HOME}/.cache/svall/companion-1.2.3.tar.gz`]);
+    // each run uploads to a path of its own and removes only that, so one run's cleanup never takes another's archive
+    const uploads = ssh.remoteCalls().filter((w) => w.includes('cat > "$1"')).map((w) => w.at(-1)!);
+    const removed = ssh.remoteCalls().filter((w) => w[0] === 'rm');
+    expect(uploads).toHaveLength(2);
+    expect(uploads[0]).not.toBe(uploads[1]);
+    for (const [i, upload] of uploads.entries()) {
+      expect(upload).toMatch(new RegExp(`^${HOME}/\\.cache/svall/companion-1\\.2\\.3-[0-9a-f-]{36}\\.tar\\.gz$`));
+      expect(removed[i]).toEqual(['rm', '-rf', upload.replace('/companion-', '/staging-').replace(/\.tar\.gz$/, ''), upload]);
+    }
   });
 
   describe('a fleet named apart on its two machines, the server its worker under the private profile there', () => {

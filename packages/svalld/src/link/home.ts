@@ -64,6 +64,8 @@ type Options = {
   onCall?(method: string, params: unknown, machine: MachineId): Promise<unknown>;
   /** A notification from a linked worker, never journaled nor acked. */
   onNotify?(kind: string, data: unknown, machine: MachineId): void;
+  /** The worker took the token this home holds for it. */
+  onGreeted?(machine: MachineId): void;
   /** A worker's inventory and the outbox past it are taken, and snapshots go to it. */
   onSynced?(machine: MachineId): void;
   onLost?(machine: MachineId): void;
@@ -109,6 +111,9 @@ export function socketTransport(o: { paths: Pick<Paths, 'dialSockets'> }): Trans
     return { stream };
   };
 }
+
+// what a link dials and runs by: a record that says otherwise of any of these is linked anew
+const ROUTE = ['dial', 'ssh', 'svallBase'] as const;
 
 /** One worker as the home holds it: a stream that reconnects with backoff, and how far the home has taken its outbox. */
 export class WorkerLink {
@@ -157,6 +162,11 @@ export class WorkerLink {
   /** Whether the worker opens the link itself, into its socket in this fleet home. */
   get dialsIn(): boolean {
     return this.entry.record.dial === 'worker';
+  }
+
+  /** Whether this link dials and runs by the route `entry` gives. */
+  routedAs(entry: MachineEntry): boolean {
+    return ROUTE.every((k) => this.entry.record[k] === entry.record[k]);
   }
 
   connected(): boolean {
@@ -233,6 +243,11 @@ export class WorkerLink {
       if (this.outboxDrained()) return true;
     }
     return false;
+  }
+
+  /** Resolves once what the link was applying has ended. */
+  settled(): Promise<void> {
+    return this.applying;
   }
 
   /** The thaw of a move: a stream with held events ends, and its worker replays them on the next. */
@@ -409,6 +424,7 @@ export class WorkerLink {
     }
     const h = hello.data;
     this.heard = true;
+    this.hook('onGreeted failed', () => this.o.onGreeted?.(this.machine));
     clearTimeout(this.rehello);
     // the stream and the ssh master under it stay up, with every terminal on that master
     if (h.schema !== STATE_SCHEMA_VERSION || h.protocol !== PROTOCOL_VERSION) {
@@ -569,8 +585,8 @@ export class HomeLinks {
       for (const link of this.links.values()) if (!tokenFor(this.o.paths, link.machine)) link.close();
       for (const entry of this.o.machines()) {
         const held = this.links.get(entry.id);
-        // a worker whose record now says otherwise of who dials is linked anew the other way
-        if (held && held.dialsIn !== (entry.record.dial === 'worker')) {
+        // a worker whose record now says otherwise of who dials, or of where it is reached, is linked anew by the record as it stands
+        if (held && !held.routedAs(entry)) {
           held.stop();
           this.links.delete(entry.id);
         }
@@ -616,6 +632,11 @@ export class HomeLinks {
   /** Whether all `machine` has sent is in, as the first thing a move of the fleet asks; no link, none is owed. */
   barrier(machine: MachineId, ms: number): Promise<boolean | 'applying'> {
     return this.links.get(machine)?.barrier(ms) ?? Promise.resolve(true);
+  }
+
+  /** Resolves once no link is applying anything it took before this call. */
+  async quiet(): Promise<void> {
+    await Promise.all([...this.links.values()].map((l) => l.settled()));
   }
 
   /** Every held event comes again, once the move is off. */
