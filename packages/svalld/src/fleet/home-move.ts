@@ -525,7 +525,8 @@ export function carriedWorkers(p: Paths, entries: MachineEntry[], own: string): 
   return entries.filter((e) => held.includes(e.id) && e.record.ssh && e.record.platform === 'linux').map((e) => ({ id: e.id, record: e.record, profile: workerProfile(p, e.id) ?? own }));
 }
 
-const WorkersOwed = z.object({ id: z.string(), workers: z.record(z.string(), z.object({ why: z.string().optional() })) });
+// `tried`: when the last try for that worker ended, by this home's clock
+const WorkersOwed = z.object({ id: z.string(), workers: z.record(z.string(), z.object({ why: z.string().optional(), tried: z.number().optional() })) });
 export type WorkersOwed = z.infer<typeof WorkersOwed>;
 
 export const readWorkersOwed = (p: Pick<Paths, 'workersOwed'>): WorkersOwed | undefined => {

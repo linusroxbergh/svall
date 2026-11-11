@@ -5,7 +5,7 @@ import { afterAll, afterEach, describe, expect, it, onTestFinished, vi } from 'v
 import type { FleetState, HomeFacts, HomeWorker, MachineId, MachineRecord } from '@svall/protocol';
 import { homeCheck } from '../../src/fleet/home-freeze.js';
 import { reachWorkers, settleOwed, startRejoins, writeOwed } from '../../src/fleet/home-workers.js';
-import { createMarker, enter, owedWorkers, readMarker } from '../../src/fleet/home-move.js';
+import { createMarker, enter, owedWorkers, readMarker, readWorkersOwed } from '../../src/fleet/home-move.js';
 import { enrolLock, homeMoveLock } from '../../src/kernel-lock.js';
 import { SshError } from '../../src/link/ssh.js';
 import { resolvePaths } from '../../src/paths.js';
@@ -224,6 +224,18 @@ describe('the workers a new home owes an enrolment', () => {
     return startRejoins({ paths: p, me: ME, name: () => 'studio', platform: 'linux', fleetId: () => FLEET, log: more.log ?? silentLogger, open: open as never, records: more.records ?? (() => [{ id: W, record }]), refresh, frozen: more.frozen ?? (() => false), firstMs: 1, lastMs: 4 });
   };
   const settled = (ms = 40) => new Promise((r) => { setTimeout(r, ms); });
+
+  it('marks when each try ended, the same cause again included, so a check that set one off knows it ended', async () => {
+    for (const [what, more] of [['a login that fails', {}], ['no route here', { records: () => [{ id: W, record: { ...record, ssh: undefined } }] }]] as const) {
+      const p = setup('adopted');
+      const s = run(p, () => Promise.reject(new SshError('unreachable', 'No route to host')), more as never);
+      await vi.waitFor(() => expect(readWorkersOwed(p)?.workers[W]?.tried).toBeDefined());
+      const first = readWorkersOwed(p)!.workers[W];
+      await vi.waitFor(() => expect(readWorkersOwed(p)!.workers[W].tried).toBeGreaterThan(first.tried!));
+      s.stop();
+      expect(readWorkersOwed(p)!.workers[W].why, what).toBe(first.why);
+    }
+  });
 
   it('touches no worker until the move has gone through', async () => {
     const p = setup('installed');
@@ -604,14 +616,14 @@ describe('the workers a new home owes an enrolment', () => {
     expect(owedWorkers(p)[W]?.why).toContain('No route to host');
   });
 
-  it('the file holds ids and the last failure, no token', async () => {
+  it('the file holds ids, the last failure and when it ended, no token', async () => {
     const p = setup('adopted');
     const s = run(p, () => Promise.reject(new SshError('unreachable', 'No route to host')));
     await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toBeDefined());
     s.stop();
     const file = fs.readFileSync(p.workersOwed, 'utf8');
     expect(file).not.toContain(tokenFor(p, W)!);
-    expect(JSON.parse(file).workers[W]).toEqual({ why: expect.any(String) });
+    expect(JSON.parse(file).workers[W]).toEqual({ why: expect.any(String), tried: expect.any(Number) });
   });
 
   it.each(['rejoin.enrolling', 'rejoin.enrolled'] as const)('%s: a kill leaves it owed, and the next start enrols it', async (point) => {

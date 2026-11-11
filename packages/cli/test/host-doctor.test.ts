@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MachineId, PROTOCOL_VERSION, type SetupRow } from '@svall/protocol';
 import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
+import { joiningOf } from '../src/commands/host.js';
 import { consentHost, doctorHost, rowStep, type HostReport, type StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import {
@@ -134,7 +135,7 @@ describe('host doctor', () => {
         joining: (m) => {
           asked.push(m);
           // it lands on the second ask, and the machine serves this fleet from then on
-          if (asked.length < 2) return Promise.resolve('');
+          if (asked.length < 2) return Promise.resolve({ why: '' });
           replies(SERVES);
           return Promise.resolve(undefined);
         },
@@ -148,9 +149,38 @@ describe('host doctor', () => {
       let now = Date.now();
       const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
       try {
-        const report = await doctorHost('trift', deps({ registry: registered(), joining: () => { now += 10_000; return Promise.resolve('No route to host'); } }));
+        const report = await doctorHost('trift', deps({ registry: registered(), joining: () => { now += 10_000; return Promise.resolve({ why: 'No route to host' }); } }));
         expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'warn', detail: 'has not joined this Mac yet: No route to host' });
       } finally { clock.mockRestore(); }
+    });
+
+    it('stops waiting once a try that ended after it began says why, as one that cannot land does at once', async () => {
+      replies();
+      let asks = 0;
+      const report = await doctorHost('trift', deps({
+        registry: registered(),
+        // the first answer is of a try before this check; the next, of the one its refresh set off
+        joining: () => Promise.resolve({ why: 'No route to host', tried: ++asks < 2 ? 1 : Date.now() }),
+      }));
+      expect(asks).toBe(2);
+      expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'warn', detail: 'has not joined this Mac yet: No route to host' });
+    });
+
+    it('reads a machine that serves this fleet, or one another fleet holds, as it is, whatever is owed it', async () => {
+      const owed = () => Promise.resolve({ why: 'No route to host', tried: Date.now() });
+      replies(SERVES);
+      expect((await doctorHost('trift', deps({ registry: registered(), joining: owed }))).checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: "runs this fleet's robots" });
+      replies({ homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET });
+      expect((await doctorHost('trift', deps({ registry: registered(), joining: owed }))).checks.find((c) => c.name === 'worker')).toEqual({
+        name: 'worker', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action: 'on bea-mbp, run svall host remove trift',
+      });
+    });
+
+    it('reads what is owed the machine asked from its own row of machines.list', () => {
+      const rows = [{ id: OTHER_MAC, joining: 'gone', joinTried: 5 }, { id: REMOTE, joining: '' }, { id: 'third' }];
+      expect(joiningOf(rows, REMOTE)).toEqual({ why: '' });
+      expect(joiningOf(rows, OTHER_MAC)).toEqual({ why: 'gone', tried: 5 });
+      expect(joiningOf(rows, 'third')).toBeUndefined();
     });
   });
 

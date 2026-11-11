@@ -75,8 +75,8 @@ export type HostDeps = {
   setupRows(machine: MachineId, waitMs: number): Promise<SetupRow[]>;
   /** ticks or unticks `fields` of `item` for the machine in this fleet's mirror, and answers its setup rows */
   consent(machine: MachineId, item: string, fields: string[], on: boolean): Promise<SetupRow[]>;
-  /** why the re-enrol this fleet's daemon owes the machine has not landed yet, '' before it says; undefined once it owes none */
-  joining(machine: MachineId): Promise<string | undefined>;
+  /** why the re-enrol this fleet's daemon owes the machine has not landed yet, '' before it says, and when its last try ended; undefined once it owes none */
+  joining(machine: MachineId): Promise<{ why: string; tried?: number } | undefined>;
 };
 
 export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean };
@@ -854,12 +854,12 @@ const failed = (name: string, err: unknown): Check => ({ name, status: 'fail', d
 /** Whether a machine on `release` runs this Mac's, as a development build takes any release for its own. */
 export const sameRelease = (release: string, controller: HostDeps['controller']): boolean => controller.release === 'dev' || release === controller.release;
 
-/** What `joining` says once the re-enrol lands or JOIN_MS passes. */
-async function joinSettled(machine: MachineId, d: Pick<HostDeps, 'joining'>): Promise<string | undefined> {
-  const until = Date.now() + JOIN_MS;
+/** Why the re-enrol owed the machine has not landed, once a try that ended after `since` says, or JOIN_MS passes; undefined once none is owed. */
+async function joinSettled(machine: MachineId, d: Pick<HostDeps, 'joining'>, since: number): Promise<string | undefined> {
+  const until = since + JOIN_MS;
   for (;;) {
-    const why = await d.joining(machine);
-    if (why === undefined || Date.now() >= until) return why;
+    const owed = await d.joining(machine);
+    if (!owed || (owed.tried ?? 0) >= since || Date.now() >= until) return owed?.why;
     await new Promise((r) => setTimeout(r, JOIN_POLL_MS));
   }
 }
@@ -867,6 +867,7 @@ async function joinSettled(machine: MachineId, d: Pick<HostDeps, 'joining'>): Pr
 /** `svall host doctor`: the companion's own doctor plus what only the controller can check, each emitted as a step once found. */
 export async function doctorHost(name: string, d: HostDeps): Promise<HostReport> {
   const entry = need(d.registry, name);
+  const since = Date.now();
   // a link that is down is retried now, so the rows read last find it up if the machine answers
   await d.refreshLinks();
   const start = (step: string) => d.emit({ step, status: 'start' });
@@ -883,7 +884,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     let report: RemoteDoctor | undefined;
     start('doctor');
     // the refresh sets off a re-enrol owed to the machine, which restarts its fleet there: the rows read what it leaves
-    const joining = await joinSettled(entry.id, d);
+    const joining = await joinSettled(entry.id, d, since);
     try {
       const { env, flags } = farFleet(entry.id, d);
       report = await remoteJson<RemoteDoctor>(master, base, [...flags, 'doctor', '--json'], 'svall doctor --json', env);

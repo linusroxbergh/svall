@@ -48,7 +48,7 @@ export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () =
   // the home's
   fleetConfig?: ReturnType<typeof fleetConfigFile>;
   // a move of the home as this daemon holds it, and what its check asks both machines
-  workersOwed?: () => Record<string, { why?: string }>; rejoinsAgain?: () => void; freeze?: HomeFreeze; homeChecks?: (to: MachineId) => Promise<Result<'fleet.homeCheck'>>; homeWaits?: () => Result<'fleet.homeMove'> };
+  workersOwed?: () => Record<string, { why?: string; tried?: number }>; rejoinsAgain?: () => void; freeze?: HomeFreeze; homeChecks?: (to: MachineId) => Promise<Result<'fleet.homeCheck'>>; homeWaits?: () => Result<'fleet.homeMove'> };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
 
@@ -183,7 +183,7 @@ const handlers: Handlers = {
     const home = fleetHome?.();
     const known = registered?.();
     const workers = Object.entries(store.state.machines ?? {}).filter(([id]) => id !== home?.machine).map(([id, m]) => ({
-      id: id as MachineId, name: m.name, role: 'worker' as const, platform: known?.get(id)?.platform, ...(known?.get(id)?.dial === 'worker' && { dialsIn: true as const }), reachable: m.reachable, release: m.release, ...(owed[id] && { joining: owed[id].why ?? '' }),
+      id: id as MachineId, name: m.name, role: 'worker' as const, platform: known?.get(id)?.platform, ...(known?.get(id)?.dial === 'worker' && { dialsIn: true as const }), reachable: m.reachable, release: m.release, ...(owed[id] && { joining: owed[id].why ?? '' }), ...(owed[id]?.tried !== undefined && { joinTried: owed[id].tried }),
       robots: robots.filter((r) => r.machine === id).length,
     }));
     if (!home) return { machines: workers };

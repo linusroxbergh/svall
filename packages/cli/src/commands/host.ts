@@ -60,6 +60,12 @@ export function interactiveSsh(destination: string): Promise<{ code: number; std
 /** The signers a companion is checked against: the ones this release carries, or the checkout's. */
 export const controllerSigners = (): string => (isRelease() ? path.join(releaseRoot(), 'release', 'allowed_signers') : allowedSigners());
 
+/** The re-enrol this fleet's daemon owes `machine`, as its machines.list row says. */
+export function joiningOf(rows: { id: string; joining?: string; joinTried?: number }[], machine: string): { why: string; tried?: number } | undefined {
+  const row = rows.find((r) => r.id === machine);
+  return row?.joining === undefined ? undefined : { why: row.joining, ...(row.joinTried !== undefined && { tried: row.joinTried }) };
+}
+
 function realDeps(emit: (e: StepEvent) => void, dir: string, fleet: Target): HostDeps {
   return {
     emit,
@@ -78,7 +84,7 @@ function realDeps(emit: (e: StepEvent) => void, dir: string, fleet: Target): Hos
     refreshLinks: () => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.refresh', {})).then(() => undefined, () => undefined),
     setupRows: (machine, waitMs) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.setup', { machine, waitMs })).then((r) => r.rows),
     consent: (machine, item, fields, on) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.consent', { machine, item, fields, on })).then((r) => r.rows),
-    joining: (machine) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.list', {})).then((r) => r.machines.find((m) => m.id === machine)?.joining, () => undefined),
+    joining: (machine) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.list', {})).then((r) => joiningOf(r.machines, machine), () => undefined),
   };
 }
 

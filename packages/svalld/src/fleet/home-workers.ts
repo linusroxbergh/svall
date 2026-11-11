@@ -78,6 +78,14 @@ function changeOwed(p: Pick<Paths, 'workersOwed'>, machine: string, entry?: { wh
   writeDurable(p.workersOwed, { id: owed.id, workers }, { mode: 0o600 });
 }
 
+// a check that set a try off reads by this that it ended, however it went
+function triedOwed(p: Pick<Paths, 'workersOwed'>, machine: string): void {
+  const owed = readWorkersOwed(p);
+  const entry = owed?.workers[machine];
+  if (!owed || !entry) return;
+  writeDurable(p.workersOwed, { id: owed.id, workers: { ...owed.workers, [machine]: { ...entry, tried: Date.now() } } }, { mode: 0o600 });
+}
+
 /** The worker greeted this home, and so took the token it holds: only this ends what the home owes it. */
 export function settleOwed(p: Pick<Paths, 'workersOwed'>, machine: string): void {
   if (!readWorkersOwed(p)?.workers[machine]) return;
@@ -159,8 +167,9 @@ export function startRejoins(o: {
       if (refused.has(machine)) continue;
       if (Date.now() - (enrolled.get(machine) ?? -Infinity) < GREET_MS) { fine = false; continue; }
       const entry = o.records().find((r) => r.id === machine);
-      if (!entry?.record.ssh) { fine = failed(machine, 'this home has no ssh route to it; svall host add it again with --ssh <its destination>'); continue; }
-      fine = await enrol(machine, entry) && fine;
+      if (!entry?.record.ssh) fine = failed(machine, 'this home has no ssh route to it; svall host add it again with --ssh <its destination>');
+      else fine = await enrol(machine, entry) && fine;
+      triedOwed(o.paths, machine);
     }
     return fine;
   };
