@@ -312,6 +312,8 @@ const refusalStep = (refusal: Refusal): StepError => new StepError([refusal.reas
 
 // a terminal's word for what the sheet says of a path the machine taking the fleet does not have yet
 const lacking = (sheet: HomeSheet, name: string): string => sheet.rewrites.filter((r) => r.lacks).map((r) => `; ${r.key} ${r.kept ? 'is' : 'becomes'} ${r.to}, which ${name} does not have yet`).join('');
+// the workers that do not answer, in the sheet's words
+const waiting = (sheet: HomeSheet, name: string): string => (sheet.waits ?? []).map((w) => `; ${w.name} does not answer; it joins ${name} when it does`).join('');
 
 // the old home served the phone, as its freeze read its own records, so the new one turns the link on, which a window waits for
 const servesPhone = (run: Runner, name: string): Promise<void> => run.step('phone', async () => ({ value: undefined, detail: `${name} turns the phone link on once it holds the fleet` }));
@@ -439,7 +441,7 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
         const there = workerProfile(paths, to) ?? farProfile(d.target);
         farHome = (await remoteConnectionInfo(master, entry, { ...(there && there !== PRIVATE && { profile: there }) })).fleetHome;
         await checkCrew(client, id, to, o, `svall fleet home set ${name}`);
-        return { value: undefined, detail: `${c.sheet.here} robots stay here, ${c.sheet.there} on ${name}${lacking(c.sheet, name)}` };
+        return { value: undefined, detail: `${c.sheet.here} robots stay here, ${c.sheet.there} on ${name}${lacking(c.sheet, name)}${waiting(c.sheet, name)}` };
       });
       driverJournal(paths, id, 'check');
       await moveMission(run, client, paths, id, to, name, name, o);
@@ -589,7 +591,7 @@ export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutco
         master = await d.openMaster(ssh).catch((e: Error) => { throw new StepError(`this machine cannot log in to ${name}: ${e.message}`, `ssh ${ssh} and see what it answers`); });
         home = await d.farClient(master, entry, fleetHome, worker.fleetId);
         await checkCrew(home, id, d.me, o, 'svall fleet home set local');
-        return { value: undefined, detail: `${c.sheet.here} robots stay on ${name}, ${c.sheet.there} here${lacking(c.sheet, 'this machine')}` };
+        return { value: undefined, detail: `${c.sheet.here} robots stay on ${name}, ${c.sheet.there} here${lacking(c.sheet, 'this machine')}${waiting(c.sheet, process.platform === 'darwin' ? 'this Mac' : 'this machine')}` };
       });
       driverJournal(paths, id, 'check');
       await moveMission(run, home!, paths, id, d.me, 'this machine', 'local', o);

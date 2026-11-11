@@ -26,7 +26,7 @@ const FAR_INFO = (id: string) => ({ fleetId: FLEET, machineId: id, release: '1.0
 type Called = { method: string; params: { op?: string; marker?: HomeMoving } & Record<string, unknown> };
 
 /** This fleet's daemon as the driver sees it. */
-function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; rewrites?: object[]; state?: object; crewRefused?: object; abort?: object; phone?: object } = {}) {
+function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; rewrites?: object[]; waits?: object[]; state?: object; crewRefused?: object; abort?: object; phone?: object } = {}) {
   const called: Called[] = [];
   const client = {
     call: (method: string, params: Called['params']) => {
@@ -36,7 +36,7 @@ function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; rew
       if (method === 'fleet.homeCheck') {
         return Promise.resolve(o.checkRefused
           ? { ok: false, refusal: { reason: 'studio is not reachable', action: 'try again when it is awake', details: [] } }
-          : { ok: true, sheet: { here: 2, there: 1, mission: [], toName: 'studio', rewrites: o.rewrites ?? [] } });
+          : { ok: true, sheet: { here: 2, there: 1, mission: [], toName: 'studio', rewrites: o.rewrites ?? [], ...(o.waits && { waits: o.waits }) } });
       }
       if (method === 'state.get') return Promise.resolve(o.state ?? { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [machineId()]: { name: 'mac', reachable: true, since: 1 } } });
       if (method === 'fleet.freeze') return Promise.resolve({ phone: o.phone ?? { serving: false, logins: [] } });
@@ -113,6 +113,13 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     expect((await moveHomeOut('studio', deps)).result).toBe('ready');
     expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail)
       .toBe('2 robots stay here, 1 on studio; defaultCwd becomes ~/code, which studio does not have yet; onboarding.firstProject is ~/first, which studio does not have yet');
+  });
+
+  it('names at its check a worker that does not answer, in the sheet\'s words, before anything moves', async () => {
+    const { deps } = outDeps(happy, { rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }], waits: [{ id: crypto.randomUUID(), name: 'albumap' }] });
+    await moveHomeOut('studio', deps);
+    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail)
+      .toBe('2 robots stay here, 1 on studio; defaultCwd becomes ~/code, which studio does not have yet; albumap does not answer; it joins studio when it does');
   });
 
   it('names a worker that has not joined the new home, and the move stands', async () => {
@@ -680,6 +687,15 @@ describe('fleet home set local', () => {
     await moveHomeBack(deps);
     stop();
     expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe('2 robots stay on studio, 1 here; defaultCwd becomes ~/code, which this machine does not have yet');
+  }, 30_000);
+
+  it('names at its check a worker that does not answer, as joining the machine that takes the fleet back', async () => {
+    const { w, deps, master } = await workerHere(undefined, {}, { waits: [{ id: crypto.randomUUID(), name: 'albumap' }] });
+    const stop = telling(w, master);
+    await moveHomeBack(deps);
+    stop();
+    const here = process.platform === 'darwin' ? 'this Mac' : 'this machine';
+    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe(`2 robots stay on studio, 1 here; albumap does not answer; it joins ${here} when it does`);
   }, 30_000);
 
   it('a check that refuses freezes nothing there and owes nothing, as no mark was ever sent', async () => {
