@@ -442,7 +442,7 @@ describe('the workers a new home owes an enrolment', () => {
     const s = run(p, () => Promise.reject(new SshError(kind as never, said)));
     await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toContain(said));
     s.stop();
-    expect(owedWorkers(p)[W]?.why).toContain("on studio, run test -f ~/.ssh/id_ed25519 || ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519; ssh-copy-id 'ada@box'");
+    expect(owedWorkers(p)[W]?.why).toContain("on this Mac, run test -f ~/.ssh/id_ed25519 || ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519; ssh-copy-id 'ada@box'");
     const q = setup('adopted');
     const m = masterOf(serving(), { code: 255, stderr: `${said}\n` });
     const again = run(q, () => Promise.resolve(m.master));
@@ -452,12 +452,13 @@ describe('the workers a new home owes an enrolment', () => {
     expect(m.enrols()).toHaveLength(1);
   });
 
-  it('a login ssh refused says this home\'s fix alone, not ssh\'s own of a terminal here', async () => {
+  it('a login ssh refused says this home\'s fix alone, in the word it goes by, not ssh\'s own of a terminal here', async () => {
     const p = setup('adopted');
     const s = run(p, () => Promise.reject(new SshError('auth', 'ssh could not reach ada@box: ada@box: Permission denied (publickey).; run ssh ada@box once in a terminal, then try again')));
     await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toBeDefined());
     s.stop();
-    expect(owedWorkers(p)[W]?.why).toBe(`ada@box: Permission denied (publickey); ${noLoginFix('studio', 'ada@box')}`);
+    // the test's word for this home, as a Mac home's is this Mac, not its name
+    expect(owedWorkers(p)[W]?.why).toBe(`ada@box: Permission denied (publickey); ${noLoginFix('this Mac', 'ada@box')}`);
   });
 
   it('a cause that comes back once the worker was enrolled is said again', async () => {

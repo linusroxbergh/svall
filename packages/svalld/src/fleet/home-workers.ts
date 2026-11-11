@@ -5,7 +5,7 @@ import { enrolLock } from '../kernel-lock.js';
 import { farFleet, FleetMismatch, MachineMismatch } from '../link/connection-info.js';
 import { classifyExit, SshError, SshMaster } from '../link/ssh.js';
 import type { Logger } from '../log.js';
-import type { MachineEntry } from '../machine.js';
+import { homeWord, type MachineEntry } from '../machine.js';
 import type { Paths } from '../paths.js';
 import { enrollArgv, noLoginFix, tokenFor, workerProfile } from '../placement/workers.js';
 import { PRIVATE } from '../profile.js';
@@ -119,7 +119,7 @@ export function startRejoins(o: {
 
   const notTaken = (machine: string, kind: string, why: string, ssh: string): false => {
     if (STOPS.includes(kind)) refused.add(machine);
-    return failed(machine, kind === 'auth' || kind === 'host_key' ? `${loginSaid(why)}; ${noLoginFix(o.name(), ssh)}` : why);
+    return failed(machine, kind === 'auth' || kind === 'host_key' ? `${loginSaid(why)}; ${noLoginFix(homeWord(), ssh)}` : why);
   };
 
   async function enrol(machine: MachineId, entry: MachineEntry): Promise<boolean> {
