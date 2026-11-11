@@ -440,7 +440,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       const reach = far ? await reachWorkers((far.carried ?? []).filter((w) => w.id !== me), { fleetId: worker_.fleetId, release: here.release, held: registered() }) : null;
       return homeCheck({ state: store.state, from, to: here, toName, back, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), fromIsHome: to === me, platformOf, reach, linkedTo: (m) => store.state.machines?.[m as MachineId]?.reachable === true, ...(worker_.homeSsh && { farSsh: worker_.homeSsh }) });
     }
-    const here = await homeFacts(paths, { me, role: 'home', fleetId });
+    const here = await homeFacts(paths, { me, role: 'home', fleetId, ...(freeze?.movingId && { moving: freeze.movingId }) });
     const link = links?.for(to);
     const name = store.state.machines?.[to]?.name ?? to;
     const far = await links!.call<HomeFacts>(to, 'home.facts', { paths: here.rewrites?.map((r) => r.to) ?? [] }).catch(() => undefined);

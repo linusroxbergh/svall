@@ -1072,6 +1072,19 @@ describe('the check', () => {
     after?.();
   });
 
+  it('leads with the move on a home in its own move, whose freeze holds the enrol lock, and probes no enrol', async () => {
+    const paths = resolvePaths(makeHome());
+    const held = (await enrolLock(paths.home))!;
+    try {
+      const f = await homeFacts(paths, { me: MAC, role: 'home', fleetId: FLEET, tailscale: {} as never, moving: 'hm_abcdefghij' });
+      expect(f.moving).toBe('hm_abcdefghij');
+      expect(f.enrolling).toBeUndefined();
+      const r = homeCheck(input({ from: { ...facts({}), moving: f.moving, enrolling: f.enrolling } }));
+      expect(r).toMatchObject({ ok: false, refusal: { reason: 'the fleet is moving already (hm_abcdefghij)' } });
+      expect(JSON.stringify(r)).not.toContain('a worker is being enrolled');
+    } finally { held(); }
+  });
+
   it('counts an absent workers.json as no worker, and refuses on one it cannot read', async () => {
     const paths = resolvePaths(makeHome());
     const said = () => homeFacts(paths, { me: MAC, role: 'home', fleetId: FLEET, tailscale: {} as never });

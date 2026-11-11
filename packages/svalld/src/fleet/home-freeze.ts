@@ -95,6 +95,11 @@ export class HomeFreeze {
     return this.moving !== undefined;
   }
 
+  /** The move this home is frozen for, from its pause. */
+  get movingId(): HomeMoveId | undefined {
+    return this.moving?.id;
+  }
+
   // what may change the fleet: a frozen home refuses these, and a freeze waits on those it had already taken
   private writes(method: MethodName): boolean {
     return !STILL.has(method) && (classification[method] !== 'read' || NOT_READS.has(method));
@@ -331,7 +336,8 @@ export class HomeFreeze {
 }
 
 /** What this machine says of itself to a home move's check. `paths`: whether each of these exists here. */
-export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; role: 'home' | 'worker'; fleetId?: string; tailscale?: MobileDeps; carried?: HomeFacts['carried'] }): Promise<HomeFacts> {
+/** `moving`: the move this home's own freeze holds, which holds the enrol lock itself. */
+export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; role: 'home' | 'worker'; fleetId?: string; tailscale?: MobileDeps; carried?: HomeFacts['carried']; moving?: string }): Promise<HomeFacts> {
   let tailscale: HomeFacts['tailscale'];
   try {
     const m = o.tailscale ?? realDeps();
@@ -344,12 +350,12 @@ export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; 
   if (o.role === 'home') try { fleetKb = carriedKb(p); } catch { /* the check refuses a fleet it cannot measure */ }
   const workers = workersOf(p);
   // let go at once: the check says so before anything moves, and the pause refuses one that begins after it
-  const unlock = o.role === 'home' ? await enrolLock(p.home) : () => undefined;
+  const unlock = o.role === 'home' && !o.moving ? await enrolLock(p.home) : () => undefined;
   unlock?.();
   return {
     machineId: o.me, ...(o.fleetId && { fleetId: o.fleetId as HomeFacts['fleetId'] }), release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA_VERSION,
     clock: Date.now(), ...(freeKb !== undefined && { freeKb }), ...(fleetKb !== undefined && { fleetKb }), fleetHome: p.home as HomeFacts['fleetHome'],
-    ...(moveInFlight(p) && { moving: moveInFlight(p) }), tailscale,
+    ...((moveInFlight(p) ?? o.moving) && { moving: moveInFlight(p) ?? o.moving }), tailscale,
     ...(o.paths && { paths: Object.fromEntries(o.paths.map((f) => [f, fs.existsSync(expandHome(f))])) }), ...(workers && { workers }),
     ...(o.role === 'home' && { rewrites: configRewrites(p, os.homedir()) }),
     ...(o.carried && { carried: o.carried }),

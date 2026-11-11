@@ -113,6 +113,20 @@ runIf('a home move through real starts', () => {
       expect(call).toHaveBeenCalledWith(STUDIO, 'home.facts', { paths: [`~/${NONE}`, '~/.svall/home'] });
     }, 60_000);
 
+    it('in its own move says the move, not an enrol, as its freeze holds the enrol lock', async () => {
+      const paths = fleetHome();
+      const d = await firstStart(paths);
+      vi.spyOn(HomeLinks.prototype, 'call').mockResolvedValue({ machineId: STUDIO, release: 'r', protocol: 1, stateSchema: 1, clock: Date.now(), fleetHome: '/home/ada/.svall', tailscale: {} });
+      vi.spyOn(HomeFreeze.prototype, 'movingId', 'get').mockReturnValue(ID);
+      const held = (await enrolLock(paths.home))!;
+      try {
+        const r = await d.ask('fleet.homeCheck', { to: STUDIO }) as unknown as { result: { refusal: { reason: string; more?: { reason: string }[] } } };
+        const reasons = [r.result.refusal, ...(r.result.refusal.more ?? [])].map((m) => m.reason);
+        expect(reasons).toContain(`the fleet is moving already (${ID})`);
+        expect(reasons).not.toContain('a worker is being enrolled');
+      } finally { held(); }
+    }, 60_000);
+
     it('names another worker\'s way back by its platform, as the registry has it', async () => {
       const paths = fleetHome();
       const d = await firstStart(paths);
