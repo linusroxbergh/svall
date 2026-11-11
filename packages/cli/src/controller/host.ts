@@ -659,7 +659,7 @@ function noLogin(ssh: string, said: string): StepError {
   return new StepError(`${here} cannot log in to ${ssh}${said ? `: ${said}` : ''}`, noLoginFix(here, ssh), keyLine(ssh));
 }
 
-// one add or upgrade of a machine at a time, held to the run's end; the kernel lets it go with the process however it ends
+// one add, upgrade, rollback or remove of a machine at a time, held to the run's end; the kernel lets it go with the process however it ends
 function machineLock(): { take(d: Pick<HostDeps, 'registry'>, name: string): Promise<void>; free(): void } {
   let unlock: (() => void) | undefined;
   return {
@@ -1070,8 +1070,14 @@ async function becomeWorker(master: SshMaster, entry: Registered, run: Runner, d
  * which checks each fleet's daemon answers from it, then the probe an upgrade makes.
  */
 export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Promise<HostOutcome> {
+  const lock = machineLock();
   return flow(d.emit, async (run) => {
-    const entry = await run.step('machine', () => { const out = machineOutcome(d.registry, name); servedHome(out.value.id, d); return Promise.resolve(out); });
+    const entry = await run.step('machine', async () => {
+      const out = machineOutcome(d.registry, name);
+      servedHome(out.value.id, d);
+      await lock.take(d, out.value.record.name);
+      return out;
+    });
     const fleetHome = dialedHome(entry.id, d);
     const master = await run.step('master', () => checkedMaster(d, entry));
     const base = entry.record.svallBase;
@@ -1103,7 +1109,7 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
     } finally {
       await master.close().catch(() => undefined);
     }
-  });
+  }).finally(lock.free);
 }
 
 /** The fleet homes on this Mac, the private one and every named profile's. */
@@ -1223,10 +1229,12 @@ const dropHeld = (paths: ReturnType<typeof resolvePaths>, machine: MachineId): v
 export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): Promise<HostOutcome> {
   // held from before anything there changes until its token is gone
   let unlock: (() => void) | undefined;
+  const lock = machineLock();
   return flow(d.emit, async (run) => {
     const entry = await run.step('machine', async () => {
       const out = removable(name, d);
       if (!o.forget) placedOn(out.value, d);
+      await lock.take(d, out.value.record.name);
       unlock = await heldEnrol(resolvePaths(d.fleet.home));
       return out;
     });
@@ -1280,7 +1288,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
       value: undefined, detail: uninstalled.join('; '),
       ...(left && { status: 'warn' as const, action: onThere(ssh!, 'take the keys the mirror copied out of the files named here, or delete those files') }),
     }));
-  }).finally(() => unlock?.());
+  }).finally(() => { unlock?.(); lock.free(); });
 }
 
 function readFleet(file: string): FleetConfig {

@@ -6,9 +6,9 @@ import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { PROTOCOL_VERSION } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
-import { tokenFor } from '@svall/svalld/placement/workers';
+import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
 import { hostLock } from '@svall/svalld/kernel-lock';
-import { addHost, upgradeHost } from '../src/controller/host.js';
+import { addHost, removeHost, rollbackHost, upgradeHost } from '../src/controller/host.js';
 import { wantedCompanion } from '../src/controller/install.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { companionArchive, ephemeralSigner } from './controller/archive.js';
@@ -658,6 +658,41 @@ describe('one add or upgrade of a machine at a time', () => {
     const free = await hostLock(registry.dir, 'trift');
     expect(free).toBeDefined();
     free?.();
+  });
+
+  it('refuses a rollback or a remove of a machine another run holds, before it reaches or changes anything', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
+    registry.save();
+    issueToken(resolvePaths(fleet), REMOTE);
+    const unlock = (await hostLock(registry.dir, 'trift'))!;
+    try {
+      expect((await rollbackHost('trift', {}, deps({ registry }))).stopped).toBe('machine');
+      expect(step('machine').at(-1)).toMatchObject(BUSY);
+      events.length = 0;
+      expect((await removeHost('trift', {}, deps({ registry }))).stopped).toBe('machine');
+      expect(step('machine').at(-1)).toMatchObject(BUSY);
+      expect(ssh.calls()).toEqual([]);
+      expect(registry.get('trift')).toBeDefined();
+      expect(tokenFor(resolvePaths(fleet), REMOTE)).toBeDefined();
+    } finally { unlock(); }
+    // and each lets it go as it ends
+    await rollbackHost('trift', {}, deps({ registry }));
+    await removeHost('trift', { forget: true }, deps({ registry }));
+    const free = await hostLock(registry.dir, 'trift');
+    expect(free).toBeDefined();
+    free?.();
+  });
+
+  it('holds one machine by its name, and leaves another free', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const unlock = (await hostLock(registry.dir, 'trift'))!;
+    try {
+      const other = await hostLock(registry.dir, 'box');
+      expect(other).toBeDefined();
+      other?.();
+      expect((await addHost({ name: 'box', ssh: 'box.test', release: archive() }, deps({ registry, ...unreachable }))).stopped).toBe('ssh');
+    } finally { unlock(); }
   });
 
   it('lets the machine go when the run holding it dies', async () => {
