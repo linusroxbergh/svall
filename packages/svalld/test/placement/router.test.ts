@@ -75,6 +75,17 @@ describe('routing calls for placed robots', () => {
     await until(() => { if (w.worker.store.state.robots.c_1.note !== 'reviewing') throw new Error('no snapshot yet'); });
   });
 
+  it('on the worker, a call it sends on comes back in its names: the home as it calls it, and its own machine as this Mac', async () => {
+    const moving = (to: typeof W) => ({ moving: { id: 'mv_0123456789', to, phase: 'prepare' as const } });
+    const robots = { c_1: robot({ id: 'c_1', ...moving(W) }), c_2: placed({ id: 'c_2', ...moving(H) }) };
+    const w = world({ home: { robots }, worker: { robots }, names: { home: 'studio', me: W } });
+    await w.link();
+    await until(() => { if (!w.worker.connection.connected()) throw new Error('w1 is not linked yet'); });
+    const close = (id: string) => dispatch({ id: 1, method: 'robot.close', params: { id } }, w.worker.ctx);
+    expect(await close('c_1')).toMatchObject({ error: { code: 'moving', message: 'moving to this Mac' } });
+    expect(await close('c_2')).toMatchObject({ error: { code: 'moving', message: 'moving to studio' } });
+  });
+
   it('robot.seen for a placed robot is taken where it runs, and the unread it clears comes back home', async () => {
     const unread = placed({ id: 'c_1', tmux: { windowId: '@1', paneId: '%1' }, unread: true });
     const w = world({ home: { robots: { c_1: unread } }, worker: { robots: { c_1: unread } } });

@@ -296,8 +296,10 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   // a worker that opens the link itself: its tunnel to the home, which the home's link connects through
   const dial = worker?.worker.homeSsh ? new HomeDial({ paths, log, me, linked: (): boolean => connection?.connected() ?? false }) : undefined;
   const homeApi = worker && new HomeApi({ log, worker: () => ({ ...readWorkerFile(paths), homeName: homeLabel() }), dial, linked: (): boolean => connection?.connected() ?? false });
+  const workerHomeWord = () => (worker ? homeWordOnWorker(homeLabel(), !!worker.worker.homeSsh, worker.worker.homePlatform) : 'this Mac');
   const connection = worker && outbox && new HomeConnection({
     paths, worker: { ...worker.worker, get homeName() { return homeLabel(); } }, me, store, outbox, log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
+    names: () => ({ home: workerHomeWord(), ...(process.platform === 'darwin' && { me }) }),
     onAcked: (dropped) => mutations?.acked(dropped),
     // the home's viewers watch and hold terminals here only while it is linked, and the mirror it sent waits for no other link
     onLink: (live) => {
@@ -322,7 +324,6 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     homeName: () => homeLabel(), stateFile: paths.mirrorState, pushFailed: () => workerMirror?.failed(),
   });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
-  const workerHomeWord = () => (worker ? homeWordOnWorker(homeLabel(), !!worker.worker.homeSsh, worker.worker.homePlatform) : 'this Mac');
   const router = new Router({
     store, me, log, links, ...(replay && { replay, homedir: os.homedir() }), ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection, word: workerHomeWord } }),
   });
