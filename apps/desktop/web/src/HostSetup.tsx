@@ -5,7 +5,7 @@ import type { HostArgs, HostOp, HostStep } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
 import {
-  asideStep, groupSteps, loginForward, machineName, machineNames, OP_TITLE, outcomeOf, overHome, plainStep, plural, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun,
+  asideStep, cdDir, groupSteps, loginForward, machineName, machineNames, OP_TITLE, outcomeOf, overHome, plainStep, plural, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun,
 } from './host.js';
 import { useApp, useMeasure } from './hooks.js';
 import { startHost } from './hostRun.js';
@@ -373,6 +373,8 @@ export function HostSetup() {
   // a machine an add has yet to put in the registry is added again, not acted on
   const adding = !machine || (!known && shown?.op === 'add');
   const term = terminal && machine && ssh;
+  // the machine the terminal's command runs on: the home for its own login's fix, else the machine the sheet is about
+  const at = homeSsh && terminal?.bare ? homeLabel ?? machine : machine;
   // a terminal opened from the panel goes back to its checks, which look again at the logins and fixes made there; one
   // opened from elsewhere closes the panel, back to where it was opened
   const ended = () => {
@@ -389,11 +391,11 @@ export function HostSetup() {
     <div className="modal-back" data-testid="host-setup" onPointerDown={term ? undefined : close}>
       <div className="modal host dialog" onPointerDown={(e) => e.stopPropagation()}>
         <div className="kicker">
-          {machine ? <span data-testid="host-machine">{machine}</span> : 'Add a machine'}
+          {machine ? <span data-testid="host-machine">{term ? `${terminal.run !== undefined && cdDir(terminal.run) !== undefined ? 'Shell' : 'Terminal'} on ${at}` : machine}</span> : 'Add a machine'}
           <CloseX ref={shut} onClose={close} testid="host-close" />
         </div>
         <div className="host-body">
-          {term ? <MachineTerminal name={machine} on={homeSsh ? homeLabel : undefined} ssh={homeSsh ?? ssh} run={typed} forward={forward} back={!!terminal.fromPanel && known} onEnd={ended} /> : (
+          {term ? <MachineTerminal name={machine} on={at} ssh={homeSsh ?? ssh} run={typed} asked={terminal.run} forward={forward} back={!!terminal.fromPanel && known} onEnd={ended} /> : (
             <>
               {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions id={shown?.args.id} name={machine} home={isHome} worker={isWorker} /></div>}
               {confirm && (

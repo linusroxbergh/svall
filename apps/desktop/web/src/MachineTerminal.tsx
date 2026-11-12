@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
 import { rectOf } from './bridge.js';
-import { loginForward } from './host.js';
+import { cdDir, loginForward } from './host.js';
+import { Caret } from './icons.js';
+
+// a command longer than this is called the command, and read whole behind details
+const SHORT = 48;
 
 /** A terminal on the machine over its own ssh, `run` typed at its prompt and `forward` the port its login waits on there;
+ * `asked` the command as asked for, before a far home wraps it in its own ssh, and `on` the machine it runs on;
  * `onEnd` once the user is done with it or its shell exits, `back` when that goes back to the machine's checks. */
-export function MachineTerminal({ name, on = name, ssh, run, forward: port, back, onEnd }: { name: string; on?: string; ssh: string; run?: string; forward?: number; back: boolean; onEnd: () => void }) {
+export function MachineTerminal({ name, on = name, ssh, run, asked, forward: port, back, onEnd }: {
+  name: string; on?: string; ssh: string; run?: string; asked?: string; forward?: number; back: boolean; onEnd: () => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState<string>();
   const [attempt, setAttempt] = useState(0);
@@ -13,6 +20,7 @@ export function MachineTerminal({ name, on = name, ssh, run, forward: port, back
   end.current = onEnd;
   const id = `machine:${name}`;
   const forward = run ? loginForward(run, port) : undefined;
+  const dir = asked === undefined ? undefined : cdDir(asked);
 
   useEffect(() => {
     const el = ref.current;
@@ -49,10 +57,17 @@ export function MachineTerminal({ name, on = name, ssh, run, forward: port, back
     <div className="host-term" data-testid="host-terminal">
       <div className="host-note" data-testid="host-terminal-note">
         <span>
-          {run ? <>On {on}, <code>{run}</code> is typed for you: press Return to run it.</> : <>A terminal on {on}.</>}
-          {forward && ` Its sign-in comes back from your browser through port ${forward} on this Mac.`}
+          {!run ? `A shell on ${on}.` : !asked ? `Press Return to open a shell on ${on}.` : dir !== undefined ? `Press Return to open a shell on ${on} in ${dir}.`
+            : <>Press Return to run {asked.length > SHORT ? 'the command' : <code>{asked}</code>} on {on}.</>}
+          {forward && ` Its sign-in comes back through port ${forward} on this Mac.`}
           {' Click a link to open it in your browser.'}
         </span>
+        {run && (
+          <details className="modal-more">
+            <summary><Caret dir="right" />command</summary>
+            <code className="modal-more-body mono">{run}</code>
+          </details>
+        )}
       </div>
       {failed && (
         <div className="host-note" data-testid="host-terminal-failed">

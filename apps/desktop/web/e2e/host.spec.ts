@@ -159,7 +159,8 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   await expect(panel.getByTestId('host-terminal-tmux')).toHaveCount(0);
 
   await panel.getByTestId('host-terminal-claude').click();
-  await expect(panel.getByTestId('host-terminal-note')).toContainText('On studio, claude auth login is typed for you: press Return to run it.');
+  await expect(panel.getByTestId('host-machine')).toHaveText('Terminal on studio');
+  await expect(panel.getByTestId('host-terminal-note')).toContainText('Press Return to run claude auth login on studio.');
   await expect(panel.getByTestId('host-steps')).toHaveCount(0);
   const shown = (await sent(page)).filter((m) => m.type === 'term.show');
   expect(shown).toEqual([{ type: 'term.show', id: 'machine:studio', rect: expect.any(Object), machine: { ssh: 'linus@studio', type: 'claude auth login' } }]);
@@ -206,7 +207,7 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   await panel.getByTestId('machine-terminal').click();
   expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).toMatchObject({ machine: { ssh: 'linus@studio' } });
   expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).not.toHaveProperty('machine.type');
-  await expect(panel.getByTestId('host-terminal-note')).toHaveText(/^A terminal on studio\./);
+  await expect(panel.getByTestId('host-terminal-note')).toHaveText(/^A shell on studio\./);
   await page.getByTestId('host-close').click();
   await expect.poll(async () => (await sent(page)).filter((m) => m.type === 'host.start' || m.type === 'term.close').slice(-2))
     .toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'studio' } }, { type: 'term.close', id: 'machine:studio' }]);
@@ -337,7 +338,7 @@ test('a row with a run opens the terminal with its forward', async ({ page, sval
 
   // mcp-remote's sign-in comes back on the port its args name
   await panel.getByTestId('host-terminal-mirror:oauth:claude:mcp:linear').click();
-  await expect(panel.getByTestId('host-terminal-note')).toContainText('On studio, claude is typed for you');
+  await expect(panel.getByTestId('host-terminal-note')).toContainText('Press Return to run claude on studio.');
   await expect(panel.getByTestId('host-terminal-note')).toContainText('through port 3334 on this Mac');
   expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).toMatchObject({ machine: { ssh: 'linus@studio', type: 'claude', forward: 3334 } });
   await receive(page, { type: 'term.exited', id: 'machine:studio' });

@@ -95,7 +95,9 @@ test('on a far home a machine\'s terminal opens on that home: an ssh to the mach
   render(<HostSetup />);
   fireEvent.click(screen.getByTestId('host-terminal-ssh'));
   expect(shown().machine).toEqual({ ssh: 'ada@studio', type: 'ssh-copy-id ada@box' });
-  expect(screen.getByTestId('host-terminal-note').textContent).toContain('On studio,');
+  // the home's own fix runs on the home, which the sheet names
+  expect(screen.getByTestId('host-machine').textContent).toBe('Terminal on studio');
+  expect(screen.getByTestId('host-terminal-note').firstElementChild!.textContent).toBe('Press Return to run ssh-copy-id ada@box on studio. Click a link to open it in your browser.');
   act(() => store.getState().closeHostTerminal());
   fireEvent.click(screen.getByTestId('host-terminal-codex'));
   expect(shown().machine).toEqual({ ssh: 'ada@studio', type: "ssh -t -L 1455:localhost:1455 ada@box 'codex login'", forward: 1455 });
@@ -619,21 +621,36 @@ describe('a terminal for a far worker, wherever it is opened from', () => {
   };
 
   test.each([
-    ['a login, by its port', 'codex login', 1455, "ssh -t -L 1455:localhost:1455 ada@box 'codex login'", 1455],
-    ['a login with no port of its own, as Codex waits on its own', 'codex login', undefined, "ssh -t -L 1455:localhost:1455 ada@box 'codex login'", 1455],
-    ['a cd, which leaves a shell open there', "cd '/home/ada/code'", undefined, `ssh -t ada@box 'cd '\\''/home/ada/code'\\''; exec "$SHELL" -l'`, undefined],
-    ['any other command', 'svall worker env FOO', undefined, "ssh -t ada@box 'svall worker env FOO'", undefined],
-  ])('%s runs on the worker, by way of the home', (_what, run, forward, typed, port) => {
+    ['a login, by its port', 'codex login', 1455, "ssh -t -L 1455:localhost:1455 ada@box 'codex login'", 1455, 'Terminal on box',
+      'Press Return to run codex login on box. Its sign-in comes back through port 1455 on this Mac.'],
+    ['a login with no port of its own, as Codex waits on its own', 'codex login', undefined, "ssh -t -L 1455:localhost:1455 ada@box 'codex login'", 1455, 'Terminal on box',
+      'Press Return to run codex login on box. Its sign-in comes back through port 1455 on this Mac.'],
+    ['a cd, which leaves a shell open there', "cd '/home/ada/o'\\''brien'", undefined, `ssh -t ada@box 'cd '\\''/home/ada/o'\\''\\'\\'''\\''brien'\\''; exec "$SHELL" -l'`, undefined, 'Shell on box',
+      "Press Return to open a shell on box in /home/ada/o'brien."],
+    ['any other command', 'svall worker env FOO', undefined, "ssh -t ada@box 'svall worker env FOO'", undefined, 'Terminal on box', 'Press Return to run svall worker env FOO on box.'],
+    ['a command too long to read in a line', `echo ${'x'.repeat(50)}`, undefined, `ssh -t ada@box 'echo ${'x'.repeat(50)}'`, undefined, 'Terminal on box', 'Press Return to run the command on box.'],
+  ])('%s runs on the worker, by way of the home, and the sheet says so in one line with the typed line behind details', (_what, run, forward, typed, port, title, note) => {
     act(() => { far(); terminalOn('box', run, forward); });
     render(<HostSetup />);
     expect(shown().machine).toEqual({ ssh: 'ada@studio', type: typed, ...(port && { forward: port }) });
-    expect(screen.getByTestId('host-terminal-note').textContent).toContain('On studio,');
+    expect(screen.getByTestId('host-machine').textContent).toBe(title);
+    expect(screen.getByTestId('host-terminal-note').firstElementChild!.textContent).toBe(`${note} Click a link to open it in your browser.`);
+    const command = screen.getByTestId('host-terminal-note').querySelector('details')!;
+    expect([command.querySelector('summary')!.textContent, command.querySelector('code')!.textContent, command.hasAttribute('open')]).toEqual(['command', typed, false]);
   });
 
   test('none typed is a shell on the worker', () => {
     act(() => { far(); terminalOn('box'); });
     render(<HostSetup />);
     expect(shown().machine).toEqual({ ssh: 'ada@studio', type: 'ssh ada@box' });
+    expect(screen.getByTestId('host-terminal-note').firstElementChild!.textContent).toBe('Press Return to open a shell on box. Click a link to open it in your browser.');
+  });
+
+  test('on a Mac home a plain terminal is a shell there, with nothing typed and nothing behind details', () => {
+    act(() => { store.getState().setMachines([{ id: BOX, name: 'box', ssh: 'ada@box', platform: 'linux-x64' }] as never); terminalOn('box'); });
+    render(<HostSetup />);
+    expect(screen.getByTestId('host-machine').textContent).toBe('Terminal on box');
+    expect(screen.getByTestId('host-terminal-note').textContent).toBe('A shell on box. Click a link to open it in your browser.');
   });
 
   test('the home itself and a Mac\'s own machine open as they always did', () => {
