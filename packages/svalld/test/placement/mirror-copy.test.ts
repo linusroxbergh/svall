@@ -18,6 +18,7 @@ import { carriable, mirrorPlan, packMirror } from '../../src/placement/mirror-pl
 import { keysOnly, MANIFEST, readState } from '../../src/placement/mirror-state.js';
 import { unpack } from '../../src/placement/move-steps.js';
 import { seedTrust } from '../../src/placement/trust.js';
+import { inCallerNames } from '../../src/machine.js';
 import { realPath } from '../../src/paths.js';
 import { silentLogger } from '../../src/log.js';
 import { fleetBackups } from '../../src/uninstall.js';
@@ -1603,7 +1604,9 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
     };
     const copying = ask();
     await offering;
-    expect(() => w.home.setupCopy!.arm(OTHER)).toThrow(expect.objectContaining({ code: 'busy' }));
+    await expect(inCallerNames({ home: 'studio' }, async () => w.home.setupCopy!.arm(OTHER))).rejects.toMatchObject({
+      code: 'busy', message: 'Another copy is landing on studio', data: { fix: 'Try again when it is done' },
+    });
     const stage = () => (fs.existsSync(w.home.paths.cache) ? fs.readdirSync(w.home.paths.cache).filter((f) => f.startsWith('mirror-')) : []);
     expect(stage()).toHaveLength(1);
     const stopped = c.stop();

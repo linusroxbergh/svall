@@ -3,6 +3,7 @@ import { ApiError, serverWait, type AgentKind, type MachineId, type SetupRow } f
 import type { WorkerLink } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Logger } from '../log.js';
+import { homeWord } from '../machine.js';
 import { Mirror, mirrorCalls, type MirrorLink, type Pushed } from './mirror.js';
 import { entryName, type Manifest } from './mirror-apply.js';
 import { CONFIG_ITEMS } from './mirror-consent.js';
@@ -60,7 +61,7 @@ export class SetupCopy {
 
   /** Lets `machine` make one push for `ms`; one copy at a time. */
   arm(machine: MachineId, ms = GRANT_MS): object {
-    if (this.grant && Date.now() <= this.grant.until) throw new ApiError('busy', 'another copy of an agent setup is landing here');
+    if (this.grant && Date.now() <= this.grant.until) throw new ApiError('busy', `Another copy is landing on ${homeWord()}`, { fix: 'Try again when it is done' });
     this.grant = { machine, until: Date.now() + ms };
     return this.grant;
   }
