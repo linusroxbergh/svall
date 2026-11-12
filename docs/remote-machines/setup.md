@@ -64,24 +64,34 @@ Both run the same steps and show each as it finishes. The app shows them in thes
    worker, and tmux opens and closes a window there. Then the machine is added to this Mac's list in
    `~/.config/svall/machines.json`, and this Mac's daemon links to it.
 
-It ends in one line: "studio is ready. Robots you move there keep working while this Mac sleeps.", or "studio has
-2 things to fix", followed by them. Each failed step counts, and so does each warning with an action. A warning with
-no action, such as `gh` not logged in there, is advice and does not count. Your agent setup is never a thing to fix,
-as a move goes ahead without it: what of it will not work on the machine yet follows in a short list, a line each
-with its name, what it lacks and the one thing to do from this Mac:
+It ends on what needs you, in full, then the notes and the rows that went well counted on a line each, then one line:
+"studio is ready", or "studio has 2 things to fix". Each failed step needs you, and so does a warning on what a robot
+there cannot do without, such as linger off or an agent your fleet runs not logged in. A warning anything else, such
+as `gh` not logged in there or an agent your fleet does not run, is a note. Your agent setup is never a thing to fix,
+as a move goes ahead without it: one line counts what of it is not on the machine yet, and `svall host doctor studio
+--all` lists it, a line each with its name, what it lacks and the one thing to do from this Mac:
 
 ```
-studio is ready. 3 parts of your agent setup will not work there yet:
+! linger  off: the fleet stops when you log out -> ssh ada@studio, then sudo loginctl enable-linger ada
+! 2 notes
+✓ 19 checks fine
+studio has 1 thing to fix
+3 parts of your agent setup are not on studio yet: svall host doctor studio --all lists them
+Set them up now? [Y/n]
+```
+
+`--all` ends in that list:
+
+```
+3 parts of your agent setup are not on studio yet:
   linear  keys not copied (env.LINEAR_API_KEY)  → svall host consent studio claude:mcp:linear on
   notion  not logged in                         → ssh -L 3118:localhost:3118 ada@studio, then MCP_OAUTH_CALLBACK_PORT=3118 claude, /mcp
   uvx     not installed; context7 needs it      → ssh ada@studio, then curl -LsSf https://astral.sh/uv/install.sh | sh
-Set them up now? [Y/n]
 ```
 
 A server that runs only on a Mac, or a program you ticked as one the machine does not need, stands aside: the list ends
 in one line naming them, "chrome runs only on a Mac, and adlc is not needed there", and the count leaves them out; so do a
-move's list and the app's footer, whose line reads "…will not work there yet, and 1 runs only on a Mac". A list with
-nothing to do about any of it, such as a file this Mac cannot read, says "will not work there" without "yet".
+move's list and the app's footer, whose line reads "…will not work there yet, and 1 runs only on a Mac".
 
 When one of them is a key to copy or a command to run there, `svall host add` and `svall host upgrade` in a terminal
 then ask whether to set them up now: yes asks for each key in turn whether to copy it there, which it does only on a
@@ -192,9 +202,9 @@ keys Svall cannot read, is a row "copy notion to studio as it is", and is copied
 or a file a plugin's `plugin.json` or marketplace entry names in `agents`, whose `mcpServers` defines a server with a
 key or settings Svall cannot copy one by one, or that names `mcpServers` in a way Svall does not read. Until ticked, each stays on
 this Mac.
-From a terminal, `svall host doctor studio` lists what will not work there, and `svall host consent studio <item>
+From a terminal, `svall host doctor studio --all` lists what will not work there, and `svall host consent studio <item>
 <on|off> [--field <field>]` ticks one: `<item>` is its row's name after `mirror:`, such as `claude:mcp:linear`;
-`--field env.LINEAR_API_KEY` ticks that key alone, and `off` unticks every key of the item. `--json` gives every row.
+`--field env.LINEAR_API_KEY` ticks that key alone, and `off` takes every key of the item. `--json` gives every row.
 After a move, the parts of one robot's setup that will not work where it lands are listed for it
 ([Moving one](placement.md#moving-one)).
 
