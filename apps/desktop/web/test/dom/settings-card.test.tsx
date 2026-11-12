@@ -285,7 +285,7 @@ test('robot motion starts on, and its switch turns the stored setting off', () =
   expect(checked('set-robot-motion')).toBe('false');
 });
 
-test('Machines asks the fleet again after a list that failed', async () => {
+test('Machines asks the fleet again after a list that failed, showing this Mac\'s registry and why meanwhile', async () => {
   vi.useFakeTimers();
   try {
     let fails = true;
@@ -298,15 +298,20 @@ test('Machines asks the fleet again after a list that failed', async () => {
     act(() => {
       store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: 'bbbbbbbb-0000-4000-8000-000000000000' as never, name: 'studio', online: true });
       store.getState().setStatus('online');
-      store.getState().setMachines([]);
+      store.getState().setMachines([{ id: 'cccccccc-0000-4000-8000-000000000000', name: 'box', ssh: 'ada@box', platform: 'linux-x64' }] as never);
     });
     render(<SettingsCard />);
     show('machines');
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(screen.queryByTestId('machine-studio')).toBeNull();
+    expect(screen.queryByTestId('machines-reading')).toBeNull();
+    expect(screen.queryByTestId('machine-box')).not.toBeNull();
+    expect(screen.getByTestId('machines-list-error').textContent).toContain("The fleet's machines could not be read");
     fails = false;
-    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    fireEvent.click(screen.getByTestId('machines-list-reload'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(screen.queryByTestId('machine-studio')).not.toBeNull();
+    expect(screen.queryByTestId('machines-list-error')).toBeNull();
   } finally {
     vi.useRealTimers();
     call.mockImplementation(() => Promise.resolve({}));

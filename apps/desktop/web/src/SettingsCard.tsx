@@ -204,6 +204,7 @@ function Machines() {
   const online = useApp((s) => s.status === 'online');
   const [fleetRows, setFleetRows] = useState<FleetMachine[]>();
   const [asks, setAsks] = useState(0);
+  const [listFailed, setListFailed] = useState<string>();
   const list = () => { app.bridge.send({ type: 'host.list' }); };
   useEffect(list, []);
   // the fleet's machines as its home knows them; what this machine's registry adds is how it reaches one
@@ -211,7 +212,11 @@ function Machines() {
     if (!online) return;
     let left = false;
     let again: ReturnType<typeof setTimeout> | undefined;
-    deps().api.call('machines.list', {}).then((r) => { if (!left) setFleetRows(r.machines); }, () => { if (!left) again = setTimeout(() => setAsks((n) => n + 1), 5000); });
+    deps().api.call('machines.list', {}).then((r) => { if (!left) { setFleetRows(r.machines); setListFailed(undefined); } }, (e: Error) => {
+      if (left) return;
+      setListFailed(e.message);
+      again = setTimeout(() => setAsks((n) => n + 1), 5000);
+    });
     return () => { left = true; clearTimeout(again); };
   }, [links, online, asks]);
   const registered = new Map(machines?.map((m) => [m.id, m]));
@@ -228,8 +233,9 @@ function Machines() {
   ];
   // a home on this Mac with no worker is what it always was
   const shown = !via && !rows.some((r) => r.role !== 'home') ? [] : rows;
-  // the registry's rows wait for the fleet's, which place them
-  const reading = (machines === undefined && !error && app.bridge.present) || (online && fleetRows === undefined);
+  // the registry's rows wait for the fleet's, which place them, unless the fleet's cannot be read
+  const unread = online && fleetRows === undefined ? listFailed : undefined;
+  const reading = (machines === undefined && !error && app.bridge.present) || (online && fleetRows === undefined && !unread);
   return (
     <Group name="Machines" info={<Info id="machines">The home holds the fleet and starts new robots. A worker runs robots moved to it.</Info>}
       end={(!via || via.online) && <button className="btn sm" data-testid="machine-add" onClick={() => app.store.getState().toggleHost(true)}>Add machine</button>}>
@@ -273,6 +279,12 @@ function Machines() {
             </div>
           );
         })}
+        {unread && (
+          <div className="row" data-testid="machines-list-error">
+            <div className="set-said" data-error><Said {...splitRaw(`The fleet's machines could not be read: ${unread}`)} settings /></div>
+            <b><button className="btn sm" data-testid="machines-list-reload" onClick={() => setAsks((n) => n + 1)}>Read again</button></b>
+          </div>
+        )}
         {error && (
           <div className="row" data-testid="machines-error">
             <div className="set-said" data-error><Said {...splitRaw(error)} settings /></div>
