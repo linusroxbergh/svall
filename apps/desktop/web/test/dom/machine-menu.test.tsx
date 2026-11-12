@@ -29,6 +29,9 @@ beforeEach(() => document.body.replaceChildren());
 test('opening the menu focuses its first item; arrows step; Escape and an outside press close it, Escape returning focus to the button', () => {
   setup(undefined, 0);
   fireEvent.click(more());
+  expect(screen.getByTestId('machine-terminal').textContent).toBe('Open terminal');
+  // what takes the machine away stands apart
+  expect(screen.getByTestId('machine-remove').previousElementSibling!.getAttribute('role')).toBe('separator');
   expect(document.activeElement).toBe(screen.getByTestId('machine-upgrade'));
   key('ArrowDown');
   expect(document.activeElement).toBe(screen.getByTestId('machine-terminal'));
@@ -49,12 +52,12 @@ test('opening the menu focuses its first item; arrows step; Escape and an outsid
   expect(screen.queryByTestId('machine-upgrade')).toBeNull();
 });
 
-test('Remove is held back while a fleet on this account dials the machine as its home, and says which', () => {
+test('Remove is held back while a fleet on this account dials the machine as its home, and says what clears it', () => {
   setup(undefined, 0);
   act(() => store.getState().setMachines(store.getState().machines!.map((m) => ({ ...m, dialedBy: '/Users/ada/.svall-fartest' }))));
   fireEvent.click(more());
   expect((screen.getByTestId('machine-remove') as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByTestId('machine-remove').getAttribute('data-tip')).toContain('/Users/ada/.svall-fartest');
+  expect(screen.getByTestId('machine-remove').getAttribute('data-tip')).toBe('It is the home of another fleet on this Mac; bring that fleet back first.');
 });
 
 test('Forget says why it is held back too, what clears it, and an unreadable worker.json reads apart', () => {
@@ -63,7 +66,7 @@ test('Forget says why it is held back too, what clears it, and an unreadable wor
   fireEvent.click(more());
   const forget = () => screen.getByTestId('machine-forget') as HTMLButtonElement;
   expect(forget().disabled).toBe(true);
-  expect(forget().getAttribute('data-tip')).toContain('Bring that fleet back to this Mac first: SVALL_HOME=/Users/ada/.svall-fartest svall fleet home set local');
+  expect(forget().getAttribute('data-tip')).toBe('It is the home of another fleet on this Mac; bring that fleet back first.');
   act(() => store.getState().setMachines(store.getState().machines!.map(({ dialedBy: _d, ...m }) => ({ ...m, unreadWorker: '/Users/ada/.svall-x/worker.json' }))));
   expect(forget().disabled).toBe(true);
   for (const b of [forget(), screen.getByTestId('machine-remove')]) {

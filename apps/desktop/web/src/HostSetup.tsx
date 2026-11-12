@@ -37,7 +37,7 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
   const dialedBy = row?.dialedBy;
   const unread = row?.unreadWorker;
   // why neither Remove nor Forget goes, and what clears it
-  const stays = dialedBy ? `The home of the fleet in ${dialedBy}; removing it would stop that fleet. Bring that fleet back to this Mac first: SVALL_HOME=${dialedBy} svall fleet home set local`
+  const stays = dialedBy ? 'It is the home of another fleet on this Mac; bring that fleet back first.'
     : unread && `Cannot read ${unread}, which may name this machine; fix it`;
   const placed = useApp((s) => Object.values(s.fleet.robots).filter((r) => id && (r.machine === id || r.moving?.to === id)).length);
   const up = useApp((s) => !!id && answers(s.fleet.machines?.[id as MachineId]));
@@ -88,7 +88,7 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
         <div ref={menu} className="machine-menu menu popover" role="menu" style={place}>
           <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip={`Install ${release} release there`} onClick={item(() => run('upgrade'))}>Upgrade to {release} release</button>
           <button role="menuitem" className="menu-item" data-testid="machine-terminal" disabled={running || !reachable} data-tip="A terminal on this machine, for what Svall leaves to you there"
-            onClick={item(() => store().openHostTerminal(name))}>Open a terminal there</button>
+            onClick={item(() => store().openHostTerminal(name))}>Open terminal</button>
           {worker && id && (
             <button role="menuitem" className="menu-item" data-testid="machine-make-home" disabled={running} data-tip={`The fleet's islands, notes, settings and phone pairing move to ${name}; robots stay where they run`}
               onClick={item(() => { store().toggleHost(false); store().setHomeSheet({ to: id as MachineId, name, back: false }); })}>Make {name} this fleet's home…</button>
@@ -97,6 +97,7 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
             <button role="menuitem" className="menu-item" data-testid="machine-bring-back" disabled={running} data-tip="The fleet's islands, notes, settings and phone pairing come back here; robots stay where they run"
               onClick={item(() => { store().toggleHost(false); store().setHomeSheet({ to: id as MachineId, name, back: true }); })}>Bring the fleet back to this Mac…</button>
           )}
+          {!home && <div className="menu-sep" role="separator" />}
           {!home && <button role="menuitem" className="menu-item dan" data-testid="machine-remove" disabled={running || placed > 0 || !!stays}
             data-tip={stays || (placed ? `${placed === 1 ? '1 robot is' : `${placed} robots are`} placed there; move ${placed === 1 ? 'it' : 'them'} back first` : 'Uninstall Svall on this machine and drop its route')}
             onClick={item(() => ask(false))}>Remove</button>}

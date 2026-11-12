@@ -410,7 +410,7 @@ test('an empty Machines tab explains what a machine is; a machine has Check and 
   await expect(row.getByTestId('machine-upgrade')).toHaveCount(0);
   await row.getByTestId('machine-more').click();
   await expect(row.getByTestId('machine-upgrade')).toHaveText("Upgrade to this Mac's release");
-  await expect(row.getByTestId('machine-terminal')).toHaveText('Open a terminal there');
+  await expect(row.getByTestId('machine-terminal')).toHaveText('Open terminal');
   await expect(row.getByTestId('machine-remove')).toBeEnabled();
   await expect(row.getByTestId('machine-forget')).toBeVisible();
   await expect(row.getByTestId('machine-upgrade')).toBeFocused();

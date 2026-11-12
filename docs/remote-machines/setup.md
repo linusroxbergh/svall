@@ -101,7 +101,7 @@ is to forget the machine offers **Forget**, which asks first. Each other fix tha
 nothing and forwards no ssh agent, with the command typed at its prompt. Press Return to run it, or change it first;
 click a link it prints to open it in your browser. When you exit or choose **Done**,
 or close the panel with ×, the terminal hangs up and the panel checks the machine again, once it is in this Mac's
-list. **Open a terminal there**, in the machine's ⋯ menu, opens one with nothing typed. From a terminal on the Mac,
+list. **Open terminal**, in the machine's ⋯ menu, opens one with nothing typed. From a terminal on the Mac,
 each action names the command and the machine to run it on:
 
 - A missing package: the action names the `apt` command, as `ssh ada@studio, then sudo apt install git`.
@@ -341,7 +341,7 @@ then](placement.md#while-the-home-is-away).
 ## Looking after it
 
 Settings → Machines lists every machine with its ssh destination and the release and result of its last check, add,
-upgrade or rollback, each with **Check** and a ⋯ menu: **Upgrade to this Mac's release**, **Open a terminal there**,
+upgrade or rollback, each with **Check** and a ⋯ menu: **Upgrade to this Mac's release**, **Open terminal**,
 **Remove**, which waits while robots are placed there, and **Forget**, offered only while the machine cannot be
 reached. With no machine, it says what a machine is.
 
