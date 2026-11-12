@@ -227,11 +227,13 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
   };
   const fail = (e: Error) => setFailed(plainStep(e.message, machineNames(app.store.getState().machines)));
   // svalld keeps a tick it could not push, so a refusal is followed by the rows as it kept them
+  // an item with some of its keys ticked: its box reads mixed, and a click takes those back, granting none of the rest
+  const partial = !!row.tick && !row.tick.on && !!row.tick.ticked?.length;
   const tick = (machine: MachineId, on: boolean) => {
     const show = take();
     setAsked(on);
     setFailed(undefined);
-    app.api().call('machines.consent', { machine, item: row.tick!.item, fields: row.tick!.fields, on })
+    app.api().call('machines.consent', { machine, item: row.tick!.item, fields: on ? row.tick!.fields : row.tick!.ticked ?? row.tick!.fields, on })
       .catch((e: Error) => {
         fail(e);
         return app.api().call('machines.setup', { machine });
@@ -286,8 +288,9 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
       <input type="checkbox" data-testid={`host-tick-${row.step}`} aria-describedby={sentence}
         aria-label={notNeeded(row) ? `${label} is not needed on ${name}` : key ? `Copy ${label} to ${name}` : label}
         checked={asked ?? row.tick.on} disabled={!id || !idle} aria-disabled={asked !== undefined || undefined}
+        ref={(el) => { if (el) el.indeterminate = asked === undefined && partial; }}
         data-tip={id && notNeeded(row) ? `Tick when ${name} does not need it; the row then stands aside` : undefined}
-        onChange={(e) => { if (id && asked === undefined) tick(id as MachineId, e.target.checked); }} />
+        onChange={(e) => { if (id && asked === undefined) tick(id as MachineId, !partial && e.target.checked); }} />
       {notNeeded(row) ? 'not needed' : key ? 'copy' : 'on'}
     </label>
   );
@@ -390,9 +393,10 @@ function Checklist({ run, terminal, open, unfold }: { run: HostRun; terminal?: T
   const name = run.args.name;
   const steps = run.steps.filter((s) => !isSetup(s));
   const now = run.running ? steps.filter((s) => s.status === 'start').at(-1) : undefined;
-  // a step still under way when the run ended is where it stopped; while the service is said not to run, its port only says so again
+  // a step still under way when the run ended is where it stopped; while the service is said not to run, its port's missing file
+  // (svalld's one warn) only says so again, and any other port row stands
   const down = steps.some((s) => (s.step === 'systemd' || s.step === 'launchd') && s.status === 'fail' && s.detail !== 'could not be read');
-  const ended = (run.running ? steps.filter((s) => s.status !== 'start') : steps).filter((s) => !(down && s.step === 'svalld'));
+  const ended = (run.running ? steps.filter((s) => s.status !== 'start') : steps).filter((s) => !(down && s.step === 'svalld' && s.status === 'warn'));
   // a run that does something to the machine is its steps, in order; an add or a check, the machine's checks by section
   const flow = run.op !== 'add' && run.op !== 'doctor';
   // a step flow's rollback says what the machine runs now, so it stays in sight whatever it found

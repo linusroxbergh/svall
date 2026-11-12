@@ -852,6 +852,15 @@ test("while the background service has failed, its port's own check says nothing
     store.getState().hostDone('doctor', 0);
   });
   expect(screen.getByTestId('host-notes').textContent).toBe('1 note');
+  // another process on the port is a problem of its own, listed and counted
+  act(() => {
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'svalld', status: 'fail', detail: 'not running: nc (pid 4242) holds port 47801, which /home/ada/.svall/node.json sets; stop it, or take port out of node.json' });
+    store.getState().hostStep('doctor', { step: 'systemd', status: 'fail', detail: 'not running', action: 'svall setup', run: 'svall setup' });
+    store.getState().hostDone('doctor', 1);
+  });
+  expect(screen.queryAllByTestId(/^host-step-/).map((e) => e.getAttribute('data-testid'))).toEqual(['host-step-svalld', 'host-step-systemd']);
+  expect(screen.getByTestId('host-outcome').querySelector('.host-verdict')!.textContent).toBe('trift has 2 things to fix');
   // a unit that could not be read says nothing of the service, so the port's check stands
   act(() => {
     store.getState().hostStarted('doctor', { name: 'trift' });
@@ -896,9 +905,14 @@ test("a key the machine has its own of says so by the machine's name, with no bo
   const row = screen.getByTestId('host-step-mirror:codex:mcp:github');
   expect(row.querySelector('.host-said > span')!.textContent).toBe('trift has its own');
   expect(screen.queryByTestId('host-tick-mirror:codex:mcp:github')).toBeNull();
-  // one with a key ticked keeps its box, so the consent can be taken back or made whole
+  // one with a key ticked keeps its box, mixed, and a click takes that key back without sending the other
   act(() => store.getState().hostRows([{ step: 'mirror:codex:mcp:github', status: 'ok', detail: 'trift has its own', tick: { item: 'codex:mcp:github', name: 'github', fields: ['env.A', 'env.B'], on: false, preview: [], ticked: ['env.A'] } }]));
-  expect(screen.getByTestId('host-tick-mirror:codex:mcp:github')).toBeTruthy();
+  const box = screen.getByTestId('host-tick-mirror:codex:mcp:github') as HTMLInputElement;
+  expect([box.checked, box.indeterminate]).toEqual([false, true]);
+  call.mockClear();
+  fireEvent.click(box);
+  const consents = call.mock.calls.filter(([method]) => method === 'machines.consent');
+  expect(consents).toEqual([['machines.consent', { machine: MACHINE, item: 'codex:mcp:github', fields: ['env.A'], on: false }]]);
   fireEvent.click(screen.getByTestId('host-notes'));
   expect(screen.getByTestId('host-step-gh').querySelector('.host-said > span .host-leads')!.textContent).toBe('pull request links stay unresolved');
 });
