@@ -377,7 +377,9 @@ const Review = ({ writes }: { writes: { what: string; path: string }[] }) => (
     <p>Svall adds agent hooks, a background service and the svall command. The hooks only act inside Svall.</p>
     <details>
       <summary>Review changes <span>{writes.length} locations</span></summary>
-      <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-write"><span>{w.what}</span><code>{shortPath(w.path)}</code></li>)}</ul>
+      {/* a launchd job reads by what it does, not by its label */}
+      <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-write"><span>{w.what}</span>
+        {w.path.endsWith('.plist') ? <small>runs your robots while Svall is open</small> : <code>{shortPath(w.path)}</code>}</li>)}</ul>
     </details>
   </section>
 );

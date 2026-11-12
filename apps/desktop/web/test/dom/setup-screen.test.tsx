@@ -61,6 +61,17 @@ test('file changes are available on demand and follow the selected agents', () =
   expect(screen.getByText('~/.claude/settings.json')).toBeTruthy();
 });
 
+test('the background service is listed by what it does, its launchd file nowhere in the window', () => {
+  const plist = '/Users/test/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.plist';
+  shell({ ...ready, writes: [...ready.writes, { what: "Svall's background service", path: plist }] });
+  next(); next();
+  fireEvent.click(screen.getByText(/Review changes/));
+  expect(screen.getByText('4 locations')).toBeTruthy();
+  expect(screen.getByText("Svall's background service").closest('li')!.textContent).toBe("Svall's background serviceruns your robots while Svall is open");
+  expect(document.body.textContent).not.toMatch(/plist|LaunchAgents|svalld/);
+  expect(screen.getByText('~/.svall')).toBeTruthy();
+});
+
 test('missing agents show one installer at a time', () => {
   const s = shell(missing);
   expect(screen.getByText('install-claude')).toBeTruthy();

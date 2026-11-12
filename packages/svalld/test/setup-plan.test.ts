@@ -76,7 +76,7 @@ describe('setupPlan', () => {
       shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
     expect(plan.agents).toEqual([{ kind: 'claude', path: '/c' }, { kind: 'codex', path: '/u/.codex', folderOnly: true }]);
     expect(plan.writes.map((w) => w.path)).toContain('/u/.codex/hooks.json');
-    expect(plan.writes).toContainEqual({ what: 'Service for the work fleet', path: expect.stringMatching(/^\/l\/.*work\.plist$/) });
+    expect(plan.writes).toContainEqual({ what: "Svall's background service for the work fleet", path: expect.stringMatching(/^\/l\/.*work\.plist$/) });
   });
 });
 
