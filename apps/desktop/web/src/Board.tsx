@@ -308,12 +308,12 @@ export function Board() {
         <span className="kb-gap" />
         <button type="button" className="pill kb-chip" data-testid="chip-placing" data-on={placing} data-busy={placingNow} aria-busy={placingNow} aria-haspopup="menu"
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); placingMenu(r.left, r.bottom + 4); }}>
-          <Place />Auto-place: {placingNow ? 'placing…' : placing ? 'scribe' : 'off'}<Caret dir="down" />
+          <Place /><span className="kb-wide">Auto-place: </span>{placingNow ? 'placing…' : placing ? 'scribe' : 'off'}<Caret dir="down" />
         </button>
         <button type="button" className="pill kb-chip" data-testid="chip-needs" aria-pressed={filter.needsYou} onClick={() => setFilter((f) => ({ ...f, needsYou: !f.needsYou }))}>
           Needs you <span className={needs > 0 ? 'count tnum' : 'n'}>{needs}</span>
         </button>
-        <button type="button" className="btn sm" data-testid="board-add-column" onClick={() => void add()}><Plus size="xs" />Column</button>
+        <button type="button" className="btn sm" data-testid="board-add-column" aria-label="New column" data-tip="New column" onClick={() => void add()}><Plus size="xs" /><span className="kb-wide">Column</span></button>
       </div>
       <div ref={ground} className="kb-ground">
         <div className="kb-cols" data-testid="board-cols" data-dragging={Boolean(lift || shift)} onClick={blank}>

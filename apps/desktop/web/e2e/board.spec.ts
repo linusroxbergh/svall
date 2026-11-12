@@ -189,6 +189,27 @@ test("a card's menu renames it in place and opens its terminal", async ({ page, 
   await expect(page.getByTestId('terminal-card')).toBeVisible();
 });
 
+test('beside an open side card the bar keeps every control inside the board, + Column by its glyph', async ({ page, svall }) => {
+  // islands enough that the chips page, the bar at its fullest
+  const islands = [];
+  for (let i = 0; i < 6; i++) islands.push(await svall.api.call('island.create', { name: svall.uniq(`bar island ${i}`) }));
+  const c = await svall.api.call('robot.create', { islandId: islands[0].id, cwd: '/tmp', name: 'bar' });
+  await svall.open();
+  // the scribe placing, so the Auto-place chip says its longest
+  await svall.api.call('scribe.set', { enabled: true });
+  await page.getByTestId('chip-placing').click();
+  await page.getByTestId('menu-scribe').click();
+  await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: scribe');
+  await page.getByTestId(`sb-robot-${c.id}`).click();
+  await expect(page.getByTestId('side-card')).toBeVisible();
+  await expect(page.getByTestId('chips-next')).toBeVisible();
+  const board = (await page.getByTestId('board').boundingBox())!;
+  const add = (await page.getByTestId('board-add-column').boundingBox())!;
+  expect(add.x + add.width).toBeLessThanOrEqual(board.x + board.width);
+  expect(await page.locator('.kb-bar').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect(page.getByTestId('board-add-column')).toHaveAccessibleName('New column');
+});
+
 test('a card selected out of sight comes into its column', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('crowd') });
   const ids: string[] = [];
