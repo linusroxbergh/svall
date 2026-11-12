@@ -448,7 +448,7 @@ printf 'worker untracked
   const sessionId = robotIn(w0, id)?.agent?.sessionId;
   sh(L, 'printf "edited on the Mac\\n" >> ~/src/app-wt/b.txt');
   const refused = sh(L, `svall robot move ${id} --machine local </dev/null`, { ok: false });
-  check('refused', refused.code === 2 && refused.stderr === `refused: changes on ${L} in ${HOMES[L]}/src/app-wt since the move\n  → stash or commit them\n`,
+  check('refused', refused.code === 2 && refused.stderr === `refused: Changes on ${L} in ${HOMES[L]}/src/app-wt since the move\n  → Stash or commit them\n`,
     () => `exit ${refused.code}: ${JSON.stringify(refused.stderr)}`);
   check('still on worker', robotIn(snap(L), id)?.machine === ids.remote && agentsOf(snap(R), id).length === 1, 'the refused return moved it');
   // the edit is undone; what the robot left there before it moved stays as it was

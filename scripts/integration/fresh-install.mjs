@@ -279,15 +279,17 @@ function hostAdd(a) {
   }
   check('host add steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(ADD_STEPS), () => brief(steps.map((s) => s.step)));
   const at = (name) => steps.find((s) => s.step === name);
-  check('host add linger', at('linger')?.detail?.startsWith(`turned on for ${USER}:`), () => brief(at('linger')));
+  check('host add linger', at('linger')?.status === 'ok' && at('linger').detail === 'on', () => brief(at('linger')));
   // the machine has Ubuntu's tmux 3.4 on its PATH, and the units start the release's own
-  check('host add tmux', at('tmux')?.detail === "tmux 3.7c, Svall's own", () => brief(at('tmux')));
-  check('host add service', at('service')?.status === 'ok' && UNITS.every((u) => at('service').detail?.includes(`${u}: loaded, active (running), enabled`)),
+  check('host add tmux', at('tmux')?.detail === '3.7c' && at('tmux').raw === "tmux 3.7c, Svall's own", () => brief(at('tmux')));
+  check('host add service', at('service')?.status === 'ok' && at('service').detail === 'running'
+    && UNITS.every((u) => at('service').raw?.includes(`${u}: loaded, active (running), enabled`)),
     () => brief(at('service')));
-  check('host add enrol', at('enrol')?.detail?.startsWith('fresh serves this fleet as a worker of '), () => brief(at('enrol')));
-  check('host add release', at('release')?.detail === from(a), () => brief(at('release')));
+  check('host add enrol', at('enrol')?.detail === 'joined this fleet' && at('enrol').raw?.startsWith('fresh serves this fleet as a worker of '),
+    () => brief(at('enrol')));
+  check('host add release', at('release')?.detail === a.version && at('release').raw === from(a), () => brief(at('release')));
   downloaded(a, 'host add');
-  check('host add home', at('home')?.detail === `${HOME} for ${USER}`, () => brief(at('home')));
+  check('host add home', at('home')?.detail === HOME, () => brief(at('home')));
   // the JSON actions are the three installs the text line "fresh has 3 things to fix" counts, and its setup the mirror not
   // yet checked, which will not work there yet; gh is advice, offered in the terminal with no thing to do
   const result = events.at(-1);
