@@ -1,17 +1,18 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ApiError, HOME_ISLAND, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, UPGRADE_ACTION, type AdoptAnswer, type Enrolment, type FleetState, type HomeFacts, type HomeReach, type HomeMoveId, type HomeMoving, type HomeSheet, type MachineId, type MethodName, type Refusal, type Result } from '@svall/protocol';
+import { ApiError, HOME_ISLAND, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, UPGRADE_ACTION, type AdoptAnswer, type Blocker, type Enrolment, type FleetState, type HomeFacts, type HomeReach, type HomeMoveId, type HomeMoving, type HomeSheet, type MachineId, type MethodName, type Refusal, type Result } from '@svall/protocol';
 import { readFleetConfig } from '../config.js';
 import { writeDurable } from '../durable.js';
 import { enrolLock } from '../kernel-lock.js';
 import type { Logger } from '../log.js';
-import { realDeps, resolveTailscale, tailnetSelf, TailscaleStopped, type Mobile, type MobileDeps } from '../mobile.js';
+import { LinkProblem, realDeps, resolveTailscale, tailnetSelf, TailscaleDown, type Mobile, type MobileDeps } from '../mobile.js';
 import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
 import { releaseVersion } from '../release.js';
 import { addEnrol, carriedKb, createMarker, endMove, keyFits, MAX_CARRIED_KB, moveInFlight, phoneOwed, readMarker, servedPhone, TOLD_UNMARKED } from './home-move.js';
-import { listedWorkerIds, noLoginFix } from '../placement/workers.js';
+import { inFull } from '../link/ssh.js';
+import { keyLine, listedWorkerIds, noLoginFix } from '../placement/workers.js';
 
 // what still answers on a frozen home: a person's terminals go on, as do the robots
 const STILL = new Set<MethodName>(['term.open', 'term.attach', 'term.input', 'term.resize', 'term.close', 'robot.seen', 'robot.answer', 'fleet.freeze', 'fleet.thaw', 'fleet.homeCheck', 'fleet.homeMove']);
@@ -124,7 +125,7 @@ export class HomeFreeze {
   /** Opens a move for its driver, whose calls alone may move mission control's robots under its id. */
   open(id: HomeMoveId, holder: Holder): void {
     const held = this.moving?.id ?? (this.opened?.holder !== holder ? this.opened?.id : undefined);
-    if (held) throw new ApiError('busy', `the fleet is already moving (${held})`);
+    if (held) throw new ApiError('busy', 'The fleet is already moving', { raw: held });
     this.opened = { id, holder };
   }
 
@@ -141,16 +142,16 @@ export class HomeFreeze {
   }
 
   async freeze(id: HomeMoveId, to: MachineId, holder: Holder): Promise<Result<'fleet.freeze'>> {
-    if (this.moving) throw new ApiError('busy', `the fleet is already moving (${this.moving.id})`);
+    if (this.moving) throw new ApiError('busy', 'The fleet is already moving', { raw: this.moving.id });
     const held = { id, to, holder, served: false, ready: false };
     // from here new calls are refused, and a driver that leaves during any step below ends it by finding `moving` gone
     this.moving = held;
     this.d.background.pause();
-    const still = (): void => { if (this.moving !== held) throw new ApiError('not_frozen', `the driver of ${id} went away`); };
+    const still = (): void => { if (this.moving !== held) throw new ApiError('not_frozen', 'the run that started this move went away', { raw: id }); };
     try {
       // from the pause, no person's add and no re-enrol issues a token here: an enrol under way refuses the freeze
       const unlock = await enrolLock(this.d.paths.home);
-      if (!unlock) throw new ApiError('busy', 'a worker is being enrolled; try again in a moment');
+      if (!unlock) throw new ApiError('busy', 'A worker is being enrolled; try again in a moment');
       // a driver that left while this waited has let the freeze go already
       if (this.moving === held) this.enrolling = unlock;
       else unlock();
@@ -158,13 +159,13 @@ export class HomeFreeze {
       const status = await this.d.phone.get();
       still();
       // a link that cannot be read must not be taken for off, as the next home would never serve it
-      if (status.error) throw new ApiError('busy', `the phone link cannot be read: ${status.error}`);
+      if (status.error) throw new ApiError('busy', `The phone link cannot be read: ${status.error}`);
       // a link this home still owes counts as on: the next home takes the debt, and no tick here serves past the cut. So does one
       // an earlier freeze turned off and could not turn back on, whose record stands
       const owed = phoneOwed(this.d.paths);
       const serving = status.serving || owed.length > 0 || fs.existsSync(this.d.paths.homeServed);
       held.served = serving;
-      if (!await this.drained(DRAIN_MS)) throw new ApiError('busy', 'a call this home took is still running; try again in a moment');
+      if (!await this.drained(DRAIN_MS)) throw new ApiError('busy', 'A call this home took is still running; try again in a moment');
       still();
       const robot = Object.values(this.d.store.state.robots).find((r) => r.moving);
       if (robot) throw new ApiError('busy', `${robot.name} is moving; wait for its move to finish`);
@@ -172,8 +173,8 @@ export class HomeFreeze {
       still();
       // the worker starts nothing new, and what it sent is in; from here its metadata stays in its outbox
       const caught = await this.d.links.barrier(to, DRAIN_MS);
-      if (caught === 'applying') throw new ApiError('busy', 'a change a worker sent is still being applied; try again in a moment');
-      if (!caught) throw new ApiError('busy', 'a worker is still catching up; try again in a moment');
+      if (caught === 'applying') throw new ApiError('busy', 'A change a worker sent is still being applied; try again in a moment');
+      if (!caught) throw new ApiError('busy', 'A worker is still catching up; try again in a moment');
       still();
       this.d.links.hold(true);
       // an event some worker's link is applying as the hold starts would be acked after the cut
@@ -186,7 +187,7 @@ export class HomeFreeze {
         for (const was of owed) servedPhone(this.d.paths, was);
         const off = await this.d.phone.set(false);
         still();
-        if (off.error) throw new ApiError('busy', `the phone link did not go off: ${off.error}`);
+        if (off.error) throw new ApiError('busy', `The phone link did not turn off, which the pause needs: ${off.error}`);
       }
       held.ready = true;
       return { phone: { serving, logins: status.logins } };
@@ -219,8 +220,8 @@ export class HomeFreeze {
   }
 
   mark(marker: HomeMoving): void {
-    if (this.moving?.id !== marker.id || !this.moving.ready) throw new ApiError('not_frozen', `this home is not frozen for ${marker.id}: it stopped, and may have taken a write since`);
-    if (this.marker) throw new ApiError('frozen', `this home is marked for ${this.marker.id} already`);
+    if (this.moving?.id !== marker.id || !this.moving.ready) throw new ApiError('not_frozen', 'this home is not frozen for this move: it stopped, and may have taken a write since', { raw: marker.id });
+    if (this.marker) throw new ApiError('frozen', 'this home is marked for a move already', { raw: this.marker.id });
     try { createMarker(this.d.paths, marker); } catch (e) {
       // one the call linked into place before it failed stands, and holds this home as one it wrote
       if (markerOf(this.d.paths)?.keySha256 === marker.keySha256) this.marker = marker;
@@ -238,15 +239,15 @@ export class HomeFreeze {
   async settle(op: 'status' | 'abort'): Promise<void> {
     const asked = this.marker;
     if (!asked?.ask) return;
-    const answer = await this.d.ask(asked, op).catch((e: Error): AdoptAnswer => ({ status: 'pending', phase: 'unreachable', detail: e.message }));
+    const answer = await this.d.ask(asked, op).catch((e: Error): AdoptAnswer => ({ status: 'pending', phase: 'unreachable', detail: inFull(e) }));
     // an answer about an earlier move says nothing of the one standing now
     if (this.marker?.id === asked.id) await this.act(this.marker, answer);
   }
 
   /** The outcome `adopted` from the move's driver, on the disk before this daemon ends. */
   join(id: HomeMoveId, enrol: Enrolment, key: string): void {
-    if (this.marker?.id !== id) throw new ApiError('not_frozen', `this home holds no marker of ${id}`);
-    if (!keyFits(this.marker, key)) throw new ApiError('frozen', `only the driver of ${id} ends it, with its key`);
+    if (this.marker?.id !== id) throw new ApiError('not_frozen', 'this home holds no marker of this move', { raw: id });
+    if (!keyFits(this.marker, key)) throw new ApiError('frozen', 'only the run that started this move ends it, with its key', { raw: id });
     this.enrolled(this.marker, enrol);
   }
 
@@ -306,9 +307,9 @@ export class HomeFreeze {
 
   private async servedAgain(): Promise<void> {
     // kept unless it serves, so the next start tries again
-    const s = await this.d.phone.set(true).catch((e: Error) => ({ serving: false, error: e.message }));
+    const s = await this.d.phone.set(true).catch((e: Error): { serving: false; error: string; raw?: string } => ({ serving: false, error: e.message }));
     if (s.serving) fs.rmSync(this.d.paths.homeServed, { force: true });
-    else this.d.log.error(`the phone link did not come back: ${s.error ?? 'it does not serve'}`);
+    else this.d.log.error(`the phone link did not come back: ${s.error ?? 'it does not serve'}${s.raw ? `: ${s.raw}` : ''}`);
   }
 
   // the marker goes first: a crash after it starts this home as it was, and the start turns back on what served
@@ -342,8 +343,12 @@ export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; 
   try {
     const m = o.tailscale ?? realDeps();
     const self = await tailnetSelf(m, await resolveTailscale(m));
-    tailscale = { host: self.host };
-  } catch (e) { tailscale = { error: (e as Error).message, ...(e instanceof TailscaleStopped && { stopped: true as const }) }; }
+    tailscale = { host: self.host, state: 'ok' };
+  } catch (e) {
+    // one whose status cannot be read is installed, and does not run as it should
+    const raw = e instanceof LinkProblem ? e.said.raw : (e as Error).message;
+    tailscale = { state: e instanceof TailscaleDown ? e.state : 'stopped', ...(raw && { error: raw }) };
+  }
   let freeKb: number | undefined;
   try { const s = fs.statfsSync(p.home); freeKb = Math.floor((s.bavail * s.bsize) / 1024); } catch { /* the check says it could not read it */ }
   let fleetKb: number | undefined;
@@ -390,6 +395,8 @@ type HomeCheckInput = {
 };
 
 const AUTHORIZED = `'cat >> .ssh/authorized_keys'`;
+const NTP = 'sudo timedatectl set-ntp on';
+
 
 // from the machine that reaches both: on the way out it asks the far machine for its key, on the way back it sends its own over the home
 const publicHalf = (i: Pick<HomeCheckInput, 'back' | 'farSsh'>, ssh: string): string | undefined => {
@@ -397,7 +404,7 @@ const publicHalf = (i: Pick<HomeCheckInput, 'back' | 'farSsh'>, ssh: string): st
   return i.back ? `cat ~/.ssh/id_ed25519.pub | ssh ${i.farSsh} "ssh ${ssh} ${AUTHORIZED}"` : `ssh ${i.farSsh} cat .ssh/id_ed25519.pub | ssh ${ssh} ${AUTHORIZED}`;
 };
 
-/** Every reason the fleet cannot move now, each with its action, and what it would move. A reason names the other machine, and this one as this machine, or as this Mac on a Mac where it speaks of the move's workers. */
+/** Every reason the fleet cannot move now, each with its action, and what it would move. A reason names the other machine, and this one as this machine, or as this Mac on a Mac where it speaks of the move's workers or its Tailscale. */
 export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   const { state, from, to, toName } = i;
   const far = i.back ?? toName;
@@ -407,61 +414,75 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   const mac = process.platform === 'darwin';
   const taker = i.back && mac ? 'this Mac' : goesTo;
   const leaver = i.back ?? (mac ? 'this Mac' : 'this home');
-  const failed: { reason: string; action: string }[] = [];
+  const failed: Blocker[] = [];
   const waits: NonNullable<HomeSheet['waits']> = [];
-  const fail = (reason: string, action: string): void => { failed.push({ reason, action }); };
+  // a sentence opens with a capital, but for a machine's name
+  const This = (who: string): string => who.replace(/^this /, 'This ');
+  const fail = (reason: string, action: string, more: Pick<Blocker, 'run' | 'raw'> = {}): void => { failed.push({ reason, action: `${action[0].toUpperCase()}${action.slice(1)}`, ...more }); };
   const robots = Object.values(state.robots);
-  if (!i.fromIsHome) fail('this daemon is not the fleet\'s home', 'run this where the fleet\'s home is');
+  if (!i.fromIsHome) fail('This daemon is not the fleet\'s home', 'run this where the fleet\'s home is');
   if (!i.linked) fail(`${far} is not reachable`, 'try again when it is awake');
   else if (!i.synced) fail(`${far} is still catching up`, 'try again in a moment');
   if (from.release !== to.release || from.protocol !== to.protocol || from.stateSchema !== to.stateSchema) fail(`${far} runs ${there.release}, this machine ${here.release}`, 'upgrade it under Machines');
   for (const r of robots.filter((c) => c.moving)) fail(`${r.name} is moving`, 'wait for its move to finish');
-  if (from.enrolling) fail('a worker is being enrolled', 'try again in a moment');
-  if (!from.workers) fail(`${i.back ?? 'this machine'} cannot read which workers this fleet has`, `fix ${from.fleetHome}/workers.json`);
+  if (from.enrolling) fail('A worker is being enrolled', 'try again in a moment');
+  if (!from.workers) fail(`${This(i.back ?? 'this machine')} cannot read which workers this fleet has`, `fix ${from.fleetHome}/workers.json`);
   const others = (from.workers ?? []).filter((m) => m !== to.machineId && m !== from.machineId);
   // a machine that could not be asked says nothing of a worker it would carry; one it would not, as a second Mac, is refused all the same
   const unasked = (m: string): boolean => i.reach === null && (!i.carried || i.carried.includes(m));
-  if (i.linked && others.some(unasked)) fail(`${taker} could not be asked whether it reaches the other workers`, 'try again in a moment');
+  if (i.linked && others.some(unasked)) fail(`${This(taker)} could not be asked whether it reaches the other workers`, 'try again in a moment');
   for (const m of others.filter((w) => !unasked(w))) {
     const name = state.machines?.[m as MachineId]?.name ?? m;
     const r = i.reach?.[m];
     // nothing can log in to it, so nothing can tell it of a new home
     if (!r) {
       const platform = i.platformOf?.(m);
-      const again = platform === 'linux' ? `add it again from ${goesTo}` : platform === 'darwin' ? 'run svall fleet join on it' : `add it again from ${goesTo}, or run svall fleet join on it if it is a Mac`;
-      fail(`${name} is a worker of this fleet too`, `remove ${name} first; after the move, ${again}`);
+      const again = platform === 'linux' ? `after the move, add it again from ${goesTo}` : platform === 'darwin' ? 'after the move, run svall fleet join on it' : 'add it again after the move';
+      fail(`${name} is a worker of this fleet too`, `remove ${name} first; ${again}`);
     } else if (r.ok) continue;
     else if (r.kind === 'unreachable' && !i.linkedTo?.(m)) waits.push({ id: m as MachineId, name });
-    else if (r.kind === 'auth' || r.kind === 'host_key') fail(`${taker} cannot log in to ${name}: ${r.why}`, noLoginFix(taker, r.ssh, publicHalf(i, r.ssh)));
-    else if (r.kind === 'unreachable') fail(`${taker} cannot reach ${name}, which ${leaver} reaches: ${r.why}`, `check Tailscale on both machines, then ssh ${r.ssh} from ${taker}`);
-    else fail(`${name}: ${r.why}`, r.kind === 'release' ? UPGRADE_ACTION : 'fix it, or remove it first');
+    // a key is made where the fleet goes, which on the way out is the far machine
+    else if (r.kind === 'auth' || r.kind === 'host_key') fail(`${This(taker)} cannot log in to ${name}`, noLoginFix(taker, r.ssh, publicHalf(i, r.ssh)), { ...(!i.back && { run: keyLine(r.ssh) }), raw: r.raw });
+    else if (r.kind === 'unreachable') fail(`${This(taker)} cannot reach ${name}, which ${leaver} reaches`, `check Tailscale on both machines, then ssh ${r.ssh} from ${taker}`, { raw: r.raw });
+    else fail(`${name}: ${r.why}`, r.kind === 'release' ? UPGRADE_ACTION : 'fix it, or remove it first', { raw: r.raw });
   }
-  if (Math.abs(from.clock - to.clock) > CLOCK_SKEW_MS) fail(`${far}'s clock and this machine's are more than 5 minutes apart`, 'set the one that is wrong: on a server, ssh there, then sudo timedatectl set-ntp on');
+  const farPlatform = i.platformOf?.(there.machineId);
+  if (Math.abs(from.clock - to.clock) > CLOCK_SKEW_MS) {
+    fail(`${far}'s clock and this machine's are more than 5 minutes apart`, 'set the one that is wrong: on a server, ssh there, then sudo timedatectl set-ntp on', farPlatform === 'darwin' ? {} : { run: NTP });
+  }
   // on the way back, the leaving home's facts are its own only once it answers
-  if (i.linked && from.fleetKb === undefined) fail(`${i.back ?? 'this machine'} cannot tell what the fleet's files come to`, `check that everything in ${from.fleetHome} can be read`);
+  if (i.linked && from.fleetKb === undefined) fail(`${This(i.back ?? 'this machine')} cannot tell what the fleet's files come to`, `check that everything in ${from.fleetHome} can be read`);
   const fleetKb = from.fleetKb ?? 0;
-  if (fleetKb > MAX_CARRIED_KB) fail(`the fleet's files come to ${mb(fleetKb)} MB, more than a move carries (${mb(MAX_CARRIED_KB)} MB)`, `remove what it no longer needs from ${from.fleetHome}/docs and ${from.fleetHome}/retro`);
+  if (fleetKb > MAX_CARRIED_KB) {
+    fail(`The fleet's files are ${mb(fleetKb)} MB; a move carries ${mb(MAX_CARRIED_KB)} MB`, 'remove what you no longer need from docs and retro', { raw: `${from.fleetHome}/docs\n${from.fleetHome}/retro` });
+  }
   const needKb = COPIES_TAKEN * fleetKb + SPARE_KB;
-  if (to.freeKb !== undefined && to.freeKb < needKb) fail(`${goesTo} has ${Math.floor(to.freeKb / 1024)} MB free, and taking the fleet takes ${mb(needKb)} MB`, i.back ? 'free some space here' : 'free some space there');
-  if (from.moving) fail(`the fleet is moving already (${from.moving})`, 'finish or call off that move first');
-  if (to.moving) fail(i.back ? `this machine is still taking a move (${to.moving})` : `${toName} is still leaving a move (${to.moving})`, 'finish or call off that move first');
-  // a stopped one's own words go behind details, when no reason before it leads
-  const details = failed.length ? [] : [there, here].flatMap((f) => (f.tailscale.stopped ? [f.tailscale.error!] : []));
-  const start = (platform: string | undefined, where: string): string => (platform === 'darwin' ? `open the Tailscale app${where}` : `start it${where}: sudo systemctl start tailscaled`);
-  if (there.tailscale.stopped) fail(`Tailscale is not running on ${far}`, start(i.platformOf?.(there.machineId), ' there'));
-  else if (there.tailscale.error) fail(`${far} has no Tailscale: ${there.tailscale.error}`, 'install Tailscale there and sign in');
-  if (here.tailscale.stopped) fail('Tailscale is not running on this machine', start(i.platformOf?.(here.machineId) ?? process.platform, ''));
-  else if (here.tailscale.error) fail(`this machine has no Tailscale: ${here.tailscale.error}`, 'install Tailscale and sign in');
+  if (to.freeKb !== undefined && to.freeKb < needKb) fail(`${This(goesTo)} has ${Math.floor(to.freeKb / 1024)} MB free, and taking the fleet takes ${mb(needKb)} MB`, i.back ? 'free some space here' : 'free some space there');
+  if (from.moving) fail('The fleet is moving already', 'finish or call off that move first');
+  if (to.moving) fail(i.back ? 'This machine is still taking a move' : `${toName} is still leaving a move`, 'finish or call off that move first');
+  // Tailscale by its state on each machine; a command is typed only on the far one, where its terminal opens
+  const tailscale = (f: HomeFacts, on: string, platform: string | undefined, where: string, typed: boolean): void => {
+    const state = f.tailscale.state ?? (f.tailscale.stopped ? 'stopped' : f.tailscale.error ? 'missing' : 'ok');
+    const raw = { raw: f.tailscale.error };
+    const app = platform === 'darwin';
+    if (state === 'missing') fail(`${This(on)} has no Tailscale`, `install it${where} from tailscale.com/download and sign in`, raw);
+    else if (state === 'stopped') fail(`Tailscale is not running on ${on}`, app ? `open the Tailscale app${where}` : `start it${where}: sudo systemctl start tailscaled`, { ...(!app && typed && { run: 'sudo systemctl start tailscaled' }), ...raw });
+    else if (state === 'signedOut') fail(`Tailscale on ${on} is signed out`, app ? `sign in from the Tailscale app${where}` : `sign in${where}: sudo tailscale up`, { ...(!app && typed && { run: 'sudo tailscale up' }), ...raw });
+  };
+  tailscale(there, far, farPlatform, ' there', true);
+  const herePlatform = i.platformOf?.(here.machineId) ?? process.platform;
+  tailscale(here, herePlatform === 'darwin' ? 'this Mac' : 'this machine', herePlatform, '', false);
   const sheet: HomeSheet = {
     here: robots.filter((r) => (r.machine ?? from.machineId) === from.machineId && state.islands[r.islandId]?.kind !== 'home').length,
     there: robots.filter((r) => r.machine === to.machineId).length,
     mission: robots.filter((r) => state.islands[r.islandId]?.kind === 'home' && r.islandId === HOME_ISLAND && (r.machine ?? from.machineId) !== to.machineId).map((r) => ({ id: r.id, name: r.name })),
     rewrites: (from.rewrites ?? []).map((r) => ({ ...r, ...(to.paths?.[r.to] === false && { lacks: true }) })).filter((r) => !r.kept || r.lacks),
     ...(waits.length && { waits }),
+    ...(others.length && { carries: true as const }),
   };
   if (!failed.length) return { ok: true, sheet };
   const [first, ...more] = failed;
-  const refusal: Refusal = { ...first, details, ...(more.length && { more }) };
+  const refusal: Refusal = { ...first, details: [], ...(more.length && { more }) };
   return { ok: false, refusal, sheet };
 }
 

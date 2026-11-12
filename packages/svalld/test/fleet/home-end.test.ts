@@ -7,6 +7,7 @@ import { HomeFreeze } from '../../src/fleet/home-freeze.js';
 import { abortAdopt, addEnrol, adoptDir, adoptStatus, createMarker, endMove, enter, homeGate, installAdopt, journalLines, packFleet, readMarker, settleMove, stageAdopt, TOLD_UNMARKED, writeEnrol } from '../../src/fleet/home-move.js';
 import { daemonLock } from '../../src/kernel-lock.js';
 import { resolvePaths } from '../../src/paths.js';
+import { SshError } from '../../src/link/ssh.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { ADOPT_KEY, ASKER, FLEET, ID, KEY, MAC, marker, STUDIO, world, putMarker } from './home-world.js';
 
@@ -201,14 +202,16 @@ describe('a marked home believes only the machine it marked for', () => {
     expect(far.lines).toEqual([expect.stringMatching(/ --json 'version'$/), expect.stringMatching(new RegExp(`'fleet' 'abort' '${ID}' '--asker' '${MAC}' '--fleet' '${FLEET}'$`))]);
   });
 
-  it('a far command ssh lost says so, and one that printed nothing ends on no empty tail', async () => {
+  it('a far command ssh lost says so, what ssh said behind; one that failed says it did not finish, its exit behind, with no empty tail', async () => {
     const answering = (code: number, stderr: string) => (() => Promise.resolve({
       run: (argv: string[]) => Promise.resolve(argv.join(' ').includes("'version'") ? { code: 0, signal: null, stderr: '', stdout: JSON.stringify(HOME) } : { code, signal: null, stderr, stdout: '' }),
       close: () => Promise.resolve(),
     })) as never;
-    await expect(askAcross(marker(), 'abort', answering(255, ''))).rejects.toThrow(/^ssh lost the connection before svall fleet abort answered$/);
-    await expect(askAcross(marker(), 'abort', answering(255, 'Connection to studio closed.'))).rejects.toThrow(/^ssh lost the connection before svall fleet abort answered: Connection to studio closed\.$/);
-    await expect(askAcross(marker(), 'abort', answering(3, ''))).rejects.toThrow(/^svall fleet abort exited 3$/);
+    const lost = 'ssh lost the connection before svall fleet abort answered';
+    await expect(askAcross(marker(), 'abort', answering(255, ''))).rejects.toEqual(expect.objectContaining({ message: lost, raw: undefined }));
+    await expect(askAcross(marker(), 'abort', answering(255, 'Connection to studio closed.'))).rejects.toMatchObject({ message: lost, raw: 'Connection to studio closed.' });
+    await expect(askAcross(marker(), 'abort', answering(3, ''))).rejects.toMatchObject({ message: 'svall fleet abort did not finish', raw: 'svall fleet abort exited 3' });
+    await expect(askAcross(marker(), 'abort', answering(3, 'svall: no marker\n'))).rejects.toMatchObject({ raw: 'svall fleet abort exited 3: svall: no marker' });
   });
 
   it.each([
@@ -391,6 +394,10 @@ describe('the one way a move ends', () => {
     const d = { join: none, thaw: none, start: none };
     expect(await settleMove(paths, ID, { status: 'not-adopted' }, KEY, d)).toEqual({ status: 'done' });
     expect(journalLines(paths, ID)).toEqual([expect.objectContaining({ phase: 'aborted', detail: TOLD_UNMARKED })]);
+    // a daemon gone past its port file says so in its own words, and counts as none
+    const gone = resolvePaths(makeHome());
+    const crashed = () => Promise.reject(new SshError('daemon_down', "Svall's background service is not running; start it: svall setup", `process 4711 in ${gone.home}/version is gone`));
+    expect(await settleMove(gone, ID, { status: 'not-adopted' }, KEY, { join: crashed, thaw: crashed, start: crashed })).toEqual({ status: 'done' });
     const bytes = () => (fs.readdirSync(paths.home, { recursive: true }) as string[]).sort().map((f) => [f, fs.statSync(path.join(paths.home, f)).isFile() ? fs.readFileSync(path.join(paths.home, f), 'utf8') : '']);
     const before = bytes();
     expect(() => createMarker(paths, told)).toThrow(/called off here before its mark/);

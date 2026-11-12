@@ -186,7 +186,7 @@ test('the shell is told the opacity, the zoom and which config to open', async (
   await expect.poll(async () => (await sent()).filter((m) => m.type === 'zoom').at(-1)).toEqual({ type: 'zoom', factor: 1.1, fontDelta: 1.5 });
 
   await page.getByTestId('settings-ghostty').click();
-  await expect(page.getByTestId('settings-fleet')).toHaveAttribute('data-tip', /^(?!.*[Pp]ort).*$/);
+  expect(await page.locator('#set-tip-fleet-config').textContent()).not.toMatch(/[Pp]ort/);
   await page.getByTestId('settings-fleet').click();
   expect((await sent()).filter((m) => m.type === 'openConfig')).toEqual([{ type: 'openConfig', which: 'ghostty' }, { type: 'openConfig', which: 'fleet' }]);
 
@@ -300,4 +300,72 @@ test('closing the settings while a row waits for a key leaves the other chords w
   await expect(page.getByTestId('settings')).toHaveCount(0);
   await page.keyboard.press('Meta+m');
   await expect(page.getByTestId('map')).toBeVisible();
+});
+
+test('the window resizes from its corner within the page and keeps its size, and every pane lines up with the nav and the ×', async ({ page, svall }) => {
+  await svall.open();
+  await page.getByTestId('settings-open').click();
+  const win = page.getByTestId('settings');
+  await expect.poll(() => win.evaluate((el) => el.getAnimations().length)).toBe(0);
+  expect(await win.boundingBox()).toMatchObject({ width: 760, height: 600 });
+  // centred, so the corner moves half of what the size does; the floor is 440 tall
+  const grip = (await page.getByTestId('settings-grip').boundingBox())!;
+  await page.mouse.move(grip.x + 8, grip.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 58, grip.y - 92, { steps: 4 });
+  await page.mouse.up();
+  expect(await win.boundingBox()).toMatchObject({ width: 860, height: 440 });
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(page.getByTestId('board')).toBeVisible();
+  await page.getByTestId('settings-open').click();
+  await expect.poll(() => win.evaluate((el) => el.getAnimations().length)).toBe(0);
+  expect(await win.boundingBox()).toMatchObject({ width: 860, height: 440 });
+  await page.getByTestId('settings-grip').dblclick();
+  expect(await win.boundingBox()).toMatchObject({ width: 760, height: 600 });
+
+  // a text's baseline: a zero-height box set on it, in a wrapper that lays out as the text did
+  const lines = () => page.evaluate(() => {
+    const baseline = (el: Element) => {
+      const t = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.textContent!.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP) }).nextNode()!;
+      const wrap = document.createElement('span');
+      t.parentNode!.insertBefore(wrap, t);
+      wrap.appendChild(t);
+      const probe = wrap.appendChild(document.createElement('span'));
+      probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+      const y = probe.getBoundingClientRect().top;
+      wrap.replaceWith(t);
+      return y;
+    };
+    const side = document.querySelector('.set-win .side')!;
+    const right = side.getBoundingClientRect().left + side.clientWidth - parseFloat(getComputedStyle(side).paddingRight);
+    return {
+      nav: baseline(document.querySelector('.set-nav [role="tab"]')!), kicker: baseline(document.querySelector('.set-win .side .set-group > .kicker')!),
+      x: document.querySelector('.set-bar .side-x svg path')!.getBoundingClientRect().right, right,
+      rows: [...new Set([...document.querySelectorAll('.set-win .side .row')].map((r) => r.getBoundingClientRect().height))],
+    };
+  });
+  for (const tab of await page.getByRole('tab').all()) {
+    await tab.click();
+    const m = await lines();
+    expect(Math.abs(m.kicker - m.nav), await tab.textContent() ?? '').toBeLessThan(0.5);
+    expect(m.right - m.x).toBeGreaterThanOrEqual(0);
+    expect(m.right - m.x).toBeLessThan(1.5);
+    expect(m.rows.every((h) => h === 30), `${await tab.textContent()} rows ${m.rows}`).toBe(true);
+  }
+});
+
+test('the panes are tabs the arrows move through', async ({ page, svall }) => {
+  await svall.open();
+  await page.getByTestId('settings-open').click();
+  await page.getByTestId('settings-tab-machine').focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByTestId('settings-tab-browser')).toBeFocused();
+  await expect(page.getByTestId('settings-tab-browser')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'set-tab-browser');
+  await page.keyboard.press('End');
+  await expect(page.getByRole('tab').last()).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(page.getByTestId('settings-tab-machine')).toBeFocused();
+  await expect(page.getByTestId('settings-tab-machine')).toHaveAttribute('aria-selected', 'true');
 });

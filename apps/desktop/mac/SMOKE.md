@@ -18,16 +18,16 @@ this pass covers what only the app and real machines show. What each step should
 ## 1. Adding the machine
 
 1. Settings → Machines → **Add machine**. Name the machine `studio` and give its ssh destination. Choose **Add machine**.
-   - Each step appears as it finishes, grouped Reaching the machine, What the machine needs, Svall on the machine,
-     Running Svall there, Agent CLIs, Trying it out and This Mac's list of machines. A new host key is asked in a dialog.
+   - What needs you appears as it is found, above the step under way; the notes, the fine checks and your agent setup
+     fold behind a line each, the fine checks under Connection, System, Svall on studio, Agents on studio and Final
+     check. A new host key is asked in a dialog.
    - A fresh account ends with "studio has N things to fix", such as an agent not logged in.
 2. Choose **Open terminal** on a row that offers it, such as an agent not logged in: a terminal on `studio` opens in
    the panel with the command typed at the prompt and not run. Press Return and finish the login; clicking its link
    opens your browser. For `codex login` the sign-in comes back through port 1455; with another `codex login` holding
    that port on the Mac, the terminal says so at once. Typing `exit` closes it and the panel checks `studio` again.
    Do the rest the same way, then choose **Check** on `studio`'s row: no row is marked ×. On Ubuntu 24.04 `gh` and
-   `path` may be marked !; neither stops a move. It ends with "studio is ready. Robots you move there keep working
-   while this Mac sleeps."
+   `path` may be notes; neither stops a move. It ends with "studio is ready".
 3. Settings → Machines shows `studio` with the release and result of its last check.
 4. Choose **Add machine** again with the same name: every step runs again and nothing changes.
 
@@ -54,7 +54,7 @@ Select the Claude robot and open its side card.
 2. A turn there:
    - Ask the agent for the code word: it remembers it. It asks nothing about trusting the folder.
    - Ask it to commit its changes: the commit lands on its branch on `studio`.
-   - **Terminal there** on the card opens a terminal in its folder: `hostname` names the Linux machine, `git log`
+   - **Shell on studio** on the card opens a terminal in its folder: `hostname` names the Linux machine, `git log`
      shows the new commit, and `.env` is not there.
    - Its panes offer no Files or Changes tab, and the card no Resources.
 3. Move the Codex and the OpenCode robots the same way: each remembers its code word on `studio`.

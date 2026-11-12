@@ -6,7 +6,7 @@ Dev; a Linux machine takes it with `svall host upgrade`.
 
 ## Upgrading from 0.27
 
-The app, `svall` and the daemons of this release speak protocol 45; an update installs all of them together, and
+The app, `svall` and the daemons of this release speak protocol 46; an update installs all of them together, and
 `svall host upgrade <machine>` takes each Linux machine to it as before. A fleet home gains an empty `w/` folder, where
 a worker that dials in would forward its link; nothing else in it changes.
 

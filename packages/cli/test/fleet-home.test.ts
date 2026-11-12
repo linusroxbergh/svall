@@ -18,7 +18,7 @@ import { finishFlow } from '../src/commands/fleet.js';
 import { abortBack, abortHome, bringCrewBack, enrolmentFor, moveHomeBack, moveHomeOut, resumeHome, thisMachine, type MoveDeps } from '../src/controller/home.js';
 import type { StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
-import type { SshMaster } from '../src/controller/ssh.js';
+import { SshError, type SshMaster } from '../src/controller/ssh.js';
 
 const FLEET = '11111111-2222-3333-4444-555555555555';
 const FAR_INFO = (id: string) => ({ fleetId: FLEET, machineId: id, release: '1.0.0', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: 47800, token: 'api', fleetHome: '/home/ada/.svall' });
@@ -35,7 +35,7 @@ function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; rew
       if (refused) return Promise.reject(refused);
       if (method === 'fleet.homeCheck') {
         return Promise.resolve(o.checkRefused
-          ? { ok: false, refusal: { reason: 'studio is not reachable', action: 'try again when it is awake', details: [] } }
+          ? { ok: false, refusal: { reason: 'studio is not reachable', action: 'Try again when it is awake', details: [], more: [{ reason: 'This machine has no Tailscale', action: 'Install it from tailscale.com/download and sign in' }] } }
           : { ok: true, sheet: { here: 2, there: 1, mission: [], toName: 'studio', rewrites: o.rewrites ?? [], ...(o.waits && { waits: o.waits }) } });
       }
       if (method === 'state.get') return Promise.resolve(o.state ?? { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [machineId()]: { name: 'mac', reachable: true, since: 1 } } });
@@ -103,23 +103,24 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const out = await moveHomeOut('studio', deps);
     expect(out.result).toBe('ready');
     expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
+    expect(events.find((e) => e.step === 'copy' && e.status === 'ok')).toMatchObject({ detail: "the fleet's files are on studio", raw: expect.stringMatching(/^\d+ bytes checked and staged$/) });
     expect(called.map((c) => (c.params.op ? `${c.method}:${c.params.op}` : c.method)).filter((m) => m !== 'state.get')).toEqual(['fleet.homeCheck', 'fleet.homeMove:open', 'fleet.freeze', 'fleet.homeMove:mark', 'fleet.homeMove:join']);
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(false);
     expect(started()).toBe(1);
   });
 
-  it('says of a rewritten path that the machine taking the fleet does not have it, and goes on', async () => {
+  it('says of a rewritten path, in its own words, that the machine taking the fleet does not have it, and goes on', async () => {
     const { deps } = outDeps(happy, { rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }, { key: 'home.cwd', to: '~/crew' }, { key: 'onboarding.firstProject', to: '~/first', kept: true, lacks: true }] });
     expect((await moveHomeOut('studio', deps)).result).toBe('ready');
     expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail)
-      .toBe('2 robots stay here, 1 on studio; defaultCwd becomes ~/code, which studio does not have yet; onboarding.firstProject is ~/first, which studio does not have yet');
+      .toBe("2 robots stay here, 1 on studio; new robots' folder becomes ~/code, which studio does not have yet; first project folder is ~/first, which studio does not have yet");
   });
 
   it('names at its check a worker that does not answer, in the sheet\'s words, before anything moves', async () => {
     const { deps } = outDeps(happy, { rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }], waits: [{ id: crypto.randomUUID(), name: 'albumap' }] });
     await moveHomeOut('studio', deps);
     expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail)
-      .toBe('2 robots stay here, 1 on studio; defaultCwd becomes ~/code, which studio does not have yet; albumap does not answer; it joins studio when it does');
+      .toBe("2 robots stay here, 1 on studio; new robots' folder becomes ~/code, which studio does not have yet; albumap does not answer; it joins studio when it does");
   });
 
   it('names a worker that has not joined the new home, and the move stands', async () => {
@@ -176,7 +177,8 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const { deps, called } = outDeps(happy, { checkRefused: true });
     const out = await moveHomeOut('studio', deps);
     expect(out.result).toBe('actions');
-    expect(failed()).toMatchObject({ step: 'check', detail: 'studio is not reachable', action: 'try again when it is awake' });
+    // each reason a sentence of its own
+    expect(failed()).toMatchObject({ step: 'check', detail: 'studio is not reachable. This machine has no Tailscale', action: 'Try again when it is awake' });
     expect(called.some((c) => c.method === 'fleet.freeze')).toBe(false);
   });
 
@@ -227,7 +229,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const { deps, called } = outDeps((line) => answer(line.includes('--stage') ? { status: 'pending', phase: 'staged' } : { status: 'pending', phase: 'rolledback', detail: 'its daemon did not answer' }));
     const out = await moveHomeOut('studio', deps);
     expect(out.result).toBe('actions');
-    expect(failed()).toMatchObject({ step: 'adopt', detail: expect.stringContaining('its daemon did not answer'), action: 'svall fleet home abort, or svall fleet home retry', say: 'Close to finish the move or call it off' });
+    expect(failed()).toMatchObject({ step: 'adopt', detail: 'studio tried to take over and went back as it was', action: 'svall fleet home abort, or svall fleet home retry', say: 'The move is not finished', raw: 'its daemon did not answer' });
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(false);
   });
 
@@ -288,7 +290,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
   it('a far fleet going by another fleet\'s worker.json is refused by the machine itself, with this home thawed', async () => {
     const { deps, called } = outDeps((line) => (line.includes('--stage') ? { code: 1, stdout: '', stderr: 'svall: this machine is a worker of another fleet' } : answer({ status: 'not-adopted' })));
     await moveHomeOut('studio', deps);
-    expect(failed()).toMatchObject({ step: 'copy', detail: expect.stringContaining('another fleet') });
+    expect(failed()).toMatchObject({ step: 'copy', detail: "studio did not stage the fleet's files", raw: expect.stringContaining('another fleet') });
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(true);
   });
 
@@ -297,9 +299,11 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
 
     it('a machine this one cannot log in to stops the move before any of them moves', async () => {
       const { deps, called } = outDeps(happy, { state: crewState() });
-      deps.openMaster = () => Promise.reject(new Error('Permission denied (publickey)'));
+      deps.openMaster = () => Promise.reject(new SshError('auth', 'ssh could not reach ada@studio: Permission denied (publickey)'));
       await moveHomeOut('studio', deps);
-      expect(failed()).toMatchObject({ step: 'check', detail: expect.stringContaining('Permission denied') });
+      expect(failed()).toMatchObject({
+        step: 'check', detail: `${thisMachine()} cannot log in to studio`, action: 'run ssh ada@studio once in a terminal and answer what it asks', raw: expect.stringContaining('Permission denied'),
+      });
       expect(called.some((c) => c.method === 'robot.moveTo')).toBe(false);
       expect(called.some((c) => c.method === 'fleet.freeze')).toBe(false);
     });
@@ -309,7 +313,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     it('one at work is named in the check, with the flag that decides it, and nothing has moved or frozen', async () => {
       const { deps, called } = outDeps(happy, { state: crewState(), crewRefused: WORKING });
       const out = await moveHomeOut('studio', deps);
-      expect(failed()).toMatchObject({ step: 'check', detail: 'crew is working' });
+      expect(failed()).toMatchObject({ step: 'check', detail: 'crew is working', say: 'Check again to choose what happens to what it runs' });
       expect(out.actions.join()).toContain('svall fleet home set studio --interrupt-after 0');
       expect(called.some((c) => c.method === 'robot.moveTo' || c.method === 'fleet.freeze' || c.params.op === 'open')).toBe(false);
     });
@@ -366,7 +370,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
       deps.client = () => Promise.resolve({ ...client, call: (m: never, p: never) => { if ((m as string) === 'robot.moveTo') Object.assign(state.robots.crew, { machine: STUDIO, sentAhead: 'hm_abcdefghij' }); return client.call(m, p); }, close: () => {} } as unknown as Client);
       const out = await moveHomeOut('studio', deps);
       expect(out.actions).toContain('svall fleet home crew-back');
-      expect(events.find((e) => e.step === 'crew' && e.status === 'warn')?.detail).toContain('crew');
+      expect(events.find((e) => e.step === 'crew' && e.status === 'warn')).toMatchObject({ detail: "Mission control's robot crew stayed where the move sent it", say: "Mission control's robot crew is still on studio" });
     });
 
     it('crew-back moves each back to the home under an id it opened, and names any that cannot return', async () => {
@@ -380,14 +384,14 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
       const stuck = outDeps(happy, { state, refuse: { 'robot.moveTo': new Error('its worktree is dirty') } });
       const out = await bringCrewBack(stuck.deps);
       expect(out.result).toBe('actions');
-      expect(failed()).toMatchObject({ step: 'crew', detail: expect.stringContaining('crew: its worktree is dirty') });
+      expect(failed()).toMatchObject({ step: 'crew', detail: 'crew cannot come back', raw: 'crew: its worktree is dirty' });
     });
 
     it('crew-back that one at work holds back says so in the words a window offers as the choice', async () => {
       const refused = new ApiError('refused', 'crew is working; interrupt it now', { refusal: WORKING });
       const { deps } = outDeps(happy, { state: crewState(STUDIO), refuse: { 'robot.moveTo': refused } });
       expect((await bringCrewBack(deps)).result).toBe('actions');
-      expect(failed()).toMatchObject({ step: 'crew', detail: expect.stringContaining('crew is working'), action: expect.stringContaining('svall fleet home crew-back --interrupt-after 0'), say: INTERRUPT_ACTIONS.agent });
+      expect(failed()).toMatchObject({ step: 'crew', detail: 'crew cannot come back', raw: expect.stringContaining('crew is working'), action: expect.stringContaining('svall fleet home crew-back --interrupt-after 0'), say: INTERRUPT_ACTIONS.agent });
       events = [];
       const dirty = outDeps(happy, { state: crewState(STUDIO), refuse: { 'robot.moveTo': new Error('its worktree is dirty') } });
       await bringCrewBack(dirty.deps);
@@ -570,7 +574,7 @@ describe('fleet home retry', () => {
     const { deps } = outDeps(() => answer({ status: 'done' }));
     const out = await resumeHome(deps);
     expect(out.result).toBe('actions');
-    expect(out.actions).toEqual(['no move of the fleet waits on this machine']);
+    expect(out.actions).toEqual([`no move of the fleet waits on ${thisMachine()}`]);
   });
 
   it('a marked home runs the far adopt again from what stays staged, joins and proves it', async () => {
@@ -608,6 +612,8 @@ describe('fleet home retry', () => {
     putMarker(resolvePaths(home), marker());
     const out = await resumeHome(deps);
     expect(failed()).toMatchObject({ step: 'adopt', detail: expect.stringContaining('holds no key') });
+    // a move goes by its id nowhere a person reads
+    expect(failed()).not.toHaveProperty('raw');
     expect(out.actions).toEqual(['svall fleet home abort']);
     expect(lines.filter((l) => l.includes('--home-ssh'))).toEqual([]);
     expect(started()).toBe(0);
@@ -626,8 +632,8 @@ describe('fleet home retry', () => {
     deps.openMaster = () => Promise.reject(new Error('ssh: connect to host studio'));
     putMarker(resolvePaths(home), marker());
     const out = await resumeHome(deps);
-    expect(out.actions).toEqual(['svall fleet home retry once it answers; until then this home stays frozen']);
-    expect(failed()).toMatchObject({ detail: 'this machine cannot log in to studio: ssh: connect to host studio', say: 'Finish the move once it answers; until then this home takes no changes' });
+    expect(out.actions).toEqual(['check that it is on and on Tailscale, then svall fleet home retry; until then this home stays frozen']);
+    expect(failed()).toMatchObject({ detail: `studio is not reachable from ${thisMachine()}`, raw: 'ssh: connect to host studio', say: 'Finish the move once it answers; until then this home takes no changes' });
     expect(readMarker(resolvePaths(home))?.id).toBe('hm_abcdefghij');
   });
 });
@@ -678,7 +684,7 @@ describe('fleet home set local', () => {
     fs.rmSync(w.mac.paths.workerFile);
     const out = await moveHomeBack(deps);
     expect(out.result).toBe('actions');
-    expect(out.actions).toEqual(["this machine is the fleet's home already"]);
+    expect(out.actions).toEqual([`${thisMachine()} is the fleet's home already`]);
   });
 
   it('says of a rewritten path that this machine does not have it, and goes on', async () => {
@@ -686,7 +692,7 @@ describe('fleet home set local', () => {
     const stop = telling(w, master);
     await moveHomeBack(deps);
     stop();
-    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe(`2 robots stay on studio, 1 here; defaultCwd becomes ~/code, which ${thisMachine()} does not have yet`);
+    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe(`2 robots stay on studio, 1 here; new robots' folder becomes ~/code, which ${thisMachine()} does not have yet`);
   }, 30_000);
 
   it('names at its check a worker that does not answer, as joining the machine that takes the fleet back', async () => {
@@ -746,6 +752,7 @@ describe('fleet home set local', () => {
     const out = await moveHomeBack(deps);
     stop();
     expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
+    expect(events.find((e) => e.step === 'copy' && e.status === 'ok')?.detail).toBe(`the fleet's files are on ${thisMachine()}`);
     expect(out.result).toBe('ready');
     expect(order).toContain('fleet.homeMove:mark owed');
     expect(settled).toEqual(['adopted']);
@@ -770,7 +777,7 @@ describe('fleet home set local', () => {
       const out = await moveHomeBack(deps);
       expect(out.stopped).toBeUndefined();
     } finally { stop(); clock.mockRestore(); }
-    expect(events.filter((e) => e.step === 'workers').at(-1)).toMatchObject({ status: 'warn', detail: 'far-box has not joined this machine yet; its row under Machines says why' });
+    expect(events.filter((e) => e.step === 'workers').at(-1)).toMatchObject({ status: 'warn', detail: `far-box has not joined ${thisMachine()} yet; its row under Machines says why` });
   }, 30_000);
 
   it('the manifest it sends the old home holds only the install key\'s hash, and this machine installs from its driver\'s journal', async () => {
@@ -951,7 +958,7 @@ describe('fleet home set local', () => {
     deps.openMaster = () => Promise.reject(new Error('ssh: connect to host studio'));
     const out = await resumeHome(deps);
     deps.openMaster = opened;
-    expect(out.actions).toEqual(['svall fleet home retry once it answers']);
+    expect(out.actions).toEqual(['check that it is on and on Tailscale, then svall fleet home retry']);
     expect(w.mac.daemon.role).toBe('worker');
     expect(journalLines(w.mac.paths, id).at(-1)?.phase).toBe('staged');
   }, 30_000);
@@ -1024,11 +1031,13 @@ describe('fleet home set local', () => {
   }, 30_000);
 
   it('a stop before the mark with mission control sent ahead says so, with the way back for it', async () => {
-    const away = { robots: { crew: { id: 'crew', name: 'crew', islandId: 'home', machine: MAC, sentAhead: 'hm_abcdefghij' } }, islands: { home: { id: 'home', kind: 'home' } }, machines: {} };
+    const sent = (id: string) => ({ id, name: id, islandId: 'home', machine: MAC, sentAhead: 'hm_abcdefghij' });
+    const away = { robots: { crew: sent('crew'), scout: sent('scout') }, islands: { home: { id: 'home', kind: 'home' } }, machines: {} };
     const { deps } = await workerHere(() => true, { state: away, refuse: { 'fleet.freeze': new ApiError('busy', 'a worker is still catching up') } });
     const out = await moveHomeBack(deps);
     expect(failed()?.step).toBe('pause');
     expect(out.actions).toContain('svall fleet home crew-back');
+    expect(events.find((e) => e.step === 'crew' && e.status === 'warn')?.say).toBe(`Mission control's robots crew, scout are still on ${thisMachine()}`);
   }, 30_000);
 
   it('crew-back from a worker asks the home, and moves them to the machine the home says it is', async () => {
@@ -1067,8 +1076,7 @@ describe('fleet home set local', () => {
     const crew = { robots: { crew: { id: 'crew', name: 'crew', islandId: 'home' } }, islands: { home: { id: 'home', kind: 'home' } }, machines: {} };
     const { deps } = await workerHere(() => true, { state: crew, refuse: { 'robot.moveTo': new Error('its worktree is dirty') } });
     await moveHomeBack(deps);
-    expect(failed()).toMatchObject({ step: 'mission', action: 'fix it, and svall fleet home set local again; svall fleet home crew-back brings back the crew that moved' });
-    expect(failed()?.say).toBeDefined();
+    expect(failed()).toMatchObject({ step: 'mission', action: 'fix it, and svall fleet home set local again; svall fleet home crew-back brings back the crew that moved', say: 'Fix it and try again; the crew that moved can be brought back', raw: 'its worktree is dirty' });
   });
 
   describe('fleet home abort', () => {
@@ -1095,14 +1103,14 @@ describe('fleet home set local', () => {
       unlock();
       expect(Date.now() - at).toBeLessThan(10_000);
       expect(out.result).toBe('actions');
-      expect(failed()).toMatchObject({ step: 'abort', detail: 'the move is still under way here: another step of this move runs there' });
+      expect(failed()).toMatchObject({ step: 'abort', detail: `the move is still under way here: ${thisMachine()} is at work on the move`, raw: 'another step of this move runs there' });
       expect(readOwed(w.mac.paths)).toBeDefined();
     }, 30_000);
 
     it('no move standing here says so and calls nothing off, a driver running included', async () => {
       const { deps, called } = outDeps(() => answer({ status: 'done' }));
       expect((await abortHome(deps)).result).toBe('actions');
-      expect(failed()).toMatchObject({ step: 'abort', detail: 'no move of the fleet waits on this machine', action: 'one still running stops with the command or sheet that runs it' });
+      expect(failed()).toMatchObject({ step: 'abort', detail: `no move of the fleet waits on ${thisMachine()}`, action: 'one still running stops with the command or sheet that runs it' });
       expect(called.filter((c) => c.method === 'fleet.homeMove').map((c) => c.params.op)).toEqual(['status']);
     });
 
@@ -1114,27 +1122,37 @@ describe('fleet home set local', () => {
       events = [];
       const told = outDeps(none, { abort: { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: false } } });
       await abortHome(told.deps);
-      expect(failed()).toMatchObject({ step: 'abort', detail: 'studio holds this move, and tells this machine how it ended', action: 'svall fleet home abort on studio', say: 'Call it off on studio' });
+      expect(failed()).toMatchObject({ step: 'abort', detail: `studio holds this move, and tells ${thisMachine()} how it ended`, action: 'svall fleet home abort on studio', say: 'Call it off on studio' });
       events = [];
       const held = outDeps(none, { abort: { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, answer: 'staged', phase: 'staged' } } });
       await abortHome(held.deps);
-      expect(failed()).toMatchObject({ step: 'abort', detail: 'studio has not let go of it: staged' });
+      expect(failed()).toMatchObject({ step: 'abort', detail: "studio has not let go of it: studio holds the fleet's files and has not taken over" });
     });
   });
 });
 
 describe('how a home move ends in a terminal', () => {
-  it('one that went through with something left to do exits 0, saying both; one that stopped exits 1', () => {
+  it('ends on the rows left to do in full, the rest counted, then its line; one that went through exits 0, one that stopped 1', () => {
     const out: string[] = [];
     const write = vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out.push(String(s)); return true; });
     const was = process.exitCode;
     process.exitCode = undefined;
+    const said = { done: 'The fleet runs on this Mac.', stopped: 'The move did not finish.' };
     try {
-      finishFlow({ result: 'actions', actions: ['svall host doctor studio'] }, false, 'The fleet runs on this machine.');
+      const linked: StepEvent = { step: 'probe', status: 'warn', detail: 'the fleet runs on this Mac; studio has not linked yet', action: 'svall host doctor studio' };
+      const steps: StepEvent[] = [{ step: 'pause', status: 'start' }, { step: 'pause', status: 'ok', detail: 'paused' }, { step: 'mark', status: 'ok', detail: 'handed over' }, linked];
+      finishFlow({ result: 'actions', actions: ['svall host doctor studio'] }, false, steps, said);
       expect(process.exitCode).toBeUndefined();
-      expect(out.join('')).toBe('The fleet runs on this machine.\nsvall host doctor studio\n');
-      finishFlow({ result: 'actions', actions: ['svall fleet home retry'], stopped: 'adopt' }, false, 'The fleet runs on this machine.');
+      expect(out.join('')).toBe('! probe  the fleet runs on this Mac; studio has not linked yet -> svall host doctor studio\n✓ 2 checks fine\nThe fleet runs on this Mac.\n');
+      out.length = 0;
+      const failed: StepEvent = { step: 'adopt', status: 'fail', detail: 'studio did not take the fleet', action: 'svall fleet home retry' };
+      finishFlow({ result: 'actions', actions: ['svall fleet home retry'], stopped: 'adopt' }, false, [failed], said);
       expect(process.exitCode).toBe(1);
+      expect(out.join('')).toBe('✗ adopt  studio did not take the fleet -> svall fleet home retry\nThe move did not finish.\n');
+      // the join's offer of a copy of the agent setup is a note
+      out.length = 0;
+      finishFlow({ result: 'ready', actions: [] }, false, [{ step: 'seed', status: 'warn', detail: 'studio has no agent setup yet' }], said);
+      expect(out.join('')).toBe('! 1 note\nThe fleet runs on this Mac.\n');
     } finally {
       write.mockRestore();
       process.exitCode = was;

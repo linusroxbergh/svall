@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { crewAway, emptyState, MachineId, relabelHome, type FleetState, type Robot } from '../src/index.js';
+import { crewAway, emptyState, homeMoveStands, MachineId, relabelHome, type FleetState, type Robot } from '../src/index.js';
 
 const MAC = MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
 const STUDIO = MachineId.parse('66666666-7777-8888-9999-aaaaaaaaaaaa');
@@ -66,5 +66,16 @@ describe('relabelHome', () => {
   it('run twice it mislabels, which is why a retry starts from the input', () => {
     const twice = relabelHome(relabelHome(fleet(), out), out);
     expect(twice.robots.placed.machine).toBe(MAC);
+  });
+});
+
+describe('homeMoveStands', () => {
+  it('says where a move stands as a sentence on the machine taking the fleet, and of a phase it does not know, that the machine is at work', () => {
+    expect(homeMoveStands('staged', 'studio')).toBe("studio holds the fleet's files and has not taken over.");
+    expect(homeMoveStands('stopping', 'studio')).toBe('studio went back as it was and has not started again.');
+    expect(homeMoveStands('unreachable', 'studio')).toBe('studio does not answer; the move waits until it does.');
+    expect(homeMoveStands('rolledback', 'studio')).toBe('studio tried to take over and went back as it was.');
+    expect(homeMoveStands('mended', 'studio')).toBe('studio is at work on the move.');
+    expect(homeMoveStands('constructor', 'studio')).toBe('studio is at work on the move.');
   });
 });

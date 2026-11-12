@@ -7,7 +7,7 @@ import { codexPaths, type CodexPaths } from '../codex/install.js';
 import { peekConfig } from '../config.js';
 import { installOpencodePlugin, opencodePaths, removeOpencodePlugin } from '../opencode/install.js';
 import { claudePaths, resolvePaths } from '../paths.js';
-import { profileHome } from '../profile.js';
+import { PRIVATE, profileHome, restarted } from '../profile.js';
 import { systemdDir } from '../release.js';
 import { writeDurable } from '../durable.js';
 import type { Runtime } from '../runtime.js';
@@ -210,7 +210,7 @@ export async function serveAsWorker(o: UnitOptions & { fleet: string; home: stri
   await daemonReload(o.run);
   await restartUnit(o.run, unit);
   await enableUnit(o.run, unit);
-  return [...done, `systemctl --user restart ${unit}`];
+  return [...done, restarted(o.fleet === PRIVATE ? undefined : o.fleet)];
 }
 
 /** Setup, then the probe that can roll back a release that replaced another. Only a daemon this run started counts: a

@@ -3,7 +3,7 @@ import { placingOn, type FleetState, type Robot } from '@svall/protocol';
 import { addColumn, newRobotOn, newRobotTarget, placeRobot, renameColumn, reorderColumn, saveRobot, setPlacing } from './actions.js';
 import { app, deps } from './boot.js';
 import { BoardCard, NameInput } from './BoardCard.js';
-import { useApp } from './hooks.js';
+import { useApp, useMore } from './hooks.js';
 import { Caret, Grip, More, Place, Plus } from './icons.js';
 import { cardRect } from './map/card.js';
 import { useHover } from './map/hover.js';
@@ -90,26 +90,6 @@ function useSize(ref: React.RefObject<HTMLElement | null>): { w: number; h: numb
 const placed = (f: FleetState, p: { id: string; column: string } | undefined): FleetState =>
   (p && f.robots[p.id] ? { ...f, robots: { ...f.robots, [p.id]: { ...f.robots[p.id], column: p.column } } } : f);
 
-// whether more of an element's content lies below it, or past its right edge, the read its scroll calls, and whether it is scrolled from the start
-function useMore(ref: React.RefObject<HTMLElement | null>, axis: 'x' | 'y'): [boolean, () => void, boolean] {
-  const [more, setMore] = useState(false);
-  const [back, setBack] = useState(false);
-  const read = () => {
-    const el = ref.current;
-    if (!el) return;
-    setMore(axis === 'y' ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
-    setBack((axis === 'y' ? el.scrollTop : el.scrollLeft) > 1);
-  };
-  // a robot or an island coming or going redraws it; the window changing size does not
-  useLayoutEffect(read);
-  useLayoutEffect(() => {
-    const ro = new ResizeObserver(read);
-    if (ref.current) ro.observe(ref.current);
-    return () => ro.disconnect();
-  }, []);
-  return [more, read, back];
-}
-
 /** A column's robots scroll under a fade that shows only while more of them lie below. */
 function Body({ children, onScroll }: { children: React.ReactNode; onScroll(): void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -129,6 +109,7 @@ export function Board() {
   const dropHover = useApp((s) => s.dropHover);
   const placing = useApp((s) => scribePlaces(s.fleet));
   const placingNow = useApp((s) => s.placingNow);
+  const placeState = placingNow ? 'placing…' : placing ? 'scribe' : 'off';
   const toastShown = useApp((s) => s.settings.boardToastShown);
   const [filter, setFilter] = useState<Filter>({ open: true, needsYou: false });
   const [renaming, setRenaming] = useState<string>();
@@ -237,7 +218,7 @@ export function Board() {
       const id = await newRobotOn(deps(), island ?? (await newRobotTarget(deps())).islandId, other);
       if (id && other) await placeRobot(deps(), id, other);
     } catch (e) {
-      app.store.getState().showToast((e as Error).message);
+      app.store.getState().showToast(e as Error);
     }
   };
   const menu = (e: React.MouseEvent, id: string) =>
@@ -326,14 +307,15 @@ export function Board() {
           <button type="button" className="ib kb-page" data-testid="chips-next" aria-label="More islands" disabled={!moreChips} onClick={() => pageChips(1)}><Caret dir="right" /></button>
         )}
         <span className="kb-gap" />
+        {/* its name whole, as a narrowed bar shows only the state */}
         <button type="button" className="pill kb-chip" data-testid="chip-placing" data-on={placing} data-busy={placingNow} aria-busy={placingNow} aria-haspopup="menu"
-          onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); placingMenu(r.left, r.bottom + 4); }}>
-          <Place />Auto-place: {placingNow ? 'placing…' : placing ? 'scribe' : 'off'}<Caret dir="down" />
+          aria-label={`Auto-place: ${placeState}`} data-tip={`Auto-place: ${placeState}`} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); placingMenu(r.left, r.bottom + 4); }}>
+          <Place /><span className="kb-wide">Auto-place: </span>{placeState}<Caret dir="down" />
         </button>
         <button type="button" className="pill kb-chip" data-testid="chip-needs" aria-pressed={filter.needsYou} onClick={() => setFilter((f) => ({ ...f, needsYou: !f.needsYou }))}>
           Needs you <span className={needs > 0 ? 'count tnum' : 'n'}>{needs}</span>
         </button>
-        <button type="button" className="btn sm" data-testid="board-add-column" onClick={() => void add()}><Plus size="xs" />Column</button>
+        <button type="button" className="btn sm" data-testid="board-add-column" aria-label="New column" data-tip="New column" onClick={() => void add()}><Plus size="xs" /><span className="kb-wide">Column</span></button>
       </div>
       <div ref={ground} className="kb-ground">
         <div className="kb-cols" data-testid="board-cols" data-dragging={Boolean(lift || shift)} onClick={blank}>

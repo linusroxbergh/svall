@@ -36,11 +36,12 @@ describe('host upgrade', () => {
    * Its setup keeps a new release only if its daemon comes up (no `down-<release>` file) and speaks this client's protocol,
    * else goes back to the release it replaced (after a reinstall, the newest other kept), as a real setup does.
    */
-  async function farMachine(o: { releases: [string, number, (number | null)?][]; accepts?: (release: string) => boolean; pins?: string }) {
+  async function farMachine(o: { releases: [string, number, (number | null)?][]; accepts?: (release: string) => boolean; pins?: string; answers?: string | (() => string) }) {
     const home = path.join(work, 'far');
     const base = `${home}/.local/share/svall`;
     const now = () => path.basename(fs.readlinkSync(`${base}/current`));
-    const d = await daemon({ release: now, accepts: () => o.accepts?.(now()) ?? true });
+    // `answers`: a daemon left running from that release, whatever current names
+    const d = await daemon({ release: () => (typeof o.answers === 'function' ? o.answers() : o.answers) ?? now(), accepts: () => o.accepts?.(now()) ?? true });
     const svall = (version: string, protocol: number, schema: number | null = STATE_SCHEMA_VERSION) => `#!/bin/sh
 base='${base}'
 now() { basename "$(readlink "$base/current")"; }
@@ -55,9 +56,11 @@ case "$1" in
   worker) printf '%s\\n' "$@" > '${home}/.svall/worker-args' && cat > '${home}/.svall/worker-token' ;;
   setup)
     if [ "$2" = --rollback ]; then
+      touch "$base/rolled"
       to=\${3:-$(ls -t "$base/releases" | grep -vx "$(now)" | head -1)}
       [ -n "$to" ] || { echo "no release under $base/releases to go back to" >&2; exit 1; }
       [ -d "$base/releases/$to" ] || { echo "no release at $base/releases/$to to go back to" >&2; exit 1; }
+      echo "stopping the fleet units"
       ln -sfn "$base/releases/$to" "$base/current" && echo "current -> $base/releases/$to"
       exit
     fi
@@ -139,7 +142,7 @@ esac
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
     expect(out).toEqual({ result: 'ready', actions: [] });
-    expect(step('install').at(-1)?.detail).toContain(`signed by a key ${far.base}/current/release/allowed_signers pins`);
+    expect(step('install').at(-1)?.raw).toContain(`signed by a key ${far.base}/current/release/allowed_signers pins`);
     const verify = ssh.remoteCalls().findIndex((w) => w.includes('svall-unpack'));
     const setup = ssh.remoteCalls().findIndex((w) => w.includes('setup'));
     expect(verify).toBeGreaterThan(-1);
@@ -155,7 +158,7 @@ esac
     const out = await upgradeHost('trift', { release: archive }, deps({ registry: far.registry, verify: intruder.verify }));
     await far.close();
     expect(out.result).toBe('actions');
-    expect(step('install').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`not signed by a key ${far.base}/current/release/allowed_signers pins`) });
+    expect(step('install').at(-1)).toMatchObject({ status: 'fail', detail: `the uploaded release is not signed by a key ${far.base}/current/release/allowed_signers pins` });
     expect(fs.existsSync(ran)).toBe(false);
     expect(ssh.remoteCalls().some((w) => w.includes('setup'))).toBe(false);
     expect(far.now()).toBe('1.2.2');
@@ -174,7 +177,7 @@ esac
     await far.close();
     expect(fs.existsSync(ran) ? fs.readFileSync(ran, 'utf8') : '').toBe('');
     expect(out.result).toBe('ready');
-    expect(step('install').at(-1)?.detail).toContain(`signed by a key ${far.base}/current/release/allowed_signers pins`);
+    expect(step('install').at(-1)?.raw).toContain(`signed by a key ${far.base}/current/release/allowed_signers pins`);
   });
 
   it('refuses a release when the installed release has lost its signers file, rather than taking it for one that pins none', async () => {
@@ -211,7 +214,7 @@ esac
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive }, deps({ registry: MachineRegistry.load(config), verify: intruder.verify }));
     await far.close();
     expect(out.result).toBe('actions');
-    expect(step('install').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`not signed by a key ${far.base}/current/release/allowed_signers pins`) });
+    expect(step('install').at(-1)).toMatchObject({ status: 'fail', detail: `the uploaded release is not signed by a key ${far.base}/current/release/allowed_signers pins` });
     expect(fs.existsSync(ran)).toBe(false);
     expect(far.now()).toBe('1.2.2');
   });
@@ -236,7 +239,7 @@ esac
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
     expect(out.result).toBe('ready');
-    expect(step('install').at(-1)?.detail).toContain('the installed release pins no signer, so only this controller\'s signers vouched for it');
+    expect(step('install').at(-1)?.raw).toContain('the installed release pins no signer, so only this controller\'s signers vouched for it');
   });
 
   it('checks an unsigned release with --allow-unsigned by its digests alone, and refuses one whose files do not match them', async () => {
@@ -244,7 +247,7 @@ esac
     const archive = companionArchive(work, { svall: far.svall('1.2.3', PROTOCOL_VERSION) });
     const out = await upgradeHost('trift', { release: archive, allowUnsigned: true }, deps({ registry: far.registry }));
     expect(out.result).toBe('ready');
-    expect(step('install').at(-1)?.detail).toContain('unsigned, checked by its digests alone');
+    expect(step('install').at(-1)?.raw).toContain('unsigned, checked by its digests alone');
 
     // the same archive with a file changed after its manifest was written
     const tree = fs.mkdtempSync(path.join(work, 'tampered-'));
@@ -353,7 +356,11 @@ esac
     expect(far.now()).toBe('1.2.2');
     expect(runs.mock.calls).toEqual([['1.2.2']]);
     expect(ssh.remoteCalls()).toContainEqual([`${far.base}/releases/1.2.3/bin/svall`, 'setup', '--rollback', '1.2.2']);
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', action: expect.stringMatching(/trift runs release 1\.2\.2, the one it ran before$/) });
+    // what the rollback said, whole, then the long way
+    expect(step('rollback').at(-1)).toMatchObject({
+      status: 'ok', detail: 'back on 1.2.2', action: 'see why: svall host doctor trift',
+      raw: expect.stringMatching(new RegExp(`^stopping the fleet units\ncurrent -> ${far.base}/releases/1\.2\.2\nssh .* read the service's log`)),
+    });
   });
 
   it('after a reinstall under the name it ran, goes back to the newest release kept there, and never calls the new tree the one it ran before', async () => {
@@ -365,8 +372,7 @@ esac
     expect(far.now()).toBe('1.2.2');
     expect(runs.mock.calls).toEqual([['1.2.2']]);
     expect(ssh.remoteCalls()).toContainEqual([`${far.base}/releases/1.2.3/bin/svall`, 'setup', '--rollback']);
-    const action = step('rollback').at(-1)?.action ?? '';
-    expect(action).toMatch(/trift ran a release named 1\.2\.3 before, which this install replaced; it runs release 1\.2\.2, the newest one kept there$/);
+    expect(step('rollback').at(-1)).toMatchObject({ detail: 'on 1.2.2, the newest release kept there', action: 'see why: svall host doctor trift' });
   });
 
   it('after a reinstall under the name it ran that its own setup took back, stays on the release that setup went back to', async () => {
@@ -377,14 +383,59 @@ esac
     expect(out.result).toBe('actions');
     expect(far.now()).toBe('1.2.2');
     expect(ssh.remoteCalls()).toContainEqual([`${far.base}/releases/1.2.3/bin/svall`, 'setup', '--rollback', '1.2.2']);
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', action: expect.stringMatching(/it runs release 1\.2\.2, the newest one kept there$/) });
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', detail: 'on 1.2.2, the newest release kept there' });
+  });
+
+  it('says once that the machine is set to one release and answers from another, when going back did not finish', async () => {
+    let base = '';
+    // the new release is set, the daemon of the one before still answers, and the one before is gone to go back to
+    // and once the rollback has run, a daemon answering from yet another, which is the one named
+    const answers = () => (fs.existsSync(`${base}/rolled`) ? '1.2.1' : '1.2.2');
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], answers, accepts: (r) => { if (r === '1.2.3') fs.rmSync(`${base}/releases/1.2.2`, { recursive: true, force: true }); return true; } });
+    base = far.base;
+    await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(far.now()).toBe('1.2.3');
+    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: 'answers from 1.2.2, not 1.2.3' });
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', detail: 'set to 1.2.3, still answering from 1.2.1' });
+  });
+
+  it('says a release put back whose daemon then does not answer, with what ssh said behind', async () => {
+    let base = '';
+    // the daemon of the one before answers the new release's probe, then nothing answers once the rollback has run
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], answers: '1.2.2', accepts: () => !fs.existsSync(`${base}/rolled`) });
+    base = far.base;
+    await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(far.now()).toBe('1.2.2');
+    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: 'answers from 1.2.2, not 1.2.3' });
+    expect(step('rollback').at(-1)).toMatchObject({
+      status: 'warn', detail: 'on 1.2.2, which does not answer',
+      raw: expect.stringMatching(/^trift: Svall's background service refused the token\n/),
+    });
   });
 
   it('after a reinstall under the only name it had, says no other release is kept to go back to', async () => {
     const far = await farMachine({ releases: [['1.2.3', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.3' });
     await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', action: expect.stringMatching(/no other release is kept there, so it runs the new one; svall host upgrade trift --rollback <release> puts back a release kept there$/) });
+    expect(step('rollback').at(-1)).toMatchObject({
+      status: 'fail', detail: 'stays on 1.2.3: no earlier release is kept there', action: 'see why: svall host doctor trift',
+      raw: expect.stringMatching(/svall host upgrade trift --rollback <release> puts back a release kept there$/),
+    });
+  });
+
+  it('says a release before that could not be put back, and the one the machine stays on, with what its setup said behind', async () => {
+    let base = '';
+    // the release before goes once the new one is found not to answer, so going back to it fails
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], accepts: (r) => { if (r === '1.2.3') fs.rmSync(`${base}/releases/1.2.2`, { recursive: true, force: true }); return r !== '1.2.3'; } });
+    base = far.base;
+    await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(step('rollback').at(-1)).toMatchObject({
+      status: 'fail', detail: 'on 1.2.3; 1.2.2 could not be put back', action: 'see why: svall host doctor trift',
+      raw: expect.stringContaining(`svall setup --rollback 1.2.2 exited 1: no release at ${base}/releases/1.2.2 to go back to`),
+    });
   });
 
   it('counts a new release whose own setup put the old one back as not answering, and says which the machine runs', async () => {
@@ -393,9 +444,20 @@ esac
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
     expect(out.result).toBe('actions');
-    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: expect.stringContaining('1.2.2') });
+    // each row it leaves to fix says what to do
+    // which release answered, and the rollback that put the one before back as done
+    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: 'answers from 1.2.2, not 1.2.3', action: 'see why: svall host doctor trift' });
+    expect(step('probe').at(-1)).not.toHaveProperty('raw');
     expect(far.now()).toBe('1.2.2');
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', action: expect.stringMatching(/trift runs release 1\.2\.2, the one it ran before$/) });
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'ok', detail: 'back on 1.2.2', action: 'see why: svall host doctor trift' });
+  });
+
+  it('keeps what the far machine said when its new release does not answer', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+    ssh.reply(['connection-info'], { stderr: 'no port file at /home/linus/.svall/port', code: 1 });
+    await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: 'does not answer', raw: expect.stringContaining('no port file at /home/linus/.svall/port') });
   });
 
   const unitDown = JSON.stringify({ checks: JSON.parse(DOCTOR).checks.map((c: { name: string }) => (c.name === 'systemd'
@@ -407,7 +469,7 @@ esac
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
     expect(out.result).toBe('actions');
-    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: expect.stringContaining('svall-svalld@private.service') });
+    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: 'does not answer', raw: expect.stringContaining('svall-svalld@private.service') });
     expect(far.now()).toBe('1.2.2');
   });
 
@@ -419,7 +481,8 @@ esac
     await far.close();
     expect(out.result).toBe('actions');
     expect(runs.mock.calls).toEqual([['1.2.2']]);
-    expect(step('probe').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('svall-svalld@private.service'), action: expect.stringContaining('trift runs release 1.2.2') });
+    expect(step('probe').at(-1)).toMatchObject({ status: 'fail', detail: 'does not answer', action: 'see why: svall host doctor trift', raw: expect.stringContaining('svall-svalld@private.service') });
+    expect(step('probe').at(-1)?.raw).toContain('trift runs release 1.2.2');
   });
 
   /** The far machine's systemctl, which writes each call it is given to `log`, first on the far PATH; it fails while `broken` is there. */
@@ -450,7 +513,7 @@ esac
     expect(fs.readFileSync(path.join(home, '.svall', 'worker-token'), 'utf8')).toBe(tokenFor(resolvePaths(fleet), REMOTE));
     expect(fs.readFileSync(systemctl, 'utf8')).toBe('--user disable --now svall-gateway.service\n--user daemon-reload\n');
     expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(false);
-    expect(step('enrol').at(-1)).toMatchObject({ status: 'ok', detail: expect.stringContaining('; svall-gateway.service is stopped and removed') });
+    expect(step('enrol').at(-1)).toMatchObject({ status: 'ok', detail: 'joined this fleet', raw: expect.stringContaining('; svall-gateway.service is stopped and removed') });
     expect(events.filter((e) => e.status !== 'start').map((e) => e.step)).toEqual(['machine', 'master', 'os', 'release', 'upload', 'install', 'probe', 'enrol']);
     expect(refreshed).toBe(1);
   });
@@ -489,7 +552,7 @@ esac
 
     const first = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     expect(first).toMatchObject({ result: 'actions', stopped: 'enrol' });
-    expect(step('enrol').at(-1)).toMatchObject({ status: 'fail', detail: 'systemctl --user disable --now svall-gateway.service exited 1: Failed to connect to bus' });
+    expect(step('enrol').at(-1)).toMatchObject({ status: 'fail', detail: 'the old gateway service there did not stop', raw: 'systemctl --user disable --now svall-gateway.service exited 1: Failed to connect to bus' });
     expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
     expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(true);
 
@@ -630,7 +693,7 @@ esac
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
     expect(out).toEqual({ result: 'actions', stopped: 'release', actions: [action] });
-    expect(step('release').at(-1)).toEqual({ step: 'release', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action });
+    expect(step('release').at(-1)).toEqual({ step: 'release', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from bea-mbp first', action });
     expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup') || w.includes('enroll'))).toBe(false);
     expect(far.now()).toBe('1.2.2');
     expect(JSON.parse(fs.readFileSync(path.join(fleet, 'fleet.json'), 'utf8'))).toEqual({ id: FLEET, gatewayMachineId: REMOTE });
@@ -697,7 +760,8 @@ esac
       [`${far.base}/releases/1.2.2/bin/svall`, 'setup', '--rollback', '1.2.1'],
     ]);
     expect(far.now()).toBe('1.2.1');
-    expect(step('probe').map((e) => e.detail)).toEqual(['trift answers on release 1.2.2', 'trift answers on release 1.2.1']);
+    expect(step('probe').map((e) => e.detail)).toEqual(['answers', 'answers']);
+    expect(step('rollback').map((e) => e.detail)).toEqual(['back on 1.2.2', 'back on 1.2.1']);
   });
 
   it('probes a rollback onto a release that speaks the protocol before this controller\'s', async () => {
@@ -706,7 +770,7 @@ esac
     await far.close();
     expect(out).toEqual({ result: 'ready', actions: [] });
     expect(far.now()).toBe('1.2.2');
-    expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: 'trift answers on release 1.2.2' });
+    expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: 'answers' });
   });
 
   /** A fleet on the far machine, kept in `dir` under its home, whose state.json is at `version`. */
@@ -726,8 +790,8 @@ esac
     await far.close();
     expect([out.result, named.result]).toEqual(['actions', 'actions']);
     expect(step('rollback')).toEqual([1, 2].map(() => ({
-      step: 'rollback', status: 'fail',
-      detail: `${newer} is at state schema ${STATE_SCHEMA_VERSION}, and release 1.2.2 reads ${STATE_SCHEMA_VERSION - 1}: its svalld would refuse to start after going back; trift stays on release 1.2.3`,
+      step: 'rollback', status: 'fail', detail: "cannot go back to 1.2.2: the fleet's state is newer than that release reads; stays on 1.2.3",
+      raw: `${newer} is at state schema ${STATE_SCHEMA_VERSION}, and release 1.2.2 reads ${STATE_SCHEMA_VERSION - 1}: its svalld would refuse to start after going back`,
     })));
     expect(ssh.remoteCalls().some((w) => w.includes('--rollback'))).toBe(false);
     expect(far.now()).toBe('1.2.3');
@@ -751,8 +815,8 @@ esac
     await far.close();
     expect(refused.result).toBe('actions');
     expect(step('rollback')[0]).toEqual({
-      step: 'rollback', status: 'fail',
-      detail: `${sock} is served by tmux 3.7c, and release 1.2.2 carries no tmux and would run the machine's (tmux 3.4), which cannot reach it; trift stays on release 1.2.3`,
+      step: 'rollback', status: 'fail', detail: "cannot go back to 1.2.2: its robots' terminals run on a tmux that release lacks; stays on 1.2.3",
+      raw: `${sock} is served by tmux 3.7c, and release 1.2.2 carries no tmux and would run the machine's (tmux 3.4), which cannot reach it`,
     });
     expect(back.result).toBe('ready');
     expect(far.now()).toBe('1.2.2');
@@ -765,7 +829,7 @@ esac
     const out = await rollbackHost('trift', {}, deps({ registry: far.registry }));
     await far.close();
     expect(out.result).toBe('actions');
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`${newer} is at state schema ${STATE_SCHEMA_VERSION}`) });
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', raw: expect.stringContaining(`${newer} is at state schema ${STATE_SCHEMA_VERSION}`) });
     expect(far.now()).toBe('1.2.3');
   });
 
@@ -785,8 +849,8 @@ esac
     const refused = await rollbackHost('trift', {}, deps({ registry: far.registry }));
     expect(refused.result).toBe('actions');
     expect(step('rollback').at(-1)).toMatchObject({
-      status: 'fail',
-      detail: `release 1.2.2 does not say which state schema it reads, and ${state} is at state schema ${OLDEST_STATE_SCHEMA_VERSION + 1}, newer than the oldest a release has read (${OLDEST_STATE_SCHEMA_VERSION}): its svalld could refuse to start after going back; trift stays on release 1.2.3`,
+      status: 'fail', detail: "cannot go back to 1.2.2: the fleet's state is newer than that release reads; stays on 1.2.3",
+      raw: `release 1.2.2 does not say which state schema it reads, and ${state} is at state schema ${OLDEST_STATE_SCHEMA_VERSION + 1}, newer than the oldest a release has read (${OLDEST_STATE_SCHEMA_VERSION}): its svalld could refuse to start after going back`,
     });
     expect(far.now()).toBe('1.2.3');
     fleetState('.svall', OLDEST_STATE_SCHEMA_VERSION);
@@ -825,20 +889,20 @@ esac
     // the far rollback to a release not kept there fails, and the machine stays on 1.2.2
     expect(runs.mock.calls).toEqual([['1.2.2'], ['1.2.2']]);
     expect(silent.result).toBe('actions');
-    expect(step('probe')[0]).toMatchObject({ status: 'fail', action: expect.stringContaining('trift runs release 1.2.2') });
+    expect(step('probe')[0]).toMatchObject({ status: 'fail', action: 'see why: svall host doctor trift', raw: expect.stringContaining('trift runs release 1.2.2') });
     expect(none.result).toBe('actions');
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', action: expect.stringContaining('trift runs release 1.2.2') });
-    expect(step('rollback').at(-1)?.action).toContain('svall host upgrade trift --rollback <release>');
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', detail: 'still on 1.2.2', action: 'see why: svall host doctor trift', raw: expect.stringContaining('trift runs release 1.2.2') });
+    expect(step('rollback').at(-1)?.raw).toContain('svall host upgrade trift --rollback <release>');
   });
 
-  it('names the ssh to try in Terminal when an upgrade or a rollback cannot connect', async () => {
+  it('says the machine is not reachable when an upgrade or a rollback cannot connect, and what to check', async () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
     for (const run of [() => upgradeHost('trift', {}, deps({ registry })), () => rollbackHost('trift', {}, deps({ registry }))]) {
       events.length = 0;
       ssh.clearReplies();
       expect((await run()).result).toBe('actions');
-      expect(step('master').at(-1)).toMatchObject({ status: 'fail', action: 'ssh refused.test once in Terminal and see what it answers, then run this again' });
+      expect(step('master').at(-1)).toMatchObject({ status: 'fail', detail: 'trift is not reachable from this Mac', action: 'check that it is on and on Tailscale', raw: expect.stringContaining('refused.test') });
     }
   });
 
@@ -867,7 +931,7 @@ esac
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.2', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }, null, 2) });
     const out = await upgradeHost('trift', { release: archive() }, deps({ registry: registered() }));
     expect(out.result).toBe('actions');
-    expect(step('master').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`now reaches machine ${OTHER_MAC}`) });
+    expect(step('master').at(-1)).toMatchObject({ status: 'fail', detail: 'trift.test now reaches another machine than trift', raw: expect.stringContaining(`now reaches machine ${OTHER_MAC}`) });
     expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup'))).toBe(false);
   });
 

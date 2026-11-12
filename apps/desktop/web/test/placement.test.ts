@@ -91,6 +91,8 @@ describe('a window on a worker', () => {
     expect(readsOn(fleet, 'nobody', online)).toBeUndefined();
     const clone = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
     expect(readsOn({ ...fleet, machines: { [clone]: { name: 'w2', reachable: true, since: 0 } } }, farRootId(clone, '/srv/x'), online)).toBe('w2');
+    // this Mac's own clone, which the home lists as a worker's by its name for this Mac
+    expect(readsOn({ ...fleet, machines: { [clone]: { name: 'linuss-macbook-pro', reachable: true, since: 0 } } }, farRootId(clone, '/Users/ada/x'), { ...online, machine: clone })).toBe('this Mac');
     // a window on the home
     expect(readsOn(fleet, 'home')).toBeUndefined();
     expect(readsOn(fleet, 'w')).toBe('w1');

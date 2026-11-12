@@ -1,9 +1,10 @@
-import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, keptSession, type Cell, type Column, type ContextItem, type HomeAction, type Params, type Result, type Size } from '@svall/protocol';
-import { ApiError, type Api } from './api.js';
+import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, keptSession, type Cell, type Column, type ContextItem, type HomeAction, type MachineId, type Params, type Result, type Size } from '@svall/protocol';
+import { ApiError, CONNECTION_LOST, type Api } from './api.js';
 import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { withoutSecond } from './panes.js';
-import { startsBeside } from './placement.js';
+import { phoneProblem, phoneSaid } from './phoneText.js';
+import { myMachine, startsBeside } from './placement.js';
 import type { FieldRef } from './resources/model.js';
 import { robotsOf, islandCwd, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startCwd, startOf } from './selectors.js';
 import type { AppState, AppStore } from './store/index.js';
@@ -12,7 +13,7 @@ export type Deps = { api: Api; store: AppStore; bridge: Bridge };
 // the fleet calls need the socket and the mirror; only the keyboard also needs the shell
 type ActionDeps = Pick<Deps, 'api' | 'store'>;
 
-const toast = (d: ActionDeps) => (e: Error) => d.store.getState().showToast(e.message);
+const toast = (d: ActionDeps) => (e: Error) => d.store.getState().showToast(e);
 
 // the codes the fleet refuses an edit with; any other failure, as a dropped link, a timeout or a restart, leaves it to send again
 const REFUSALS = new Set(['frozen', 'invalid', 'invalid_params', 'not_found', 'moving']);
@@ -44,7 +45,7 @@ function warnUnfound(d: ActionDeps, command: string): boolean {
   const cli = command.trim().split(/\s+/)[0];
   const found = d.store.getState().fleet.agentsFound;
   const unfound = AgentKind.safeParse(cli).success && found !== undefined && !found.includes(cli as AgentKind);
-  if (unfound) d.store.getState().showToast(`Mission control runs ${cli}, which svalld doesn't find. Install it, then run ${shim()} setup.`);
+  if (unfound) d.store.getState().showToast(`Mission control runs ${cli}, which Svall's background service doesn't find. Install it, then run ${shim()} setup.`);
   return unfound;
 }
 
@@ -67,7 +68,7 @@ export async function newRobotOn(d: ActionDeps, islandId: string, column?: strin
     showCreated(d, c.id);
     return c.id;
   } catch (e) {
-    d.store.getState().showToast((e as Error).message);
+    d.store.getState().showToast(e as Error);
     return undefined;
   }
 }
@@ -108,7 +109,7 @@ export async function addColumn(d: ActionDeps): Promise<string | undefined> {
     const cols = await d.api.call('column.add', { name });
     return cols.find((k) => k.name === name)?.id;
   } catch (e) {
-    d.store.getState().showToast((e as Error).message);
+    d.store.getState().showToast(e as Error);
     return undefined;
   }
 }
@@ -135,7 +136,7 @@ export async function deleteEmptyColumn(d: ActionDeps, id: string): Promise<void
   try {
     await d.api.call('column.delete', { id, moveTo: cols[at === 0 ? 1 : at - 1].id });
   } catch (e) {
-    d.store.getState().showToast((e as Error).message);
+    d.store.getState().showToast(e as Error);
     return;
   }
   const undo = async () => {
@@ -145,7 +146,7 @@ export async function deleteEmptyColumn(d: ActionDeps, id: string): Promise<void
       // a column added without afterId goes last, so the first comes back by a reorder
       if (!before && made && back[0].id !== made.id) await d.api.call('column.reorder', { id: made.id, targetId: back[0].id, after: false });
     } catch (e) {
-      d.store.getState().showToast((e as Error).message);
+      d.store.getState().showToast(e as Error);
     }
   };
   d.store.getState().showToast(`Deleted “${name}”`, 'ok', { label: 'Undo', run: () => void undo() });
@@ -205,7 +206,7 @@ export function toggleIsland(d: ActionDeps, id: string): void {
 // restart; any other failure of it is logged
 export function arrangeIslands(d: ActionDeps, aspect?: number, homeRoom?: number, automatic = false): void {
   d.api.call('island.arrange', { aspect, homeRoom }).catch(automatic ? (e: Error) => {
-    if (!refused(e) && e.message !== 'svalld connection closed') console.warn(`island.arrange: ${e.message}`);
+    if (!refused(e) && e.message !== CONNECTION_LOST) console.warn(`island.arrange: ${e.message}`);
   } : toast(d));
 }
 
@@ -312,7 +313,7 @@ export async function startHomeRobot(d: ActionDeps, p: { prompt: string; label?:
     }
     return true;
   } catch (e) {
-    d.store.getState().showToast((e as Error).message);
+    d.store.getState().showToast(e as Error);
     return false;
   } finally {
     stop();
@@ -328,8 +329,16 @@ export const startHomeAction = async (d: ActionDeps, action: HomeAction): Promis
 };
 
 // an edit that never reached the fleet may have left with its field, so the toast keeps it to send again
+// a fleet frozen for a home move names the machine it is moving to, which the window says by its own name for it
+function unsaid(d: ActionDeps, e: Error): string {
+  const to = e instanceof ApiError && e.code === 'frozen' ? e.data?.to : undefined;
+  const s = d.store.getState();
+  const name = typeof to !== 'string' ? undefined : to === myMachine(s) ? 'this Mac' : s.fleet.machines?.[to as MachineId]?.name;
+  return name ? `Not saved: the fleet is moving to ${name}.` : e.message;
+}
+
 const unsent = (d: ActionDeps, retry: () => void) => (e: Error) =>
-  d.store.getState().showToast(e.message, 'error', refused(e) ? undefined : { label: 'Retry', run: retry });
+  d.store.getState().showToast(unsaid(d, e), 'error', refused(e) ? undefined : { label: 'Retry', run: retry });
 
 // false once the fleet refused it, for a field to put back what the fleet holds; one that never reached the fleet stays to send again
 const saved = (d: ActionDeps, call: Promise<unknown>, retry: () => void): Promise<boolean> =>
@@ -441,12 +450,17 @@ export const setDormancy = (d: ActionDeps, hours: number): void => {
 };
 
 // the daemon holds the only answer, and `svall mobile` can change it while the app is open
-export const loadMobileStatus = (d: ActionDeps): void => {
+export const loadMobileStatus = (d: ActionDeps): Promise<void> =>
   d.api.call('mobile.get', {}).then((m) => d.store.getState().setMobile(m)).catch(() => {});
-};
 
-// a link that cannot be made comes back as a status carrying the reason, not as a rejection
+// a link that cannot be made comes back as a status carrying the reason, not as a rejection;
+// the open phone panel says that reason itself, where a toast would cover it
 export const serveFleet = (d: ActionDeps, enabled: boolean): Promise<void> =>
   d.api.call('mobile.set', { enabled })
-    .then((m) => { d.store.getState().setMobile(m); if (m.error) d.store.getState().showToast(m.error); })
+    .then((m) => {
+      d.store.getState().setMobile(m);
+      const problem = m.error ? phoneProblem(m) : undefined;
+      // what no open pane says yet: the panel left while the link was starting
+      if (problem && !phoneSaid()) d.store.getState().showToast({ text: /\w$/.test(problem.line) ? `${problem.line}.` : problem.line, fix: problem.fix, run: problem.run, raw: problem.raw });
+    })
     .catch(toast(d));

@@ -188,10 +188,10 @@ describe.skipIf(!hasGit)('a move asked through the API', () => {
     });
 
     home.store.update((d) => { d.islands.i_home = { ...island, id: 'i_home', kind: 'home' }; d.robots.c_1.islandId = 'i_home'; });
-    const refusal = { reason: 'mission control stays on this Mac', action: 'move a robot from another island', details: [] };
+    const refusal = { reason: 'Mission control stays on this Mac', action: 'Move a robot from another island', details: [] };
     expect(await dispatch({ id: 2, method: 'robot.moveCheck', params: { id: 'c_1', machine: W } }, ctx)).toEqual({ id: 2, result: { ok: false, refusal } });
     expect(await dispatch({ id: 3, method: 'robot.moveTo', params: { id: 'c_1', machine: W } }, ctx)).toEqual({
-      id: 3, error: { code: 'refused', message: 'mission control stays on this Mac; move a robot from another island', data: { refusal } },
+      id: 3, error: { code: 'refused', message: 'Mission control stays on this Mac; move a robot from another island', data: { refusal } },
     });
     expect(home.store.state.robots.c_1.machine).toBeUndefined();
   });
@@ -201,7 +201,7 @@ describe.skipIf(!hasGit)('a move asked through the API', () => {
     const moved = await dispatch({ id: 1, method: 'robot.moveTo', params: { id: 'c_1', machine: W } }, ctx) as { result: { moveId: string } };
     expect(moved.result.moveId).toMatch(/^mv_[0-9a-z]{10}$/);
     expect(home.store.state.robots.c_1.machine).toBe(W);
-    expect(await dispatch({ id: 2, method: 'machines.list' }, ctx)).toEqual({ id: 2, result: { machines: [{ id: W, name: 'w1', role: 'worker', platform: undefined, reachable: true, release: '1.2.3', robots: 1 }] } });
+    expect(await dispatch({ id: 2, method: 'machines.list' }, ctx)).toEqual({ id: 2, result: { machines: [{ id: W, name: 'w1', role: 'worker', platform: undefined, reachable: true, since: expect.any(Number), release: '1.2.3', robots: 1 }] } });
     // a move that is done has nothing left to run on
     expect(await dispatch({ id: 3, method: 'robot.moveRetry', params: { moveId: moved.result.moveId } }, ctx)).toMatchObject({ id: 3, error: { code: 'invalid' } });
   });
@@ -241,7 +241,7 @@ describe('machines.setup and machines.consent', () => {
     await linked();
     const before = others();
     const r = await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
-    expect(r.rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'ok', detail: 'keys copied to w1: env.LINEAR_API_KEY lin…90', tick: { on: true } });
+    expect(r.rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'ok', detail: 'copied', tick: { on: true } });
     expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
     expect(others()).toEqual(before);
   });
@@ -251,7 +251,7 @@ describe('machines.setup and machines.consent', () => {
     await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
     const r = await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: [], on: false });
     expect(workerJson().mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
-    expect(r.rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: "copy linear's keys to w1", tick: { on: false } });
+    expect(r.rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', detail: 'not copied', action: 'Tick to copy, or set LINEAR_API_KEY on w1: svall worker env LINEAR_API_KEY', tick: { on: false } });
   });
 
   it('machines.consent answers not_mirrored, naming no value, when the worker does not apply the change, and the untick stays saved', async () => {
@@ -259,7 +259,7 @@ describe('machines.setup and machines.consent', () => {
     await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
     w.worker.handlers['config.apply'] = async () => { throw new Error('ENOSPC: no space left on device'); };
     const res = await dispatch({ id: 1, method: 'machines.consent', params: { machine: W, item: 'claude:mcp:linear', fields: [], on: false } }, w.home.ctx);
-    expect(res).toMatchObject({ id: 1, error: { code: 'not_mirrored', message: expect.stringContaining('ENOSPC: no space left on device') } });
+    expect(res).toMatchObject({ id: 1, error: { code: 'not_mirrored', message: 'Saved; w1 has not taken it yet', data: { raw: expect.stringContaining('ENOSPC: no space left on device') } } });
     expect(JSON.stringify(res)).not.toContain('lin_api_1234567890');
     expect(readConsent(w.home.paths.mirrorConsent, W).size).toBe(0);
   });
@@ -274,7 +274,7 @@ describe('machines.setup and machines.consent', () => {
     const good = fs.readFileSync(mac.claudeJson, 'utf8');
     fs.writeFileSync(mac.claudeJson, '{ "mcpServers": ');
     const res = await dispatch({ id: 1, method: 'machines.consent', params: { machine: W, item: 'claude:mcp:linear', fields: [], on: false } }, w.home.ctx);
-    expect(res).toEqual({ id: 1, error: { code: 'not_mirrored', message: `${mac.claudeJson} on this Mac cannot be read; the copy stays on w1 until it can` } });
+    expect(res).toEqual({ id: 1, error: { code: 'not_mirrored', message: `this Mac cannot read ${mac.claudeJson}; w1 keeps its copy` } });
     expect(readConsent(w.home.paths.mirrorConsent, W).size).toBe(0);
     expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
     fs.writeFileSync(mac.claudeJson, good);
@@ -289,8 +289,8 @@ describe('machines.setup and machines.consent', () => {
       home: { machines: { [W]: { name: 'w1', reachable: false, since: 0 } } },
     });
     const { rows } = await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
-    expect(rows.find(byKey('claude:mcp:linear'))).toMatchObject({ detail: 'not checked: w1 is not reachable; saved, and takes effect when w1 links', tick: { on: true } });
-    expect(rows.find(byKey('codex:mcp:github'))?.detail).toMatch(/^not checked: w1 is not reachable; saved, and takes effect when w1 links: copied without its keys \(env\.GITHUB_TOKEN/);
+    expect(rows.find(byKey('claude:mcp:linear'))).toMatchObject({ detail: 'saved; applies when w1 is back', action: 'Check again', tick: { on: true } });
+    expect(rows.find(byKey('codex:mcp:github'))).toMatchObject({ detail: 'not checked: w1 is not reachable', action: 'Tick to copy, or set GITHUB_TOKEN on w1: svall worker env GITHUB_TOKEN' });
   });
 
   it('machines.consent refuses a machine not in the fleet before it saves anything', async () => {
@@ -334,7 +334,7 @@ describe('machines.setup and machines.consent', () => {
     const r = await call(w.home.ctx, 'machines.setVar', { machine: W, name: 'REMOTE_TOKEN', value: 'rt_1234567890abcdef' });
     expect(fs.readFileSync(w.worker.paths.env, 'utf8')).toBe('REMOTE_TOKEN=rt_1234567890abcdef\n');
     expect(fs.statSync(w.worker.paths.env).mode & 0o777).toBe(0o600);
-    expect(r.rows.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'ok', detail: 'REMOTE_TOKEN is set on w1' });
+    expect(r.rows.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'ok', detail: 'set' });
 
     fs.writeFileSync(w.home.paths.env, 'E=from_mac_1234\n');
     const copied = await call(w.home.ctx, 'machines.setVar', { machine: W, name: 'E', fromMac: true });
@@ -372,8 +372,8 @@ describe('machines.setup and machines.consent', () => {
     const { rows } = await call(w.home.ctx, 'machines.setup', { machine: W, waitMs: 500 });
     expect(Date.now() - started).toBeGreaterThanOrEqual(490);
     expect(Date.now() - started).toBeLessThan(1500);
-    expect(rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: "copy linear's keys to w1" });
-    expect(rows.find(byKey('var:REMOTE_TOKEN'))).toEqual({ key: 'var:REMOTE_TOKEN', status: 'warn', action: 'check w1 again', detail: 'not checked: w1 is not reachable' });
+    expect(rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', detail: 'not checked: w1 is not reachable', action: 'Tick to copy, or set LINEAR_API_KEY on w1: svall worker env LINEAR_API_KEY' });
+    expect(rows.find(byKey('var:REMOTE_TOKEN'))).toEqual({ key: 'var:REMOTE_TOKEN', status: 'warn', action: 'Check again', detail: 'not checked: w1 is not reachable' });
   });
 
   it('machines.setup waits for a link coming up and answers what the worker holds', async () => {
@@ -384,7 +384,7 @@ describe('machines.setup and machines.consent', () => {
     const started = Date.now();
     const { rows } = await call(w.home.ctx, 'machines.setup', { machine: W, waitMs: 5_000 });
     expect(Date.now() - started).toBeLessThan(5_000);
-    expect(rows.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'warn', action: 'set REMOTE_TOKEN on w1', run: 'svall worker env REMOTE_TOKEN' });
+    expect(rows.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'warn', detail: 'not set · remote reads it', action: 'svall worker env REMOTE_TOKEN', run: 'svall worker env REMOTE_TOKEN' });
   });
 
   it('machines.setup for a robot answers its agent\'s rows, a project\'s by its folder read under this Mac\'s home where it runs on the worker; an unknown robot is not_found', async () => {
@@ -624,17 +624,19 @@ describe('a window and the fleet\'s home', () => {
     expect(await dispatch({ id: 1, method: 'machines.list', params: {} }, owed)).toMatchObject({ result: { machines: [{ id: HOME }, { id: W, joining: 'No route to host', joinTried: 5 }] } });
   });
 
-  it('machines.list names each role and platform, the home first, whichever machine answers', async () => {
-    const machines = { [W]: { name: 'mac', reachable: true, since: 0, release: '0.21' } };
+  it('machines.list names each role, platform and reachability, the home first, whichever machine answers', async () => {
+    const machines = { [W]: { name: 'mac', reachable: true, since: 7, release: '0.21' } };
     const robots = { a: {}, b: { machine: W }, c: { machine: HOME } };
     const registered = () => new Map([[W, { platform: 'darwin', dial: 'worker' }]]);
     const onHome = await dispatch({ id: 1, method: 'machines.list', params: {} }, local({}, { store: { state: { machines, robots } }, registered }));
     expect(onHome).toMatchObject({ result: { machines: [
       { id: HOME, name: 'studio', role: 'home', reachable: true, robots: 2 },
-      { id: W, name: 'mac', role: 'worker', platform: 'darwin', dialsIn: true, reachable: true, robots: 1 },
+      { id: W, name: 'mac', role: 'worker', platform: 'darwin', dialsIn: true, reachable: true, since: 7, robots: 1 },
     ] } });
-    const away = local({}, { store: { state: { machines: { ...machines, [HOME]: { name: 'studio', reachable: false, since: 0, release: '0.20' } }, robots } }, registered, fleetHome: () => ({ ...home, mine: false }), router: { homeConnected: false } });
-    expect(await dispatch({ id: 2, method: 'machines.list', params: {} }, away)).toMatchObject({ result: { machines: [{ id: HOME, role: 'home', reachable: false, release: '0.20' }, { id: W, role: 'worker' }] } });
+    // the home answering for itself has no time it was last seen
+    expect((onHome as { result: { machines: object[] } }).result.machines[0]).not.toHaveProperty('since');
+    const away = local({}, { store: { state: { machines: { ...machines, [HOME]: { name: 'studio', reachable: false, since: 5, release: '0.20' } }, robots } }, registered, fleetHome: () => ({ ...home, mine: false }), router: { homeConnected: false } });
+    expect(await dispatch({ id: 2, method: 'machines.list', params: {} }, away)).toMatchObject({ result: { machines: [{ id: HOME, role: 'home', reachable: false, since: 5, release: '0.20' }, { id: W, role: 'worker', since: 7 }] } });
   });
 });
 

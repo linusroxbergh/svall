@@ -122,8 +122,9 @@ runIf('a home move through real starts', () => {
       try {
         const r = await d.ask('fleet.homeCheck', { to: STUDIO }) as unknown as { result: { refusal: { reason: string; more?: { reason: string }[] } } };
         const reasons = [r.result.refusal, ...(r.result.refusal.more ?? [])].map((m) => m.reason);
-        expect(reasons).toContain(`the fleet is moving already (${ID})`);
-        expect(reasons).not.toContain('a worker is being enrolled');
+        expect(reasons).toContain('The fleet is moving already');
+        expect(JSON.stringify(r)).not.toContain(ID);
+        expect(reasons).not.toContain('A worker is being enrolled');
       } finally { held(); }
     }, 60_000);
 
@@ -135,7 +136,7 @@ runIf('a home move through real starts', () => {
       putRecord(vault, { name: 'linus-vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' } as never);
       issueToken(paths, vault);
       vi.spyOn(HomeLinks.prototype, 'call').mockResolvedValue({ machineId: STUDIO, release: 'r', protocol: 1, stateSchema: 1, clock: Date.now(), fleetHome: '/home/ada/.svall', tailscale: {} });
-      expect(await d.ask('fleet.homeCheck', { to: STUDIO })).toMatchObject({ result: { refusal: { more: expect.arrayContaining([{ reason: `${vault} is a worker of this fleet too`, action: `remove ${vault} first; after the move, add it again from ${STUDIO}` }]) } } });
+      expect(await d.ask('fleet.homeCheck', { to: STUDIO })).toMatchObject({ result: { refusal: { more: expect.arrayContaining([{ reason: `${vault} is a worker of this fleet too`, action: `Remove ${vault} first; after the move, add it again from ${STUDIO}` }]) } } });
     }, 60_000);
 
     it('coming back, the paths the home names by its own fleet.json, of this machine', async () => {

@@ -79,6 +79,10 @@ export const MobileStatus = z.object({
   pair: z.string().optional(),
   qr: z.string().optional(),
   error: z.string().optional(),
+  // what to do about the error, the command that does it there, and what the tool said, word for word
+  fix: z.string().optional(),
+  run: z.string().optional(),
+  raw: z.string().optional(),
   // why a home move's try left the link off here, until a person's own switch
   reason: z.string().optional(),
 });
@@ -319,9 +323,10 @@ export const methods = {
   'robot.moveRetry': { params: z.object({ moveId: MoveId }), result: z.object({}) },
   'machines.list': {
     params: z.object({}),
-    result: z.object({ machines: z.array(z.object({ id: MachineId, name: z.string(), role: z.enum(['home', 'worker']), platform: z.enum(['darwin', 'linux']).optional(), dialsIn: z.literal(true).optional(), reachable: z.boolean(), release: z.string().optional(), robots: z.number(),
-      // a move left this home owing it an enrolment, and why the last try failed; `joinTried`: when that try ended, by the home's clock
-      joining: z.string().optional(), joinTried: z.number().optional() })) }),
+    result: z.object({ machines: z.array(z.object({ id: MachineId, name: z.string(), role: z.enum(['home', 'worker']), platform: z.enum(['darwin', 'linux']).optional(), dialsIn: z.literal(true).optional(), reachable: z.boolean(), since: z.number().optional(), release: z.string().optional(), robots: z.number(),
+      // `since`: when its reachability last changed; a move left this home owing it an enrolment, and why the last try failed; `joinTried`: when that try ended; both by the home's clock;
+      // `raw`: what ssh or the far svall said of that try
+      joining: z.string().optional(), joinTried: z.number().optional(), raw: z.string().optional() })) }),
   },
   // links each machine `svall host add` or `host upgrade` enrolled while the daemon ran, and tries each link that is down again now
   'machines.refresh': { params: z.object({}), result: z.object({}) },
@@ -555,7 +560,8 @@ export type Event =
   | { event: 'mobile.phones'; data: { phones: PhoneSession[] } }
   | { event: 'app.show'; data: AppShow };
 
-export const Hello = z.object({ token: z.string() });
+// a caller from another machine says what it calls this home and which machine it is on, for the words the daemon makes for its calls
+export const Hello = z.object({ token: z.string(), home: z.string().optional(), me: MachineId.optional() });
 export const HelloResult = z.object({ ok: z.literal(true), protocol: z.number().int() });
 export type HelloResult = z.infer<typeof HelloResult>;
 // the daemon's answer to a socket it admits, which a client checks the protocol by
@@ -567,4 +573,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 45;
+export const PROTOCOL_VERSION = 46;

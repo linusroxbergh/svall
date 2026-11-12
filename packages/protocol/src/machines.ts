@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { isProfileName } from './names.js';
 import { FleetId, MachineId, MachinePath, SshDestination } from './ids.js';
-import { AgentKind, DEFAULT_CWD, Home } from './state.js';
+import { AgentKind, DEFAULT_CWD, Home, type FleetState } from './state.js';
 
 // records name machines and fleets by these ids, not by names such as `trift`, so renaming a host leaves every record alone
 export { FleetId, MachineId, ObjectName, Sha256 } from './ids.js';
@@ -100,3 +100,37 @@ export const SystemInfo = z.object({
   linger: z.object({ user: z.string(), on: z.boolean() }).optional(),
 });
 export type SystemInfo = z.infer<typeof SystemInfo>;
+
+/** Where a row of a machine's checks or of a step flow stands for a person: something to do now, worth knowing, or nothing to say. */
+export type Tier = 'todo' | 'note' | 'fine';
+
+/** A fleet as far as which agents it runs goes. */
+export type FleetAgents = Pick<FleetState, 'mainAgent' | 'scribeAgent' | 'robots'> & Partial<Pick<FleetState, 'scribeOff'>>;
+
+/** The agents a fleet runs: mission control's, the scribe's while it is on, and each robot's. */
+export function agentsInUse(fleet: FleetAgents): Set<AgentKind> {
+  const kinds = new Set<AgentKind>();
+  for (const r of Object.values(fleet.robots)) for (const k of [r.agent?.kind, r.second?.agent?.kind]) if (k) kinds.add(k);
+  for (const k of [fleet.mainAgent, fleet.scribeOff ? undefined : fleet.scribeAgent]) if (k) kinds.add(k);
+  return kinds;
+}
+
+// a warning on these needs a person, whatever the fleet runs
+const TODO_WARNS = new Set(['linger', 'release', 'worker', 'service', 'systemd', 'versions', 'hooks', 'codex hooks', 'opencode plugin']);
+
+// a warning in a step flow that needs no one: the join's offer to copy the agent setup, and an Ubuntu that is not LTS
+const FLOW_NOTES = new Set(['seed', 'os']);
+
+/**
+ * A row's tier: a failure is to do, and so is a warning in a step flow (`flow`) but those of FLOW_NOTES, on a check that needs
+ * a person, or on an agent the fleet runs (`fleet` unknown runs every one). A `mirror:` row is the agent setup's, never a thing to do.
+ */
+export function tierOf(row: { step: string; status: string }, fleet: FleetAgents | undefined, flow = false): Tier {
+  if (row.status !== 'fail' && row.status !== 'warn') return 'fine';
+  if (row.step.startsWith('mirror:')) return 'note';
+  if (row.status === 'fail') return 'todo';
+  if (flow) return FLOW_NOTES.has(row.step) ? 'note' : 'todo';
+  if (TODO_WARNS.has(row.step)) return 'todo';
+  const agent = AgentKind.safeParse(row.step);
+  return agent.success && (!fleet || agentsInUse(fleet).has(agent.data)) ? 'todo' : 'note';
+}

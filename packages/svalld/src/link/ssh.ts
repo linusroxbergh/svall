@@ -22,9 +22,16 @@ const POLL = 100;
 
 export type SshErrorKind = 'auth' | 'host_key' | 'unreachable' | 'version' | 'daemon_down' | 'other';
 
+/** A failure of ssh or of what ran over it: its sentence, and `raw`, what ssh or the far command said, word for word. */
 export class SshError extends Error {
-  constructor(readonly kind: SshErrorKind, message: string) { super(message); }
+  constructor(readonly kind: SshErrorKind, message: string, readonly raw?: string) { super(message); }
 }
+
+/** An error as a log line: its sentence, then what a tool said of it. */
+export const inFull = (e: unknown): string => {
+  const { message, raw } = e as Error & { raw?: string };
+  return raw ? `${message}: ${raw}` : message;
+};
 
 // the one reading of what ssh writes to stderr; everything that classifies a failure comes here
 const PATTERNS: [RegExp, SshErrorKind][] = [
@@ -173,20 +180,20 @@ export class SshMaster {
       if (await this.check(signal)) return this;
       if (signal?.aborted) throw this.fail('unreachable', `the ssh master to ${this.destination} was given up on`);
       // a master that could not be spawned, or died without a word, is the transport's failure
-      if (gone) throw this.fail(child.pid === undefined || !stderr.trim() ? 'unreachable' : classifySsh(stderr), `ssh could not reach ${this.destination}: ${stderr.trim() || 'the control master exited'}`);
+      if (gone) throw this.fail(child.pid === undefined || !stderr.trim() ? 'unreachable' : classifySsh(stderr), `ssh could not reach ${this.destination}`, stderr.trim() || undefined);
       // a master still waiting may have said what for, as one waiting on a Tailscale check does
       if (Date.now() >= end) {
         const kind = classifySsh(stderr);
-        throw this.fail(kind === 'other' ? 'unreachable' : kind, `ssh did not open a control master to ${this.destination} within ${OPEN_TIMEOUT}ms${stderr.trim() ? `: ${stderr.trim()}` : ''}`);
+        throw this.fail(kind === 'other' ? 'unreachable' : kind, `ssh did not open a control master to ${this.destination} within ${OPEN_TIMEOUT / 1000} s`, stderr.trim() || undefined);
       }
       await sleep(POLL);
     }
   }
 
-  private fail(kind: SshErrorKind, message: string): SshError {
+  private fail(kind: SshErrorKind, message: string, raw?: string): SshError {
     this.release();
     // an ssh in a terminal can answer what batch mode could not: a passphrase, a password, or Tailscale's check
-    return new SshError(kind, kind === 'auth' ? `${message}; run ssh ${this.destination} once in a terminal, then try again` : message);
+    return new SshError(kind, kind === 'auth' ? `${message}; run ssh ${this.destination} once in a terminal, then try again` : message, raw);
   }
 
   private release(): void {
@@ -254,7 +261,7 @@ export class SshMaster {
   private async tunnel(command: 'forward' | 'cancel', kind: '-L' | '-R', spec: string, signal?: AbortSignal): Promise<void> {
     // with no config read, it asks the master for this forward alone, not those a `Host *` block names
     const r = await runProcess('ssh', this.argv(['-F', 'none', '-O', command, kind, spec], []), { timeoutMs: CONTROL_TIMEOUT, signal });
-    if (r.code !== 0) throw new SshError(classifySsh(r.stderr), `ssh could not ${command} ${spec} on ${this.destination}: ${r.stderr.trim()}`);
+    if (r.code !== 0) throw new SshError(classifySsh(r.stderr), `ssh could not ${command} ${spec} on ${this.destination}`, r.stderr.trim() || undefined);
   }
 
   /** Lets go of this master; the last holder shuts it down. */

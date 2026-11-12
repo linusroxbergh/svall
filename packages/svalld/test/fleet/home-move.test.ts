@@ -458,9 +458,9 @@ describe('a not adopted is final', () => {
     const w = await world();
     enter(w.studio.paths, ID, 'adopted', 'serve');
     servedPhone(w.studio.paths, ID, 'tailscale refused it');
-    expect(phoneReason(w.studio.paths)).toBe('tailscale refused it');
+    expect(phoneReason(w.studio.paths)).toEqual({ reason: 'tailscale refused it' });
     fs.mkdirSync(path.join(w.studio.paths.homeMoves, 'hm_otherother.ndjson'));
-    expect(phoneReason(w.studio.paths)).toBe('tailscale refused it');
+    expect(phoneReason(w.studio.paths)).toEqual({ reason: 'tailscale refused it' });
     forgetPhoneReason(w.studio.paths);
     expect(phoneReason(w.studio.paths)).toBeUndefined();
     expect(journalLines(w.studio.paths, 'hm_nevernever')).toEqual([]);
@@ -621,7 +621,10 @@ describe('adopting', () => {
       await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
       w.studio.daemon.noAnswer = true;
       w.studio.daemon.startFails = 'systemctl --user: failed to connect to bus';
-      expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'pending', phase: 'stopping', detail: expect.stringContaining('failed to connect to bus') });
+      const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
+      expect(a).toMatchObject({ status: 'pending', phase: 'stopping', detail: expect.stringContaining('failed to connect to bus') });
+      // the phase is the sentence; the detail holds only what was said
+      expect(a.status === 'pending' && a.detail).not.toMatch(/did not start again/);
       expect(journalLines(w.studio.paths, ID).at(-1)?.phase).toBe('stopping');
       expect(w.studio.daemon.role).toBeUndefined();
       expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);

@@ -173,7 +173,7 @@ runIf('svalld --worker', () => {
     const config = makeHome();
     vi.stubEnv('SVALL_CONFIG_DIR', config);
     const paths = resolvePaths(home);
-    fs.writeFileSync(paths.workerFile, JSON.stringify({ ...workerFile, homeName: 'linus-vault' }));
+    fs.writeFileSync(paths.workerFile, JSON.stringify({ ...workerFile, homeName: 'linus-vault', homePlatform: 'linux' }));
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
     const record = (name: string) => putRecord(workerFile.homeMachineId as MachineId, { name, ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/opt/svall' }, config);
     record('studio');
@@ -187,12 +187,14 @@ runIf('svalld --worker', () => {
       expect(await names()).toEqual(['studio', 'studio']);
       record('atelier');
       expect(await names()).toEqual(['atelier', 'atelier']);
-      // the home's record in the snapshot this worker takes, by that name too
-      const stream = new LinkStream(net.connect(paths.linkSock), { onFrame: () => {}, onClose: () => {} });
+      // the home's record in the snapshot this worker takes, by that name too, and the hello that tells the home what this worker calls it
+      const frames: LinkFrame[] = [];
+      const stream = new LinkStream(net.connect(paths.linkSock), { onFrame: (f) => frames.push(f), onClose: () => {} });
       try {
         stream.send({ t: 'hello', token: workerFile.token, release: releaseVersion(), schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION });
         stream.send({ t: 'snapshot', version: 1, data: { version: 1, state: emptyState(), agentHomes: { claude: '/h/.claude', codex: '/h/.codex', opencode: '/h/.config/opencode' }, home: '/home/ada' } });
         await vi.waitFor(() => expect(d.store.state.machines?.[workerFile.homeMachineId as MachineId]?.name).toBe('atelier'));
+        expect(frames.find((f) => f.t === 'hello')?.names).toEqual({ home: 'atelier', ...(process.platform === 'darwin' && { me: machineId(config) }) });
       } finally { stream.close(); }
     } finally { api.close(); await d.stop(); }
   });

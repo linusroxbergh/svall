@@ -163,6 +163,8 @@ test('an unreachable robot shows the sentence and the last screen term.lastScree
   await act(async () => {});
   tall.mockRestore();
   expect(screen.getByTestId('terminal-unreachable').textContent).toBe('linus-vault is not reachable');
+  // when it shows again, and a check of the machine, over the last screen
+  expect(screen.getByTestId('terminal-unreachable').parentElement!.textContent).toBe('linus-vault is not reachableIts terminal, files and changes show again when it answers.Check linus-vault');
   expect(screen.getByTestId('terminal-last-screen').textContent).toBe('$ make test\nok');
   expect(screen.getByTestId('terminal-last-screen').scrollTop).toBe(900);
   // a scroller the keyboard reaches, as WKWebView does not make one focusable
@@ -195,6 +197,21 @@ test('a moving robot says where it goes, and Retry runs on a move whose activate
   expect(screen.getByTestId('move-error').textContent).toBe('claude exited back to its shell');
   await act(async () => screen.getByTestId('move-retry').click());
   expect(call).toHaveBeenCalledWith('robot.moveRetry', { moveId: 'mv_0123456789' });
+});
+
+test('a resume or a move that failed says its sentence, and what the tool said waits behind details', () => {
+  act(() => store.getState().setShell({ home: '/h', log: [], op: false }));
+  const f = fleet();
+  delete f.robots.c1.tmux;
+  f.robots.c1.resumeError = 'the session did not come back: Command failed: tmux respawn-pane -t %3\nno server running';
+  act(() => store.getState().setFleet(f));
+  const { unmount } = render(<TerminalArea id="c1" />);
+  const said = (testid: string) => { const el = screen.getByTestId(testid); return [el.querySelector('.said > div > span')!.textContent, el.querySelector('details')?.textContent]; };
+  expect(said('resume-error')).toEqual(['the session did not come back', 'detailsCommand failed: tmux respawn-pane -t %3\nno server running']);
+  unmount();
+  placed(true, { moving: { id: 'mv_0123456789', to: VAULT, phase: 'activate', error: 'claude did not start there\n  tmux: no server running on /tmp/s' } });
+  render(<TerminalArea id="c1" />);
+  expect(said('move-error')).toEqual(['claude did not start there', 'detailstmux: no server running on /tmp/s']);
 });
 
 test('a robot on its way back says it is moving to this Mac', () => {

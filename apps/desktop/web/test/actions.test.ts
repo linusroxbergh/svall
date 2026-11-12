@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CWD, emptyState, type MachineId } from '@svall/protocol';
 import { arrangeIslands, deleteIsland, moveRobotTo, setStar, starRobotAt, newRobotOn, newRobotTarget, newIsland, newIslandAround, newNamedRobot, openSecondTerminal, reviveRobot, saveRobot, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeRobot } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
+import { sayingPhone } from '../src/phoneText.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
 
@@ -291,7 +292,7 @@ describe('an arrange the map makes on its own', () => {
 
   it('says nothing when the fleet refuses it or svalld\'s restart cuts it off', async () => {
     expect(await arrange(new ApiError('frozen', 'the fleet is moving to studio; try again once it has'), true)).toEqual({ toast: undefined, logged: [] });
-    expect(await arrange(new Error('svalld connection closed'), true)).toEqual({ toast: undefined, logged: [] });
+    expect(await arrange(new Error("Lost the connection to Svall's background service"), true)).toEqual({ toast: undefined, logged: [] });
   });
 
   it('logs any other failure, and one a person asks for says why on a toast', async () => {
@@ -340,6 +341,21 @@ describe('an edit that never reached the fleet', () => {
     saveRobot({ api, store }, 'c0', { name: 'x' });
     await new Promise((r) => setTimeout(r, 0));
     expect(store.getState().toast).toEqual({ text: 'another robot is already called x', tone: 'error' });
+  });
+
+  it('refused by a fleet moving its home, says it was not saved and where the fleet is going, by this window\'s names', async () => {
+    const STUDIO = '22222222-2222-4222-8222-222222222222' as MachineId;
+    const ME = '11111111-1111-4111-8111-111111111111' as MachineId;
+    const store = createAppStore(undefined);
+    store.getState().setFleet({ ...store.getState().fleet, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 0 } } });
+    store.getState().setShell({ home: '/h', log: [], op: false, machine: ME });
+    const frozen = (to?: string) => ({ call: () => Promise.reject(new ApiError('frozen', 'the fleet is moving to linus-vault; try again once it has', to === undefined ? undefined : { to })) } as unknown as Api);
+    expect(await saveRobot({ api: frozen(STUDIO), store }, 'c0', { note: 'half a thought' })).toBe(false);
+    expect(store.getState().toast).toEqual({ text: 'Not saved: the fleet is moving to studio.', tone: 'error' });
+    await saveIsland({ api: frozen(ME), store }, 'i_a', { name: 'x' });
+    expect(store.getState().toast?.text).toBe('Not saved: the fleet is moving to this Mac.');
+    await saveRobot({ api: frozen(), store }, 'c0', { note: 'half a thought' });
+    expect(store.getState().toast?.text).toBe('the fleet is moving to linus-vault; try again once it has');
   });
 
   it.each(['not_reachable', 'timeout', 'stopping', 'internal'])('stays to send again when it failed as %s, which the fleet never weighed', async (code) => {
@@ -508,12 +524,21 @@ describe('serveFleet', () => {
   });
 
   // a link that cannot be made resolves carrying its reason, so the success path has to toast too
-  it('toasts the reason when the status carries one', async () => {
+  it('toasts the reason when the status carries one, with what to do and the tool\'s words to copy', async () => {
+    const store = createAppStore(undefined);
+    const api = { call: () => Promise.resolve(status({ serving: false, error: 'Tailscale on this Mac is signed out', fix: 'Sign in from the Tailscale app', raw: 'logged out' })) } as unknown as Api;
+    await serveFleet({ api, store }, true);
+    expect(store.getState().toast).toEqual({ text: 'Tailscale on this Mac is signed out.', fix: 'Sign in from the Tailscale app', run: undefined, raw: 'logged out', tone: 'error' });
+    expect(store.getState().mobileOpen).toBe(false);
+  });
+
+  it('leaves the reason to a pane that says it while one is open', async () => {
     const store = createAppStore(undefined);
     const api = { call: () => Promise.resolve(status({ serving: false, error: 'tailscale is not logged in' })) } as unknown as Api;
-    await serveFleet({ api, store }, true);
-    expect(store.getState().toast).toEqual({ text: 'tailscale is not logged in', tone: 'error' });
-    expect(store.getState().mobileOpen).toBe(false);
+    const done = sayingPhone();
+    try { await serveFleet({ api, store }, true); } finally { done(); }
+    expect(store.getState().toast).toBeUndefined();
+    expect(store.getState()).toMatchObject({ mobile: { error: 'tailscale is not logged in' } });
   });
 
   it('toasts a rejection as well', async () => {
@@ -609,7 +634,7 @@ describe('home', () => {
     store.getState().setFleet({ ...fleet(), agentsFound: ['codex'] });
     expect(await startHomeRobot({ api, store }, { prompt: 'regroup the fleet' })).toBe(true);
     expect(calls.map((c) => c.method)).toEqual(['robot.create']);
-    expect(store.getState().toast).toEqual({ text: "Mission control runs claude, which svalld doesn't find. Install it, then run svall-dev setup.", tone: 'error' });
+    expect(store.getState().toast).toEqual({ text: "Mission control runs claude, which Svall's background service doesn't find. Install it, then run svall-dev setup.", tone: 'error' });
   });
 
   it('reports failure and toasts when the fleet refuses', async () => {
@@ -790,6 +815,6 @@ describe('a new robot', () => {
     c.store.getState().applyPatch([{ op: 'add', path: '/agentsFound', value: ['codex'] }]);
     await newRobotOn(c, 'home');
     expect(created(c).command).toBe('claude --model opus');
-    expect(c.store.getState().toast?.text).toMatch(/Mission control runs claude, which svalld doesn't find/);
+    expect(c.store.getState().toast?.text).toMatch(/Mission control runs claude, which Svall's background service doesn't find/);
   });
 });

@@ -4,6 +4,8 @@
 .modal-back > .modal { animation: dialog-in var(--dur-slow) var(--ease-out); }
 @keyframes dialog-in { from { opacity: 0; translate: 0 6px; scale: .98; } }
 .modal { width: 380px; max-width: calc(100vw - 40px); padding: var(--sp-3xl); display: flex; flex-direction: column; gap: var(--sp-xl); }
+/* the home, move and seed sheets, one family */
+.modal.sheet { width: 440px; }
 .modal:focus { outline: none; }
 /* every dialog's way out is the × at the right of its kicker, bled over the padding so the row keeps its height */
 :is(.kicker, .use-panel-title, .linkask-head, .set-bar) > .side-x { margin: calc(-1 * var(--sp-xs)) calc(-1 * var(--sp-sm)) calc(-1 * var(--sp-xs)) auto; }
@@ -19,14 +21,49 @@
 .modal .acts { display: flex; gap: var(--sp-md); }
 .modal .acts .btn { flex: 1; }
 .modal-sub { display: block; font-size: var(--text-sm); line-height: var(--lh); color: var(--ink-3); }
+/* a sheet's facts are labelled rows in one weight, each label's info tip placed against its row */
+.modal .rows { border-top: 0; padding-top: 0; }
+.modal .row b { font-weight: var(--w-regular); }
+.modal :is(.row, .kicker):has(.set-info) { position: relative; }
+/* the phone's code after a home move, small and centred over the line that says what to do with it */
+.modal .mob-qr { width: 168px; align-self: center; }
+.modal .mob + .modal-sub { text-align: center; }
 .modal-more > summary { display: flex; align-items: center; gap: var(--sp-2xs); cursor: pointer; list-style: none; font-size: var(--text-sm); color: var(--ink-3); user-select: none; }
 .modal-more > summary::-webkit-details-marker { display: none; }
 .modal-more[open] > summary svg { rotate: 0deg; }
 .modal-more > summary:hover { color: var(--ink); }
 .modal-more-body { display: flex; flex-direction: column; gap: var(--sp-xs); margin-top: var(--sp-xs); color: var(--ink-2); }
 .modal-more-body > span { display: block; }
-/* New Robot on a home elsewhere: that machine's folders under a field that takes any path there */
-.new-folder { display: flex; flex-direction: column; gap: var(--sp-xs); min-width: 0; }
-.new-folder-list { display: flex; flex-direction: column; max-height: 148px; overflow: hidden auto; }
+.modal-more-body.mono { font-family: var(--mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+/* a problem said once: its line, what to do under it and a tool's words behind details, with its one button at the right */
+.said { display: flex; align-items: center; gap: var(--sp-md); min-width: 0; }
+.said > div { flex: 1; display: flex; flex-direction: column; gap: var(--sp-2xs); min-width: 0; color: var(--ink); font-size: var(--text-md); line-height: var(--lh); overflow-wrap: anywhere; }
+.said > div { -webkit-user-select: text; user-select: text; }
+.said > .btn { flex: none; }
+.said[data-mark] { align-items: flex-start; }
+.said[data-mark] > .btn { align-self: center; }
+.said-mark { flex: none; display: grid; place-items: center; width: 1em; height: 1lh; margin-inline-end: calc(var(--sp-sm) - var(--sp-md)); color: var(--danger); font-size: var(--text-md); line-height: var(--lh); }
+.said[data-mark="warn"] > .said-mark { color: var(--working); }
+/* in a dialog a problem's words, and its details' word, start where the rows' words do, the caret hung in the gap before them */
+.modal .said-mark { margin-inline-end: 0; }
+.modal .said .modal-more > summary { margin-inline-start: calc(-1 * (var(--icon-xs) + var(--sp-2xs))); }
+/* a command to run, whole on its line unless it is longer than one */
+.said-run { display: inline-block; max-width: 100%; vertical-align: bottom; font-family: var(--mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
+/* a command that ends what to do stands on its own line under it */
+.said-run[data-own-line] { display: block; width: fit-content; }
+/* New Robot on a home elsewhere: that machine's folders, at one height while they are read, fading at the foot while more lie below, and a field for any other path there */
+.new-folder { --folder-rows: calc(4 * (var(--lh) * var(--text-md) + 2 * var(--sp-xs))); display: flex; flex-direction: column; gap: var(--sp-xs); min-width: 0; }
+/* the list and the field for a path hold the list's height whatever the home answers */
+.new-folder-pick { display: flex; flex-direction: column; gap: var(--sp-xs); min-height: var(--folder-rows); }
+/* four whole rows, the last of them Other folder… */
+.new-folder-list { display: flex; flex-direction: column; height: var(--folder-rows); overflow: hidden auto; scroll-padding-block-end: calc(var(--folder-rows) / 4 + var(--sp-sm)); }
+.new-folder-list[data-empty] { height: auto; }
 .new-folder-list .list-row { flex: none; display: block; overflow: hidden; text-align: start; text-overflow: ellipsis; white-space: nowrap; }
-.new-folder-refused { color: var(--danger); font-size: var(--text-sm); }
+/* the way to any other folder stays in view at the list's foot, the folders scrolling under it */
+.new-folder-list .new-folder-other { position: sticky; bottom: 0; background: var(--surface-2); }
+.new-folder-list .new-folder-other:hover { background: linear-gradient(var(--fill-1), var(--fill-1)), var(--surface-2); }
+.new-folder-list .new-folder-other[aria-selected="true"] { background: linear-gradient(var(--fill-2), var(--fill-2)), var(--surface-2); }
+/* while more folders lie below, Other folder… casts a shadow up over the rows that scroll under it, their words left whole */
+.new-folder-list[data-more] .new-folder-other { box-shadow: 0 -6px 6px -4px var(--shade-2); }
+.new-folder-quiet { display: flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-md); color: var(--ink-3); font-size: var(--text-sm); }
+.new-folder-list[data-empty] .new-folder-quiet { padding-inline: 0; }

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, profileHomeCwd, profileLabel, profileOf, reservedProfileHomes } from '../src/profile.js';
+import { isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, profileHomeCwd, profileLabel, profileOf, reservedProfileHomes, restarted } from '../src/profile.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -26,6 +26,11 @@ describe('profile', () => {
   it('suffixes the launchd label for every profile but private', () => {
     expect(profileLabel(PRIVATE)).toBe(LAUNCHD_LABEL);
     expect(profileLabel('work')).toBe(`${LAUNCHD_LABEL}.work`);
+  });
+
+  it("says a restart in a person's words: the private fleet's service alone, a named fleet's by its name, never a label or unit", () => {
+    expect(restarted()).toBe("restarted Svall's background service");
+    expect(restarted('work')).toBe("restarted Svall's background service for work");
   });
 
   it('finds a fleet made under a name svall now keeps for a command, and a name it can move to', () => {

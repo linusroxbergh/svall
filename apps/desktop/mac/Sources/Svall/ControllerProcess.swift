@@ -122,12 +122,15 @@ enum HostCommand {
 
 /// One run of the bundled `svall host …`, killed when the page cancels or the window goes.
 final class HostProcess {
-    /// A setup row's consent checkbox: the item's fields, whether they are ticked, and what ticking copies.
+    /// A setup row's consent checkbox: the item's fields, whether they are ticked, and what ticking copies; a key row's
+    /// name and the fields ticked so far, none where the item travels whole.
     struct Tick: Decodable, Equatable {
         let item: String
         let fields: [String]
         let on: Bool
         let preview: [String]
+        var name: String? = nil
+        var ticked: [String]? = nil
     }
 
     /// What will not work on the machine yet, by name.
@@ -149,10 +152,16 @@ final class HostProcess {
         var gap: Gap? = nil
         // that this Mac has the variable the row is about, to copy from
         var here: Bool? = nil
+        // what a tool said, word for word
+        var raw: String? = nil
     }
 
+    /// The result a run that went its whole way ends with, which the page has no row for.
+    private struct Ended: Decodable { let result: String }
+
     private let child: LineChild
-    private var sawFailure = false
+    // a failed row says why the run ended, as does a warned one with something to do, which its exit code may be for, or its result; a note does not
+    private var saidWhy = false
 
     var onStep: (Step) -> Void = { _ in }
     var onExit: (Int32) -> Void = { _ in }
@@ -176,19 +185,21 @@ final class HostProcess {
 
     /// A line that is no step, as the result or report a run ends with, is not the page's.
     private func take(_ line: String) {
-        if let step = try? JSONDecoder().decode(Step.self, from: Data(line.utf8)) { send(step) }
+        let data = Data(line.utf8)
+        if let step = try? JSONDecoder().decode(Step.self, from: data) { send(step) }
+        else if (try? JSONDecoder().decode(Ended.self, from: data)) != nil { saidWhy = true }
     }
 
     private func send(_ step: Step) {
-        if step.status == "fail" { sawFailure = true }
+        if step.status == "fail" || (step.status == "warn" && (step.run != nil || step.action != nil)) { saidWhy = true }
         onStep(step)
     }
 
     /// The end of the run, after its last line: a run that failed with nothing to show for it leaves the user what the
-    /// command itself said.
+    /// command itself said, behind a sentence of its own.
     private func finish(_ status: Int32, said: [String]) {
-        if status != 0, !sawFailure, !said.isEmpty {
-            onStep(Step(step: "svall", status: "fail", detail: said.joined(separator: "\n"), action: nil))
+        if status != 0, !saidWhy, !said.isEmpty {
+            onStep(Step(step: "svall", status: "fail", detail: "svall stopped without saying why", action: nil, raw: said.joined(separator: "\n")))
         }
         onExit(status)
     }

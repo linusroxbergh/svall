@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { AGENT_LABEL, type AgentKind, type SetupPlan } from '@svall/protocol';
-import { copyText, createBridge, openUrl, type Bridge, type HostStep } from './bridge.js';
+import { AGENT_LABEL, tierOf, type AgentKind, type SetupPlan, type Tier } from '@svall/protocol';
+import { copyText, createBridge, openUrl, type Bridge, type HostOp, type HostStep } from './bridge.js';
 import { FeedbackPopover } from './FeedbackPanel.js';
 import { AS_TYPED } from './Field.js';
-import { onThisMac } from './host.js';
+import { onThisMac, plainStep, plural, splitRaw, stepLabel, stepTier, withoutTokens } from './host.js';
 import { shortPath } from './paths.js';
-import { Close } from './icons.js';
+import { Caret, Close, Mark } from './icons.js';
+import { Said } from './Said.js';
 import { DEFAULT_SETTINGS, type Settings } from './settings.js';
 import { localAppStorage, TOUR_KEY } from './store/persist.js';
+import { Tips } from './Tips.js';
 
 export function Setup() {
   const [bridge] = useState(createBridge);
@@ -16,6 +18,7 @@ export function Setup() {
   return (
     <>
       <SetupScreen bridge={bridge} />
+      <Tips bridge={bridge} />
       {feedback && <FeedbackPopover onClose={() => setFeedback(false)} diagnostics={() => Promise.reject(new Error('no diagnostics before setup'))} />}
     </>
   );
@@ -23,6 +26,8 @@ export function Setup() {
 
 // where this Mac's fleet goes to run: here, on a server this sets up, or on a fleet a server already runs. Each server path joins before any first start, so nothing here seeds a robot for a join to refuse
 type Fork = 'here' | 'server' | 'join';
+// a row of a server path's run: a step of its add or its join, or, with no op, the setup of this Mac before them
+type FarRow = HostStep & { op?: HostOp };
 // the name the fleet knows a server by, from its ssh destination, as `svall host add` holds names
 const nameFromSsh = (ssh: string): string => {
   const name = (ssh.split('@').pop() ?? '').split('.')[0].toLowerCase().replace(/[^a-z0-9-]/g, '-');
@@ -32,9 +37,12 @@ const nameFromSsh = (ssh: string): string => {
 function SetupScreen({ bridge }: { bridge: Bridge }) {
   const [fork, setFork] = useState<Fork>();
   const [ssh, setSsh] = useState('');
-  const [farSteps, setFarSteps] = useState<HostStep[]>();
+  const [farSteps, setFarSteps] = useState<FarRow[]>();
+  // a server path's run that ended short with no failed row: its exit code; and a Stop pressed during it
+  const [farCode, setFarCode] = useState<number>();
+  const [stopped, setStopped] = useState(false);
   const going = useRef<{ fork: Fork; ssh: string; warnings?: string[] } | undefined>(undefined);
-  const farRows = useRef<HostStep[]>([]);
+  const farRows = useRef<FarRow[]>([]);
   const [plan, setPlan] = useState<SetupPlan>();
   const [step, setStep] = useState(1);
   const [main, setMain] = useState<AgentKind>('claude');
@@ -64,19 +72,26 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
   }, [bridge]);
 
   useEffect(() => bridge.onMessage((m) => {
-    if (m.type === 'host.step') { farRows.current = [...farRows.current, m.event]; setFarSteps(farRows.current); return; }
+    if (m.type === 'host.step') { farRows.current = [...farRows.current, { ...m.event, op: m.op }]; setFarSteps(farRows.current); return; }
     if (m.type === 'host.done') {
       const to = going.current;
       if (!to) return;
       const failed = farRows.current.some((r) => r.status === 'fail');
       // an add that warns exits 1 too, so its last step says as well that it ran through
-      if (!failed && m.op === 'add' && (m.code === 0 || farRows.current.some((r) => r.step === 'registry' && r.status === 'ok'))) bridge.send({ type: 'host.start', op: 'join', args: { name: '', ssh: to.ssh } });
-      else if (m.op !== 'add' && !failed && m.code === 0) { if (to.warnings?.length) setWarnings(to.warnings); else window.location.replace('/'); }
+      if (!stopped && !failed && m.op === 'add' && (m.code === 0 || farRows.current.some((r) => r.step === 'registry' && r.status === 'ok'))) bridge.send({ type: 'host.start', op: 'join', args: { name: '', ssh: to.ssh } });
+      // a join that went through as Stop went out has joined, so the window opens
+      else if (m.op !== 'add' && !failed && m.code === 0) {
+        // a warning the join leaves a person, as a last check it could not save, is said before the window opens
+        const left = farRows.current.filter((r) => r.op === 'join' && r.status === 'warn' && stepTier(r, 'join', undefined) === 'todo')
+          .map((r) => `${stepLabel(r.step)} ${r.detail ?? ''}${r.raw ? `\n  ${r.raw}` : ''}`);
+        const all = [...(to.warnings ?? []), ...left];
+        if (all.length) setWarnings(all); else window.location.replace('/');
+      }
       else {
         pending.current = undefined;
         setRunning(false);
         setBusy(false);
-        if (!failed) setError(`It stopped with exit ${m.code}, saying nothing more.`);
+        if (!failed) setFarCode(m.code);
       }
       return;
     }
@@ -86,10 +101,14 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
     pending.current = undefined;
     setBusy(false);
     setRunning(false);
-    if (!m.ok) { setError(m.json.trim()); return; }
+    // a server path's setup of this Mac is the first row of its run
+    const fail = (text: string) => {
+      if (m.step === 'run' && going.current) { farRows.current = [...farRows.current, { step: 'setup', status: 'fail', detail: text }]; setFarSteps(farRows.current); } else setError(text);
+    };
+    if (!m.ok) { fail(m.json.trim()); return; }
     let data: unknown;
     // output that is not JSON is shown as it came, rather than leaving the screen waiting
-    try { data = JSON.parse(m.json); } catch { setError(m.json.trim()); return; }
+    try { data = JSON.parse(m.json); } catch { fail(m.json.trim()); return; }
     if (m.step === 'plan') {
       const p = data as SetupPlan;
       setPlan(p);
@@ -115,6 +134,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
     const run = data as { warnings: string[] };
     const to = going.current;
     if (to && to.fork !== 'here') {
+      if (stopped) return;
       // shown once the join lands, as the window opens only then
       to.warnings = run.warnings;
       // the machine runs that follow are this run's too, which a recheck must not cut into
@@ -128,7 +148,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
     }
     if (run.warnings.length) setWarnings(run.warnings);
     else window.location.replace('/');
-  }), [bridge, notify]);
+  }), [bridge, notify, stopped]);
   useEffect(check, [check]);
   useEffect(() => {
     const recheck = () => { if (previousPlan.current) check(); };
@@ -148,14 +168,14 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       <h1>Svall is set up</h1>
       <section>
         <h2>Before you start</h2>
-        <ul className="setup-list">{warnings.map((w) => <li key={w} className="setup-note">{w}</li>)}</ul>
+        {warnings.map((w) => { const { line, raw } = splitRaw(w); return <Said key={w} line={inMono(line)} raw={raw} mark="warn" />; })}
       </section>
       <div className="setup-acts"><button type="button" className="btn pri" onClick={() => window.location.replace('/')}>Continue</button></div>
     </Page>
   );
   if (!plan && error) return (
     <Page>
-      <p className="setup-error" role="alert">{error}</p>
+      <div className="setup-error" role="alert"><Said {...splitRaw(error)} /></div>
       <div className="setup-acts"><button type="button" className="btn" disabled={busy} onClick={check}>Check again</button></div>
     </Page>
   );
@@ -172,52 +192,76 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
     pending.current = 'run';
     farRows.current = [];
     setFarSteps([]);
+    setFarCode(undefined);
+    setStopped(false);
     setBusy(true);
     setRunning(true);
     setError(undefined);
     bridge.send({ type: 'setup.join', svallPermissions: permissions });
   };
+  // a Mac that only connects runs its robots on the server, so a missing agent CLI stops only the here path
+  const blockers = plan.install ? [] : plan.blockers;
+  if (!fork) return (
+    <Page>
+      <header className="setup-intro">
+        <h1>Where should your fleet run?</h1>
+        <p>The machine that runs the fleet is its home. You can change it later in Settings → Machines.</p>
+      </header>
+      {blockers.map((b) => <p key={b} className="setup-blocker">{b}</p>)}
+      <div className="setup-list" data-testid="setup-fork">
+        {FORKS.map(({ to, title, says }) => (
+          <button key={to} type="button" className="setup-row" data-testid={`fork-${to}`} onClick={() => setFork(to)}>
+            <span className="setup-agent-name">{title}<small className="plain">{says}</small></span>
+            <Caret dir="right" />
+          </button>
+        ))}
+      </div>
+    </Page>
+  );
   if (fork !== 'here') {
-    const far = fork === 'server' || fork === 'join';
-    const said = farSteps?.filter((r) => r.status !== 'start');
-    const failed = said?.find((r) => r.status === 'fail');
-    // a Mac that only connects runs its robots on the server, so a missing agent CLI stops only the here path
-    const blockers = plan.install ? [] : plan.blockers;
+    // after a run that did not open the window, Back gives the form back as it was filled
+    const back = () => {
+      going.current = undefined;
+      farRows.current = [];
+      if (farSteps) setFarSteps(undefined); else setFork(undefined);
+    };
+    const wanting = busy ? 'Waits while Svall checks this Mac' : blockers.length > 0 ? 'Fix what is listed above first'
+      : !/^[A-Za-z0-9][A-Za-z0-9._@:[\]-]*$/.test(ssh.trim()) ? 'Needs the server\'s ssh destination' : undefined;
     return (
       <Page>
         <header className="setup-intro">
-          <h1>{fork === 'server' ? 'Install Svall on a server' : fork === 'join' ? 'Connect to a fleet on a server' : 'Where should your fleet run?'}</h1>
-          <p>{fork === 'server' ? 'The server runs your fleet all day; this Mac joins it and can sleep. Tailscale is needed on both.' : fork === 'join' ? 'This Mac joins the fleet that server runs. Tailscale is needed on both.' : 'You can change this later in Settings.'}</p>
+          <h1>{fork === 'server' ? 'Set up a server' : 'Connect to your server'}</h1>
+          <p>{farSteps ? ssh.trim() : 'Needs Tailscale on this Mac and on the server.'}</p>
         </header>
         {blockers.map((b) => <p key={b} className="setup-blocker">{b}</p>)}
-        {!far && (
-          <section className="setup-list" data-testid="setup-fork">
-            <button type="button" className="btn pri" data-testid="fork-here" onClick={() => setFork('here')}>Run the fleet on this Mac</button>
-            <button type="button" className="btn" data-testid="fork-server" onClick={() => setFork('server')}>Install Svall on a server and connect this Mac</button>
-            <button type="button" className="btn" data-testid="fork-join" onClick={() => setFork('join')}>Connect to a fleet already on a server</button>
-          </section>
+        {farSteps ? <FarSteps rows={farSteps} running={running} code={farCode} stopped={stopped} bridge={bridge} server={ssh.trim()} /> : (
+          <>
+            <fieldset className="setup-fields" aria-busy={busy}>
+              <label className="setup-field">
+                <span className="kicker">server</span>
+                <input {...AS_TYPED} className="fld mono" data-testid="fork-ssh" value={ssh} placeholder="you@studio" onChange={(e) => setSsh(e.target.value)} />
+                <span className="setup-hint">What you type after ssh, such as you@studio.</span>
+              </label>
+              <div className="setup-list setup-preferences">
+                <Preference {...NOTIFY} value={notify} set={setNotify} />
+                <Preference {...PERMISSIONS} value={permissions} set={setPermissions} />
+              </div>
+            </fieldset>
+            <Review writes={writes} />
+            {error && <div role="alert"><Said {...splitRaw(error)} /></div>}
+          </>
         )}
-        {far && (
-          <fieldset className="setup-fields" disabled={running} aria-busy={busy}>
-            <label><span>ssh destination</span><input {...AS_TYPED} data-testid="fork-ssh" value={ssh} placeholder="you@studio" onChange={(e) => setSsh(e.target.value)} /></label>
-            <Preference {...NOTIFY} value={notify} set={setNotify} />
-            <Preference {...PERMISSIONS} value={permissions} set={setPermissions} />
-          </fieldset>
-        )}
-        {far && <Review writes={writes} />}
-        {said && said.length > 0 && (
-          <div className="setup-list" data-testid="fork-steps">
-            {said.map((r, i) => <p key={i} className={r.status === 'fail' ? 'setup-error' : 'setup-note'} data-step={r.step} data-status={r.status}>{onThisMac(r.detail ?? r.step)}{r.action && <small> {onThisMac(r.action)}</small>}</p>)}
-          </div>
-        )}
-        {error && <p className="setup-error" role="alert">{error}</p>}
-        {far && (
-          <div className="setup-acts">
-            <button type="button" className="btn pri" data-testid="fork-go" disabled={busy || blockers.length > 0 || !/^[A-Za-z0-9][A-Za-z0-9._@:[\]-]*$/.test(ssh.trim())} onClick={() => farRun(fork)}>{failed ? 'Try again' : fork === 'server' ? 'Install and connect' : 'Connect'}</button>
-            <button type="button" className="btn" data-testid="fork-back" disabled={busy} onClick={() => { setFork(undefined); setFarSteps(undefined); going.current = undefined; }}>Back</button>
-            {blockers.length > 0 && <button type="button" className="btn" disabled={busy} onClick={check}>{busy ? 'Checking…' : 'Check again'}</button>}
-          </div>
-        )}
+        <div className="setup-acts">
+          {running ? <button type="button" className="btn" data-testid="fork-stop" disabled={stopped} onClick={() => { setStopped(true); bridge.send({ type: 'host.cancel' }); }}>{stopped ? 'Stopping…' : 'Stop'}</button> : (
+            <>
+              <button type="button" className="btn pri" data-testid="fork-go" disabled={!!wanting} data-tip={wanting} onClick={() => farRun(fork)}>
+                {farSteps ? 'Try again' : fork === 'server' ? 'Set up and connect' : 'Connect'}
+              </button>
+              <button type="button" className="btn" data-testid="fork-back" disabled={busy} onClick={back}>Back</button>
+              {blockers.length > 0 && <button type="button" className="btn" disabled={busy} onClick={check}>{busy ? 'Checking…' : 'Check again'}</button>}
+            </>
+          )}
+        </div>
       </Page>
     );
   }
@@ -275,8 +319,8 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
                   <span className="setup-agent-name">{AGENT_LABEL[a.kind]}<small data-tip={a.path}>{shortPath(a.path)}</small></span>
                 </label>
                 <div className="setup-agent-actions">
-                  <span className="setup-agent-status" data-warning={!a.folderOnly && a.signedIn !== true}>{a.folderOnly ? 'CLI not found' : a.signedIn === true ? 'Signed in' : a.signedIn === false ? 'Not signed in' : 'Sign-in unknown'}{a.version && <small>{a.version}</small>}</span>
-                  {!a.folderOnly && a.signedIn !== true && <button type="button" className="btn sm" onClick={() => bridge.send({ type: 'setup.login', agent: a.kind })}>Sign in…</button>}
+                  <span className="setup-agent-status" data-warning={!a.folderOnly && a.signedIn !== true}>{a.folderOnly ? 'CLI not found' : a.signedIn === true ? 'Logged in' : a.signedIn === false ? 'Not logged in' : 'Could not tell'}{a.version && <small>{a.version}</small>}</span>
+                  {!a.folderOnly && a.signedIn !== true && <button type="button" className="btn sm" onClick={() => bridge.send({ type: 'setup.login', agent: a.kind })}>Log in…</button>}
                   {plan.agents.filter((r) => !r.folderOnly).length > 1 && !a.folderOnly && <label className="setup-main"><input type="radio" name="main-agent" aria-label={`${AGENT_LABEL[a.kind]} main`} checked={agent === a.kind} disabled={off.includes(a.kind)} onChange={() => setMain(a.kind)} />Main</label>}
                 </div>
               </div>
@@ -315,7 +359,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
           <Review writes={writes} />
         </>}
       </fieldset>
-      {error && <p className="setup-error" role="alert">{error}</p>}
+      {error && <div className="setup-error" role="alert"><Said {...splitRaw(error)} /></div>}
       <div className="setup-acts">
         {/* the main agent must be one whose CLI setup found */}
         <button type="button" className="btn pri" disabled={busy || !on.some((a) => !a.folderOnly) || plan.blockers.length > 0 || (step > 1 && !projects.trim())} onClick={() => step < 3 ? setStep(step + 1) : run()}>{running ? 'Setting up…' : step < 3 ? 'Continue' : 'Set up Svall'}</button>
@@ -337,12 +381,103 @@ const Preference = ({ title, text, value, set }: { title: string; text: string; 
 const Review = ({ writes }: { writes: { what: string; path: string }[] }) => (
   <section className="setup-review">
     <p>Svall adds agent hooks, a background service and the svall command. The hooks only act inside Svall.</p>
-    <details>
-      <summary>Review changes <span>{writes.length} locations</span></summary>
-      <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-write"><span>{w.what}</span><code>{shortPath(w.path)}</code></li>)}</ul>
+    {/* opened, the list comes into view above the pinned buttons */}
+    <details className="modal-more" onToggle={(e) => { if (e.currentTarget.open) e.currentTarget.scrollIntoView({ block: 'nearest' }); }}>
+      <summary><Caret dir="right" />Review changes <span>{writes.length} locations</span></summary>
+      {/* a launchd job reads by what it does, not by its label */}
+      <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-write"><span>{w.what}</span>
+        {w.path.endsWith('.plist') ? <small>runs your robots while Svall is open</small> : <code>{shortPath(w.path)}</code>}</li>)}</ul>
     </details>
   </section>
 );
+
+const FORKS: { to: Fork; title: ReactNode; says: string }[] = [
+  { to: 'here', title: 'This Mac', says: 'Robots run here and rest while this Mac sleeps.' },
+  { to: 'server', title: <span>A server, set up now<span className="badge">recommended</span></span>, says: 'Svall installs itself on a Linux server over ssh. The fleet runs all day; this Mac connects to it.' },
+  { to: 'join', title: 'A server that already runs your fleet', says: 'This Mac joins it.' },
+];
+
+const HERE = 'Svall on this Mac';
+// the join's `home` step finds the fleet's home, where an add's looks at the home folder
+const labelOf = (r: FarRow): string => (!r.op ? HERE : r.op === 'join' && r.step === 'home' ? 'The home' : stepLabel(r.step));
+const STATE = { start: 'doing', ok: 'done', skip: 'done', warn: 'warned', fail: 'failed' } as const;
+// a command the CLI sets in backticks, and a link, in mono
+const MONO = /`([^`]+)`|(https?:\/\/\S+?)(?=[.,;)]?(?:\s|$))/g;
+/** `text` with what the CLI marks as a command or link in mono, the prose between them as it is. */
+function inMono(text: string): ReactNode {
+  const spans = [...text.matchAll(MONO)].map((m) => ({ at: m.index, end: m.index + m[0].length, code: m[1] ?? m[2] }));
+  const parts: ReactNode[] = [];
+  let from = 0;
+  for (const { at, end, code } of spans.sort((a, b) => a.at - b.at)) {
+    // the word before stays on the command's line, so a line never starts on a command alone
+    const before = text.slice(from, at);
+    const word = before.search(/\S*\s*$/);
+    parts.push(before.slice(0, word), <span key={at} className="setup-keep">{before.slice(word)}<code>{code}</code></span>);
+    from = end;
+  }
+  return parts.length ? [...parts, text.slice(from)] : text;
+}
+// `server`: where an add's or a join's command runs; this Mac's own setup has none
+function FarStep({ row, bridge, server }: { row: FarRow; bridge: Bridge; server: string }) {
+  const plain = (text: string) => onThisMac(plainStep(text, {}));
+  const action = row.action && plain(row.action);
+  const said = row.detail && (row.raw ? { line: plain(row.detail), raw: withoutTokens(row.raw) } : splitRaw(plain(row.detail)));
+  // what to do: the window's own words where the CLI gives them, else the CLI's; a command to run stands as a problem's does,
+  // with Copy, as this page opens no terminal
+  const fix = row.say ? plain(row.say) : action && (row.run ? action : inMono(action));
+  const told = row.status === 'ok' || row.status === 'skip' ? undefined
+    : said ? { line: inMono(said.line), raw: said.raw, fix }
+    : fix ? { line: fix } : undefined;
+  return (
+    <li data-state={STATE[row.status]} data-step={row.step} data-status={row.status}>
+      <span className="move-mark" aria-hidden><Mark status={row.status} /></span>
+      <div>{labelOf(row)}{told && <Said {...told} run={row.run} on={row.op && server} copy={(text) => copyText(bridge, text)} mark={false} />}</div>
+    </li>
+  );
+}
+
+/**
+ * A server path's run as a flow: its done steps folded behind a line, then what needs a person and the step under way, then
+ * its notes folded. `code`: a run that ended short with no failed row; `stopped`: a Stop ended it.
+ */
+function FarSteps({ rows, running, code, stopped, bridge, server }: { rows: FarRow[]; running: boolean; code?: number; stopped: boolean; bridge: Bridge; server: string }) {
+  const [open, setOpen] = useState({ notes: false, done: false });
+  const ended = rows.filter((r) => r.status !== 'start');
+  // an add checks a machine, so a warning it may live with is a note; a join is a flow, whose warnings all need a person
+  const tiered = (tier: Tier) => ended.filter((r) => tierOf(r, undefined, r.op !== 'add') === tier);
+  const [todo, notes, done] = [tiered('todo'), tiered('note'), tiered('fine')];
+  // a step is named as it starts and again as it ends; between two, and while the next run starts, the spinner stays on the last
+  const now = rows.at(-1);
+  const step = (r: FarRow) => <FarStep key={rows.indexOf(r)} row={r} bridge={bridge} server={server} />;
+  const short = !running && (stopped || code !== undefined);
+  return (
+    <section data-testid="fork-steps">
+      {done.length > 0 && (
+        <button type="button" className="sec-fold host-fine" data-testid="fork-done" aria-expanded={open.done} onClick={() => setOpen({ ...open, done: !open.done })}>
+          <Caret dir={open.done ? 'down' : 'right'} />{plural(done.length, 'step')} done
+        </button>
+      )}
+      {open.done && <ol className="move-steps">{done.map(step)}</ol>}
+      {(todo.length > 0 || running) && (
+        <ol className="move-steps" aria-live="polite">
+          {todo.map(step)}
+          {running && (
+            <li data-state="doing" data-testid="fork-now">
+              <span className="move-mark" aria-hidden><span className="move-spin" /></span><span>{now ? labelOf(now) : HERE}…</span>
+            </li>
+          )}
+        </ol>
+      )}
+      {short && <div role="alert" data-testid="fork-ended">{stopped ? <Said line="Stopped" /> : <Said line="Setup stopped without saying why" raw={`exit ${code}`} />}</div>}
+      {notes.length > 0 && (
+        <button type="button" className="sec-fold host-fine" data-testid="fork-notes" aria-expanded={open.notes} onClick={() => setOpen({ ...open, notes: !open.notes })}>
+          <Caret dir={open.notes ? 'down' : 'right'} />{plural(notes.length, 'note')}
+        </button>
+      )}
+      {open.notes && <ol className="move-steps">{notes.map(step)}</ol>}
+    </section>
+  );
+}
 
 function Command({ bridge, text }: { bridge: Bridge; text: string }) {
   const [copied, setCopied] = useState(false);
@@ -359,7 +494,7 @@ function Command({ bridge, text }: { bridge: Bridge; text: string }) {
   );
 }
 
-// the column sits in the middle of the window, and scrolls from its top once it is taller
+// the column hangs at one height on every page, so a step's heading stays put, and scrolls once taller
 const Page = ({ children }: { children: ReactNode }) => (
   <div className="setup" data-testid="setup"><div className="setup-body">{children}</div></div>
 );

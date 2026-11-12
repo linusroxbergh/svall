@@ -21,8 +21,8 @@ export function setupPlan(o: {
     ...(has('claude') ? [{ what: 'Claude Code: hooks and status line', path: o.settingsPath, agent: 'claude' as const }] : []),
     ...(has('codex') ? [{ what: 'Codex hooks', path: o.codexHooks, agent: 'codex' as const }] : []),
     ...(has('opencode') ? [{ what: 'OpenCode plugin', path: o.opencodePlugin, agent: 'opencode' as const }] : []),
-    { what: 'Service that keeps fleets running', path: plistFile(o.launchAgentsDir, LAUNCHD_LABEL) },
-    ...o.fleets.map((h) => ({ what: `Service for the ${profileOf(h)} fleet`, path: plistFile(o.launchAgentsDir, profileLabel(profileOf(h))) })),
+    { what: "Svall's background service", path: plistFile(o.launchAgentsDir, LAUNCHD_LABEL) },
+    ...o.fleets.map((h) => ({ what: `Svall's background service for the ${profileOf(h)} fleet`, path: plistFile(o.launchAgentsDir, profileLabel(profileOf(h))) })),
     { what: `The ${SHIM} command`, path: path.join(o.shimDir, SHIM) },
     { what: 'Your fleet', path: o.home },
   ];

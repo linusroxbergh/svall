@@ -5,6 +5,7 @@ import { accountHome, basename, shortPath } from '../paths.js';
 import { panesOf } from '../selectors.js';
 import type { AppStore } from '../store/index.js';
 import { dropBuffer, editBuffer, getBuffer, isDirty, key, loadBuffer, markSaved, replaceText, select, type Buffer } from './buffers.js';
+import { cdLine, hasRoute } from '../host.js';
 import { machineOf, readsOn, robotMachine } from '../placement.js';
 import { Compartment, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
@@ -74,8 +75,12 @@ export async function openPath(d: FilesDeps & { bridge: Pick<Bridge, 'present' |
       s.reveal(id, path);
       const on = machineOf(s.fleet, c, s.via);
       const machine = robotMachine(c, s);
-      if (on) s.showToast(`${shortPath(abs)} is on ${on}, and the editor cannot show it`);
-      else if (d.bridge.present) d.bridge.send({ type: 'openFile', path: abs, ...(machine && { machine }) });
+      if (on) {
+        // a terminal in its folder there, where this Mac reaches that machine
+        const dir = abs.slice(0, abs.lastIndexOf('/')) || '/';
+        const terminal = { label: 'Open terminal', run: () => { d.bridge.send({ type: 'host.list' }); d.store.getState().openHostTerminal(on, cdLine(dir)); } };
+        s.showToast(`${shortPath(abs)} is on ${on}; the editor cannot show it.`, 'info', hasRoute(s, on) ? terminal : undefined);
+      } else if (d.bridge.present) d.bridge.send({ type: 'openFile', path: abs, ...(machine && { machine }) });
     } else if (code === 'not_found' && await d.api.call('fs.list', { id, path }).then(() => true, () => false)) s.reveal(id, path, true);
     else s.showToast(code === 'not_found' ? `${shortPath(abs)} is not there` : (e as Error).message);
     return;

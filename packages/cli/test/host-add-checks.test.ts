@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MachineId, PROTOCOL_VERSION, emptyState, type SetupRow } from '@svall/protocol';
+import { resolvePaths } from '@svall/svalld/paths';
 import { addHost } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import {
@@ -24,11 +25,11 @@ describe('host add', () => {
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
-    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: '2.1.278 (Claude Code), not logged in', action: 'ssh trift.test, then claude auth login', run: 'claude auth login' });
-    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex-cli 0.154.2: Svall needs 0.156.0 or newer', action: 'ssh trift.test, then codex update', run: 'codex update' });
-    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: '2.0.21: Svall needs 2.0.22 or newer', action: 'ssh trift.test, then opencode upgrade', run: 'opencode upgrade' });
+    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: '2.1.278, not logged in', action: 'ssh trift.test, then claude auth login', run: 'claude auth login' });
+    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: '0.154.2: needs 0.156.0 or newer', action: 'ssh trift.test, then codex update', run: 'codex update' });
+    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: '2.0.21: needs 2.0.22 or newer', action: 'ssh trift.test, then opencode upgrade', run: 'opencode upgrade' });
     // one below the floor is compared no further, as its own row names the update
-    expect(step('versions').at(-1)).toMatchObject({ status: 'ok', detail: 'claude 2.1.278, as on this Mac' });
+    expect(step('versions').at(-1)).toMatchObject({ status: 'ok', detail: 'Claude Code 2.1.278, same as this Mac' });
     expect(out.actions).toEqual(['ssh trift.test, then claude auth login', 'ssh trift.test, then codex update', 'ssh trift.test, then opencode upgrade']);
     const agentCalls = ssh.remoteCalls().filter((w) => w.includes('claude') || w.includes('codex') || w.includes('opencode'));
     expect(agentCalls.length).toBe(4);
@@ -46,7 +47,7 @@ describe('host add', () => {
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
-    expect(step('claude').at(-1)).toMatchObject({ status: 'ok', detail: '2.1.278 (Claude Code), logged in' });
+    expect(step('claude').at(-1)).toMatchObject({ status: 'ok', detail: '2.1.278, logged in' });
     const agentCalls = ssh.remoteCalls().filter((w) => w.includes('claude') || w.includes('codex') || w.includes('opencode'));
     expect(agentCalls.every((w) => w.slice(0, 4).join('\n') === ['env', ...env].join('\n') && !w.includes('-S=/x'))).toBe(true);
   });
@@ -60,7 +61,7 @@ describe('host add', () => {
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
-    expect(step('claude').at(-1)).toMatchObject({ status: 'ok', detail: '2.1.278 (Claude Code), logged in' });
+    expect(step('claude').at(-1)).toMatchObject({ status: 'ok', detail: '2.1.278, logged in' });
     const agentCalls = ssh.remoteCalls().filter((w) => w.includes('claude') || w.includes('codex') || w.includes('opencode'));
     expect(agentCalls.every((w) => w[0] === 'env' && w[1] === PATH)).toBe(true);
   });
@@ -95,11 +96,11 @@ describe('host add', () => {
     await d.close();
     // setup writes Svall's hooks only for the agents it finds, so one installed later needs it again
     expect(step('claude').at(-1)).toMatchObject({
-      status: 'warn', detail: 'claude is not installed on this machine', action: 'ssh trift.test, then install Claude Code, then svall setup',
+      status: 'warn', detail: 'not installed', action: 'ssh trift.test, then install Claude Code, then svall setup',
       run: 'curl -fsSL https://claude.ai/install.sh | bash',
     });
-    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex is not installed on this machine', action: 'ssh trift.test, then install Codex, then svall setup', run: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh' });
-    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: 'opencode is not installed on this machine', action: 'ssh trift.test, then install OpenCode, then svall setup', run: 'curl -fsSL https://opencode.ai/v2/install | bash' });
+    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'not installed', action: 'ssh trift.test, then install Codex, then svall setup', run: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh' });
+    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: 'not installed', action: 'ssh trift.test, then install OpenCode, then svall setup', run: 'curl -fsSL https://opencode.ai/v2/install | bash' });
     expect(step('versions').at(-1)).toMatchObject({ status: 'skip', detail: 'no agent CLI to compare' });
   });
 
@@ -117,11 +118,11 @@ describe('host add', () => {
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ localAgents: () => Promise.resolve([...mac]) }));
     await d.close();
     // each machine alone is fine; only a move between them stops
-    expect(step('claude').at(-1)).toMatchObject({ status: 'ok', detail: '2.1.280 (Claude Code), logged in' });
+    expect(step('claude').at(-1)).toMatchObject({ status: 'ok', detail: '2.1.280, logged in' });
     const action = 'ssh trift.test, then claude update, then codex update; on this Mac, run opencode upgrade';
     expect(step('versions').at(-1)).toEqual({
       step: 'versions', status: 'warn',
-      detail: 'claude 2.1.280 there, behind 2.1.310 on this Mac; codex 0.162.1-alpha.2 there, behind 0.162.1 on this Mac; opencode 2.0.26 there, ahead of 2.0.22 on this Mac: a move there and back needs the same release on both',
+      detail: 'Claude Code 2.1.280 there, 2.1.310 on this Mac; Codex 0.162.1-alpha.2 there, 0.162.1 on this Mac; OpenCode 2.0.26 there, 2.0.22 on this Mac',
       action, run: 'claude update && codex update',
     });
     expect(out).toEqual({ result: 'actions', actions: [action] });
@@ -135,7 +136,7 @@ describe('host add', () => {
     await d.close();
     expect(step('versions').at(-1)).toEqual({
       step: 'versions', status: 'warn',
-      detail: 'claude 2.1.278 there, ahead of 2.1.270 on this Mac: a move there and back needs the same release on both', action: 'on this Mac, run claude update',
+      detail: 'Claude Code 2.1.278 there, 2.1.270 on this Mac', action: 'on this Mac, run claude update',
     });
   });
 
@@ -145,17 +146,16 @@ describe('host add', () => {
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ localAgents: () => Promise.reject(new Error('svalld is not running (no port file)')) }));
     await d.close();
-    expect(step('versions').at(-1)).toMatchObject({ status: 'skip', detail: 'not compared: svalld is not running (no port file)' });
+    expect(step('versions').at(-1)).toMatchObject({ status: 'skip', detail: 'not compared', raw: 'svalld is not running (no port file)' });
     expect(out.result).toBe('ready');
   });
 
-  it('notes an agent CLI no fleet on this Mac runs, and asks for it once a fleet does or its state cannot be read', async () => {
-    const fleet = (name: string, state?: object) => {
-      const home = path.join(work, name);
-      fs.mkdirSync(home, { recursive: true });
-      fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: crypto.randomUUID() }));
-      if (state) fs.writeFileSync(path.join(home, 'state.json'), JSON.stringify({ ...emptyState(), ...state }));
-    };
+  it("skips an agent CLI this fleet does not run, and asks for it once the fleet runs it or its state cannot be read, whatever another fleet runs", async () => {
+    const state = (o?: object) => fs.writeFileSync(resolvePaths(fleet).state, o ? JSON.stringify({ ...emptyState(), ...o }) : '{');
+    const other = path.join(work, '.svall-work');
+    fs.mkdirSync(other, { recursive: true });
+    fs.writeFileSync(path.join(other, 'fleet.json'), JSON.stringify({ id: crypto.randomUUID() }));
+    fs.writeFileSync(path.join(other, 'state.json'), JSON.stringify({ ...emptyState(), mainAgent: 'opencode' }));
     const add = async () => {
       events.length = 0;
       ssh.clearReplies();
@@ -166,14 +166,12 @@ describe('host add', () => {
       await d.close();
       return out;
     };
-    fleet('.svall', { mainAgent: 'claude', scribeAgent: 'codex', scribeOff: true });
+    state({ mainAgent: 'claude', scribeAgent: 'codex', scribeOff: true });
     const out = await add();
-    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', action: 'ssh trift.test, then install Claude Code, then svall setup' });
-    for (const kind of ['codex', 'opencode']) {
-      expect(step(kind).at(-1)).toEqual({ step: kind, status: 'skip', detail: `${kind} is not installed on this machine, and no fleet on this Mac runs it` });
-    }
+    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: 'not installed', action: 'ssh trift.test, then install Claude Code, then svall setup' });
+    for (const kind of ['codex', 'opencode']) expect(step(kind).at(-1)).toEqual({ step: kind, status: 'skip', detail: 'not installed' });
     expect(out.actions).toEqual(['ssh trift.test, then install Claude Code, then svall setup']);
-    fleet('.svall-work');
+    state();
     await add();
     expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', action: 'ssh trift.test, then install OpenCode, then svall setup' });
   });
@@ -189,10 +187,10 @@ describe('host add', () => {
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     await d.close();
     // a fix that is no one command to type leaves the step without one
-    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: '2.1.278 (Claude Code), logged in; the hooks check there fails', action: `ssh trift.test, then ${disabled}` });
+    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: '2.1.278, logged in; the hooks check there fails', action: `ssh trift.test, then ${disabled}` });
     expect(step('claude').at(-1)).not.toHaveProperty('run');
     expect(step('codex').at(-1)).toMatchObject({
-      status: 'warn', detail: 'codex-cli 0.156.1, logged in; the codex hooks check there says not trusted yet',
+      status: 'warn', detail: '0.156.1, logged in; the codex hooks check there says not trusted yet',
       action: 'ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks', run: 'codex',
     });
     expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: `2.0.22, logged in; the opencode plugin check there says not installed in ${HOME}/.config/opencode/plugins/svall.js`, action: 'ssh trift.test, then svall setup', run: 'svall setup' });
@@ -211,7 +209,7 @@ describe('host add', () => {
     await d.close();
     const codex = step('codex').at(-1)!;
     expect(codex).toMatchObject({
-      status: 'warn', detail: `codex-cli 0.156.1, logged in; the codex sandbox check there says ${blocked.slice(0, blocked.lastIndexOf(': '))}`, action: `ssh trift.test, then ${fix}`, run,
+      status: 'warn', detail: `0.156.1, logged in; the codex sandbox check there says ${blocked.slice(0, blocked.lastIndexOf(': '))}`, action: `ssh trift.test, then ${fix}`, run,
     });
     // each fix once on the line: what is wrong in the detail, what to do in the action
     expect(`${codex.detail} -> ${codex.action}`.split(fix)).toHaveLength(2);
@@ -243,7 +241,7 @@ describe('host add', () => {
     await d.close();
     expect(step('codex').at(-1)).toMatchObject({
       status: 'warn',
-      detail: 'codex-cli 0.156.1, logged in; the codex hooks check there says not trusted yet; the codex sandbox check there says AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: denied), so a Codex robot asks before each one',
+      detail: '0.156.1, logged in; the codex hooks check there says not trusted yet; the codex sandbox check there says AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: denied), so a Codex robot asks before each one',
       action: 'ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks; and sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict',
     });
   });
@@ -255,7 +253,7 @@ describe('host add', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     await d.close();
-    expect(step('home').at(-1)).toEqual({ step: 'home', status: 'ok', detail: `${ELSEWHERE} for linus` });
+    expect(step('home').at(-1)).toEqual({ step: 'home', status: 'ok', detail: ELSEWHERE });
     expect(out.result).toBe('ready');
     expect(registry.get('trift')?.record).toMatchObject({ home: ELSEWHERE, svallBase: `${ELSEWHERE}/.local/share/svall` });
   });
@@ -325,14 +323,14 @@ describe('host add', () => {
     healthy({ osRelease: 'NAME="Ubuntu"\nID=ubuntu\nVERSION_ID="22.04"\n', tools: ['tailscale', 'systemctl', 'loginctl'] });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out).toMatchObject({ result: 'actions', stopped: 'tools' });
-    expect(step('os').at(-1)).toMatchObject({ status: 'ok', detail: 'Ubuntu 22.04 arm64 (LTS)' });
+    expect(step('os').at(-1)).toMatchObject({ status: 'ok', detail: 'Ubuntu 22.04 LTS, arm64' });
   });
 
   it('names the apt command for the packages the machine is missing', async () => {
     healthy({ tools: ['tailscale', 'systemctl', 'loginctl'] });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out.result).toBe('actions');
-    expect(step('tools').at(-1)).toMatchObject({ status: 'fail', action: 'ssh trift.test, then sudo apt install git', run: 'sudo apt install git' });
+    expect(step('tools').at(-1)).toMatchObject({ status: 'fail', action: 'ssh trift.test, then sudo apt install git', run: 'sudo apt install git', say: 'Install git on trift.test' });
     expect(ssh.remoteCalls().some((w) => w.includes('sudo'))).toBe(false);
   });
 
@@ -353,7 +351,7 @@ describe('host add', () => {
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
-    expect(step('tmux').at(-1)).toMatchObject({ status: 'ok', detail: "tmux 3.7c, Svall's own" });
+    expect(step('tmux').at(-1)).toMatchObject({ status: 'ok', detail: '3.7c', raw: "tmux 3.7c, Svall's own" });
     expect(ssh.remoteCalls().find((c) => c.includes('svall-tmux-version'))?.slice(0, 2)).toEqual(['env', UNIT_PATH]);
     expect(out.result).toBe('ready');
   });
@@ -364,7 +362,7 @@ describe('host add', () => {
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
-    expect(step('tmux').at(-1)).toMatchObject({ status: 'warn', detail: 'tmux 3.4 from /usr/bin/tmux: Shift+Enter needs tmux 3.5 or newer; Ubuntu 24.04 ships 3.4' });
+    expect(step('tmux').at(-1)).toMatchObject({ status: 'warn', detail: '3.4: Shift+Enter needs 3.5', raw: 'tmux 3.4, from /usr/bin/tmux' });
     expect(out.result).toBe('ready');
   });
 
@@ -380,14 +378,14 @@ describe('host add', () => {
     healthy({ tmux: { stdout: `${BASE}/current/bin/tmux\n`, stderr: 'tmux: error while loading shared libraries: libtinfo.so.6\n', code: 127 } });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out).toMatchObject({ result: 'actions', stopped: 'tmux' });
-    expect(step('tmux').at(-1)).toMatchObject({ status: 'fail', detail: `${BASE}/current/bin/tmux -V exited 127: tmux: error while loading shared libraries: libtinfo.so.6` });
+    expect(step('tmux').at(-1)).toMatchObject({ status: 'fail', detail: 'does not run', raw: `${BASE}/current/bin/tmux -V exited 127: tmux: error while loading shared libraries: libtinfo.so.6` });
   });
 
   it('reports a link lost at the tmux step as such, not as a missing tmux', async () => {
     healthy({ tmux: { stderr: 'Connection to trift.test closed by remote host.\n', code: 255 } });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out).toMatchObject({ result: 'actions', stopped: 'tmux' });
-    expect(step('tmux').at(-1)).toEqual({ step: 'tmux', status: 'fail', detail: 'tmux -V exited 255: Connection to trift.test closed by remote host.' });
+    expect(step('tmux').at(-1)).toEqual({ step: 'tmux', status: 'fail', detail: 'does not run', raw: 'tmux -V exited 255: Connection to trift.test closed by remote host.' });
   });
 
   it('turns lingering on where it is off, and leaves nothing to do when the system lets it', async () => {
@@ -397,7 +395,7 @@ describe('host add', () => {
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(ssh.remoteCalls().find((c) => c.includes('svall-linger'))?.join(' ')).toContain('loginctl enable-linger "$USER"');
-    expect(step('linger').at(-1)).toMatchObject({ status: 'ok', detail: 'turned on for linus: the fleet keeps running after you log out' });
+    expect(step('linger').at(-1)).toMatchObject({ status: 'ok', detail: 'on' });
     expect(step('service').at(-1)).toMatchObject({ status: 'ok' });
     expect(out).toEqual({ result: 'ready', actions: [] });
   });
@@ -410,7 +408,7 @@ describe('host add', () => {
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('linger').at(-1)).toMatchObject({
-      status: 'warn', detail: 'off for linus, and the system refused to turn it on: the fleet stops when you log out',
+      status: 'warn', detail: 'off: the fleet stops when you log out',
       action: 'ssh trift.test, then sudo loginctl enable-linger linus', run: 'sudo loginctl enable-linger linus',
     });
     expect(step('service').at(-1)).toMatchObject({ status: 'warn', action: 'ssh trift.test, then sudo loginctl enable-linger linus', run: 'sudo loginctl enable-linger linus' });
@@ -491,18 +489,18 @@ describe('host add', () => {
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ setupRows: () => Promise.reject(new Error('svalld is not running')) }));
     await d.close();
     expect(step('mirror:unchecked').at(-1)).toEqual({
-      step: 'mirror:unchecked', status: 'warn', detail: 'not checked: svalld is not running', action: 'svall host doctor trift once Svall is open', gap: { name: 'agent setup', what: 'not checked' },
+      step: 'mirror:unchecked', status: 'warn', detail: 'not checked', raw: 'svalld is not running', action: 'svall host doctor trift once Svall is open', gap: { name: 'agent setup', what: 'not checked' },
     });
     expect(outcomeText(out, 'add', 'trift', { there: THERE }))
-      .toBe('trift is ready. 1 part of your agent setup will not work there yet:\n  agent setup  not checked  → svall host doctor trift once Svall is open');
+      .toBe('trift is ready\n1 part of your agent setup is not on trift yet: svall host doctor trift --all lists them');
   });
 
   it("the gh step reads the companion doctor's gh check: logged in, or gh auth login with the terminal and no thing to do", async () => {
     const said = (gh: Record<string, string>): string => JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'gh', ...gh }] });
-    const loggedOut = 'not logged in: gh auth login (pull request links stay unresolved)';
+    const loggedOut = { status: 'warn', detail: 'not logged in: pull request links stay unresolved', run: 'gh auth login' } as const;
     for (const [gh, want] of [
       [{ status: 'ok', detail: 'logged in' }, { status: 'ok', detail: 'logged in' }],
-      [{ status: 'warn', detail: loggedOut, run: 'gh auth login' }, { status: 'warn', detail: loggedOut, run: 'gh auth login' }],
+      [{ ...loggedOut, action: 'gh auth login' }, loggedOut],
     ] as const) {
       ssh.clearReplies();
       events.length = 0;
@@ -525,6 +523,15 @@ describe('host add', () => {
     healthy();
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(step('service').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('svall-svalld@private.service') });
+    // a doctor that says the state alone puts the unit behind it
+    events.length = 0;
+    const said = JSON.stringify({ checks: JSON.parse(DOCTOR).checks.map((c: { name: string }) => (c.name === 'systemd'
+      ? { name: 'systemd', status: 'fail', detail: 'not running', action: 'svall setup', raw: 'svall-svalld@private.service: loaded, inactive (dead), disabled', run: 'svall setup' } : c)) });
+    ssh.clearReplies();
+    ssh.reply(['doctor', '--json'], { stdout: said, code: 1 });
+    healthy();
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    expect(step('service').at(-1)).toMatchObject({ status: 'fail', detail: 'not running', action: 'svall setup', run: 'svall setup', raw: 'svall-svalld@private.service: loaded, inactive (dead), disabled' });
     expect(out.result).toBe('actions');
   });
 });

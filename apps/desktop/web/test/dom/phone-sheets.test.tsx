@@ -65,7 +65,7 @@ test('a phone notified chooses which turns it hears about', async () => {
 
 test('a phone that cannot be notified from here is told what would do it', async () => {
   await settings({ kind: 'install' });
-  expect(screen.getByText(/Add to Home Screen/)).toBeTruthy();
+  expect(screen.getByText('Notifications work from the Home Screen icon: tap Share, then Add to Home Screen, and open Svall from there.')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Notify this phone' })).toBeNull();
 });
 

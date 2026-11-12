@@ -1,6 +1,6 @@
 import { lastActive, type Robot } from '@svall/protocol';
 import { useApp } from '../hooks.js';
-import { contextPctOf, isUnread, statusOf } from '../selectors.js';
+import { contextPctOf, isUnread, statusName, statusOf } from '../selectors.js';
 import { theme } from '../theme.js';
 import { ago, linkText } from './tokenText.js';
 
@@ -17,7 +17,7 @@ export function HoverCard({ c, x, y, flip }: Props) {
       style={{ left: x, top: y, width: theme.hoverCardWidth }}>
       <div className="top">
         <span className="hname">{c.name}</span>
-        <span className="hst" style={{ color: accent(status) }}>{status}{isUnread(c) ? ' · unread' : ''}</span>
+        <span className="hst" style={{ color: accent(status) }}>{statusName(status)}{isUnread(c) ? ' · unread' : ''}</span>
       </div>
       {c.note && <div className="task">{c.note}</div>}
       {pct !== undefined && (

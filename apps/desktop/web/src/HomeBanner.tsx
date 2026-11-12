@@ -1,40 +1,26 @@
-import { useEffect, useRef } from 'react';
-import { crewAway } from '@svall/protocol';
+import { useEffect, useRef, useState } from 'react';
+import { crewAway, homeMoveStands } from '@svall/protocol';
 import { app } from './boot.js';
-import type { HostStep } from './bridge.js';
+import { copyText, type HostStep } from './bridge.js';
 import { useApp } from './hooks.js';
 import { startHost } from './hostRun.js';
-import { machineNames, onThisMac, plainStep } from './host.js';
+import { machineNames, onThisMac, plainStep, splitRaw } from './host.js';
 import { interruptOf, KEPT } from './MoveSheet.js';
-import { myMachine } from './placement.js';
-
-// the window's words for a home it does not follow, each with what a person can do about it
-function said(name: string, state: string, detail?: string): string {
-  if (state === 'auth') return `this Mac cannot log in to ${name}`;
-  if (state === 'version') return detail ?? `${name} runs another version of Svall`;
-  if (state === 'mismatch') return detail ?? `${name} holds a different fleet than this Mac expects`;
-  if (state === 'machine') return detail ?? `${name} is a different machine than this Mac expects`;
-  return `${name} is not reachable`;
-}
+import { copiedAt, machineOf, myMachine } from './placement.js';
+import { Fix } from './Said.js';
 
 const WAIT_MS = 5000;
 
-// where the machine holding the fleet says the move stands, for a person who has not followed it
-const STANDS: Record<string, (name: string) => string> = {
-  unreachable: (n) => `${n} does not answer; the move waits until it does.`,
-  unknown: (n) => `${n} cannot say how the move went; the move waits until it can.`,
-  staging: (n) => `${n} has not received the fleet's files yet.`,
-  staged: (n) => `${n} holds the fleet's files and has not taken over.`,
-  installed: (n) => `${n} has the fleet's files in place and is starting as its home.`,
-  stopping: (n) => `${n} went back as it was, and its daemon has not started again.`,
-  rolledback: (n) => `${n} tried to take over and went back as it was.`,
-  adopted: (n) => `${n} has taken over.`,
-  done: (n) => `${n} has taken over.`,
-};
-const stands = (phase: string, name: string): string => STANDS[phase]?.(name) ?? `${name} is at work on the move.`;
+const ended = (t: string): string => (/[.!?…]$/.test(t) ? t : `${t}.`);
+// a run from a banner goes through Svall's background service, so it waits while the window has lost it
+const OFFLINE = "Lost the connection to Svall's background service";
 
-// a run that failed, in the window's words: why, then what to do here; the sheet's own says why alone, as what it says to do was for the sheet
-const failedLine = (s: HostStep, sheet: boolean): string => onThisMac([s.detail ?? s.step, !sheet && (s.say ?? s.action)].filter(Boolean).join('. '));
+// a run that failed, in the window's words: why, then what to do here, unless that was said elsewhere; what a tool said waits behind the pointer
+function Failed({ step, alone = false, plain = onThisMac, testid }: { step: HostStep; alone?: boolean; plain?: (text: string) => string; testid: string }) {
+  const { line, raw } = splitRaw(plain(step.detail ?? step.step));
+  const todo = !alone && (step.say ?? step.action);
+  return <span className="banner-sub" data-testid={testid} data-tip={step.raw ?? raw}>{todo ? `${ended(line)} ${ended(plain(todo))}` : ended(line)}</span>;
+}
 
 /** A move of the fleet's home that nothing is driving: this Mac's daemon waits on how it ends, and a person finishes it or calls it off. */
 export function HomeMoveBanner() {
@@ -57,44 +43,85 @@ export function HomeMoveBanner() {
   if (!moving || sheet) return null;
   const running = run?.running === true;
   const failed = running ? undefined : run?.steps.filter((s) => s.status === 'fail').at(-1);
+  const { name } = moving;
+  // the fact, where the machine taking the fleet says the move stands, and what that means here
+  const [fact, stands, rest] = moving.unmarked ? ['A move to this Mac did not take hold.', undefined, `${moving.from ?? 'Its old home'} is still the home.`]
+    : moving.phase === 'unreachable' ? [`${name} is not answering.`, `The move to ${name} waits for it; this Mac takes no changes until then.`, undefined]
+      : [`The fleet is moving to ${here ? 'this Mac' : name}.`, moving.phase && homeMoveStands(moving.phase, name),
+        `${here ? moving.from ?? 'Its old home' : 'This Mac'} takes no changes until the move ends; robots keep running.`];
   return (
     <div className="banner warn" data-testid="home-move-banner">
       <span>
-        {moving.unmarked ? `A move of the fleet to this Mac has not taken hold, and ${moving.from ?? 'its old home'} is still the home. Abort clears it, which a new move needs.`
-          : here ? `The fleet is moving to this Mac, and ${moving.from ?? 'its old home'} takes no changes until the move ends; robots keep running.`
-            : `The fleet is moving to ${moving.name}, and this Mac takes no changes until the move ends; robots keep running.`}
-        {moving.phase && <small data-testid="home-move-answer" data-tip={moving.answer}> {stands(moving.phase, moving.name)}</small>}
-        {failed && <small data-testid="home-move-failed"> {failedLine(failed, run?.op === 'home')}</small>}
+        <b>{fact}</b>
+        {' '}
+        {/* a press that failed is the news, in place of how the move stands */}
+        {failed ? <Failed step={failed} alone={run?.op === 'home'} testid="home-move-failed" /> : (
+          <span className="banner-sub">
+            {stands && <span data-testid="home-move-answer" data-tip={moving.answer}>{stands}</span>}
+            {stands && rest && ' '}
+            {rest}
+          </span>
+        )}
       </span>
-      {!moving.unmarked && <button className="btn sm" data-testid="home-move-retry" disabled={running} onClick={() => startHost('home-retry', { name: '' })}>{run?.op === 'home-retry' && running ? 'Finishing…' : 'Finish the move'}</button>}
-      <button className="btn sm" data-testid="home-move-abort" disabled={running} data-tip={moving.unmarked ? undefined : 'Works once the machine that holds the move says it was not taken'} onClick={() => startHost('home-abort', { name: '' })}>{run?.op === 'home-abort' && running ? 'Calling it off…' : 'Abort'}</button>
+      {!moving.unmarked && <button className="btn sm" data-testid="home-move-retry" disabled={running || !online} data-tip={online ? undefined : OFFLINE} onClick={() => startHost('home-retry', { name: '' })}>{run?.op === 'home-retry' && running ? 'Finishing…' : 'Finish the move'}</button>}
+      <button className="btn sm" data-testid="home-move-abort" disabled={running || !online} data-tip={!online ? OFFLINE : moving.unmarked ? undefined : 'Works once the machine that holds the move says it was not taken'} onClick={() => startHost('home-abort', { name: '' })}>
+        {run?.op === 'home-abort' && running ? (moving.unmarked ? 'Clearing it…' : 'Calling it off…') : moving.unmarked ? 'Clear it' : 'Call it off'}
+      </button>
     </div>
   );
 }
 
 /** Mission control's robots a move that stopped left away from the home, and the way to bring them back. */
 export function CrewAwayBanner() {
-  const away = useApp((s) => crewAway(s.fleet).map((r) => r.name).join(', '));
+  const names = useApp((s) => new Intl.ListFormat('en').format(crewAway(s.fleet).map((r) => r.name)));
+  const one = useApp((s) => crewAway(s.fleet).length === 1);
+  // a move sends them to one machine
+  const where = useApp((s) => { const at = crewAway(s.fleet)[0]; return at && (machineOf(s.fleet, at, s.via) ?? 'this Mac'); });
   const run = useApp((s) => (s.host?.op === 'home-crew' ? s.host : undefined));
   // a move that stands holds them where they are, so bringing them back could only fail
   const busy = useApp((s) => s.homeSheet !== undefined || s.homeMove !== undefined || (s.host?.running === true && s.host.op.startsWith('home')));
+  const online = useApp((s) => s.status === 'online');
   const running = run?.running === true;
-  if (!away || (busy && !running)) return null;
+  if (!names || (busy && !running)) return null;
   const failed = running ? undefined : run?.steps.filter((s) => s.status === 'fail').at(-1);
   // one at work held them back: the next press carries the move sheet's choice, in its words
   const chosen = failed?.say ? interruptOf(failed.say) : undefined;
   return (
     <div className="banner warn" data-testid="crew-away-banner">
       <span>
-        Mission control's {away} stayed where a move that stopped sent them
-        {failed && <small data-testid="crew-away-failed"> {chosen ? onThisMac(failed.detail ?? failed.step) : failedLine(failed, false)}</small>}
+        <b>Mission control's {names} {one ? 'is' : 'are'} still on {where}.</b>
+        {' '}
+        {failed ? <Failed step={failed} alone={chosen !== undefined} testid="crew-away-failed" /> : <span className="banner-sub">A move that stopped left {one ? 'it' : 'them'} there.</span>}
       </span>
-      <button className="btn sm" data-testid="crew-away-back" disabled={running} onClick={() => startHost('home-crew', { name: '', ...(chosen && { interrupt: true }) })}>
-        {running ? 'Bringing them back…' : chosen ? KEPT[chosen] : 'Bring them back'}
+      <button className="btn sm" data-testid="crew-away-back" disabled={running || !online} data-tip={online ? undefined : OFFLINE} onClick={() => startHost('home-crew', { name: '', ...(chosen && { interrupt: true }) })}>
+        {running ? `Bringing ${one ? 'it' : 'them'} back…` : chosen ? KEPT[chosen] : `Bring ${one ? 'it' : 'them'} back`}
       </button>
     </div>
   );
 }
+
+// a sentence the daemon gives in lower case, as the line under a banner's fact
+const sentence = (t: string): string => ended(`${t[0].toUpperCase()}${t.slice(1)}`);
+
+// the ssh a line tells a person to run once on this Mac, which Copy beside the banner's buttons copies
+const sshIn = (t?: string): string | undefined => (t ? /\bssh \S+/.exec(t)?.[0] : undefined);
+
+// a command copied for a terminal on this Mac, where the window opens none, as a problem's Copy does
+function CopyCommand({ run }: { run: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
+  return (
+    <button className="btn sm" data-testid="home-copy" data-tip={`Copy ${run} to run in a terminal on this Mac`}
+      onClick={() => { copyText(app.bridge, run); setCopied(true); }}>{copied ? 'Copied' : 'Copy'}</button>
+  );
+}
+
+// a sentence the daemon ends on the ids it compared, which the window keeps to a tip
+const ids = (t: string): [string, string?] => { const m = / \(([^()]+ there, [^()]+ here)\)$/.exec(t); return m ? [t.slice(0, m.index), m[1]] : [t]; };
 
 /** How this window stands with a fleet's home on another machine; nothing while it follows one, or has yet to hear. */
 export function HomeBanner() {
@@ -111,18 +138,38 @@ export function HomeBanner() {
     if (was.current && !running) app.api().retryHome();
     was.current = running;
   }, [running]);
+  // the release this Mac runs, beside the home's, while the two differ
+  const [mine, setMine] = useState<string>();
+  const gap = home?.state === 'version' && home.release !== undefined;
+  useEffect(() => {
+    if (!gap) return;
+    let live = true;
+    (app.api().local ?? app.api()).call('system.info', {}).then((i) => { if (live) setMine(i.release); }, () => {});
+    return () => { live = false; };
+  }, [gap]);
   if (!home || !fallback || (home.state !== 'unreachable' && home.state !== 'auth' && home.state !== 'version' && home.state !== 'mismatch' && home.state !== 'machine')) return null;
-  const { name, state, detail, newer } = home;
+  const { name, state, detail, newer, release } = home;
   const upgrades = state === 'version' && !newer;
   const failed = running ? undefined : run?.steps.filter((s) => s.status === 'fail').at(-1);
+  const age = copied !== undefined && copiedAt(copied);
+  // what the window shows meanwhile: this Mac's copy of the fleet
+  const meanwhile = `${age ? `Showing the fleet as of ${age}; robots` : 'Robots'} on this Mac keep working.`;
+  const ssh = state === 'auth' ? sshIn(detail) : undefined;
+  const [fact, sub] = state === 'auth' ? [`This Mac cannot log in to ${name}.`, detail && <Fix fix={sentence(detail)} run={ssh} />]
+    : state === 'version' && release ? [`${name} runs ${newer ? 'a newer' : 'an older'} Svall than this Mac.`, `${release} there${mine ? `, ${mine} here` : ''}.`]
+      : state === 'version' ? [detail ?? `${name} runs another version of Svall`, undefined]
+        : state === 'mismatch' ? [detail ?? `${name} holds a different fleet than this Mac expects`, meanwhile]
+          : state === 'machine' ? [detail ?? `${name} is a different machine than this Mac expects`, meanwhile]
+            : [`${name} is not reachable.`, meanwhile];
+  const [said, compared] = ids(fact);
   return (
     <div className="banner warn" data-testid="home-banner" data-state={state}>
       <span>
-        {said(name, state, detail)}
-        {state !== 'version' && state !== 'mismatch' && state !== 'machine' && detail && <small data-testid="home-detail"> {detail}</small>}
-        {failed && <small data-testid="home-upgrade-failed"> {plainStep(failed.detail ?? failed.step, machineNames(machines))}</small>}
-        {copied !== undefined && <small data-testid="home-age"> · showing the fleet as of {new Date(copied).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</small>}
+        <b data-tip={compared}>{ended(said)}</b>
+        {sub && <>{' '}<span className="banner-sub" data-testid={state === 'auth' ? 'home-detail' : 'home-age'} data-tip={state === 'unreachable' ? detail : undefined}>{sub}</span></>}
+        {failed && <>{' '}<Failed step={failed} alone plain={(t) => plainStep(t, machineNames(machines))} testid="home-upgrade-failed" /></>}
       </span>
+      {ssh && <CopyCommand run={ssh} />}
       {upgrades && <button className="btn sm" data-testid="home-upgrade" disabled={running} onClick={() => startHost('upgrade', { name: machine! })}>{running ? `Upgrading ${name}…` : `Upgrade ${name}`}</button>}
       <button className="btn sm" data-testid="home-retry" disabled={running} onClick={() => app.api().retryHome()}>Try again</button>
     </div>

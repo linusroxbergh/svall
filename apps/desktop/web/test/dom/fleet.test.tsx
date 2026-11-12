@@ -271,13 +271,25 @@ test('a new robot sheet open as the Mac comes back starts in the Mac\'s folder, 
   expect(call).toHaveBeenCalledWith('robot.create', { islandId: 'i_a', cwd: '/tmp' });
 });
 
+test('a phone the fleet does not know says where to scan the code again, and offers no new island', () => {
+  store.getState().setStatus('unpaired');
+  render(<Fleet onOpen={() => {}} />);
+  expect(screen.queryByRole('button', { name: 'New island' })).toBeNull();
+  expect(screen.getByText(/^This phone is not paired/).textContent).toBe('This phone is not paired with the fleet: scan the QR code in Settings\u00a0→\u00a0Phone on your Mac. A Home Screen icon has to be removed and added again after scanning it.');
+});
+
 test('a page a worker still serves says where the fleet runs now; the home and a fallback through a machine do not', () => {
   const copy = fleet();
   copy.machines = { studio: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } } } as never;
   store.getState().setFleet(copy);
   store.getState().setStatus('online');
   const { unmount } = render(<Fleet onOpen={() => {}} />);
-  expect(screen.getByTestId('phone-moved').textContent).toContain('This fleet runs on studio now.');
+  expect(screen.getByTestId('phone-moved').textContent).toBe('This fleet runs on studio now. Scan its new QR code: on your Mac, Settings\u00a0→\u00a0Phone.');
+  // its old copy offers nothing to change, and the header says where it went
+  expect(screen.queryByRole('button', { name: 'New island' })).toBeNull();
+  expect(screen.queryAllByRole('button', { name: /^New robot on / })).toEqual([]);
+  expect(document.querySelector('section')).toBeNull();
+  expect(document.querySelector('.conn')!.textContent).toBe('moved to studio');
   unmount();
   store.getState().setVia({ machine: 'm', home: 'studio' } as never);
   const fallback = render(<Fleet onOpen={() => {}} />);

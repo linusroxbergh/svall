@@ -134,17 +134,19 @@ describe('a typed path, which the home checks before the robot starts', () => {
   };
 
   it.each([
-    ['no folder', (r: string) => path.join(r, 'x')],
-    ['a file', (r: string) => { fs.writeFileSync(path.join(r, 'f'), ''); return path.join(r, 'f'); }],
-    ['under a file', (r: string) => { fs.writeFileSync(path.join(r, 'f'), ''); return path.join(r, 'f', 'x'); }],
-    ['a link that leads nowhere', (r: string) => { fs.symlinkSync(path.join(r, 'gone'), path.join(r, 'l')); return path.join(r, 'l'); }],
-    ['a link to a file', (r: string) => { fs.writeFileSync(path.join(r, 'f'), ''); fs.symlinkSync(path.join(r, 'f'), path.join(r, 'l')); return path.join(r, 'l'); }],
-    ['a file named from ~, as the window sends it', (r: string) => { fs.writeFileSync(path.join(r, 'f'), ''); vi.stubEnv('HOME', r); return '~/f'; }],
-    ['a relative path, even to a folder there is', () => '.'],
-  ])('refuses %s, opening no window', async (_name, make) => {
+    ['no folder', (r: string) => path.join(r, 'x'), 'missing'],
+    ['a file', (r: string) => { fs.writeFileSync(path.join(r, 'f'), ''); return path.join(r, 'f'); }, 'file'],
+    ['under a file', (r: string) => { fs.writeFileSync(path.join(r, 'f'), ''); return path.join(r, 'f', 'x'); }, 'missing'],
+    ['a link that leads nowhere', (r: string) => { fs.symlinkSync(path.join(r, 'gone'), path.join(r, 'l')); return path.join(r, 'l'); }, 'missing'],
+    ['a link to a file', (r: string) => { fs.writeFileSync(path.join(r, 'f'), ''); fs.symlinkSync(path.join(r, 'f'), path.join(r, 'l')); return path.join(r, 'l'); }, 'file'],
+    ['a file named from ~, as the window sends it', (r: string) => { fs.writeFileSync(path.join(r, 'f'), ''); vi.stubEnv('HOME', r); return '~/f'; }, 'file'],
+    ['a relative path, even to a folder there is', () => '.', undefined],
+  ])('refuses %s, opening no window, and says whether something else stands there', async (_name, make, kind) => {
     window.mockClear();
     const { fleet, islandId, root } = fleetOn();
-    await expect(fleet.createRobot({ islandId, cwd: make(root) })).rejects.toMatchObject({ code: 'not_a_folder' });
+    const refused = await fleet.createRobot({ islandId, cwd: make(root) }).catch((e: unknown) => e);
+    expect(refused).toMatchObject({ code: 'not_a_folder' });
+    expect((refused as { data?: unknown }).data).toEqual(kind && { kind });
     expect(window).not.toHaveBeenCalled();
   });
 

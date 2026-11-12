@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { ROBOT_NOTE_MAX, lastActive, type Robot, type ContextItem, type FleetState, type MachineId, type Params } from '@svall/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
@@ -6,21 +7,22 @@ import { copyText, openFolder } from './bridge.js';
 import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
 import { useApp, usePanelWidth, useTick } from './hooks.js';
-import { startHost } from './hostRun.js';
+import { splitRaw } from './host.js';
 import { Caret, Mac, Machine, Star } from './icons.js';
 import { MachineLine } from './indicators.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
 import { ago, hintText } from './map/tokenText.js';
-import { OnMachine, TerminalThere } from './OnMachine.js';
+import { OnMachine, TerminalThere, useCheck } from './OnMachine.js';
 import { buttonTry, fieldTry, useRefusal } from './frozen.js';
 import { answers, awayLine, frozenWhy, homeName, machineOf, robotMachine } from './placement.js';
 import { figureOf, figureUrl, stepFigure } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
+import { Said } from './Said.js';
 import { Section } from './Section.js';
-import { contextPctOf, islandsSorted, isUnread, resumeErrorOf, statusOf } from './selectors.js';
+import { contextPctOf, islandsSorted, isUnread, resumeErrorOf, statusName, statusOf } from './selectors.js';
 
 type Patch = Omit<Params<'robot.update'>, 'id'>;
 
@@ -70,6 +72,7 @@ function LastActivity({ at }: { at: number }) {
 export function SideCard({ id }: { id: string }) {
   const c = useApp((s) => s.fleet.robots[id]);
   const refuse = useRefusal(id);
+  const whyId = useId();
   const home = useApp((s) => s.home);
   const homeState = home?.state;
   const readOnly = useApp((s) => { const why = frozenWhy(s, id); return why && `Read-only until ${why.once}.`; });
@@ -95,8 +98,9 @@ export function SideCard({ id }: { id: string }) {
   const cwd = placed ? `${placed}:${c.cwd}` : c.cwd;
   // one on a worker moves back from wherever on the map it stands
   const onHome = c.machine === undefined || c.machine === via?.home;
-  // and nothing moves while the page stands in for a home it cannot reach
-  const movable = (!onHome || fleet.islands[c.islandId]?.kind !== 'home') && !c.moving && (!via || via.online === true);
+  // and nothing moves while the page stands in for a home it cannot reach, or the robot's machine is out of reach, as the move's check asks both
+  const checkable = (!via || via.online === true) && !away;
+  const movable = (!onHome || fleet.islands[c.islandId]?.kind !== 'home') && !c.moving;
   const workers = Object.entries(fleet.machines ?? {}).filter(([, m]) => answers(m));
   const accent = `var(--${status})`;
   const pct = contextPctOf(c);
@@ -107,12 +111,12 @@ export function SideCard({ id }: { id: string }) {
   return (
     <aside className="side" style={width} data-testid="side-card" data-drop={`robot:${id}`} data-drop-hover={hover}>
       <div className="kicker" style={{ color: accent }}>
-        <i className="sdot" data-status={status} />{status !== 'unknown' ? status : readOnly && homeState && homeState !== 'unreachable' && homeState !== 'connecting' ? 'read-only' : 'unreachable'}{isUnread(c) ? ' · unread' : ''}
+        <i className="sdot" data-status={status} />{status === 'unknown' && readOnly && homeState && homeState !== 'unreachable' && homeState !== 'connecting' ? 'read-only' : statusName(status)}{isUnread(c) ? ' · unread' : ''}
       </div>
       <div className="side-id">
         <div className="side-head">
           <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} refuse={refuse} />
-          <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} {...fieldTry(refuse)} data-testid="side-name"
+          <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} {...fieldTry(refuse, whyId)} data-testid="side-name"
             onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; return save({ name }); }} />
           <button className="ib side-star" data-testid="side-star" aria-pressed={starred} data-tip={starred ? 'Unstar' : 'Star'}
             aria-label="Star" {...buttonTry(refuse)} onClick={() => setStar(deps(), id, !starred)}><Star on={starred} size="lg" /></button>
@@ -127,21 +131,23 @@ export function SideCard({ id }: { id: string }) {
         {c.hint && <div className="side-hint" data-testid="side-hint">{hintText(c)}</div>}
         {by && <div className="side-by" data-testid="side-started-by">started by <RobotLink c={{ id: c.startedBy!, name: by }} /></div>}
         {c.relayed?.held && <Held id={id} n={c.relayed.n} promptId={c.relayed.held} refuse={refuse} />}
+        {refuse && <span id={whyId} hidden>{refuse.why}</span>}
       </div>
       <div className="side-secs">
-        {placed && c.machine && !onHome && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} />}
+        {placed && c.machine && !onHome && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} away={away} />}
         <Section name="robot.note" title="Note" head={<Info id="robot-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
-          <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} {...fieldTry(refuse)} maxLength={ROBOT_NOTE_MAX} data-testid="side-note"
+          <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} {...fieldTry(refuse, whyId)} maxLength={ROBOT_NOTE_MAX} data-testid="side-note"
             onSave={(v) => (v !== c.note ? save({ note: v }) : undefined)} />
         </Section>
         <Section name="robot.instructions" title="Agent instructions" shut head={<Info id="robot-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info>}>
           <AgentProfilePick id={id} refuse={refuse} />
-          <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} {...fieldTry(refuse)} data-testid="side-instructions"
+          <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} {...fieldTry(refuse, whyId)} data-testid="side-instructions"
             onSave={(v) => (v !== c.instructions ? save({ instructions: v }) : undefined)} />
         </Section>
         <Section name="robot.context" title="Context" head={<Info id="robot-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info>}>
-          <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove' }}
-            robotId={id} onChange={refuse ? undefined : saveContext} />
+          {refuse && !c.context.length ? <div className="set-note" data-testid="side-context-empty">nothing listed</div> : (
+            <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove' }} robotId={id} onChange={refuse ? undefined : saveContext} />
+          )}
           {!refuse && <AddLink id={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />}
         </Section>
         {started && (
@@ -175,27 +181,31 @@ export function SideCard({ id }: { id: string }) {
               </div>
             )}
             <LastActivity at={c.agent ? lastActive(c.agent) : c.shell.lastOutputAt} />
-            {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><b data-error>{failed}</b></div>}
-            {placed && <div className="row" data-testid="side-dev-server"><span>dev server</span><b>stays on {placed}; forward its port by hand to open it here</b></div>}
+            {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><div className="set-said" data-error><Said {...splitRaw(failed)} /></div></div>}
+            {/* the how waits in a tip, so the row stays one line */}
+            {placed && <div className="row" data-testid="side-dev-server"><span>dev server</span><b data-tip="Forward its port by hand to open it here">stays on {placed}</b></div>}
           </div>
         </Section>
       </div>
       <div className="acts">
-        {movable && (!onHome || workers.length > 0) && (
+        {movable && (!onHome || (checkable && workers.length > 0)) && (
           <div className="moves">
             {!onHome
-              ? <button className="btn sm move" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id, ...(via && { to: via.home }) })}>{via ? <Machine /> : <Mac />}<span>Move to {via ? homeName(fleet, via) : 'this Mac'}</span><Caret dir="right" /></button>
+              ? (
+                <button className="btn sm move" data-testid="side-move-home" disabled={!checkable} data-tip={checkable ? undefined : away ?? `${homeName(fleet, via!)} is not reachable`} {...buttonTry(refuse)}
+                  onClick={() => app.store.getState().setMoveSheet({ id, ...(via && { to: via.home }) })}>{via ? <Machine /> : <Mac />}<span>Move to {via ? homeName(fleet, via) : 'this Mac'}</span><Caret dir="right" /></button>
+              )
               : workers.map(([m, w]) => (
-                <button key={m} className="btn sm move" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}>{m === via?.machine ? <Mac /> : <Machine />}<span>Move to {m === via?.machine ? 'this Mac' : w.name}</span><Caret dir="right" /></button>
+                <button key={m} className="btn sm move" data-testid={`side-move-${m}`} {...buttonTry(refuse)} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}>{m === via?.machine ? <Mac /> : <Machine />}<span>Move to {m === via?.machine ? 'this Mac' : w.name}</span><Caret dir="right" /></button>
               ))}
           </div>
         )}
-        {placed ? <TerminalThere name={placed} dir={c.cwd} testid="side-finder" /> : (
+        {placed ? <TerminalThere name={placed} dir={c.cwd} testid="side-finder" away={away} /> : (
           <button className="btn sm" data-testid="side-finder" data-tip={`Reveal ${c.cwd} in Finder`}
             onClick={() => openFolder(app.bridge, c.cwd, robotMachine(c, { via, shell }))}>Finder</button>
         )}
         <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} machine={c.machine} testid="side-resources" />
-        <button className="btn sm pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>
+        <button className="btn sm pri" data-testid="side-open" disabled={!!away} data-tip={away} onClick={() => app.store.getState().focus(id)}>Open terminal</button>
         <button className="btn sm dan" data-testid="side-close" data-tip="Deletes the robot and kills its terminal" {...buttonTry(refuse)}
           onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>
       </div>
@@ -214,7 +224,7 @@ function StartedRow({ id, machines }: { id: string; machines: FleetState['machin
   const status = statusOf(c, { machines }, via);
   return (
     <div className="row"><b><RobotLink c={c} /></b>
-      <span className="side-started-status"><i className="sdot" data-status={status} />{status}{c.report ? ' · reports back' : ''}</span>
+      <span className="side-started-status"><i className="sdot" data-status={status} />{statusName(status)}{c.report ? ' · reports back' : ''}</span>
     </div>
   );
 }
@@ -222,7 +232,7 @@ function StartedRow({ id, machines }: { id: string; machines: FleetState['machin
 // robot messages waiting on the user, past the run of them a loop between robots would make
 function Held({ id, n, promptId, refuse }: { id: string; n: number; promptId: string; refuse?: () => void }) {
   const answer = (a: 'approve' | 'deny') => app.api().call('robot.answer', { id, answer: a, promptId })
-    .catch((e: Error) => app.store.getState().showToast(e.message, 'error'));
+    .catch((e: Error) => app.store.getState().showToast(e, 'error'));
   return (
     <div className="side-away" data-testid="side-held">
       <span>{n} robot messages since your last prompt; the next waits on you</span>
@@ -234,15 +244,16 @@ function Held({ id, n, promptId, refuse }: { id: string; n: number; promptId: st
   );
 }
 
-// why the robot's machine is out of reach, and a check of it, whose release row offers the upgrade when it is the machine's to take
+// why the robot's machine is out of reach, and a check of it, whose release row offers the upgrade when it is the machine's to take;
+// on this Mac's copy of the fleet it is the home that is out of reach, and the home is tried again
 function AwayLine({ name, id, line, running, readOnly }: { name: string; id?: string; line: string; running: boolean; readOnly?: string }) {
-  // a far home's machine goes by its id, as that home may name it as this Mac names another
-  const far = useApp((s) => !!id && !!s.machines?.find((m) => m.id === id)?.far);
-  const run = () => { app.store.getState().toggleHost(true, name); startHost('doctor', { name, ...(far && { id }) }); };
+  const run = useCheck(name, id);
+  const copy = useApp((s) => !!s.via && !s.via.online);
   return (
     <div className="side-away" data-testid="side-away">
       <span>{line}{readOnly && <small data-testid="side-away-read-only">{readOnly}</small>}</span>
-      <button className="btn sm" data-testid="side-away-run" disabled={running} data-tip="What is wrong on the machine, checked now" onClick={run}>Check {name}</button>
+      {copy ? <button className="btn sm" data-testid="side-away-retry" onClick={() => app.api().retryHome()}>Try again</button>
+        : <button className="btn sm" data-testid="side-away-run" disabled={running} data-tip="What is wrong on the machine, checked now" onClick={run}>Check {name}</button>}
     </div>
   );
 }

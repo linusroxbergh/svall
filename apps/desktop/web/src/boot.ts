@@ -1,5 +1,5 @@
 import { loadMobileStatus, type Deps } from './actions.js';
-import { Api, ApiError } from './api.js';
+import { Api, ApiError, NOT_CONNECTED } from './api.js';
 import { followAwake } from './awake.js';
 import { connectionFromUrl, createBridge, type Bridge, type Connection } from './bridge.js';
 import { createBrowserManager, type BrowserManager } from './browser.js';
@@ -114,7 +114,8 @@ function createApp(): AppContext {
         const s = store.getState();
         // an id it names as this machine's is the page's stale word, and the shell has just told it again
         const on = !m.machine || m.machine === myMachine(s) ? undefined : m.machine === s.via?.home ? homeName(s.fleet, s.via) : machineName(s.fleet, m.machine as MachineId);
-        s.showToast(on ? `This Mac cannot open that: it is on ${on}` : 'This Mac cannot open that yet; try again');
+        if (on) s.showToast(`That file is on ${on}; this Mac cannot open it.`, 'info');
+        else s.showToast('This Mac cannot open that yet; try again');
         return;
       }
       if (m.type === 'keys.record') { store.getState().adoptBindings(m.bindings); return; }
@@ -144,10 +145,10 @@ function createApp(): AppContext {
   return {
     bridge,
     store,
-    api: () => { if (!api) throw new Error('svalld not connected'); return api; },
-    manager: () => { if (!manager) throw new Error('svalld not connected'); return manager; },
-    browser: () => { if (!browser) throw new Error('svalld not connected'); return browser; },
-    repoWatch: () => { if (!repoWatch) throw new Error('svalld not connected'); return repoWatch; },
+    api: () => { if (!api) throw new Error(NOT_CONNECTED); return api; },
+    manager: () => { if (!manager) throw new Error(NOT_CONNECTED); return manager; },
+    browser: () => { if (!browser) throw new Error(NOT_CONNECTED); return browser; },
+    repoWatch: () => { if (!repoWatch) throw new Error(NOT_CONNECTED); return repoWatch; },
   };
 }
 

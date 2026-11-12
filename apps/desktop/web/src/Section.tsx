@@ -1,7 +1,7 @@
-import { useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { app } from './boot.js';
 import { commitFocused } from './Field.js';
-import { useApp } from './hooks.js';
+import { useApp, useMore } from './hooks.js';
 import { Caret } from './icons.js';
 import type { Section as Fold } from './store/index.js';
 import { useWidthGrip } from './widthGrip.js';
@@ -18,6 +18,42 @@ function room(sec: HTMLElement): number {
   const used = kids.reduce((n, k) => n + k.offsetHeight, 0) + parseFloat(getComputedStyle(secs).rowGap) * (kids.length - 1);
   const give = kids.filter((k) => k !== sec && k.dataset.fit === 'true').reduce((n, k) => n + k.offsetHeight - floor(k), 0);
   return sec.offsetHeight + Math.max(0, secs.clientHeight - used) + give;
+}
+
+// a section's rows: its children, or a list's rows inside it
+const rowsOf = (el: HTMLElement): Element[] => [...el.children].flatMap((c) => (c.classList.contains('rows') ? [...c.children] : [c]));
+
+// how far a squeezed section's rows show whole: to the top of the first row whose words its edge cuts, when a whole one stands
+// above it, or all when the edge cuts no words
+function wholeTo(el: HTMLElement): number | 'all' | undefined {
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 1) return undefined;
+  const box = el.getBoundingClientRect();
+  const rows = rowsOf(el);
+  const cut = rows.find((r) => r.getBoundingClientRect().bottom - parseFloat(getComputedStyle(r).paddingBottom || '0') > box.bottom + 0.5);
+  if (!cut) return 'all';
+  const at = cut.getBoundingClientRect().top - box.top;
+  return at > 0 ? at : undefined;
+}
+
+/** A section's contents, which scroll inside it while more of them lie below, the row its edge cuts fading out under the whole ones. */
+function Body({ opened, children }: { opened?: true; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [more, read] = useMore(ref, 'y');
+  const [whole, setWhole] = useState<number | 'all'>();
+  const measure = () => { if (ref.current) setWhole(wholeTo(ref.current)); };
+  // the body and each of its rows, as a row that grows, its details opened, moves where the edge cuts
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    measure();
+    const ro = new ResizeObserver(measure);
+    for (const e of [el, ...rowsOf(el)]) ro.observe(e);
+    return () => ro.disconnect();
+  });
+  return (
+    <div ref={ref} className="sec-body" data-opened={opened} data-more={more} data-whole={whole === undefined ? undefined : whole === 'all' ? 'all' : 'cut'}
+      style={typeof whole === 'number' ? { '--whole': `${whole}px` } as CSSProperties : undefined} onScroll={() => { read(); measure(); }}>{children}</div>
+  );
 }
 
 /**
@@ -51,7 +87,7 @@ export function Section({ name, title, head, testid, shut, children }: { name: s
           onClick={() => { commitFocused(); set({ ...fold, shut: open }); }}><Caret dir={open ? 'down' : 'right'} />{title}</button>
         {head}
       </div>
-      {open && <div className="sec-body" data-opened={wasShut.current || undefined}>{children}</div>}
+      {open && <Body opened={wasShut.current || undefined}>{children}</Body>}
       {open && (
         <i className="sec-grip" data-testid={`sec-grip-${name}`} role="separator" aria-orientation="horizontal" aria-label={`Resize ${title}`}
           data-tip="Drag to resize, double-click to fit" {...grip} onDoubleClick={() => set({ ...fold, height: undefined })} />

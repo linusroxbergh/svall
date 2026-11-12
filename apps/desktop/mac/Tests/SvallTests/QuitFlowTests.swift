@@ -59,8 +59,8 @@ final class QuitFlowTests: XCTestCase {
         quit(flow(), working: 1, home: "studio", movingHere: true)
         quit(flow(), movingHere: true)
         XCTAssertEqual(asked, [
-            "Quit Svall? The fleet is moving to studio, so this Mac's daemon stays up and its robots keep running until the move ends; open Svall to finish it or call it off.",
-            "Quit with unsaved changes? a.ts has changes that were not saved. Quitting drops them. The fleet is moving to studio, so this Mac's daemon stays up and its robots keep running until the move ends; open Svall to finish it or call it off.",
+            "Quit Svall? The fleet is moving to studio, so the robots on this Mac keep running until the move ends. Open Svall to finish it or call it off.",
+            "Quit with unsaved changes? a.ts has changes that were not saved. Quitting drops them. The fleet is moving to studio, so the robots on this Mac keep running until the move ends. Open Svall to finish it or call it off.",
             "Quit Svall? 1 robot is working and will stop. Everything picks up where it left off when you open Svall again. studio keeps running. The move to this Mac waits until you open Svall again, and studio takes no changes until then.",
             "Quit Svall? Your robots stop and pick up where they left off when you open Svall again. The move to this Mac waits until you open Svall again, and its old home takes no changes until then.",
         ])
@@ -77,7 +77,7 @@ final class QuitFlowTests: XCTestCase {
         quit(flow(), working: 1, home: "studio", callsOff: "this Mac")
         XCTAssertEqual(asked, [
             "Quit Svall? 2 robots are working and will stop. Everything picks up where it left off when you open Svall again. Quitting calls off the move to studio.",
-            "Quit Svall? Quitting calls off the move to studio, and this Mac's daemon stays up with its robots running.",
+            "Quit Svall? Quitting calls off the move to studio; the robots on this Mac keep running.",
             "Quit Svall? 1 robot is working and will stop. Everything picks up where it left off when you open Svall again. studio keeps running. Quitting calls off the move to this Mac.",
         ])
     }

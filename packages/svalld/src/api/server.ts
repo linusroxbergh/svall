@@ -6,6 +6,7 @@ import { Hello, LOGIN_REFUSED, MAX_REQUEST_BYTES, PART_BYTES, PROTOCOL_VERSION, 
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import type { Logger } from '../log.js';
+import { inCallerNames } from '../machine.js';
 import type { Mobile } from '../mobile.js';
 import type { Phones } from '../phones.js';
 import type { RemoteWatches } from '../placement/far-viewers.js';
@@ -271,6 +272,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
 
     // the proxy has already proved who this is; a socket without that identity still has to say the token
     let authed = Boolean(login);
+    let names: { home?: string; me?: string } = {};
     // a request too large for one message, as far as its parts have come; only a socket that said the token sends one
     let parts: Parts | undefined;
     const authTimer = authed ? undefined : setTimeout(() => ws.close(4401, 'unauthorized'), AUTH_TIMEOUT);
@@ -284,6 +286,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
         const hello = Hello.safeParse(msg);
         if (!hello.success || !tokenMatches(hello.data.token, token)) { ws.close(4401, 'unauthorized'); return; }
         authed = true;
+        names = { home: hello.data.home, me: hello.data.me };
         clearTimeout(authTimer);
         admit();
         return;
@@ -298,7 +301,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       }
       const req = Request.safeParse(msg);
       if (!req.success) { ws.close(4400, 'bad request'); return; }
-      const res = await dispatch(req.data, { ...base, viewer, signal: aborter.signal });
+      const res = await inCallerNames(names, () => dispatch(req.data, { ...base, viewer, signal: aborter.signal }));
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(res));
     });
 

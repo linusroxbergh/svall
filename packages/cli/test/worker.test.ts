@@ -241,7 +241,7 @@ describe('svall worker', () => {
       await enrollHere(t, o, d);
       expect(fs.readFileSync(calls, 'utf8')).toBe(`kickstart -k gui/${os.userInfo().uid}/${LAUNCHD_LABEL}\n`);
       expect(waited).toEqual([t.home]);
-      expect(out).toEqual([`restarted ${LAUNCHD_LABEL}`]);
+      expect(out).toEqual(["restarted Svall's background service"]);
       expect(fs.existsSync(resolvePaths(t.home).workerFile)).toBe(true);
       await expect(enrollHere(t, o, { ...d, daemonUp: async () => false })).rejects.toThrow(`${LAUNCHD_LABEL} did not answer after its restart; svall doctor says why`);
       // a fleet home that is no profile's own has no launchd agent to restart

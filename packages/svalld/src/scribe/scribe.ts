@@ -210,12 +210,15 @@ export class Scribe {
       return job.kind === 'robot' ? await this.passRobot(job.id, only, sweep) : await this.passIsland(job.id);
     } catch (e) {
       if (this.stopped || this.held) return [];
-      const what = job.kind === 'robot' ? this.deps.store.state.robots[job.id]?.name : `island ${this.deps.store.state.islands[job.id]?.name}`;
+      const robot = job.kind === 'robot' ? this.deps.store.state.robots[job.id] : undefined;
+      const what = job.kind === 'robot' ? robot?.name : `island ${this.deps.store.state.islands[job.id]?.name}`;
       const { message: head, cause } = e as Error;
       // the child's stderr is shown, and kept out of the log a tester pastes into a bug report
       const message = `${head}${typeof cause === 'string' ? `: ${cause}` : ''}`.split('\n')[0];
+      // a pass made on the robot's worker failed there, and is fixed there
+      const machine = robot && !this.here(robot) ? robot.machine : undefined;
       this.deps.log.error(`scribe: ${what ?? job.id}: ${head}`);
-      this.deps.store.update((d) => { d.scribeError = { message, at: this.now() }; });
+      this.deps.store.update((d) => { d.scribeError = { message, at: this.now(), ...(machine && { machine }) }; });
       return [`${what ?? job.id}  failed: ${message}`];
     } finally {
       if (job.kind === 'robot') this.active.delete(job.id);

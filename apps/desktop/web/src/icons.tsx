@@ -35,13 +35,16 @@ const MARK = {
   todo: <circle cx="5" cy="5" r="2.6" />,
   start: DOT,
   skip: <path d="M3 5h4" />,
+  blocked: <><circle cx="5" cy="5" r="3.6" /><path d="M2.5 7.5l5-5" /></>,
 };
 export type MarkStatus = keyof typeof MARK;
 
-/** How a step stands, in every list of steps: done, failed, wanting a look, still to come, started or skipped. */
+/** How a step stands, in every list of steps: done, failed, wanting a look, still to come, started or skipped; a sheet that cannot go yet is blocked. */
 export const Mark = ({ status, size }: Props & { status: MarkStatus }) => <Svg grid={10} size={size}>{MARK[status]}</Svg>;
 
 export const Close = ({ size }: Props) => <Svg grid={12} size={size}><path d="M3 3l6 6M9 3 3 9" /></Svg>;
+
+export const Copy = ({ size }: Props) => <Svg grid={12} size={size}><rect x="4.25" y="4.25" width="5.75" height="5.75" rx="1" /><path d="M7.75 2.25H3.25a1 1 0 0 0-1 1v4.5" /></Svg>;
 
 export const Plus = ({ size }: Props) => <Svg grid={12} size={size}><path d="M6 2.5v7M2.5 6h7" /></Svg>;
 

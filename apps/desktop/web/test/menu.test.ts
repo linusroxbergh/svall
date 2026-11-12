@@ -85,7 +85,7 @@ describe('followMenu', () => {
     const c = ctx((method) => Promise.resolve(method === 'fleets.list' ? { fleets } : {}));
     c.bridge.emit({ type: 'menu.ask' });
     await settle();
-    expect(c.sent.at(-1)).toEqual({ type: 'menu.fleets', fleets: [], note: 'svalld is not connected' });
+    expect(c.sent.at(-1)).toEqual({ type: 'menu.fleets', fleets: [], note: "Svall's background service is not connected" });
     c.store.getState().setStatus('online');
     c.bridge.emit({ type: 'menu.ask' });
     await settle();

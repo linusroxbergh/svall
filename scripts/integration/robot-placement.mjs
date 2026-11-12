@@ -448,7 +448,7 @@ printf 'worker untracked
   const sessionId = robotIn(w0, id)?.agent?.sessionId;
   sh(L, 'printf "edited on the Mac\\n" >> ~/src/app-wt/b.txt');
   const refused = sh(L, `svall robot move ${id} --machine local </dev/null`, { ok: false });
-  check('refused', refused.code === 2 && refused.stderr === `refused: changes on ${L} in ${HOMES[L]}/src/app-wt since the move\n  → stash or commit them\n`,
+  check('refused', refused.code === 2 && refused.stderr === `refused: Changes on ${L} in ${HOMES[L]}/src/app-wt since the move\n  → Stash or commit them\n`,
     () => `exit ${refused.code}: ${JSON.stringify(refused.stderr)}`);
   check('still on worker', robotIn(snap(L), id)?.machine === ids.remote && agentsOf(snap(R), id).length === 1, 'the refused return moved it');
   // the edit is undone; what the robot left there before it moved stays as it was
@@ -970,8 +970,11 @@ function agentSetup(ids, fx) {
   const rows = mirrorRows(checks);
   const unticked = (k) => rows[k]?.status === 'warn' && rows[k].tick?.on === false;
   const gamma = rows['var:GAMMA_TOKEN'];
+  // every warning says what to do; beyond the agent setup's three, only the machine's advice: gh, and svall on a shell's PATH
   const todo = checks.filter((c) => c.status === 'warn' && c.action);
-  check('unticked rows', unticked('claude:mcp:alpha') && unticked('claude:mcp:beta') && gamma?.status === 'warn' && gamma.run === 'svall worker env GAMMA_TOKEN' && todo.length === 3,
+  const said = ['path', 'gh', 'mirror:claude:mcp:alpha', 'mirror:claude:mcp:beta', 'mirror:var:GAMMA_TOKEN'];
+  check('unticked rows', unticked('claude:mcp:alpha') && unticked('claude:mcp:beta') && gamma?.status === 'warn' && gamma.run === 'svall worker env GAMMA_TOKEN'
+    && same(todo.map((c) => c.name).sort(), said.sort()),
     () => `${brief(rows)}; to do ${brief(todo.map((c) => c.name))}`);
 
   const ticked = consent('claude:mcp:alpha', 'on');
@@ -1189,7 +1192,7 @@ const namePaths = (m, nowhere) => {
 const dropPaths = (m) => { fleetKey(m, 'defaultCwd'); fleetKey(m, 'onboarding'); };
 function saysLacking(label, steps, nowhere, name) {
   const said = steps.find((e) => e.step === 'check' && e.status === 'ok')?.detail ?? '';
-  check(`${label}: the check says what the far machine lacks, and passes`, said.includes(`defaultCwd becomes ~/${nowhere}, which ${name} does not have yet`) && !said.includes('onboarding'), said);
+  check(`${label}: the check says what the far machine lacks, and passes`, said.includes(`new robots' folder becomes ~/${nowhere}, which ${name} does not have yet`) && !said.includes('first project folder'), said);
 }
 // the folder a repo's notes lie in on a home at `home`, by the path of its main checkout there
 const NOTE = 'it-note.md';
@@ -1210,7 +1213,7 @@ function homeMoves(ids, fx) {
   sh(L, 'mkdir -p ~/.svall/retro && truncate -s 200M ~/.svall/retro/it-big');
   const big = sh(L, 'svall --json fleet home set remote </dev/null', { ok: false });
   const bigFailed = moveSteps(big.stdout).find((e) => e.status === 'fail');
-  check('a fleet too big to carry is refused at the check', big.code !== 0 && bigFailed?.step === 'check' && /the fleet's files come to 2\d\d MB, more than a move carries/.test(bigFailed.detail), () => `${big.code}: ${brief(bigFailed)}`);
+  check('a fleet too big to carry is refused at the check', big.code !== 0 && bigFailed?.step === 'check' && /^The fleet's files are 2\d\d MB; a move carries \d+ MB$/.test(bigFailed.detail), () => `${big.code}: ${brief(bigFailed)}`);
   sh(L, 'rm -f ~/.svall/retro/it-big');
   check('and the home goes on, with nothing of a move', homeOf(L).mine === true && call(L, 'fleet.homeMove', { op: 'status' }).moving === undefined && !moveLeft(L), () => moveLeft(L));
   // mission control's robot, which goes first with the move engine, and the phone, which travels as what it was
@@ -1877,7 +1880,7 @@ function workerFromHome(ids) {
   letIn(R);
   const add = sh(L, `svall --json host add box --ssh svall@${B} </dev/null`, { ok: false });
   const steps = carriedSteps(add);
-  check('it comes from remote\'s own release', /own release/.test(steps.find((e) => e.step === 'release' && e.status !== 'start')?.detail ?? ''), () => brief(steps.find((e) => e.step === 'release')));
+  check('it comes from remote\'s own release', / from remote's own release \(/.test(steps.find((e) => e.step === 'release' && e.status !== 'start')?.raw ?? ''), () => brief(steps.find((e) => e.step === 'release')));
   check('the add ran, each step on the way back to local', steps.some((e) => e.step === 'registry' && e.status === 'ok') && !steps.some((e) => e.status === 'fail'), () => `${add.code}: ${brief(steps.filter((e) => e.status === 'fail'))} ${add.stderr.slice(0, 400)}`);
   ids.box = JSON.parse(sh(B, 'svall version --json').stdout).machineId;
   const file = boxFile();
@@ -1888,7 +1891,7 @@ function workerFromHome(ids) {
   check('local lists it from remote', listed?.far === true && listed.ssh === `svall@${B}`, () => brief(listed));
   boxFollows('added', ids);
   const doctor = sh(L, 'svall --json host doctor box --steps </dev/null', { ok: false });
-  check('a check of it runs there', carriedSteps(doctor).some((e) => e.step === 'worker' && e.status === 'ok' && /runs this fleet's robots/.test(e.detail)), () => brief(carriedSteps(doctor).filter((e) => e.step === 'worker' || e.status === 'fail')));
+  check('a check of it runs there', carriedSteps(doctor).some((e) => e.step === 'worker' && e.status === 'ok' && e.detail === 'worker of this fleet'), () => brief(carriedSteps(doctor).filter((e) => e.step === 'worker' || e.status === 'fail')));
   // an archive a relay leaves where the far run removes it, as one the Mac carries for another architecture
   const carried = sh(R, 'echo "$HOME/.svall/cache/carried/copied.tar.gz"').stdout.trim();
   sh(R, `mkdir -p "$(dirname ${carried})" && cp /opt/it/svall-companion-*.tar.gz ${carried}`);
@@ -1985,9 +1988,10 @@ function moveWithWorker(ids) {
   check('a third move stands', leaving.some((e) => e.step === 'workers' && e.status === 'warn'), () => brief(leaving));
   sh(B, ': > ~/.ssh/authorized_keys');
   sh(B, open, { root: true, ok: false });
-  let said;
-  for (let i = 0; i < 120 && !/denied|cannot log in|refused/i.test(said ?? ''); i++) { if (i) sh(L, 'sleep 1'); said = call(L, 'machines.list').machines.find((m) => m.id === ids.box)?.joining; }
-  check('its row names the refused login', /denied|refused/i.test(said ?? ''), () => brief(said));
+  // the row says the login was refused, and what ssh said waits behind it
+  let listed;
+  for (let i = 0; i < 120 && !/cannot log in/.test(listed?.joining ?? ''); i++) { if (i) sh(L, 'sleep 1'); listed = call(L, 'machines.list').machines.find((m) => m.id === ids.box); }
+  check('its row names the refused login', /cannot log in to box;/.test(listed?.joining ?? '') && /denied|refused/i.test(listed?.raw ?? ''), () => brief(listed));
   sh(B, 'cat >> ~/.ssh/authorized_keys', { input: keys });
   sh(L, 'svall --json host doctor box </dev/null >/dev/null', { ok: false });
   boxFollows('the key back, and a Check', ids);

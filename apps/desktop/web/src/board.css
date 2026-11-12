@@ -1,6 +1,9 @@
 /* the board's bar: the view switch, the island chips, then Needs you and + Column at the end. Its controls share one height and
    the chips' fill and hairline; the shape says what each is: a mode, a filter, or an action */
-.kb-bar { flex: none; height: var(--bar-h); box-sizing: border-box; display: flex; align-items: center; gap: var(--sp-lg); padding: 0 var(--sp-2xl); border-bottom: 1px solid var(--line-soft); background: var(--surface-1); }
+.kb-bar { flex: none; height: var(--bar-h); box-sizing: border-box; display: flex; align-items: center; gap: var(--sp-lg); padding: 0 var(--sp-2xl); border-bottom: 1px solid var(--line-soft); background: var(--surface-1);
+  container-type: inline-size; }
+/* a board narrowed by the side panels keeps every control in the bar: Auto-place and + Column give up their words, their glyphs stay */
+@container (width < 820px) { .kb-wide { display: none; } }
 .kb-bar .btn.sm { border: 1px solid var(--line-soft); background: var(--fill-1); color: var(--ink-2); }
 .kb-bar .btn.sm:hover { background: var(--fill-2); color: var(--ink); }
 .kb-sep { flex: none; width: 1px; height: 20px; background: var(--line); }

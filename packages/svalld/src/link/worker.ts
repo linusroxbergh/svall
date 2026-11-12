@@ -57,6 +57,8 @@ export class HomeConnection {
     onAcked?(dropped: Entry[]): void;
     /** As `connected()` turns: true at the home's first ack on a stream, false as that stream closes or is greeted again. */
     onLink?(live: boolean): void;
+    /** What this machine calls the home, and this machine itself when it is a Mac, for the words the home makes for its calls. */
+    names?(): { home: string; me?: MachineId };
   }) {}
 
   async start(): Promise<void> {
@@ -222,7 +224,7 @@ export class HomeConnection {
     if (older && older.stream !== stream) older.stream.close();
     stream.send({
       t: 'hello', workerMachineId: this.o.me, bootId: this.o.bootId, release: this.o.release, schema, protocol, home: os.homedir(), fleetHome: this.o.paths.home,
-      agentHomes: { claude: claudePaths().dir, codex: codexPaths().dir, opencode: opencodePaths().dir },
+      agentHomes: { claude: claudePaths().dir, codex: codexPaths().dir, opencode: opencodePaths().dir }, names: this.o.names?.(),
     });
     if (mismatch) {
       this.o.log.error(`link: ${this.o.worker.homeName} speaks state schema ${hello.data.schema ?? '?'} and link protocol ${hello.data.protocol ?? '?'}, where this svalld speaks ${schema} and ${protocol}; nothing passes until they match`);

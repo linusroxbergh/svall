@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ApiError, MachineId, MoveId, MovePhase, Robot, WORKER_OWNED, type AgentKind, type LeftBehind, type MoveSheet, type Repo, type SystemInfo } from '@svall/protocol';
+import { ApiError, MachineId, MoveId, MovePhase, Robot, UPGRADE_ACTION, WORKER_OWNED, type AgentKind, type LeftBehind, type MoveSheet, type Repo, type SystemInfo } from '@svall/protocol';
 import { Invalid, NotFound } from '../errors.js';
 import type { Fleet } from '../fleet.js';
 import { boundary, type Failpoint } from '../failpoints.js';
@@ -13,14 +13,14 @@ import type { CliRun } from '../sessions/types.js';
 import type { HomeLinks, WorkerHello } from '../link/home.js';
 import { must, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
-import { homeWord } from '../machine.js';
+import { homeWord, inOwnNames, machineWord } from '../machine.js';
 import { expandHome, type Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import { shq } from '../text.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, fileSha, verifyBundle } from './bundle.js';
 import {
-  agentFailures, converted, homesOf, missionHomes, MovePlan, moveChecks, probeRepo, reach, refusalOf, remoteKey, restCheck, shallowFailure, unanswered, withoutToken, type CheckDeps, type CheckResult,
+  agentFailures, converted, homesOf, missionHomes, MovePlan, moveChecks, opening, probeRepo, reach, refusalOf, remoteKey, restCheck, shallowFailure, unanswered, withoutToken, type CheckDeps, type CheckResult,
   type RepoProbe,
 } from './checks.js';
 import { convertMainCheckout, WORKTREES } from './convert.js';
@@ -48,9 +48,9 @@ const RELINK_MS = 60_000;
 // a worker that gives no sheet: too slow, on a release without one, or out of reach
 const sheetRefusal = (e: Error, name: string): Failure => {
   const code = e instanceof ApiError ? e.code : undefined;
-  if (code === 'timeout') return { reason: `${name} did not answer the move sheet in ${SHEET_MS / 1000} s`, action: 'try again' };
-  if (code === 'unknown_method') return { reason: `${name} runs a release without move.sheet`, action: 'upgrade it under Machines' };
-  return { reason: e.message, action: 'try again when it is awake' };
+  if (code === 'timeout') return { reason: `${name} did not answer the move sheet in ${SHEET_MS / 1000} s`, action: 'Try again' };
+  if (code === 'unknown_method') return { reason: `${name} runs a release without move.sheet`, action: UPGRADE_ACTION };
+  return { reason: e.message, action: 'Try again when it is awake' };
 };
 
 // a move undone before its commit rejects with the phase it failed at, which the move sheet names
@@ -129,7 +129,7 @@ export class Placement {
   async check(robotId: string, to: MachineId, o: StartOptions = {}): Promise<CheckResult> {
     const c = this.robot(robotId);
     if (to === this.d.me) return this.checkReturn(c, o);
-    if (c.machine && c.machine !== this.d.me) return { ok: false, refusal: { reason: 'a robot moves home first', action: `move ${c.name} to ${homeWord()} first`, details: [] } };
+    if (c.machine && c.machine !== this.d.me) return { ok: false, refusal: { reason: 'A robot moves home first', action: `Move ${c.name} to ${homeWord()} first`, details: [] } };
     const checked = await moveChecks(this.checkDeps(), robotId, to, o);
     // the worktree the robot left there is the one it goes back into, as it left it
     if (!checked.ok || c.left?.machine !== to) return checked;
@@ -158,7 +158,8 @@ export class Placement {
         d.robots[robotId].moving = { id, to, phase: 'rest' };
         if (o.homeMove && !back) d.robots[robotId].sentAhead = o.homeMove;
       });
-      await (back ? this.back(j) : this.out(j));
+      // what a committed move writes in the robot's note and its journal is read by every viewer, so not in the caller's names
+      await inOwnNames(() => (back ? this.back(j) : this.out(j)));
     }).then(() => id);
   }
 
@@ -166,7 +167,7 @@ export class Placement {
   async retry(moveId: string): Promise<void> {
     const j = this.status(moveId);
     if (BEFORE_COMMIT.has(j.phase) || j.phase === 'done' || j.phase === 'aborted') throw new Invalid(`move ${moveId} is ${j.phase}; there is nothing to retry`);
-    await this.run(j.robotId, () => this.finish(j));
+    await this.run(j.robotId, () => inOwnNames(() => this.finish(j)));
   }
 
   /**
@@ -186,12 +187,12 @@ export class Placement {
       if (machine && there !== machine) continue;
       const busy = this.running.get(j.robotId);
       if (busy) { await busy; continue; }
-      const why = new Error(j.error ?? 'svalld stopped during the move');
-      await this.run(j.robotId, async () => {
+      const why = new Error(j.error ?? "Svall's background service stopped during the move");
+      await this.run(j.robotId, () => inOwnNames(async () => {
         if (!BEFORE_COMMIT.has(j.phase)) return this.finish(j);
         if (j.to === this.d.me) return this.abortBack(j, why);
         return this.abortOut(j, why);
-      }).catch((e: Error) => this.d.log.error(`move ${j.id}: ${e.message}`));
+      })).catch((e: Error) => this.d.log.error(`move ${j.id}: ${e.message}`));
     }
   }
 
@@ -226,7 +227,7 @@ export class Placement {
   }
 
   private name(m: MachineId): string {
-    return m === this.d.me ? homeWord() : this.d.store.state.machines?.[m]?.name ?? m;
+    return m === this.d.me ? homeWord() : machineWord(m, this.d.store.state.machines?.[m]?.name ?? m);
   }
 
   private save(j: MoveJournal): void {
@@ -518,11 +519,11 @@ export class Placement {
   private async checkReturn(c: Robot, o: StartOptions): Promise<CheckResult> {
     const from = c.machine;
     if (!from || from === this.d.me) throw new Invalid(`${c.name} runs on ${homeWord()}`);
-    const fail = (f: Failure): CheckResult => ({ ok: false, refusal: { ...f, details: [] } });
+    const fail = (f: Failure): CheckResult => ({ ok: false, refusal: { ...f, reason: opening(f.reason), details: [] } });
     const reached = reach(this.d.links.for(from), this.name(from), this.d.release);
     if ('failure' in reached) return fail(reached.failure);
     const { hello } = reached;
-    if (c.moving) return fail({ reason: `moving to ${this.name(c.moving.to)}`, action: 'wait for the move to finish' });
+    if (c.moving) return fail({ reason: `${c.name} is moving to ${this.name(c.moving.to)}`, action: 'Wait for the move to finish' });
     const planned = await this.returnPlan(c, from, hello);
     if ('failure' in planned) return fail(planned.failure);
     const { plan, back } = planned;
@@ -557,7 +558,7 @@ export class Placement {
     if (info instanceof Error) return { failure: unanswered(info, this.name(from)) };
     // the sheet's buttons act on the worker, so the action names what to run here
     const agents = agentFailures(c, { name: this.name(from), agents: info.agentAdapters }, { name: homeWord(), agents: local })
-      .map(({ run, ...f }) => ({ ...f, action: `on ${homeWord()}, run ${run}` }));
+      .map(({ run, ...f }) => ({ ...f, action: `On ${homeWord()}, run ${run}` }));
     if (agents.length) return { failure: refusalOf(agents) };
     const homes = homesOf(hello.home, this.d.homedir, info.agentAdapters, local);
     const mission = missionHomes(c, this.d.store.state, { homedir: this.d.homedir, fleetHome: this.d.paths.home }, hello.fleetHome, true);
@@ -582,15 +583,15 @@ export class Placement {
     const { branch } = repo;
     const git = this.d.git;
     if (!back) {
-      if (!repo.isWorktree) return { reason: `${c.name} works in ${repoName}'s main checkout on ${this.name(from)}`, action: `give it its own worktree on ${this.name(from)} first` };
+      if (!repo.isWorktree) return { reason: `${c.name} works in ${repoName}'s main checkout on ${this.name(from)}`, action: `Give it its own worktree on ${this.name(from)} first` };
       const far = await this.d.links.call<RepoProbe>(from, 'repo.probe', { path: repo.mainRoot }).catch((e: Error) => e);
       if (far instanceof Error) return unanswered(far, this.name(from));
       const here = await probeRepo({ path: main }, git);
       if (here.state === 'none') {
         const remote = far.remote && withoutToken(far.remote);
-        return { reason: `${repoName} is not cloned on ${homeWord()}`, action: remote ? `git clone ${shq(remote)} ${shq(main)}` : `clone it to ${main} first` };
+        return { reason: `${repoName} is not cloned on ${homeWord()}`, action: remote ? `git clone ${shq(remote)} ${shq(main)}` : `Clone it to ${main} first` };
       }
-      const notClone: Failure = { reason: `${main} on ${homeWord()} is not a clone of ${repoName}`, action: 'move it out of the way first' };
+      const notClone: Failure = { reason: `${main} on ${homeWord()} is not a clone of ${repoName}`, action: 'Move it out of the way first' };
       if (here.state !== 'clone' || remoteKey(here.remote) !== remoteKey(far.remote)) return notClone;
       const shallow = await shallowFailure(main, git);
       if (shallow) return shallow;
@@ -598,17 +599,17 @@ export class Placement {
     }
     const twin = await this.clashing(branch, back?.path ?? main);
     if (twin || back) return twin;
-    if (fs.lstatSync(root, { throwIfNoEntry: false })) return { reason: `${root} on ${homeWord()} is in the way`, action: 'move it out of the way first' };
+    if (fs.lstatSync(root, { throwIfNoEntry: false })) return { reason: `${root} on ${homeWord()} is in the way`, action: 'Move it out of the way first' };
     // a worktree git lists at that place or on that branch whose folder is gone, moved or deleted, which git cannot tell apart
     const entries = (await must(git, ['worktree', 'list', '--porcelain'], main)).split('\n\n').map((e) => e.split('\n'));
     const stale = entries.map((e) => ({ at: e[0].slice('worktree '.length), e })).find(({ at, e }) =>
       (clean(at) === clean(root) || e.includes(`branch refs/heads/${branch}`)) && !fs.existsSync(at));
     if (stale) {
       const unlock = stale.e.some((l) => l === 'locked' || l.startsWith('locked ')) ? `git worktree unlock ${shq(stale.at)} && ` : '';
-      return { reason: `git on ${homeWord()} still lists ${stale.at}, whose folder is gone`, action: `git worktree repair <its new place> if you moved it, else ${unlock}git worktree remove ${shq(stale.at)}` };
+      return { reason: `Git on ${homeWord()} still lists ${stale.at}, whose folder is gone`, action: `git worktree repair <its new place> if you moved it, else ${unlock}git worktree remove ${shq(stale.at)}` };
     }
     const holder = await holding(main, branch, git);
-    if (holder) return { reason: `${branch} is checked out in ${holder} on ${homeWord()}`, action: 'check out another branch there first' };
+    if (holder) return { reason: `${branch} is checked out in ${holder} on ${homeWord()}`, action: 'Check out another branch there first' };
     return undefined;
   }
 
@@ -616,7 +617,7 @@ export class Placement {
   private async clashing(branch: string, at: string): Promise<Failure | undefined> {
     const names = (await must(this.d.git, ['for-each-ref', '--format=%(refname:strip=2)', 'refs/heads'], at)).split('\n');
     const twin = names.find((b) => b && b !== branch && clash(b, branch));
-    return twin ? { reason: `${homeWord()} has a branch ${twin}, which it cannot keep beside ${branch}`, action: 'rename one of them first' } : undefined;
+    return twin ? { reason: `${homeWord()} has a branch ${twin}, which it cannot keep beside ${branch}`, action: 'Rename one of them first' } : undefined;
   }
 
   // ---- from the commit on, both ways

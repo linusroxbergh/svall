@@ -208,11 +208,11 @@ describe('a forged Copy', () => {
   });
   it('R3 an unticked path no plan could name', async () => {
     const { o, blobOf } = blobs();
-    await expect(applyMirror(await blobOf('u', (m) => { m.unticked.push('home/.ssh/config'); }), o)).rejects.toThrow('does not carry');
+    await expect(applyMirror(await blobOf('u', (m) => { m.unticked.push('home/.ssh/config'); }), o)).rejects.toThrow('which Svall does not copy');
   });
   it('R4 an in-place path no plan could name', async () => {
     const { o, blobOf } = blobs();
-    await expect(applyMirror(await blobOf('i', (m) => { m.inPlace.push({ to: 'home/.ssh/config', places: [] }); }), o)).rejects.toThrow('does not carry');
+    await expect(applyMirror(await blobOf('i', (m) => { m.inPlace.push({ to: 'home/.ssh/config', places: [] }); }), o)).rejects.toThrow('which Svall does not copy');
   });
 });
 

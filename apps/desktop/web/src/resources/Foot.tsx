@@ -65,7 +65,7 @@ export function Foot({ onRefresh, children }: { onRefresh(): void; children?: Re
       {file && doc && <span className="res-save-word" data-testid="resources-save-state">{!unsaved ? 'saved' : stuck ? 'not saved' : 'saving…'}</span>}
       {file && !doc && unsaved && <span className="res-unsaved-word">unsaved · ⌘S saves</span>}
       {file && !away && <button className="res-link" onClick={() => revealFile(app.bridge, file, rootMachine(shown!.rootId, { via, shell }))}>Show in Finder <Caret dir="right" /></button>}
-      {file && away && <span className="res-away" data-testid="resources-on">on {away}<TerminalThere name={away} dir={root!} className="res-link" testid="resources-terminal-there" /></span>}
+      {file && away && <span className="res-away" data-testid="resources-on">on {away}<TerminalThere name={away} dir={root!} className="res-link" testid="resources-terminal-there" label="Open terminal" /></span>}
       <button className="res-link" data-testid="resources-refresh" data-tip="Reload from disk" onClick={onRefresh}><Reload size="xs" />Refresh</button>
       {children}
     </footer>

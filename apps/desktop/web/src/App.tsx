@@ -33,9 +33,10 @@ import { Tour } from './Tour.js';
 import { UtilityDock } from './UtilityDock.js';
 import { theme } from './theme.js';
 
-const OUTDATED = () => (window.__svallVariant === 'release'
-  ? 'Svall and svalld versions differ: quit and reopen Svall'
-  : 'App and svalld versions differ: run pnpm desktop:install, then reopen the app');
+// what is wrong, then what to do about it
+const OUTDATED = (): [string, string] => (window.__svallVariant === 'release'
+  ? ['Svall and its background service run different versions.', 'Quit and reopen Svall.']
+  : ['The app and Svall\'s background service run different versions.', 'Run pnpm desktop:install, then reopen the app.']);
 
 /** The Machines panel stands beside every screen, so a terminal in it lives through the fleet loading. */
 export function App() {
@@ -65,7 +66,7 @@ function Screen() {
     return (
       <div className="connect" data-testid="connect-screen">
         <div>
-          {status === 'outdated' ? OUTDATED() : 'svalld not running'}<br />
+          {status === 'outdated' ? OUTDATED().join(' ') : 'Svall\'s background service is not running.'}<br />
           {!log && <small>run <code>{shim()} setup</code>, or open this page with <code>?port=&amp;token=</code></small>}
           {log && (
             <>
@@ -81,16 +82,17 @@ function Screen() {
       </div>
     );
   }
+  const lost = status === 'outdated' ? OUTDATED() : ['Lost the connection to Svall\'s background service.', 'Reconnecting…'];
   return (
     <div className="app">
-      {status !== 'online' && <div className="banner dan" data-testid="offline-banner"><span>{status === 'outdated' ? OUTDATED() : 'svalld connection lost, reconnecting…'}</span></div>}
+      {status !== 'online' && <div className="banner dan" data-testid="offline-banner"><span><b>{lost[0]}</b> <span className="banner-sub">{lost[1]}</span></span></div>}
       <HomeBanner />
       <HomeMoveBanner />
       <CrewAwayBanner />
       {configErrors.length > 0 && (
         <div className="banner warn" data-testid="config-errors">
           <span>Ghostty config: {configErrors.join('; ')}</span>
-          <button className="btn sm" data-testid="config-errors-dismiss" onClick={() => app.store.getState().setConfigErrors([])}>dismiss</button>
+          <button className="btn sm" data-testid="config-errors-dismiss" onClick={() => app.store.getState().setConfigErrors([])}>Close</button>
         </div>
       )}
       <div className="main">

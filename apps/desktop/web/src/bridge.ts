@@ -31,12 +31,14 @@ export type HostArgs = { name: string; id?: string; ssh?: string; forget?: boole
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain;
 // forward: the port its login waits on there; tick: what a row of the mirror's report copies once ticked
-// say: what the window shows in place of `action`, where a button stands for the command
-export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'] };
+// say: what the window shows in place of `action`, where a button stands for the command; raw: what a tool said, word for word
+export type HostStep = {
+  step: string; status: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here']; raw?: string;
+};
 // one machine as `svall host list --json` gives it: no ssh for this Mac, and its last check
 export type MachineRow = {
-  // far: a machine of the far home this fleet follows, `ssh` as that home reaches it
-  name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string; far?: true;
+  // far: a machine of the far home this fleet follows, `ssh` as that home reaches it; current: its last check found it on the release `svall` runs here
+  name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string; far?: true; current?: true;
   check?: { at: number; failed: number; warned: number; release?: string };
 };
 

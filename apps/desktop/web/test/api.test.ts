@@ -61,7 +61,7 @@ describe('Api', () => {
 
     for (const c of server.wss.clients) c.terminate();
     await until(() => statuses.at(-1) === 'offline');
-    await expect(api.call('state.get', {})).rejects.toThrow(/offline/);
+    await expect(api.call('state.get', {})).rejects.toThrow("Svall's background service is not connected");
     await until(() => opens === 2);
     expect(statuses.at(-1)).toBe('online');
   });
@@ -108,7 +108,7 @@ describe('Api', () => {
     api.onStatus = (s) => { online = s === 'online'; };
     api.start();
     await until(() => online);
-    await expect(api.call('hang' as 'state.get', {})).rejects.toThrow(/did not answer hang/);
+    await expect(api.call('hang' as 'state.get', {})).rejects.toMatchObject({ message: "Svall's background service did not answer in 1 s", data: { raw: 'hang' } });
     await expect(api.call('state.get', {})).resolves.toMatchObject({ version: 1 });
   });
 
@@ -124,7 +124,7 @@ describe('Api', () => {
     const waiting = api.call('hang' as 'state.get', {});
     for (const c of server.wss.clients) c.terminate();
     const unsettled = new Promise((r) => setTimeout(() => r('still waiting'), 1000));
-    await expect(Promise.race([waiting, unsettled])).rejects.toThrow('svalld connection closed');
+    await expect(Promise.race([waiting, unsettled])).rejects.toThrow("Lost the connection to Svall's background service");
   });
 
   it('fire swallows a rejected call', async () => {

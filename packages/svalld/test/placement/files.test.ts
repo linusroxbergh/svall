@@ -111,7 +111,7 @@ describe('files of a robot on a worker', () => {
     const { w, tree } = await linked();
     const update = () => dispatch({ id: 1, method: 'robot.update', params: { id: 'c_1', context: [{ kind: 'file', ref: path.join(tree, 'a.txt'), label: '', source: 'manual' }] } }, w.home.ctx);
     w.worker.handlers['context.settle'] = async () => [{ kind: 'file', ref: 'a.txt' }];
-    expect(await update()).toMatchObject({ error: { code: 'internal', message: 'w1 answered with a context svalld cannot read' } });
+    expect(await update()).toMatchObject({ error: { code: 'internal', message: "w1 answered with a context Svall's background service cannot read" } });
     w.worker.handlers['context.settle'] = async () => [];
     expect(await update()).toMatchObject({ error: { code: 'internal' } });
     delete w.worker.handlers['context.settle'];

@@ -17,12 +17,13 @@ async function daemon(answer: (method: string, params: { cwd?: string }) => unkn
   const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
   await new Promise((r) => wss.once('listening', r));
   const calls: Calls = [];
-  wss.on('connection', (ws) => ws.on('message', (raw) => {
+  wss.on('connection', (ws) => ws.on('message', async (raw) => {
     const msg = JSON.parse(raw.toString()) as { id?: number; method?: string; params?: { cwd?: string }; token?: string };
     if (msg.token !== undefined) { ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } })); return; }
     calls.push({ method: msg.method!, params: msg.params ?? {} });
-    const said = msg.method === 'state.get' ? fleet : answer(msg.method!, msg.params ?? {});
-    ws.send(JSON.stringify({ id: msg.id, ...(said instanceof Error ? { error: { code: said.name, message: said.message } } : { result: said ?? {} }) }));
+    const said = msg.method === 'state.get' ? fleet : await answer(msg.method!, msg.params ?? {});
+    const data = (said as { data?: unknown } | undefined)?.data;
+    ws.send(JSON.stringify({ id: msg.id, ...(said instanceof Error ? { error: { code: said.name, message: said.message, ...(data !== undefined && { data }) } } : { result: said ?? {} }) }));
   }));
   return {
     port: (wss.address() as { port: number }).port,
@@ -32,13 +33,14 @@ async function daemon(answer: (method: string, params: { cwd?: string }) => unkn
   };
 }
 
-const notAFolder = (cwd?: string) => Object.assign(new Error(`cwd ${cwd} is not a directory`), { name: 'not_a_folder' });
+const notAFolder = (cwd?: string) => Object.assign(new Error(`cwd ${cwd} is not a directory`), { name: 'not_a_folder', data: { kind: cwd?.endsWith('.txt') ? 'file' : 'missing' } });
 const defaults = { cwd: '/nowhere', home: '/nowhere' };
 const many = Array.from({ length: 24 }, (_, i) => ({ path: `/home/linus/code/a-rather-long-clone-name-${i}`, clone: true }));
 
-async function farHome() {
-  const home = await daemon((m, p) => (m === 'workspace.clones' ? { machine: STUDIO, folders: many, defaults }
-    : m === 'robot.create' ? (p.cwd === '/home/linus/x' ? notAFolder(p.cwd) : { id: 'c_new' }) : undefined));
+// the home's list waits on `listed` when one is given
+async function farHome(listed?: Promise<void>) {
+  const home = await daemon(async (m, p) => (m === 'workspace.clones' ? (await listed, { machine: STUDIO, folders: many, defaults })
+    : m === 'robot.create' ? (p.cwd === '/home/linus/x' || p.cwd === '/home/linus/f.txt' ? notAFolder(p.cwd) : { id: 'c_new' }) : undefined));
   const local = await daemon((m) => (m === 'fleet.home' ? { machine: STUDIO, name: 'studio', mine: false, me: ME }
     : m === 'home.connection' ? { machine: STUDIO, name: 'studio', state: 'connected', ssh: 'linus@studio', controlSocket: '/tmp/m', port: home.port, token: 't' }
     : m === 'workspace.clones' ? { machine: ME, folders: [{ path: '/Users/ada/app', clone: true }, { path: '/Users/ada/notes', clone: false }], defaults } : undefined));
@@ -53,14 +55,26 @@ async function open(page: Page, port: number): Promise<void> {
   await expect(page.getByTestId('board')).toBeVisible();
 }
 
+const picks = (page: Page) => page.getByTestId('new-robot-folders').locator('[data-testid^="new-robot-pick-"]');
+
 test('a window on a far home starts a robot in one of the home\'s folders, its list inside the dialog, and hears a typed path refused', async ({ page }) => {
-  const { home, local } = await farHome();
+  let read = () => {};
+  const { home, local } = await farHome(new Promise((r) => { read = r; }));
   try {
     await open(page, local.port);
     await expect.poll(() => home.calls.some((c) => c.method === 'state.get')).toBe(true);
     await page.keyboard.press('Meta+t');
-    await expect(page.getByTestId('new-robot-where')).toHaveText('Folder on studio');
-    await expect(page.getByTestId('new-robot-folders').locator('button')).toHaveCount(24);
+    await expect(page.getByTestId('new-robot-where')).toHaveText('folder on studio');
+    // the list holds its place while it is read, so the buttons under it stay where they are
+    await expect(page.getByTestId('new-robot-folders')).toHaveText('Reading studio\'s folders…');
+    // measured once the dialog has risen into place
+    await page.locator('.modal.dialog').evaluate(async (e) => { await Promise.all(e.getAnimations().map((a) => a.finished)); });
+    const create = async () => (await page.getByTestId('new-robot-create').boundingBox())!.y;
+    const before = await create();
+    read();
+    await expect(picks(page)).toHaveCount(24);
+    expect(await create()).toBe(before);
+    await expect(page.getByTestId('new-robot-folder')).toBeHidden();
     expect(local.calls.filter((c) => c.method === 'workspace.clones')).toEqual([]);
 
     // two dozen long paths scroll inside the list, which stays in the dialog, which stays on the screen
@@ -70,18 +84,23 @@ test('a window on a far home starts a robot in one of the home\'s folders, its l
     expect(list.y + list.height).toBeLessThanOrEqual(dialog.y + dialog.height);
     expect(dialog.y + dialog.height).toBeLessThanOrEqual(page.viewportSize()!.height);
     // and each stays a line of its own to read, for the list to scroll past
-    expect((await page.getByTestId('new-robot-folders').locator('button').first().boundingBox())!.height).toBeGreaterThanOrEqual(20);
+    expect((await picks(page).first().boundingBox())!.height).toBeGreaterThanOrEqual(20);
     expect(await page.getByTestId('new-robot-folders').evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(true);
 
-    await page.getByTestId('new-robot-folder').fill('/home/linus/x');
+    await page.getByTestId('new-robot-other').click();
+    await expect(page.getByTestId('new-robot-folder')).toBeFocused();
+    await page.keyboard.type('/home/linus/x');
     await page.getByTestId('new-robot-create').click();
-    await expect(page.getByTestId('new-robot-refused')).toHaveText('/home/linus/x is not a folder on studio');
+    await expect(page.getByTestId('new-robot-refused')).toHaveText('No such folder on studio');
+    await page.getByTestId('new-robot-folder').fill('/home/linus/f.txt');
+    await page.getByTestId('new-robot-create').click();
+    await expect(page.getByTestId('new-robot-refused')).toHaveText('That is a file, not a folder');
     await expect(page.getByTestId('new-robot')).toBeVisible();
 
     await page.getByTestId('new-robot-pick-/home/linus/code/a-rather-long-clone-name-1').click();
     await page.getByTestId('new-robot-create').click();
     await expect(page.getByTestId('new-robot')).toBeHidden();
-    expect(home.made()).toEqual(['/home/linus/x', '/home/linus/code/a-rather-long-clone-name-1']);
+    expect(home.made()).toEqual(['/home/linus/x', '/home/linus/f.txt', '/home/linus/code/a-rather-long-clone-name-1']);
     expect(local.made()).toEqual([]);
   } finally {
     await home.close();
@@ -96,7 +115,7 @@ test('the + beside an island with no robot there asks for the folder before anyt
     await expect.poll(() => home.calls.some((c) => c.method === 'state.get')).toBe(true);
     const column = fleet.columns[1]!.id;
     await page.getByTestId(`col-new-${column}`).click();
-    await expect(page.getByTestId('new-robot-where')).toHaveText('Folder on studio');
+    await expect(page.getByTestId('new-robot-where')).toHaveText('folder on studio');
     expect(home.made()).toEqual([]);
     await page.getByTestId('new-robot-pick-/home/linus/code/a-rather-long-clone-name-1').click();
     await page.getByTestId('new-robot-create').click();
@@ -116,12 +135,36 @@ test('when the home goes the open dialog lists this Mac\'s clones, and says whos
     await open(page, local.port);
     await expect.poll(() => home.calls.some((c) => c.method === 'state.get')).toBe(true);
     await page.keyboard.press('Meta+t');
-    await expect(page.getByTestId('new-robot-where')).toHaveText('Folder on studio');
+    await expect(page.getByTestId('new-robot-where')).toHaveText('folder on studio');
     await home.close();
-    await expect(page.getByTestId('new-robot-where')).toHaveText('Folder on this Mac, while studio is not reachable');
-    await expect(page.getByTestId('new-robot-folders').locator('button')).toHaveText(['/Users/ada/app'].map((p) => p.replace('/Users/ada', '~')));
-    await expect(page.getByTestId('new-robot-folder')).toHaveValue('/Users/ada/app');
+    await expect(page.getByTestId('new-robot-where')).toHaveText('folder on this Mac');
+    await expect(page.getByTestId('new-robot-away')).toHaveText('studio is not reachableThis robot starts on this Mac.');
+    await expect(picks(page)).toHaveText(['/Users/ada/app'].map((p) => p.replace('/Users/ada', '~')));
+    await expect(page.getByTestId('new-robot-pick-/Users/ada/app')).toHaveAttribute('aria-selected', 'true');
   } finally {
+    await local.close();
+  }
+});
+
+test('the arrow keys never leave the chosen folder under the pinned Other folder… or its shadow', async ({ page }) => {
+  const { home, local } = await farHome();
+  try {
+    await open(page, local.port);
+    await expect.poll(() => home.calls.some((c) => c.method === 'state.get')).toBe(true);
+    await page.keyboard.press('Meta+t');
+    await expect(picks(page)).toHaveCount(many.length);
+    await picks(page).first().focus();
+    const other = page.getByTestId('new-robot-other');
+    for (let row = 1; row <= 6; row++) {
+      await page.keyboard.press('ArrowDown');
+      const chosen = picks(page).nth(row);
+      await expect(chosen).toHaveAttribute('aria-selected', 'true');
+      const [box, pinned] = [(await chosen.boundingBox())!, (await other.boundingBox())!];
+      // the shadow reaches a few pixels above the pinned row
+      expect(box.y + box.height).toBeLessThanOrEqual(pinned.y - 4);
+    }
+  } finally {
+    await home.close();
     await local.close();
   }
 });

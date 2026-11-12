@@ -126,7 +126,7 @@ export async function downloadCompanion(o: { url: string; sha256: string; dir: s
 
 async function remote(master: Pick<SshMaster, 'run'>, argv: string[], what: string, timeoutMs: number): Promise<string> {
   const r = await master.run(argv, { timeoutMs });
-  if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `${what} exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`);
+  if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `${what} exited ${r.code}`, r.stderr.trim().slice(0, 400) || undefined);
   return r.stdout;
 }
 
@@ -189,16 +189,16 @@ async function unpackStaged(master: SshMaster, o: { archive: string; staging: st
   const r = await master.run(['sh', '-c', shq(UNPACK), 'svall-unpack', ...[o.archive, o.staging, o.version, o.svallBase ?? ''].map(shq)], { timeoutMs: TAR_TIMEOUT });
   const said = r.stderr.trim().slice(0, 400);
   const fail: Record<number, string> = {
-    3: `the uploaded release is not signed by a key ${signers} pins: ${said || 'ssh-keygen refused it'}`,
-    4: `the uploaded release's files do not match its ${SUMS}: ${said || 'sha256sum refused it'}`,
+    3: `the uploaded release is not signed by a key ${signers} pins`,
+    4: `the uploaded release's files do not match its ${SUMS}`,
     5: `${signers} is missing, so the installed release names no signer to check the uploaded one against`,
     6: `the uploaded release's ${MANIFEST} does not name release ${o.version}, the one asked for`,
-    7: `the uploaded archive carries no signed ${SUMS} for release ${o.version}: ${said}`,
+    7: `the uploaded archive carries no signed ${SUMS} for release ${o.version}`,
     // after any warning the system's tar printed while it listed the archive
     9: r.stderr.trim().split('\n').at(-1) ?? '',
   };
-  if (r.code !== null && fail[r.code]) throw new SshError('other', fail[r.code]);
-  if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `the far machine could not unpack and check the uploaded release (exit ${r.code}): ${said}`);
+  if (r.code !== null && fail[r.code]) throw new SshError('other', fail[r.code], said || undefined);
+  if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `the far machine could not unpack and check the uploaded release (exit ${r.code})`, said || undefined);
   const how = r.stdout.trim();
   return { check: how === 'pinned' || how === 'unpinned' || how === 'first' ? how : 'digests', signers };
 }
@@ -292,19 +292,25 @@ for s in .svall/tmux.sock .svall-*/tmux.sock; do
 done
 exit 0`;
 
+/** Why going back is refused, and the files and numbers behind it. */
+export type Refused = { reason: string; raw: string };
+
 /** The first fleet's tmux server in the far `home` that release `to` could not reach; undefined when it can reach every one. */
-async function strandedTmux(master: SshMaster, o: { svallBase: string; home: string; from: string; to: string }): Promise<string | undefined> {
+async function strandedTmux(master: SshMaster, o: { svallBase: string; home: string; from: string; to: string }): Promise<Refused | undefined> {
   const out = await remote(master, ['sh', '-c', shq(STRANDED_TMUX), 'svall-tmux-servers', shq(o.svallBase), shq(o.to), shq(o.from), shq(o.home)],
     `the fleets' tmux servers in ${o.home}`, TAR_TIMEOUT);
   const [sock, served, theirs] = out.split('\n')[0].split('\t');
-  return sock ? `${sock} is served by ${served}, and release ${o.to} carries no tmux and would run the machine's (${theirs}), which cannot reach it` : undefined;
+  return sock ? {
+    reason: `cannot go back to ${o.to}: its robots' terminals run on a tmux that release lacks`,
+    raw: `${sock} is served by ${served}, and release ${o.to} carries no tmux and would run the machine's (${theirs}), which cannot reach it`,
+  } : undefined;
 }
 
 /**
  * Why going back to `to` (else the newest other release kept) would leave a far fleet's svalld refusing to start or cut
  * off from its tmux server; a release that does not say which state schema it reads is held to the oldest any has read.
  */
-export async function rollbackRefusal(master: SshMaster, o: { svallBase: string; home: string; from: string; to?: string }): Promise<string | undefined> {
+export async function rollbackRefusal(master: SshMaster, o: { svallBase: string; home: string; from: string; to?: string }): Promise<Refused | undefined> {
   const states = await stateVersions(master, o.home);
   const to = o.to ?? await newestOther(master, o.svallBase, o.from);
   if (to === undefined) return undefined;
@@ -313,10 +319,11 @@ export async function rollbackRefusal(master: SshMaster, o: { svallBase: string;
   if (!states.length) return undefined;
   const newest = states.reduce((a, b) => (b.version > a.version ? b : a));
   const reads = await stateSchemaOf(master, o.svallBase, to);
+  const newer = { reason: `cannot go back to ${to}: the fleet's state is newer than that release reads` };
   if (reads !== undefined) {
-    return newest.version > reads ? `${newest.file} is at state schema ${newest.version}, and release ${to} reads ${reads}: its svalld would refuse to start after going back` : undefined;
+    return newest.version > reads ? { ...newer, raw: `${newest.file} is at state schema ${newest.version}, and release ${to} reads ${reads}: its svalld would refuse to start after going back` } : undefined;
   }
   return newest.version > OLDEST_STATE_SCHEMA_VERSION
-    ? `release ${to} does not say which state schema it reads, and ${newest.file} is at state schema ${newest.version}, newer than the oldest a release has read (${OLDEST_STATE_SCHEMA_VERSION}): its svalld could refuse to start after going back`
+    ? { ...newer, raw: `release ${to} does not say which state schema it reads, and ${newest.file} is at state schema ${newest.version}, newer than the oldest a release has read (${OLDEST_STATE_SCHEMA_VERSION}): its svalld could refuse to start after going back` }
     : undefined;
 }

@@ -55,6 +55,24 @@ describe('Client', () => {
     await new Promise((r) => wss.close(r));
   });
 
+  it('tells its daemon the home\'s name a relayed run was given, which the daemon\'s words for its calls use', async () => {
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    await new Promise((r) => wss.once('listening', r));
+    const hellos: unknown[] = [];
+    wss.on('connection', (ws) => ws.once('message', (raw) => {
+      hellos.push(JSON.parse(raw.toString()));
+      ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }));
+    }));
+    const home = makeHome();
+    fs.writeFileSync(path.join(home, 'port'), String((wss.address() as { port: number }).port));
+    fs.writeFileSync(path.join(home, 'token'), 't');
+    vi.stubEnv('SVALL_HOME_WORD', 'studio');
+    (await Client.connect(home)).close();
+    vi.unstubAllEnvs();
+    expect(hellos).toEqual([{ token: 't', home: 'studio' }]);
+    await new Promise((r) => wss.close(r));
+  });
+
   it('refuses a daemon that speaks another protocol', async () => {
     const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
     await new Promise((r) => wss.once('listening', r));
@@ -65,7 +83,7 @@ describe('Client', () => {
 
     const err = await Client.connect(home).then(() => new Error('connected'), (e: Error) => e);
     expect(err).toBeInstanceOf(ProtocolMismatch);
-    expect(err.message).toMatch(new RegExp(`svalld of ${home} speaks protocol ${PROTOCOL_VERSION + 1} and this build speaks ${PROTOCOL_VERSION}`));
+    expect(err.message).toMatch(new RegExp(`Svall's background service for ${home} speaks protocol ${PROTOCOL_VERSION + 1} and this build speaks ${PROTOCOL_VERSION}`));
     expect(err.message).toMatch(new RegExp(`: quit and reopen Svall, or restart the svalld serving ${home}$`));
 
     // a profile's own home names that profile's launchd agent

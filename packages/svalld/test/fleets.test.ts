@@ -116,7 +116,7 @@ describe('fleetControl', () => {
     const u = makeHome();
     const f = fake(u);
     f.deps.exec = async (cmd, args) => { f.calls.push([cmd, args]); if (args[0] === 'print') throw new Error('not loaded'); };
-    await expect(fleetControl(fleetAt(u, '.svall'), f.deps).create('work')).rejects.toThrow(`svalld did not start; see ${path.join(u, '.svall-work', 'svalld.log')} (down)`);
+    await expect(fleetControl(fleetAt(u, '.svall'), f.deps).create('work')).rejects.toMatchObject({ message: "Svall's background service did not start", data: { raw: `down\nlog: ${path.join(u, '.svall-work', 'svalld.log')}` } });
   });
 
   it('starts a stopped fleet through its agent, and leaves a loaded one to answer', async () => {

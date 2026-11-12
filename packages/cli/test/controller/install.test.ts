@@ -304,6 +304,22 @@ describe('putting the archive on the far machine', () => {
     expect(out).toContain('signed by a key /home/li nus/.local/share/svall/current/release/allowed_signers pins');
   });
 
+  it('says a far command that failed in a sentence, with what it said apart', async () => {
+    ssh.reply(['mkdir'], { code: 1, stderr: 'mkdir: cannot create directory: Permission denied' });
+    await expect(uploadArchive(await master(), { archive: makeArchive({ signed: true }), remote: '/ro/c.tar.gz' }))
+      .rejects.toMatchObject({ message: 'mkdir -p /ro exited 1', raw: 'mkdir: cannot create directory: Permission denied' });
+    ssh.clearReplies();
+    for (const m of ['mkdir', 'rm']) ssh.reply([m], {});
+    ssh.reply(['svall-unpack'], { code: 3, stderr: 'Could not verify signature.' });
+    await expect(bootstrapSetup(await master(), { staging: '/s', archive: '/c.tar.gz', version: '1.2.3', allowUnsigned: false, installed: '/b' }))
+      .rejects.toMatchObject({ message: 'the uploaded release is not signed by a key /b/current/release/allowed_signers pins', raw: 'Could not verify signature.' });
+    ssh.clearReplies();
+    for (const m of ['mkdir', 'rm']) ssh.reply([m], {});
+    ssh.reply(['svall-unpack'], { code: 8, stderr: 'tar: unexpected end of file' });
+    await expect(bootstrapSetup(await master(), { staging: '/s', archive: '/c.tar.gz', version: '1.2.3', allowUnsigned: false, installed: '/b' }))
+      .rejects.toMatchObject({ message: 'the far machine could not unpack and check the uploaded release (exit 8)', raw: 'tar: unexpected end of file' });
+  });
+
   it('passes --allow-unsigned on only when the archive in hand carries no signature', async () => {
     for (const m of ['setup', 'svall-unpack', 'mkdir', 'rm']) ssh.reply([m], {});
     await bootstrapSetup(await master(), {

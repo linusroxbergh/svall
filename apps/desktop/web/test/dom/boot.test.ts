@@ -9,8 +9,8 @@ test('initApp builds the app once and the facade reads it', () => {
   expect(app.store).toBe(ctx.store);
   expect(app.bridge).toBe(ctx.bridge);
   // no shell and no port in the url, so nothing connected and the socket is still out of reach
-  expect(() => app.api()).toThrow('svalld not connected');
-  expect(() => deps()).toThrow('svalld not connected');
+  expect(() => app.api()).toThrow("Svall's background service is not connected");
+  expect(() => deps()).toThrow("Svall's background service is not connected");
   expect(ctx.store.getState().loaded).toBe(false);
 });
 
@@ -33,7 +33,7 @@ test('Send Feedback… opens the form from the menu although svalld never connec
   const { store } = fresh.initApp();
   window.__svall!.receive(JSON.stringify({ type: 'menu.run', action: 'feedback' }));
   expect(store.getState().feedbackOpen).toBe(true);
-  expect(() => fresh.app.api()).toThrow('svalld not connected');
+  expect(() => fresh.app.api()).toThrow("Svall's background service is not connected");
   delete (window as unknown as { webkit?: unknown }).webkit;
 });
 
@@ -60,13 +60,13 @@ test('the shell names this machine, and a local action it refuses is said on a t
   const studio = '22222222-2222-4222-8222-222222222222';
   store.getState().setFleet({ ...store.getState().fleet, machines: { [studio as MachineId]: { name: 'studio', reachable: true, since: 0 } } });
   receive({ type: 'local.unavailable', machine: studio });
-  expect(store.getState().toast?.text).toBe('This Mac cannot open that: it is on studio');
+  expect(store.getState().toast).toEqual({ text: 'That file is on studio; this Mac cannot open it.', tone: 'info' });
   receive({ type: 'local.unavailable', machine: '' });
-  expect(store.getState().toast?.text).toBe('This Mac cannot open that yet; try again');
+  expect(store.getState().toast).toEqual({ text: 'This Mac cannot open that yet; try again', tone: 'error' });
   // the home is no machine of its own fleet's list, and goes by the name the daemon gave it
   store.getState().setVia({ machine: 'mac-id' as MachineId, home: 'home-id' as MachineId, name: 'far-home' });
   receive({ type: 'local.unavailable', machine: 'home-id' });
-  expect(store.getState().toast?.text).toBe('This Mac cannot open that: it is on far-home');
+  expect(store.getState().toast?.text).toBe('That file is on far-home; this Mac cannot open it.');
   store.getState().setVia(undefined);
   // the page's stale word for this machine is no other machine
   receive({ type: 'shell.info', home: '/h', log: [], op: false, ghosttyKeys: {}, machine: 'mac-id' });

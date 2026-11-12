@@ -117,7 +117,7 @@ describe('a link to a keyed file no longer the copy', () => {
       expect(fs.lstatSync(s.landed).isSymbolicLink()).toBe(true);
       expect(later.left).toEqual([s.landed]);
       expect(later.written).not.toContain(s.landed);
-      expect(s.row()).toMatchObject({ status: 'warn', detail: expect.stringContaining('stays as you edited it, with any key the mirror copied in it') });
+      expect(s.row()).toMatchObject({ status: 'warn', detail: 'edited on m; stays as it is', gap: { what: 'stays as you edited it, with any key Svall copied in it' } });
     });
     it(`on a ${mode}, under a standing tick, the home's next change does not write through it, nor the one after`, async () => {
       const s = linked(mode);
@@ -129,7 +129,7 @@ describe('a link to a keyed file no longer the copy', () => {
       put(s.agent, agentText(K, 'and again'));
       await s.push();
       expect(read(s.dot)).toBe(edited);
-      expect(s.row()?.detail).toContain('stays as you edited it');
+      expect(s.row()?.detail).toBe('edited on m; stays as it is');
     });
     it(`on a ${mode}, once the person removes the link, the next tick writes a plain file and the dotfile stays`, async () => {
       const s = linked(mode);
@@ -144,7 +144,7 @@ describe('a link to a keyed file no longer the copy', () => {
       expect(read(s.landed)).toBe(agentText(K, 'the home changed it'));
       expect(read(s.dot)).toBe(edited);
       expect(later.left).toBeUndefined();
-      expect(s.row()?.detail).not.toContain('stays as you edited it');
+      expect(s.row()?.detail).not.toBe('edited on m; stays as it is');
     });
   }
   it('removed while unticked, a later tick of the same file writes a plain file and the dotfile stays', async () => {
@@ -249,9 +249,9 @@ describe('a link to a keyed file no longer the copy', () => {
     fs.mkdirSync(path.dirname(landed), { recursive: true });
     fs.symlinkSync(dot, landed);
     await s.push();
-    expect(s.rows().find((r) => r.key === item.key)?.detail).toContain('keys copied');
+    expect(s.rows().find((r) => r.key === item.key)?.detail).toBe('copied');
     put(dot, JSON.stringify({ ...JSON.parse(read(dot)), mine: 'MY-EDIT' }));
-    const words = 'pdf stays as you edited it, with any key the mirror copied in it; remove it yourself';
+    const words = 'edited on m; stays as it is';
     expect(s.rows().find((r) => r.key === item.key)?.detail).toBe(words);
     s.consent.clear();
     await s.push();
@@ -265,7 +265,7 @@ describe('a link to a keyed file no longer the copy', () => {
     put(s.dot, 'mine only, no key\n');
     s.consent.clear();
     await s.push();
-    expect(s.row()?.detail).toBe('agents/x.md stays as you edited it, with any key the mirror copied in it; remove it yourself');
+    expect(s.row()?.detail).toBe('edited on m; stays as it is');
   });
 });
 
@@ -316,7 +316,7 @@ describe('a known server with every raw field ticked', () => {
       await s.push();
       expect(read(s.toml)).toContain(K);
       expect(read(s.toml)).toContain(K2);
-      expect(s.rows().find((r) => r.key === ITEM)).toMatchObject({ status: 'ok', detail: expect.stringContaining('keys copied to m'), tick: { on: true } });
+      expect(s.rows().find((r) => r.key === ITEM)).toMatchObject({ status: 'ok', detail: 'copied', tick: { on: true } });
     });
   }
   it('with one raw field not ticked, stands for no key', () => {
@@ -399,14 +399,14 @@ describe('a whole copy edited since, as its row and result name it', () => {
     s.consent.clear();
     const r = await s.push();
     expect(r.left).toBeUndefined();
-    expect(s.rows().find((x) => x.key === ITEM)?.detail).not.toContain('the mirror copied');
+    expect(s.rows().find((x) => x.key === ITEM)?.action ?? '').not.toContain('copied key');
   });
   it('with its key kept, names it', async () => {
     const s = await pushed();
     fs.appendFileSync(s.toml, '\n[mcp_servers.odd.more]\non = true\n');
     s.consent.clear();
     expect((await s.push()).left).toEqual(['odd']);
-    expect(s.rows().find((x) => x.key === ITEM)?.detail).toContain('with any key the mirror copied in it');
+    expect(s.rows().find((x) => x.key === ITEM)).toMatchObject({ detail: 'edited on m; stays as it is', action: 'Remove it on m if the copied key should go' });
   });
   it('holding a key in an sh -c, or args that could, names it', async () => {
     const s = setup();
@@ -420,7 +420,7 @@ describe('a whole copy edited since, as its row and result name it', () => {
     s.consent.clear();
     expect((await s.push()).left).toEqual(['odd']);
     expect(read(s.toml)).toContain(K);
-    expect(s.rows().find((x) => x.key === ITEM)?.detail).toContain('with any key the mirror copied in it');
+    expect(s.rows().find((x) => x.key === ITEM)).toMatchObject({ detail: 'edited on m; stays as it is', action: 'Remove it on m if the copied key should go' });
   });
   it('under a record naming none of its strings, names the key it may hold', async () => {
     const s = await pushed();
@@ -431,6 +431,6 @@ describe('a whole copy edited since, as its row and result name it', () => {
     s.consent.clear();
     expect((await s.push()).left).toEqual(['odd']);
     expect(read(s.toml)).toContain(K);
-    expect(s.rows().find((x) => x.key === ITEM)?.detail).toContain('with any key the mirror copied in it');
+    expect(s.rows().find((x) => x.key === ITEM)).toMatchObject({ detail: 'edited on m; stays as it is', action: 'Remove it on m if the copied key should go' });
   });
 });

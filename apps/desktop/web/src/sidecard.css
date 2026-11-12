@@ -11,9 +11,22 @@
 .side .sec[data-open="true"] { flex: 0 1 auto;
   min-height: clamp(calc(var(--sec-head) + var(--sp-sm)), calc((100cqh - 5 * var(--sp-2xl)) / 6), calc(var(--sec-head) + var(--sp-sm) + 40px)); }
 .side .sec:has(> .sec-body:empty) { min-height: auto; }
+/* one that holds only a one-line note is as tall as the note, at the gap every section keeps */
+.side .sec:has(> .sec-body > .set-note:only-child) { min-height: auto; }
 .side .sec[data-fit="true"] { flex-shrink: 1000; }
+/* a placed robot's gaps each carry their way on, so the other fitted sections give way before it; the details the card ends on
+   give way after the rest */
+.side .sec[data-section="robot.machine"][data-fit="true"] { flex-shrink: 1; }
+.side .sec[data-section="robot.details"][data-fit="true"] { flex-shrink: 100; }
 .sec-body:empty { display: none; }
 .sec-body { flex: 1 1 auto; min-height: 0; overflow: hidden auto; display: flex; flex-direction: column; gap: var(--sp-sm); }
+/* a squeezed section's cut edge fades while more of it lies below */
+.sec-body[data-more="true"] { mask-image: linear-gradient(var(--ink) calc(100% - var(--sp-3xl)), transparent); -webkit-mask-image: linear-gradient(var(--ink) calc(100% - var(--sp-3xl)), transparent); }
+/* the whole rows stay crisp and the one the edge cuts fades out under them, saying more lies below; one cut so near the edge
+   that little of it shows takes the foot's own fade */
+.sec-body[data-more="true"][data-whole="all"] { mask-image: none; -webkit-mask-image: none; }
+.sec-body[data-more="true"][data-whole="cut"] { mask-image: linear-gradient(var(--ink) min(var(--whole), calc(100% - var(--sp-3xl))), transparent);
+  -webkit-mask-image: linear-gradient(var(--ink) min(var(--whole), calc(100% - var(--sp-3xl))), transparent); }
 /* a section the user opens drops its contents in; one open as its card appears shows them at once */
 .sec-body[data-opened] { transition: opacity var(--dur) var(--ease-out), translate var(--dur) var(--ease-out); }
 @starting-style { .sec-body[data-opened] { opacity: 0; translate: 0 -4px; } }
@@ -68,8 +81,20 @@
 .side-island-head .btn { flex: none; white-space: nowrap; }
 .side textarea.h2:focus { outline: none; border-color: var(--sand); }
 .side .desc { color: var(--ink-2); font-size: var(--text-md); line-height: var(--lh); }
+/* a field that takes no change reads as text, its why in its tip */
+.side .fld.desc[readonly] { background: none; cursor: default; }
+.side .fld.desc[readonly]:focus { border-color: var(--line); }
+.side .fld.desc[readonly]:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
 .side .fld.inline { width: auto; text-align: right; padding: 0; border: 0; background: none; color: var(--ink); font-size: var(--text-sm); font-weight: var(--w-medium); appearance: none; cursor: pointer; }
 .side .fld.inline:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
+/* in the settings a field and a pick read as controls */
+.set-win select.fld.inline, .set-win input.fld.inline { height: var(--ctl-sm); padding: 0 var(--sp-md); border: 0; border-radius: var(--r-sm); background-color: var(--fill-2);
+  color: var(--ink); font-size: var(--text-sm); font-weight: var(--w-medium); }
+.set-win select.fld.inline:hover, .set-win input.fld.inline:hover { background-color: var(--fill-3); }
+/* the caret is --ink-2, written out: a data URI cannot read a token */
+.set-win select.fld.inline { appearance: none; field-sizing: content; padding-right: calc(var(--sp-2xl) + var(--sp-xs)); background-position: right var(--sp-sm) center; background-repeat: no-repeat;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' width='10' height='10'%3E%3Cpath d='M2 3.5 5 6.5 8 3.5' fill='none' stroke='%23CCC5B1' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.set-win input.fld.inline { width: 16em; text-align: left; }
 .side .opens { display: flex; gap: var(--sp-md); }
 .side .opens .btn { flex: 1; }
 .side .addlink { display: flex; gap: var(--sp-md); }
@@ -96,6 +121,8 @@
 .side .pills { margin-top: 0; }
 .side .sec .rows { border-top: 0; padding-top: 0; }
 .side .row { padding: var(--sp-xs) 0; align-items: center; }
+/* a robot's details read label and value on one line, a value that wraps going on under its first */
+.side [data-section="robot.details"] .row:not(:has(> .meter)) { align-items: baseline; }
 .side .row b.mono { font-size: var(--text-xs); }
 .side .row .meter { flex: 1; margin: 0; }
 .side .row .meter > b { color: var(--ink); font-weight: var(--w-medium); }
@@ -121,6 +148,8 @@
 .side-doc-del { position: absolute; top: var(--sp-xs); right: var(--sp-xs); opacity: 0; pointer-events: none; }
 .side-doc-row:hover .side-doc-del, .side-doc-del:focus-visible { opacity: 1; pointer-events: auto; }
 .side .acts { display: flex; gap: var(--sp-md); margin-top: auto; padding-top: var(--sp-2xl); }
+/* the sections reach down to the foot, a section's gap above it */
+.side > .side-secs + .acts { padding-top: 0; }
 .side .acts .btn { flex: 1; }
 /* a card's own buttons: two even columns, where a button alone takes both; the moves start rows of their own, a move alone on its row taking both */
 .side > .acts, .side > .acts > .moves { display: grid; grid-template-columns: 1fr 1fr; }
@@ -134,36 +163,85 @@
 .btn.move svg:last-child { transition: translate var(--dur) var(--ease); }
 .btn.move:hover svg:last-child { translate: 2px 0; }
 .side .sname { display: flex; align-items: center; gap: var(--sp-md); }
-/* the settings window: its panes listed down the left, the one picked beside them in a side card's dress */
+/* the settings window: its panes listed down the left, the one picked beside them in a side card's dress; sized by its grip, inside the window */
 .set-win { position: fixed; inset: 0; margin: auto; z-index: var(--z-settings); box-sizing: border-box; overflow: hidden;
-  width: min(720px, calc(100vw - 40px)); height: min(560px, calc(100vh - 40px)); display: grid; grid-template: auto minmax(0, 1fr) / 180px minmax(0, 1fr);
+  min-width: min(640px, calc(100vw - 40px)); min-height: min(440px, calc(100vh - 40px)); max-width: calc(100vw - 40px); max-height: calc(100vh - 40px); display: grid; grid-template: auto minmax(0, 1fr) / 180px minmax(0, 1fr);
   transition: opacity var(--dur-slow) var(--ease-out), translate var(--dur-slow) var(--ease-out), scale var(--dur-slow) var(--ease-out); }
+.set-grip { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; touch-action: none;
+  background: linear-gradient(135deg, transparent 55%, var(--line-strong) 55% 60%, transparent 60% 75%, var(--line-strong) 75% 80%, transparent 80%); }
 /* it rises in like a dialog, through transitions so its hole in the surfaces settles with it */
 @starting-style { .set-win { opacity: 0; translate: 0 6px; scale: .98; } }
-.set-bar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: var(--sp-lg) var(--sp-lg) var(--sp-lg) var(--sp-2xl); border-bottom: 1px solid var(--line-soft); }
+.set-bar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line-soft);
+  padding: var(--sp-lg) calc(var(--sp-3xl) - (var(--ctl-sm) - var(--icon-xs)) / 2) var(--sp-lg) var(--sp-2xl); }
+/* the × glyph's right edge on the pane's right edge */
+.set-win .set-bar > .side-x { margin-right: 0; }
 .set-bar h2 { margin: 0; font-size: var(--text-lg); font-weight: var(--w-semibold); color: var(--ink); }
 .set-nav { display: flex; flex-direction: column; gap: var(--sp-2xs); padding: var(--sp-lg) var(--sp-md); overflow: hidden auto; }
 .set-nav button { color: var(--ink-2); font-weight: var(--w-medium); }
 .set-nav button:hover { color: var(--ink); }
 .set-nav button[aria-selected="true"] { color: var(--sand); }
 .set-nav i { width: var(--dot-sm); height: var(--dot-sm); border-radius: var(--r-pill); background: var(--sand); }
-.set-win .side { width: auto; padding: var(--sp-2xl) var(--sp-3xl); }
-.set-win .side > .rows:first-child { border-top: 0; padding-top: 0; }
+.set-win .side { width: auto; padding: var(--sp-2xl) var(--sp-3xl); gap: 0; }
+.set-win .side[data-more="true"] { mask-image: linear-gradient(var(--ink) calc(100% - var(--sp-3xl)), transparent); -webkit-mask-image: linear-gradient(var(--ink) calc(100% - var(--sp-3xl)), transparent); }
+/* what a machine's last check found, which checks it again to list them */
+.machine-found { padding: 0; border-radius: 0; background: none; font: inherit; color: inherit; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.machine-found:hover:not(:disabled) { background: none; color: var(--ink); text-decoration-color: currentColor; }
+/* a pane is groups of rows, each named by its kicker, which is the only separator */
+.set-group + .set-group { margin-top: var(--sp-2xl); }
+.set-group > .kicker { gap: var(--sp-xs); margin-bottom: var(--sp-xs); }
+.set-group > .kicker .set-info > .ib { margin-left: 0; }
+/* the first group's name sits on the baseline of the first pane's name in the nav, whose larger type rides lower in its line */
+.set-group:first-child > .kicker { padding-top: calc(var(--sp-sm) / 2); }
+.set-group > .kicker > .btn { margin: calc(-1 * var(--sp-xs)) 0 calc(-1 * var(--sp-xs)) auto; height: var(--ctl-sm); text-transform: none; letter-spacing: normal; }
+.set-win .rows { border-top: 0; padding-top: 0; }
+.set-win .row { box-sizing: border-box; min-height: calc(var(--ctl-md) + var(--sp-xs)); align-items: center; }
+.set-win .row.set-sub { padding-left: var(--sp-2xl); }
+.set-win .row small.mono { margin-left: var(--sp-xs); padding: 0 var(--sp-xs); border-radius: var(--r-xs); background: var(--fill-1); font-size: var(--text-2xs);
+  color: color-mix(in srgb, var(--ink-3) 70%, transparent); }
+.set-win .row .btn.ghost { padding-block: 0; }
+/* a value that copies: the value's own ink, a copy mark after it */
+.set-win .row .btn.set-copy { display: inline-flex; align-items: center; gap: var(--sp-sm); max-width: 100%; color: var(--ink); }
+.set-win .row .btn.set-copy > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-win .row .btn.set-copy > svg { flex: none; color: var(--ink-3); }
+.set-win .row .btn.set-copy:hover > svg { color: var(--ink); }
+.set-win .row .mob-mask { display: inline-block; width: 9em; margin: 0; vertical-align: middle; }
+.set-win .row b.set-pair { display: flex; align-items: center; gap: var(--sp-lg); }
+.set-fold { min-height: calc(var(--ctl-md) + var(--sp-xs)); font-size: var(--text-sm); color: var(--ink-3); }
+/* a problem in a pane; in a row beside a label its words sit at the right */
+.set-said { min-width: 0; }
+.row > .set-said { flex: 1 1 auto; }
+.row > span + .set-said .said { justify-content: flex-end; }
+.row > span + .set-said .said > div { flex: 0 1 auto; align-items: flex-end; text-align: right; }
+.set-qr { display: flex; align-items: center; gap: var(--sp-xl); padding: var(--sp-xs) 0; }
+.set-qr .mob-qr { width: 168px; }
 /* the explanation waits behind the mark, so the panel reads as a list of controls rather than a page of prose */
 .side .row:has(.set-info), .side .opens:has(.set-info), .side .kicker:has(.set-info) { position: relative; }
 .side .opens:has(.set-info) { align-items: center; }
 .set-info > .ib { margin: calc(-1 * var(--sp-2xs)) 0 calc(-1 * var(--sp-2xs)) var(--sp-2xs); vertical-align: middle; }
 /* the tip is opened and placed by the script: it flips over its row when the panel's floor is too near */
 .set-tip { display: none; position: absolute; left: 0; right: 0; top: calc(100% + 5px); z-index: var(--z-popover); overflow: hidden auto; box-sizing: border-box;
-  padding: var(--sp-lg) var(--sp-lg); color: var(--ink-2); font-size: var(--text-sm); font-weight: var(--w-regular); line-height: var(--lh); text-align: left; text-transform: none; letter-spacing: normal; }
+  padding: var(--sp-lg) var(--sp-lg); color: var(--ink); font-size: var(--text-sm); font-weight: var(--w-regular); line-height: var(--lh); text-align: left; text-transform: none; letter-spacing: normal; }
+/* raised off the pane and solid, covering the rows under it whole, so none reads half there */
+.set-tip.popover { background: linear-gradient(var(--panel-hi), var(--panel-hi)), var(--surface-2); border-color: var(--line-strong); }
 .set-tip[data-open="true"] { display: block; }
 .set-tip[data-place="up"] { top: auto; bottom: calc(100% + 5px); }
+/* one line under the row or group it belongs to */
+.set-note { color: var(--ink-3); font-size: var(--text-sm); line-height: var(--lh); }
+.set-note code { font-family: var(--mono); font-size: var(--text-xs); -webkit-user-select: text; user-select: text; }
+/* a note under way, its spinner a gap from its words */
+.set-note > .move-spin { margin-right: var(--sp-sm); }
+/* what went well, said as a problem is with its own mark */
+.said[data-mark="ok"] > .said-mark { color: var(--done); }
 .side .row b.set-slider, .side .row b.set-zoom { display: flex; align-items: center; gap: var(--sp-lg); }
 .set-slider input { width: 132px; accent-color: var(--sand); }
 .set-slider .tnum, .set-zoom .tnum { min-width: 36px; text-align: right; }
 .set-zoom .tnum { text-align: center; }
-.set-switch { width: calc(var(--ctl-sm) * 2); height: var(--ctl-sm); padding: 0; border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
-.set-switch[aria-checked="true"] { background: var(--sand); color: var(--ink-sand); }
+.set-switch { display: inline-flex; vertical-align: middle; align-items: center; justify-content: space-between; box-sizing: border-box; width: calc(var(--ctl-sm) * 2 + var(--sp-sm)); height: var(--ctl-sm);
+  padding: 0 var(--sp-sm) 0 var(--sp-xs); border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
+/* its knob sits at the side it is switched to, so it reads as a control rather than a state */
+.set-switch::before { content: ''; flex: none; width: calc(var(--ctl-sm) - 2 * var(--sp-xs)); height: calc(var(--ctl-sm) - 2 * var(--sp-xs)); border-radius: var(--r-xs); background: var(--fill-3); }
+.set-switch[aria-checked="true"] { flex-direction: row-reverse; padding: 0 var(--sp-xs) 0 var(--sp-sm); background: var(--sand); color: var(--ink-sand); }
+.set-switch[aria-checked="true"]::before { background: var(--ink-sand); opacity: .55; }
 .set-switch[aria-checked="true"]:hover { background: var(--sand-hi); }
 .row[data-dim="true"] { opacity: var(--disabled); }
 .row b.set-keys { display: flex; align-items: center; gap: var(--sp-xs); }

@@ -27,3 +27,7 @@ const LABEL: Record<DisplayStatus, string> = {
   working: 'working', idle: 'idle', blocked: 'needs you', done: 'done', shell: 'shell', moving: 'moving', unknown: 'unknown',
 };
 export const statusLabel = (s: DisplayStatus): string => LABEL[s];
+
+/** The machine a fleet moved to, on a page this machine still serves: only a worker's copy holds its home's snapshot. */
+export const movedTo = (fleet: FleetState, via: unknown, status: string): string | undefined =>
+  (!via && status === 'online' ? Object.values(fleet.machines ?? {}).find((m) => m.snapshot)?.name : undefined);

@@ -153,7 +153,7 @@ test('with svalld offline, the fleets cannot be listed or made, the picker says 
   store.getState().setStatus('offline');
   store.getState().setFleetPicker('menu');
   render(<FleetPicker />);
-  expect(screen.getByTestId('fleet-picker-offline')).toBeTruthy();
+  expect(screen.getByTestId('fleet-picker-offline').textContent).toBe("Svall's background service is not connected, so fleets can't be listed or made.");
   expect((screen.getByTestId('fleet-new-name') as HTMLInputElement).disabled).toBe(true);
   expect(call).not.toHaveBeenCalled();
   escapeCloses();

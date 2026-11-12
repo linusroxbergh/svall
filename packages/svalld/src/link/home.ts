@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { ApiError, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, type LinkFrame, type MachineLink, type MethodName, type Result } from '@svall/protocol';
 import { boundary } from '../failpoints.js';
 import type { Logger } from '../log.js';
-import { homeWord, type MachineEntry } from '../machine.js';
+import { homeWord, inCallerNames, type MachineEntry } from '../machine.js';
 import { dialSocket, type Paths } from '../paths.js';
 import type { HomeDocs } from '../placement/docs-sync.js';
 import type { Mirror } from '../placement/mirror.js';
@@ -18,7 +18,7 @@ import { svallExe } from '../release.js';
 import type { Store } from '../store.js';
 import { shq } from '../text.js';
 import { Inventory, RobotSync, Snapshot } from '../worker/snapshot.js';
-import { SshMaster } from './ssh.js';
+import { inFull, SshMaster } from './ssh.js';
 import { answerCall, LinkStream, MAX_LINE } from './stream.js';
 
 /** How often the home pings a worker; a ping still unanswered at the next beat closes the link. A worker closes a link
@@ -40,6 +40,8 @@ export type Transport = (entry: MachineEntry) => Promise<{ stream: Duplex; via?:
 const WorkerHello = z.object({
   t: z.literal('hello'), workerMachineId: MachineId, bootId: z.string(), release: z.string(), schema: z.number().optional(), protocol: z.number().optional(),
   agentHomes: Snapshot.shape.agentHomes, home: z.string(), fleetHome: z.string().optional(),
+  // what the worker calls this home, and the worker itself when it is a Mac, which the home's words for its calls take
+  names: z.object({ home: z.string(), me: MachineId.optional() }).optional(),
 });
 export type WorkerHello = z.infer<typeof WorkerHello>;
 
@@ -300,7 +302,7 @@ export class WorkerLink {
   /** Sends the home's agent configuration; a failure is logged, the mirror being a convenience. */
   pushMirror(): Promise<void> {
     if (!this.o.mirror || !this.connected()) return Promise.resolve();
-    return this.o.mirror.push(this).then(() => {}, (e: Error) => this.o.log.error(`${this.name}: the agent configuration was not mirrored: ${e.message}`));
+    return this.o.mirror.push(this).then(() => {}, (e: Error) => this.o.log.error(`${this.name}: the agent setup was not copied: ${e.message}`));
   }
 
   /** Sends the fleet's docs to a synced worker, and once more after if they change meanwhile. */
@@ -346,7 +348,7 @@ export class WorkerLink {
       if (!token) return this.lost(`no token for ${this.name} in ${this.o.paths.workersFile}`, false);
       conn = await (this.dialsIn ? this.o.dialIn : this.o.connect)(this.entry);
     } catch (e) {
-      return this.lost((e as Error).message);
+      return this.lost(inFull(e));
     } finally {
       this.connecting = false;
     }
@@ -405,7 +407,7 @@ export class WorkerLink {
         this.answered = true;
         return;
       case 'call':
-        void answerCall(stream, f, this.o.onCall && ((params) => this.o.onCall!(f.method, params, this.machine)));
+        void answerCall(stream, f, this.o.onCall && ((params) => inCallerNames(this.peer?.names ?? {}, () => this.o.onCall!(f.method, params, this.machine))));
         return;
       case 'notify':
         this.hook(`a ${f.kind} notification not taken`, () => this.o.onNotify?.(f.kind, f.data, this.machine));

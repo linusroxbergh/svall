@@ -21,7 +21,7 @@ the fleet's islands, cards and map.
 
 1. Reach an account on the Linux machine with `ssh`; its home need not be your Mac's ([home paths](setup.md#home-paths)).
 2. Settings → Machines → **Add machine**, or from a terminal `svall host add studio --ssh ada@studio`. It ends with
-   "studio is ready. Robots you move there keep working while this Mac sleeps.", or with what is left to do.
+   "studio is ready", or with what is left to do.
 3. **Move to studio** on a robot's card moves it there, and **Move to this Mac** brings it back. Or
    `svall robot move <id> --machine studio` and `--machine local`.
 

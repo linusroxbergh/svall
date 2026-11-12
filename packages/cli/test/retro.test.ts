@@ -57,7 +57,7 @@ describe('svall retro', () => {
   });
 
   it('says when reviews are skipped for want of gh', () => {
-    expect(formatPlan({ ...plan, reviews: 'no-gh' })).toContain('reviews: skipped: gh is not installed or signed in');
+    expect(formatPlan({ ...plan, reviews: 'no-gh' })).toContain('reviews: skipped: gh is not installed or logged in');
   });
 
   it('findings prints the summary, pointing at the report in the fleet home', async () => {

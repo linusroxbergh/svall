@@ -535,7 +535,7 @@ describe('the mirror over the link carries servers, plugins and each agent\'s co
     expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
     tick('claude:mcp:linear', [], false); await push();
     expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('${LINEAR_API_KEY}');
-    expect((await setup()).find((r) => r.key === 'claude:mcp:linear')).toMatchObject({ status: 'warn', action: "copy linear's keys to w1" });
+    expect((await setup()).find((r) => r.key === 'claude:mcp:linear')).toMatchObject({ status: 'warn', detail: 'not copied', action: 'Tick to copy, or set LINEAR_API_KEY on w1: svall worker env LINEAR_API_KEY' });
 
     tick('claude:mcp:linear', ['env.LINEAR_API_KEY'], true); await push();
     editJson(mac.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = 'lin_api_changed_0987654321'; });
@@ -619,7 +619,7 @@ describe('the mirror over the link carries servers, plugins and each agent\'s co
   it('a path too long for ustar is skipped with a line, and the push still goes', async () => {
     const deep = path.join(mac.claudeDir, 'skills', 'x'.repeat(120), 'y'.repeat(120), 'SKILL.md');
     put(deep, 'deep\n'); put(path.join(mac.claudeDir, 'rules/new.md'), 'new\n');
-    expect(mirrorPlan(mac).skipped).toContain(`${deep} has a path too long for the mirror to carry`);
+    expect(mirrorPlan(mac).skipped).toContain(`${deep} has a path too long for Svall to copy`);
     await push();
     expect(read(path.join(worker.claudeDir, 'rules/new.md'))).toBe('new\n');
   });

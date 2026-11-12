@@ -104,7 +104,7 @@ export const unticked = (item: string): SetupRow => {
   return {
     key: item, status: 'warn', action: `copy ${name}'s keys to trift`,
     detail: `copied without its keys (${field} ${name.slice(0, 3)}…90); tick to copy them, or set them on trift in ~/.svall/mirror-overrides`,
-    tick: { item, fields: [field], on: false, preview: [`${field} ${name.slice(0, 3)}…90`] }, gap: { name, what: `keys not copied (${field})` },
+    tick: { item, name, fields: [field], on: false, preview: [`${field} ${name.slice(0, 3)}…90`], ticked: [] }, gap: { name, what: `keys not copied (${field})` },
   };
 };
 export const ticked = (item: string): SetupRow => {

@@ -91,6 +91,8 @@ export function world(o: {
   dialIn?: true;
   /** What the home's registry says of w1, as typed at its enrolment. */
   record?: Partial<MachineEntry['record']>;
+  /** What w1's hello says it calls the home, and itself as a Mac. */
+  names?: { home: string; me?: MachineId };
   mirror?: { home: MirrorHomes; worker: MirrorHomes & { overrides: string; backups?: string; platform?: NodeJS.Platform } }; homeLog?: Logger;
   usage?: { claude?: FetchUsage; tails?: Record<string, string> }; scribe?: { home?: RunScribe; worker?: RunScribe };
 }) {
@@ -177,7 +179,7 @@ export function world(o: {
   const outbox = Outbox.open(workerPaths);
   const connection = new HomeConnection({
     paths: workerPaths, worker: { homeMachineId: H, fleetId: config.id, token, homeName: 'mac' }, me: W, store: workerStore, outbox,
-    log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers, onAcked: (dropped) => mutations.acked(dropped),
+    log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers, onAcked: (dropped) => mutations.acked(dropped), ...(o.names && { names: () => o.names! }),
     onLink: (live) => {
       if (live) return;
       for (const v of farViewers.dropAll()) { workerWorkspace.unwatchAll(v); terminals.closeAll(v); }

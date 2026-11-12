@@ -4,7 +4,7 @@ import type { Api } from '../src/api.js';
 import { sections, subtitle, waiting } from '../src/mobile/list.js';
 import { encode, linkTerminal, type Screen } from '../src/mobile/term.js';
 import { parseRoute, routePath } from '../src/mobile/route.js';
-import { NO_PAGE, OFF, phonesHere } from '../src/phoneText.js';
+import { NO_PAGE, phonesHere } from '../src/phoneText.js';
 import { chr, fleet, isl } from './fixtures.js';
 import { cwdChoices } from '../src/mobile/choices.js';
 import { islandCwd } from '../src/selectors.js';
@@ -300,18 +300,22 @@ describe('phone push', () => {
 describe('the phones on the page', () => {
   const at = (hh: number, mm: number) => new Date(2026, 8, 19, hh, mm).getTime();
 
-  it('names each login and the minute it arrived, and says so when there is none', () => {
+  it('names each login, that it is connected and the minute it arrived, and says so when there is none; a labelled row leaves the what to its label', () => {
     expect(phonesHere([])).toBe('nobody has this open');
     expect(phonesHere()).toBe('nobody has this open');
-    expect(phonesHere([], 'nobody')).toBe('nobody');
-    expect(phonesHere([{ login: 'me@example.com', since: at(14, 2) }])).toBe('me@example.com since 14:02');
+    expect(phonesHere([], true)).toBe('nobody');
+    // the time as the window says one beside a date
+    const clock = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    expect(phonesHere([{ login: 'me@example.com', since: at(14, 2) }])).toBe(`me@example.com connected since ${clock(at(14, 2))}`);
+    expect(phonesHere([{ login: 'me@example.com', since: at(14, 2) }], true)).toBe(`me@example.com since ${clock(at(14, 2))}`);
     expect(phonesHere([{ login: 'me@example.com', since: at(9, 5) }, { login: 'you@example.com', since: at(14, 30) }]))
-      .toBe('me@example.com since 09:05 · you@example.com since 14:30');
+      .toBe(`me@example.com connected since ${clock(at(9, 5))} · you@example.com connected since ${clock(at(14, 30))}`);
+    // the same time as a date beside it gives, in whatever locale
+    expect(new Date(at(14, 2)).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })).toContain(clock(at(14, 2)));
   });
 
-  // an off forgets every phone's notifications, so the switch and its remedy both say so
-  it('tells whoever turns the link off that each phone turns notifications on again', () => {
-    expect(OFF).toMatch(/re-enable notifications on each phone/);
+  // an off forgets every phone's notifications, so the remedy that turns it off and on says so
+  it('tells whoever turns the link off and on that each phone turns notifications on again', () => {
     expect(NO_PAGE).toMatch(/re-enable notifications on each phone/);
   });
 });

@@ -5,9 +5,11 @@ import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, 
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import type { HomeFreeze } from '../fleet/home-freeze.js';
+import { owedWhy, type WorkersOwed } from '../fleet/home-move.js';
 import { gitVersion } from '../links/git.js';
 import type { HomeApi } from '../link/home-api.js';
 import { askWorkers, type HomeLinks } from '../link/home.js';
+import { inFull } from '../link/ssh.js';
 import { homeWord } from '../machine.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
@@ -48,7 +50,7 @@ export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () =
   // the home's
   fleetConfig?: ReturnType<typeof fleetConfigFile>;
   // a move of the home as this daemon holds it, and what its check asks both machines
-  workersOwed?: () => Record<string, { why?: string; tried?: number }>; rejoinsAgain?: () => void; freeze?: HomeFreeze; homeChecks?: (to: MachineId) => Promise<Result<'fleet.homeCheck'>>; homeWaits?: () => Result<'fleet.homeMove'> };
+  workersOwed?: () => WorkersOwed['workers']; rejoinsAgain?: () => void; freeze?: HomeFreeze; homeChecks?: (to: MachineId) => Promise<Result<'fleet.homeCheck'>>; homeWaits?: () => Result<'fleet.homeMove'> };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
 
@@ -183,14 +185,14 @@ const handlers: Handlers = {
     const home = fleetHome?.();
     const known = registered?.();
     const workers = Object.entries(store.state.machines ?? {}).filter(([id]) => id !== home?.machine).map(([id, m]) => ({
-      id: id as MachineId, name: m.name, role: 'worker' as const, platform: known?.get(id)?.platform, ...(known?.get(id)?.dial === 'worker' && { dialsIn: true as const }), reachable: m.reachable, release: m.release, ...(owed[id] && { joining: owed[id].why ?? '' }), ...(owed[id]?.tried !== undefined && { joinTried: owed[id].tried }),
+      id: id as MachineId, name: m.name, role: 'worker' as const, platform: known?.get(id)?.platform, ...(known?.get(id)?.dial === 'worker' && { dialsIn: true as const }), reachable: m.reachable, since: m.since, release: m.release, ...(owed[id] && { joining: owedWhy(owed[id], m.name) }), ...(owed[id]?.tried !== undefined && { joinTried: owed[id].tried }), ...(owed[id]?.raw && { raw: owed[id].raw }),
       robots: robots.filter((r) => r.machine === id).length,
     }));
     if (!home) return { machines: workers };
     const held = store.state.machines?.[home.machine];
     return { machines: [{
       id: home.machine, name: home.name, role: 'home' as const, platform: known?.get(home.machine)?.platform ?? (home.mine ? platform() : undefined),
-      reachable: home.mine || (router?.homeConnected ?? false), release: home.mine ? releaseVersion() : held?.release, robots: robots.filter((r) => r.machine === undefined || r.machine === home.machine).length,
+      reachable: home.mine || (router?.homeConnected ?? false), ...(!home.mine && held && { since: held.since }), release: home.mine ? releaseVersion() : held?.release, robots: robots.filter((r) => r.machine === undefined || r.machine === home.machine).length,
     }, ...workers] };
   },
   'machines.refresh': (_p, { links, rejoinsAgain }) => { links?.refresh(); rejoinsAgain?.(); return {}; },
@@ -207,11 +209,11 @@ const handlers: Handlers = {
     }
     const link = ctx.links?.for(p.machine);
     if (link?.connected()) {
-      await mirror.push(link).catch((e: Error) => { throw new ApiError('not_mirrored', `the change is saved, but ${name} did not take it: ${e.message}`); });
+      await mirror.push(link).catch((e: Error) => { throw new ApiError('not_mirrored', `Saved; ${name} has not taken it yet`, { raw: inFull(e) }); });
     }
     // the worker keeps the item as the mirror last wrote it while this Mac cannot read it
     const unread = mirror.unreadFile(p.item);
-    if (unread) throw new ApiError('not_mirrored', `${unread} on ${homeWord()} cannot be read; the copy stays on ${name} until it can`);
+    if (unread) throw new ApiError('not_mirrored', `${homeWord()} cannot read ${unread}; ${name} keeps its copy`);
     return setupOf(ctx, p.machine, 0);
   },
   'machines.updateAgents': async (p, { store, links }) => {
@@ -222,13 +224,13 @@ const handlers: Handlers = {
     return {};
   },
   'machines.copySetupFrom': async (p, ctx) => {
-    if (!ctx.setupCopy || !ctx.links) throw new ApiError('not_on_worker', 'a copy of an agent setup lands on the fleet\'s home');
+    if (!ctx.setupCopy || !ctx.links) throw new ApiError('not_on_worker', 'A copy goes to the fleet\'s home only');
     if (!ctx.store.state.machines?.[p.machine]) throw new ApiError('not_found', `no machine ${p.machine}`);
     const { links, setupCopy } = ctx;
     const mirror = mirrorOf(ctx);
     // no push of the home's lands on the worker while it reads what it sends
     return mirror.inTurn(p.machine, () => {
-      if (p.seed && mirror.holdsSetup()) throw new ApiError('refused', 'this home holds an agent setup of its own, which is never seeded');
+      if (p.seed && mirror.holdsSetup()) throw new ApiError('refused', `${homeWord()} already has an agent setup`);
       return setupCopy.from(p.machine, () => links.call(p.machine, 'config.copyToHome', {}, { timeoutMs: serverWait('machines.copySetupFrom', p) }));
     });
   },

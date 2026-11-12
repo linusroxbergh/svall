@@ -175,7 +175,7 @@ export const hookCommand = (node: string, script: string, backend: AgentKind): s
 export const readCodexHooks = (codex: CodexPaths, wanted = fs.existsSync(codex.dir)): JsonSettings | undefined =>
   (wanted ? readJsonSettings(codex.hooks) : undefined);
 
-export const CODEX_TRUST = 'Codex asks once to trust these hooks: start codex and choose "Trust all and continue", or trust them in /hooks';
+export const CODEX_TRUST = 'Codex asks once to trust these hooks: start `codex` and choose "Trust all and continue", or trust them in `/hooks`';
 
 /** Writes the hooks into Codex's own file, when Codex is wanted here. */
 export function installCodexHooks(script: string, before: JsonSettings | undefined): string[] {

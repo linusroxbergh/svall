@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { contextKind, type MachineId } from '@svall/protocol';
 import { fleet } from '../fixtures.js';
-import { bridge, call, freshStore, store } from './harness.js';
+import { bridge, call, freshStore, retryHome, store } from './harness.js';
 
 window.matchMedia ??= ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} })) as never;
 document.elementFromPoint ??= () => null;
@@ -17,6 +17,8 @@ const { boardRobotMenu, robotMenu } = await import('../../src/menus.js');
 const { dispatchKey } = await import('../../src/keyboard.js');
 const { ContextMenu } = await import('../../src/ContextMenu.js');
 const { TerminalArea } = await import('../../src/TerminalArea.js');
+const { HoverCard } = await import('../../src/map/HoverCard.js');
+const { Tips } = await import('../../src/Tips.js');
 
 const MAC = 'a1b2c3d4-0000-4000-8000-000000000001' as MachineId;
 const HOME = 'a1b2c3d4-0000-4000-8000-000000000002' as MachineId;
@@ -26,6 +28,7 @@ const FOLLOWING = { ...COPY, online: true as const };
 // c0 runs on the home and c1 on this Mac; both starred, with a link to remove
 beforeEach(() => {
   call.mockReset();
+  retryHome.mockReset();
   call.mockImplementation((method: string) => Promise.resolve(method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : {}));
   freshStore();
   const f = fleet();
@@ -45,21 +48,16 @@ const press = { clientX: 0, clientY: 0, preventDefault() {} };
 const BUTTONS = ['side-star', 'portrait-prev', 'portrait-next', 'side-agent-profile', 'side-close'];
 const writes = () => call.mock.calls.filter(([m]) => /^robot\.(update|star|close|move|place|reorder)/.test(m));
 
-test('the card of a far robot on the Mac\'s copy is read-only, says so, and says why at each try', async () => {
+test('the card of a far robot on the Mac\'s copy is read-only, says so, its fields saying why in their tip and its buttons at each press', async () => {
   act(() => store.getState().setVia(COPY));
   render(<SideCard id="c0" />);
   await act(async () => {});
   expect(screen.getByTestId('side-away-read-only').textContent).toBe('Read-only until it answers.');
   expect(screen.getByTestId('side-away').textContent).toContain('linus-vault is not reachable');
   for (const t of ['side-name', 'side-note', 'side-instructions']) {
-    expect(box(t).readOnly).toBe(true);
+    expect([box(t).readOnly, box(t).dataset.tip]).toEqual([true, WHY]);
     fireEvent.click(box(t));
-    expect(told()).toBe(WHY);
     fireEvent.keyDown(box(t), { key: 'a' });
-    expect(told()).toBe(WHY);
-    fireEvent.keyDown(box(t), { key: 'a', repeat: true });
-    fireEvent.keyDown(box(t), { key: 'Tab' });
-    fireEvent.keyDown(box(t), { key: 'c', metaKey: true });
     expect(told()).toBeUndefined();
   }
   for (const t of BUTTONS) {
@@ -99,7 +97,7 @@ test.each([
 
 // what the home answered; the words of the card, pane, toast and tip; the card's read-only line; its kicker
 const STATES: [Record<string, string>, string, string, string, string][] = [
-  [{ state: 'unreachable' }, 'linus-vault is not reachable', 'is not reachable; you can change it once it answers.', 'Read-only until it answers.', 'unreachable'],
+  [{ state: 'unreachable' }, 'linus-vault is not reachable', 'is not reachable; you can change it once it answers.', 'Read-only until it answers.', 'not reachable'],
   [{ state: 'version', release: '0.27.0' }, 'linus-vault runs another version of Svall', 'runs another version of Svall; you can change it once both run the same.', 'Read-only until both run the same.', 'read-only'],
   [{ state: 'version', detail: 'linus-vault answered with protocol 7, not 8' }, 'linus-vault cannot run this Mac\'s Svall', 'cannot run this Mac\'s Svall; you can change it once it runs this Mac\'s Svall.', 'Read-only until it runs this Mac\'s Svall.', 'read-only'],
   [{ state: 'version' }, 'linus-vault runs another version of Svall', 'runs another version of Svall; you can change it once both run the same.', 'Read-only until both run the same.', 'read-only'],
@@ -111,7 +109,7 @@ const GPU = 'a1b2c3d4-0000-4000-8000-000000000003' as MachineId;
 
 // c0 runs on the home; c2 on a third machine, which this Mac reaches through the home and so waits on it
 test.each(STATES.flatMap((row) => [['c0', 'linus-vault', 'linus-vault', ...row], ['c2', 'gpu-box, reached through linus-vault', 'gpu-box', ...row]]))(
-  'on the Mac\'s copy %s, on %s, which is %s, says why with the home %o on the card, the pane, the toast and the tip', async (id, on, machine, home, line, which, readOnly, kicker) => {
+  'on the Mac\'s copy %s, on %s, which is %s, says why with the home %o on the card, the pane, the toast and the tip', async (id, on, _machine, home, line, which, readOnly, kicker) => {
     const f = store.getState().fleet;
     act(() => {
       store.getState().setFleet({ ...f, machines: { ...f.machines, [GPU]: { name: 'gpu-box', reachable: true, since: 0 } }, robots: { ...f.robots, c2: { ...f.robots.c2, machine: GPU } } });
@@ -122,7 +120,11 @@ test.each(STATES.flatMap((row) => [['c0', 'linus-vault', 'linus-vault', ...row],
     call.mockImplementation((method: string) => Promise.resolve(answers[method] ?? {}));
     render(<><SideCard id={id} /><TerminalArea id={id} /></>);
     await act(async () => {});
-    expect(screen.getByTestId('side-away').textContent).toBe(`${line}${readOnly}Check ${machine}`);
+    // the home is what does not answer, so it is the home that is tried again, not the robot's machine checked
+    expect(screen.getByTestId('side-away').textContent).toBe(`${line}${readOnly}Try again`);
+    expect(screen.queryByTestId('side-away-run')).toBeNull();
+    fireEvent.click(screen.getByTestId('side-away-retry'));
+    expect(retryHome).toHaveBeenCalledTimes(1);
     expect(document.querySelector('.kicker')!.textContent).toBe(kicker);
     expect(screen.getByTestId('terminal-unreachable').textContent).toBe(line);
     fireEvent.click(screen.getByTestId('side-star'));
@@ -163,19 +165,69 @@ test('a far robot\'s island and held message take no change on the Mac\'s copy a
   expect(told()).toBeUndefined();
 });
 
+test('while a move of the home stands, a robot\'s card takes no change, its fields saying why in their tip and its buttons at each press, and one that did not take hold holds nothing', async () => {
+  const f = store.getState().fleet;
+  act(() => {
+    store.getState().setFleet({ ...f, machines: { ...f.machines, [GPU]: { name: 'gpu-box', reachable: true, since: 0 } } });
+    store.getState().setHomeMove({ id: 'hm_0123456789', to: GPU, name: 'gpu-box', asks: true } as never);
+  });
+  const { unmount } = render(<SideCard id="c0" />);
+  await act(async () => {});
+  const why = 'c0 takes no changes until the move to gpu-box ends.';
+  // its fields read-only, saying why in their tip, with no toast at a try
+  for (const t of ['side-note', 'side-instructions']) expect([box(t).readOnly, box(t).dataset.tip]).toEqual([true, why]);
+  fireEvent.keyDown(box('side-note'), { key: 'a' });
+  expect(told()).toBeUndefined();
+  expect(screen.queryByTestId('context-ref')).toBeNull();
+  for (const t of ['side-close', `side-move-${GPU}`]) {
+    expect(screen.getByTestId(t).getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(screen.getByTestId(t));
+    expect(told()).toBe(why);
+  }
+  expect([store.getState().closingRobot, store.getState().moveSheet]).toEqual([undefined, undefined]);
+  unmount();
+  act(() => store.getState().setHomeMove({ id: 'hm_0123456789', to: GPU, name: 'gpu-box', asks: false, unmarked: true } as never));
+  render(<SideCard id="c0" />);
+  await act(async () => {});
+  expect(box('side-note').readOnly).toBe(false);
+});
+
+test('a read-only field Tab lands on takes the focus, and says why to a screen reader and in its tip', async () => {
+  act(() => store.getState().setVia(COPY));
+  render(<><SideCard id="c0" /><Tips /></>);
+  await act(async () => {});
+  fireEvent.keyDown(document.body, { key: 'Tab' });
+  act(() => box('side-note').focus());
+  expect(document.activeElement).toBe(box('side-note'));
+  expect(document.getElementById(box('side-note').getAttribute('aria-describedby')!)?.textContent).toBe(WHY);
+  expect(screen.getByTestId('tip').textContent).toBe(WHY);
+});
+
+test('a far robot with no context on the Mac\'s copy says so in its open section, where one this Mac can change offers the field', async () => {
+  const f = store.getState().fleet;
+  act(() => { store.getState().setFleet({ ...f, robots: { ...f.robots, c0: { ...f.robots.c0, context: [] }, c1: { ...f.robots.c1, context: [] } } }); store.getState().setVia(COPY); });
+  const { unmount } = render(<SideCard id="c0" />);
+  await act(async () => {});
+  // the one line stands where the pills would, at the gap content keeps under every head
+  expect(screen.getByTestId('side-context-empty').textContent).toBe('nothing listed');
+  expect(screen.getByTestId('side-context-empty').parentElement!.children).toHaveLength(1);
+  expect(screen.queryByTestId('context-ref')).toBeNull();
+  unmount();
+  render(<SideCard id="c1" />);
+  await act(async () => {});
+  expect(screen.queryByTestId('side-context-empty')).toBeNull();
+  expect(screen.getByTestId('context-ref')).toBeTruthy();
+});
+
 test('the far robot\'s own field on the shelf is read-only and says why, and a Mac robot\'s is not', () => {
   act(() => store.getState().setVia(COPY));
   act(() => store.getState().showResourceField({ tier: 'robot', id: 'c0', field: 'note' }));
   const { unmount } = render(<EditorPane onClose={() => {}} />);
-  expect(box('resources-field').readOnly).toBe(true);
-  fireEvent.click(box('resources-field'));
-  expect(told()).toBe(WHY);
+  expect([box('resources-field').readOnly, box('resources-field').dataset.tip]).toEqual([true, WHY]);
   unmount();
   act(() => store.getState().showResourceField({ tier: 'robot', id: 'c1', field: 'note' }));
   render(<EditorPane onClose={() => {}} />);
-  expect(box('resources-field').readOnly).toBe(false);
-  fireEvent.click(box('resources-field'));
-  expect(told()).toBeUndefined();
+  expect([box('resources-field').readOnly, box('resources-field').dataset.tip]).toEqual([false, undefined]);
 });
 
 const drag = (testid: string): boolean => fireEvent.dragStart(screen.getByTestId(testid), { dataTransfer: { setData() {}, effectAllowed: '' } });
@@ -216,6 +268,16 @@ test('a far robot\'s menu rows stand disabled and say why as a tip', () => {
   act(() => store.getState().setVia(FOLLOWING));
   robotMenu(press, 'c0', () => {});
   expect(items()).toEqual(ALLOWED);
+});
+
+test('a robot whose machine does not answer reads not reachable on its board card and its hover card, as the machine does', () => {
+  act(() => store.setState({ view: 'board' }));
+  act(() => store.getState().setVia(COPY));
+  render(<><Board /><HoverCard c={store.getState().fleet.robots.c0} x={0} y={0} flip={false} /></>);
+  expect(screen.getByTestId('kc-c0').querySelector('.kc-st')!.textContent).toBe('not reachable');
+  expect(screen.getByTestId('hover-card').querySelector('.hst')!.textContent).toBe('not reachable');
+  // one on this Mac says its own status
+  expect(screen.getByTestId('kc-c1').querySelector('.kc-st')!.textContent).not.toBe('not reachable');
 });
 
 const pointer = (type: string, x: number) => new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: x });

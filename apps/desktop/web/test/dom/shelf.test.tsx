@@ -316,7 +316,7 @@ describe('a file of the shelf by the machine it is on', () => {
     await shelf(ROOT, '/home/linus/.claude');
     await open();
     expect(finder()).toBeNull();
-    expect(screen.getByTestId('resources-on').textContent).toBe('on studioTerminal there');
+    expect(screen.getByTestId('resources-on').textContent).toBe('on studioOpen terminal');
     fireEvent.click(screen.getByTestId('resources-terminal-there'));
     expect(store.getState().hostMachine).toBe('studio');
     expect(store.getState().hostTerminal).toEqual({ run: "cd '/home/linus/.claude'" });

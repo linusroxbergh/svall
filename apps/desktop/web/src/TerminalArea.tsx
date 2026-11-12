@@ -4,7 +4,10 @@ import { openSecondTerminal, retryMove, reviveRobot, startFresh } from './action
 import { app, deps } from './boot.js';
 import { rectOf } from './bridge.js';
 import { useApp } from './hooks.js';
+import { splitRaw } from './host.js';
+import { Away } from './OnMachine.js';
 import { awayLine, destinationName } from './placement.js';
+import { Said } from './Said.js';
 import { isVeiled, resumeErrorOf } from './selectors.js';
 import { secondKey } from './terminals.js';
 
@@ -92,7 +95,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
     return (
       <div className="revive" data-testid="terminal-moving">
         <span>moving to {movingTo}…</span>
-        {c.moving?.error && <span data-testid="move-error">{c.moving.error}</span>}
+        {c.moving?.error && <div data-testid="move-error"><Said {...splitRaw(c.moving.error)} /></div>}
         {c.moving?.error && <button data-testid="move-retry" onClick={() => void retryMove(deps(), c.moving!.id)}>Retry</button>}
       </div>
     );
@@ -100,7 +103,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   if (unreachable) {
     return (
       <div className="revive away">
-        <span data-testid="terminal-unreachable">{unreachable}</span>
+        <Away id={id} line={unreachable} testid="terminal-unreachable" />
         {lastScreen && <pre ref={screenRef} tabIndex={0} aria-label="Last screen the worker sent" data-testid="terminal-last-screen">{lastScreen}</pre>}
       </div>
     );
@@ -120,7 +123,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
       const old = failed ? (second ? c.second : c)?.agent : undefined;
       return (
         <div className="revive">
-          {failed && <span data-testid="resume-error">{failed}</span>}
+          {failed && <div data-testid="resume-error"><Said {...splitRaw(failed)} /></div>}
           {old && asked ? (
             <>
               <span data-testid="fresh-ask">Start a new {AGENT_LABEL[old.kind]} session here from a summary of {old.sessionId}? The old session stays where it is.</span>

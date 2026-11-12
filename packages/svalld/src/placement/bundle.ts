@@ -206,7 +206,7 @@ async function createdBy(patch: string, root: string, git: GitRunner): Promise<s
   return written.filter((p) => !indexed.has(p));
 }
 
-export const branchAhead = (machine: string, name: string) => ({ reason: `${machine} has a branch ${name} with commits this one lacks`, action: 'merge or rename it there first' });
+export const branchAhead = (machine: string, name: string) => ({ reason: `${machine} has a branch ${name} with commits this one lacks`, action: 'Merge or rename it there first' });
 
 /** Whether `sha`, the tip of a branch the move would reset, is `head` or behind it, as only then does the move lose nothing of it. */
 export const holdsWhole = async (sha: string, head: string, root: string, git: GitRunner): Promise<boolean> =>
@@ -220,7 +220,7 @@ export async function applyBundle(root: string, dir: string, manifest: BundleMan
   const held = (await git(['rev-parse', '--verify', '-q', `refs/heads/${manifest.branch}^{commit}`], root)).stdout.trim();
   if (held && held !== o.keep && !await holdsWhole(held, manifest.base, root, git)) {
     const f = branchAhead(o.machine ?? 'this machine', manifest.branch);
-    throw new ApiError('refused', `${f.reason}; ${f.action}`, { refusal: { ...f, details: [] } });
+    throw new ApiError('refused', `${f.reason}; ${f.action[0].toLowerCase()}${f.action.slice(1)}`, { refusal: { ...f, details: [] } });
   }
   await must(git, ['checkout', '-q', '--no-recurse-submodules', '-B', manifest.branch, manifest.base], root);
   if (fs.statSync(at(STAGED)).size) await must(git, ['apply', '--index', '--whitespace=nowarn', at(STAGED)], root);

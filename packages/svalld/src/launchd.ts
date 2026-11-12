@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { AGENTS, AGENT_KINDS, isExecutable, onPath } from './agents.js';
 import { codexPaths } from './codex/install.js';
 import { claudePaths, realPath, resolvePaths } from './paths.js';
-import { BUNDLE_ID } from './profile.js';
+import { BUNDLE_ID, LAUNCHD_LABEL, restarted } from './profile.js';
 import type { Runtime } from './runtime.js';
 
 const exec = promisify(execFile);
@@ -122,7 +122,7 @@ export async function kickstart(labels: string[]): Promise<string[]> {
   const done: string[] = [];
   for (const label of labels) {
     await exec('launchctl', ['kickstart', '-k', `gui/${os.userInfo().uid}/${label}`]);
-    done.push(`restarted ${label}`);
+    done.push(restarted(label.startsWith(`${LAUNCHD_LABEL}.`) ? label.slice(LAUNCHD_LABEL.length + 1) : undefined));
   }
   return done;
 }

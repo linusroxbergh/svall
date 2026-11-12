@@ -367,7 +367,7 @@ describe('robot move to a machine', () => {
     sessionBytes: 4_200_000, branch: 'kanban-board', commits: 2, changedFiles: 2, untrackedFiles: 1, clone: 'clone', credentialFiles: ['.env'], stays: ['.env stays here'],
     interrupts: false, question: false, notInRepo: false,
   };
-  const refusal: Refusal = { reason: 'linus-vault is not reachable', action: 'try again when it is awake', details: ['kanban is working; interrupt it now'] };
+  const refusal: Refusal = { reason: 'linus-vault is not reachable', action: 'Try again when it is awake', details: ['kanban is working; interrupt it now'] };
 
   const HOME = '0f1e2d3c-4b5a-4697-8877-665544332211';
   function daemon(o: { check?: unknown; moveTo?: () => unknown; robots?: Record<string, Robot>; answers?: string; setup?: SetupRow[] | Error } = {}) {
@@ -412,10 +412,10 @@ describe('robot move to a machine', () => {
     expect(process.exitCode).toBeFalsy();
 
     const refused = daemon({ check: { ok: false, refusal } });
-    expect(await run(refused, ['kanban', '--machine', VAULT])).toEqual({ out: '', err: 'refused: linus-vault is not reachable\n  → try again when it is awake\n' });
-    const two = daemon({ check: { ok: false, refusal: { ...refusal, more: [{ reason: 'kanban is on a detached HEAD', action: 'check out a branch first' }] } } });
+    expect(await run(refused, ['kanban', '--machine', VAULT])).toEqual({ out: '', err: 'refused: linus-vault is not reachable\n  → Try again when it is awake\n' });
+    const two = daemon({ check: { ok: false, refusal: { ...refusal, more: [{ reason: 'kanban is on a detached HEAD', action: 'Check out a branch first' }] } } });
     expect((await run(two, ['kanban', '--machine', VAULT])).err)
-      .toBe('refused: linus-vault is not reachable\n  → try again when it is awake\nand: kanban is on a detached HEAD\n  → check out a branch first\n');
+      .toBe('refused: linus-vault is not reachable\n  → Try again when it is awake\nand: kanban is on a detached HEAD\n  → Check out a branch first\n');
     expect(refused.calls.map(([m]) => m)).toEqual(['robot.moveCheck']);
     expect(process.exitCode).toBe(2);
   });
@@ -458,8 +458,8 @@ describe('robot move to a machine', () => {
   });
 
   it('says a refusal the move itself answers as the checks do, and gives either as one JSON object with --json', async () => {
-    const late = () => { throw new ApiError('refused', 'kanban is working; interrupt it now', { refusal: { reason: 'kanban is working', action: 'interrupt it now', details: [] } }); };
-    expect((await run(daemon({ moveTo: late }), ['c_1', '--machine', 'linus-vault'])).err).toBe('refused: kanban is working\n  → interrupt it now\n');
+    const late = () => { throw new ApiError('refused', 'kanban is working; interrupt it now', { refusal: { reason: 'kanban is working', action: 'Interrupt it now', details: [] } }); };
+    expect((await run(daemon({ moveTo: late }), ['c_1', '--machine', 'linus-vault'])).err).toBe('refused: kanban is working\n  → Interrupt it now\n');
     expect(process.exitCode).toBe(2);
     process.exitCode = 0;
 
@@ -492,8 +492,8 @@ describe('robot move to a machine', () => {
     expect(out.split('\n')[0]).toBe("branch kanban · svall on linus-vault: cloned already · it leaves svall's main checkout for a new branch kanban; the checkout keeps its 2 changed files");
     expect(d.calls).toEqual([['robot.moveCheck', { id: 'c_1', machine: VAULT, ownWorktree: true }], ['robot.moveTo', { id: 'c_1', machine: VAULT, ownWorktree: true }]]);
 
-    const shared = daemon({ check: { ok: false, refusal: { reason: "two robots share svall's main checkout", action: WORKTREE_ACTION, details: [] } } });
-    expect((await run(shared, ['c_1', '--machine', 'linus-vault'])).err).toBe("refused: two robots share svall's main checkout\n  → give it its own worktree (--own-worktree)\n");
+    const shared = daemon({ check: { ok: false, refusal: { reason: "Two robots share svall's main checkout", action: WORKTREE_ACTION, details: [] } } });
+    expect((await run(shared, ['c_1', '--machine', 'linus-vault'])).err).toBe("refused: Two robots share svall's main checkout\n  → Give it its own worktree (--own-worktree)\n");
     expect(process.exitCode).toBe(2);
   });
 

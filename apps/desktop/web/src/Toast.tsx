@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
+import { copyText } from './bridge.js';
 import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
+import { splitRaw, withoutTokens } from './host.js';
 import { refocusSurface } from './keyboard.js';
+import { Fix } from './Said.js';
 import { theme } from './theme.js';
 
 const CORNERS = ['bottom-left', 'bottom-right', 'top-left', 'top-right'] as const;
@@ -25,7 +28,8 @@ export function Toast({ corner = 'bottom-left' }: { corner?: Corner }) {
   const live = useApp((s) => s.toast);
   // a cleared toast stays on the page while it sinks away, its hole in the surfaces given back at once
   const [last, setLast] = useState(live);
-  if (live && live !== last) setLast(live);
+  const [copied, setCopied] = useState(false);
+  if (live && live !== last) { setLast(live); setCopied(false); }
   useEffect(() => {
     if (live) return;
     const t = setTimeout(() => setLast(undefined), theme.toastLeaveMs);
@@ -42,9 +46,14 @@ export function Toast({ corner = 'bottom-left' }: { corner?: Corner }) {
   const waiting = over && live?.tone === 'error';
   useEffect(() => {
     if (!live || waiting) return;
-    const t = setTimeout(() => app.store.getState().clearToast(), live.tone === 'error' ? theme.toastErrorMs : live.action ? theme.toastActionMs : theme.toastMs);
+    const t = setTimeout(() => app.store.getState().clearToast(), live.tone === 'error' ? theme.toastErrorMs : live.action || live.tone === 'info' ? theme.toastActionMs : theme.toastMs);
     return () => clearTimeout(t);
   }, [live, waiting]);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
   // a press on an error takes the keys off any terminal under it; they go back as it leaves, unless they have moved on
   const pressed = useRef(false);
   useEffect(() => {
@@ -54,11 +63,14 @@ export function Toast({ corner = 'bottom-left' }: { corner?: Corner }) {
     if (document.hasFocus() && (!at || at === document.body || ref.current?.contains(at))) refocusSurface(app);
   }, [live]);
   if (!toast) return null;
+  // an error shows its sentence and what to do; what a tool said, as the daemon sent it or after the sentence, is copied, not shown
+  const { line, raw } = toast.tone !== 'error' ? { line: toast.text, raw: undefined } : toast.raw ? { line: withoutTokens(toast.text), raw: withoutTokens(toast.raw) } : splitRaw(toast.text);
   return (
     <div ref={ref} className="toast" data-testid="toast" data-tone={toast.tone} data-corner={corner} data-leaving={!live || undefined}
       onPointerEnter={() => setOver(true)} onPointerLeave={() => setOver(false)} onPointerDown={() => { setOver(true); pressed.current = toast.tone === 'error'; }}>
-      <span className="toast-text" data-testid="toast-text">{toast.text}</span>
+      <span className="toast-text" data-testid="toast-text">{line}{toast.fix && <span className="toast-fix" data-testid="toast-fix"><Fix fix={toast.fix} run={toast.run} /></span>}</span>
       {toast.action && <button className="toast-act" data-testid="toast-action" onClick={() => { pressed.current = false; app.store.getState().runToastAction(); }}>{toast.action.label}</button>}
+      {raw && <button className="toast-act" data-testid="toast-copy" onClick={() => { copyText(app.bridge, raw); setCopied(true); }}>{copied ? 'Copied' : 'Copy details'}</button>}
       {(toast.dismiss || toast.tone === 'error') && <button className="toast-act toast-dismiss" data-testid="toast-dismiss" onClick={() => app.store.getState().clearToast()}>Dismiss</button>}
     </div>
   );

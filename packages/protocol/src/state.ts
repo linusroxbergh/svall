@@ -41,6 +41,8 @@ export type AgentKind = z.infer<typeof AgentKind>;
 export const AGENT_LABEL: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 /** Each agent CLI's own update to its latest release, however it was installed; it runs unattended. */
 export const AGENT_UPDATE: Record<AgentKind, string> = { claude: 'claude update', codex: 'codex update', opencode: 'opencode upgrade' };
+/** What logs each agent in, in a terminal. */
+export const AGENT_LOGIN: Record<AgentKind, string> = { claude: 'claude auth login', codex: 'codex login', opencode: 'opencode auth login' };
 /** The agents `run` updates, as their updates joined by &&; none for any other command. */
 export function updatesIn(run: string): AgentKind[] | undefined {
   const kinds = run.split(' && ').map((c) => AgentKind.options.find((k) => AGENT_UPDATE[k] === c));
@@ -272,8 +274,9 @@ export const FleetState = z.object({
   placingOff: z.literal(true).optional(),
   // a fleet's passes place no robot until the user turns placing on or off
   placingAsk: z.literal(true).optional(),
-  // the last automatic or swept pass that failed, cleared by the next one that succeeds
-  scribeError: z.object({ message: z.string(), at: z.number() }).optional(),
+  // the last automatic or swept pass that failed, cleared by the next one that succeeds; `machine`: the worker a robot's pass
+  // ran on and failed on, none for the home's own
+  scribeError: z.object({ message: z.string(), at: z.number(), machine: MachineId.optional() }).optional(),
   // no robot is told to work in a worktree
   worktreesOff: z.literal(true).optional(),
   // an agent idle this many hours is ended and its robot left dormant, to be resumed on revive;

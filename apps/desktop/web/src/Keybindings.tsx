@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react';
 import { app } from './boot.js';
 import { useApp } from './hooks.js';
 import { Close, Reset } from './icons.js';
+import { Group } from './Info.js';
 import { ACTIONS, actionIds, chordFor, chordLabel, chordOf, chordsOf, holderOf, resolve, type ActionId, type Bindings, type Chord } from './keys.js';
 
 // a chord the user picked that something else already answers, held until they say to take it
 type Ask = { id: ActionId; chord: Chord; from?: ActionId; ghostty?: string };
 
 const write = (bindings: Bindings) => app.store.getState().setSettings({ bindings });
+// a row's label in the window's lowercase voice; a name, as Svall in Quit Svall, keeps its capital
+const rowLabel = (label: string): string => label[0].toLowerCase() + label.slice(1);
 
 export function Keybindings() {
   const bindings = useApp((s) => s.settings.bindings);
@@ -69,54 +72,52 @@ export function Keybindings() {
 
   const bound = resolve(bindings);
   return (
-    <>
-      <div className="rows">
-        {actionIds().map((id) => {
-          const chord = chordFor(id, bindings);
-          const shipped = ACTIONS[id].chord;
-          // declined on this machine's first launch, or cleared by hand, while the user's own Ghostty answers it
-          const held = chord === null ? chordsOf(id).map((c) => theirs[c]).find(Boolean) : undefined;
-          return (
-            <div key={id}>
-              <div className="row">
-                <span>{ACTIONS[id].label}</span>
+    <Group name="Shortcuts">
+      {actionIds().map((id) => {
+        const chord = chordFor(id, bindings);
+        const shipped = ACTIONS[id].chord;
+        // declined on this machine's first launch, or cleared by hand, while the user's own Ghostty answers it
+        const held = chord === null ? chordsOf(id).map((c) => theirs[c]).find(Boolean) : undefined;
+        return (
+          <div key={id}>
+            <div className="row">
+              <span>{rowLabel(ACTIONS[id].label)}</span>
+              <b className="set-keys">
+                <button className="key-chord" data-testid={`key-${id}`} data-listening={capturing === id}
+                  aria-label={capturing === id ? `Press a key for ${ACTIONS[id].label}` : `Change the key for ${ACTIONS[id].label}, now ${chordLabel(chord)}`}
+                  onClick={() => listen(capturing === id ? undefined : id)}>
+                  {capturing === id ? 'press a key' : chordLabel(chord)}
+                </button>
+                {chord && <button className="ib filled" data-testid={`key-clear-${id}`} data-tip="No key" aria-label={`Unbind ${ACTIONS[id].label}`}
+                  onClick={() => put(id, null)}><Close size="xs" /></button>}
+                {id in bindings && <button className="ib filled" data-testid={`key-reset-${id}`} data-tip={`Back to ${chordLabel(shipped)}`}
+                  aria-label={`Reset ${ACTIONS[id].label}`} onClick={() => reset(id)}><Reset size="xs" /></button>}
+              </b>
+            </div>
+            {ask?.id === id && (
+              <div className="row key-ask" role="alert" data-testid={`key-ask-${id}`}>
+                <span>{chordLabel(ask.chord)} {ask.from ? `is taken by ${ACTIONS[ask.from].label}` : `is taken by your Ghostty config (${ask.ghostty})`}</span>
                 <b className="set-keys">
-                  <button className="key-chord" data-testid={`key-${id}`} data-listening={capturing === id}
-                    aria-label={capturing === id ? `Press a key for ${ACTIONS[id].label}` : `Change the key for ${ACTIONS[id].label}, now ${chordLabel(chord)}`}
-                    onClick={() => listen(capturing === id ? undefined : id)}>
-                    {capturing === id ? 'press a key' : chordLabel(chord)}
-                  </button>
-                  {chord && <button className="ib filled" data-testid={`key-clear-${id}`} data-tip="No key" aria-label={`Unbind ${ACTIONS[id].label}`}
-                    onClick={() => put(id, null)}><Close size="xs" /></button>}
-                  {id in bindings && <button className="ib filled" data-testid={`key-reset-${id}`} data-tip={`Back to ${chordLabel(shipped)}`}
-                    aria-label={`Reset ${ACTIONS[id].label}`} onClick={() => reset(id)}><Reset size="xs" /></button>}
+                  <button className="btn sm" data-testid={`key-take-${id}`} onClick={() => put(id, ask.chord, ask.from)}>Override</button>
+                  <button className="btn sm" onClick={() => setAsk(undefined)}>Cancel</button>
                 </b>
               </div>
-              {ask?.id === id && (
-                <div className="row key-ask" role="alert" data-testid={`key-ask-${id}`}>
-                  <span>{chordLabel(ask.chord)} {ask.from ? `is taken by ${ACTIONS[ask.from].label}` : `is taken by your Ghostty config (${ask.ghostty})`}</span>
-                  <b className="set-keys">
-                    <button className="btn sm" data-testid={`key-take-${id}`} onClick={() => put(id, ask.chord, ask.from)}>Override</button>
-                    <button className="btn sm" onClick={() => setAsk(undefined)}>Cancel</button>
-                  </b>
-                </div>
-              )}
-              {held && ask?.id !== id && (
-                <div className="row key-ask" role="alert" data-testid={`key-held-${id}`}>
-                  <span>{chordLabel(shipped)} is taken by your Ghostty config ({held})</span>
-                  <b className="set-keys">
-                    <button className="btn sm" data-testid={`key-claim-${id}`} onClick={() => claim(id, shipped)}>Take it</button>
-                  </b>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div className="desc">
+            )}
+            {held && ask?.id !== id && (
+              <div className="row key-ask" role="alert" data-testid={`key-held-${id}`}>
+                <span>{chordLabel(shipped)} is taken by your Ghostty config ({held})</span>
+                <b className="set-keys">
+                  <button className="btn sm" data-testid={`key-claim-${id}`} onClick={() => claim(id, shipped)}>Take it</button>
+                </b>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div className="set-note">
         {app.bridge.present && 'These keys are this Mac\'s, in every fleet. '}Unlisted ⌘ chords go to the terminal.
         {Object.keys(theirs).length > 0 && ` ${Object.keys(theirs).filter((c) => !bound[c]).length} of your Ghostty chords stay with Ghostty.`}
       </div>
-    </>
+    </Group>
   );
 }

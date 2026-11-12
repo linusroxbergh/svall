@@ -105,7 +105,7 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
       // a second Cmd+W answers the dialog the first one opened
       if (s.closingRobot) {
         store.getState().setClosingRobot(undefined);
-        await closeRobot(ctx, s.closingRobot).catch((e: Error) => store.getState().showToast(e.message));
+        await closeRobot(ctx, s.closingRobot).catch((e: Error) => store.getState().showToast(e));
         return;
       }
       if (s.card) { store.getState().closeCard(); return; }

@@ -117,7 +117,7 @@ describe('a worker of this fleet now', () => {
     fs.writeFileSync(resolvePaths(fleet).workerFile, '{ not json');
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out.stopped).toBe('name');
-    expect(step('name').at(-1)).toMatchObject({ detail: expect.stringContaining('this machine cannot tell whether it holds this fleet'), action: `fix ${resolvePaths(fleet).workerFile}` });
+    expect(step('name').at(-1)).toMatchObject({ detail: expect.stringMatching(/^this (Mac|machine) cannot tell whether it holds this fleet$/), action: `fix ${resolvePaths(fleet).workerFile}`, raw: expect.any(String) });
   });
 
   it('knows a worker of its fleet by the id its worker.json names, whatever its own fleet.json says', async () => {

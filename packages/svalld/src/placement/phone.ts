@@ -4,7 +4,7 @@ import { writeDurable } from '../durable.js';
 import { readJsonOrQuarantine } from '../jsonfile.js';
 import type { WorkerLink } from '../link/home.js';
 import type { Logger } from '../log.js';
-import { homeWord } from '../machine.js';
+import { homeWord, machineWord } from '../machine.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { Vapid } from '../push/vapid.js';
@@ -15,9 +15,6 @@ import { fieldKey, readConsent } from './mirror-consent.js';
 /** The consent item that lets a worker serve the phone, which carries this Mac's push keys and devices there. */
 export const PHONE_ITEM = 'phone';
 const PHONE_FIELD = 'on';
-
-// tailscale refuses serve to a user it was not told to take it from
-const NOT_OPERATOR = /access denied|--operator/i;
 
 const Entry = z.object({ url: z.string(), pass: z.string() });
 // `off`: this Mac's own phone link was last turned off, which turns every worker's off
@@ -30,8 +27,8 @@ type Held = z.infer<typeof Held>;
  */
 export class PhoneFallbacks {
   private held: Held;
-  // why a worker last did not serve
-  private failed = new Map<MachineId, string>();
+  // why a worker last did not serve, which names the worker by its id
+  private failed = new Map<MachineId, PhoneAnswer>();
   // each worker's last sync, which its next one waits for
   private chains = new Map<MachineId, Promise<unknown>>();
 
@@ -96,20 +93,21 @@ export class PhoneFallbacks {
     return this.failed.has(machine) ? this.sync(machine) : Promise.resolve();
   }
 
-  /** The setup row of `machine`'s phone link, with the consent it toggles. */
+  /** The setup row of `machine`'s phone link, with the consent it toggles, in the caller's names. */
   row(machine: MachineId): SetupRow {
-    const name = this.name(machine);
+    const name = machineWord(machine, this.name(machine));
     const home = homeWord();
     const tick = { item: PHONE_ITEM, fields: [PHONE_FIELD], on: this.consented(machine), preview: [] };
     const held = this.held.workers[machine];
     const why = this.failed.get(machine);
-    if (!tick.on) return { key: PHONE_ITEM, status: 'skip', detail: `off: the phone reaches ${name}'s robots only through ${home}; ticked, ${name} serves them while ${home} is off, with ${home}'s push keys`, tick };
-    if (held) return { key: PHONE_ITEM, status: 'ok', detail: `the phone reaches ${name}'s robots at ${held.url} while ${home} is off`, tick };
-    if (why === undefined) return { key: PHONE_ITEM, status: 'skip', detail: `ticked; ${name} serves the phone once ${home}'s phone link is on and ${name} is linked`, tick };
+    if (!tick.on) return { key: PHONE_ITEM, status: 'skip', detail: 'off', action: `On, ${name} serves its robots to the phone while ${home} is off`, tick };
+    if (held) return { key: PHONE_ITEM, status: 'ok', detail: `on · ${held.url}`, tick };
+    if (why === undefined) return { key: PHONE_ITEM, status: 'skip', detail: `on, waiting for ${home}'s phone link`, tick };
+    const named = (text?: string): string | undefined => text?.split(machine).join(name).replace(/^this /, 'This ');
     // no gap: the phone is no part of the agent setup that will not work there
     return {
-      key: PHONE_ITEM, status: 'warn', detail: `${name} does not serve the phone: ${why}`, tick,
-      action: NOT_OPERATOR.test(why) ? 'sudo tailscale set --operator=$USER' : `check ${name} again`,
+      key: PHONE_ITEM, status: 'warn', detail: 'on, not serving', tick,
+      action: named(why.fix ? `${why.error}. ${why.fix}` : why.error), ...(why.run && { run: why.run }), ...(why.raw && { raw: why.raw }),
     };
   }
 
@@ -133,21 +131,21 @@ export class PhoneFallbacks {
     if (status.error || !status.serving || !linked) return;
     const set: PhoneSet = {
       on: true, logins: this.o.mobile.logins(), origin: new URL(status.url).origin, vapid: this.o.vapid, subscriptions: this.o.push.list(),
-      ...(this.o.contact && { contact: this.o.contact }),
+      ...(this.o.contact && { contact: this.o.contact }), word: machine,
     };
     let answer: PhoneAnswer;
     try {
       answer = PhoneAnswer.parse(await link.call('phone.set', set));
     } catch (e) {
       if (!(e instanceof ApiError && e.code === 'unknown_method')) throw e;
-      answer = { error: 'it runs a release that cannot serve the phone; upgrade it' };
+      answer = { error: `${machine} runs a release that cannot serve the phone`, fix: `Upgrade ${machine}` };
     }
     if (answer.url && answer.pass) {
       this.failed.delete(machine);
       this.keep(machine, { url: answer.url, pass: answer.pass });
       return;
     }
-    this.failed.set(machine, answer.error ?? 'it did not say why');
+    this.failed.set(machine, { ...answer, error: answer.error ?? `${machine} did not say why it does not serve` });
     if (!answer.unseen) this.drop(machine);
   }
 

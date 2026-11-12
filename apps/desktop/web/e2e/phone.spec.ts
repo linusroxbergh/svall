@@ -7,7 +7,8 @@ import { SETTINGS_KEY } from '../src/store/index.js';
 import { fleet } from '../test/fixtures.js';
 
 const SERVING: MobileStatus = { serving: true, url: 'https://mac.tailnet.ts.net:8443/', port: 8443, logins: [], phones: [] };
-const hhmm = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
+// a time as the page says one, in the page's own locale
+const hhmm = (page: Page, ms: number) => page.evaluate((t) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }), ms);
 
 // the phone link needs a tailnet, which no test machine is promised, so the daemon behind these is a stand-in
 async function fakeDaemon() {
@@ -61,7 +62,7 @@ test('the phone panel says who is on the page, and hears them arrive and leave',
 
     const since = Date.now() - 3_600_000;
     fake.tell([{ login: 'me@example.com', since }]);
-    await expect(here).toHaveText(`me@example.com since ${hhmm(since)}`);
+    await expect(here).toHaveText(`me@example.com connected since ${await hhmm(page, since)}`);
     await expect(here).toHaveAttribute('data-live', 'true');
 
     fake.tell([]);
@@ -113,13 +114,48 @@ test('the tab stands while the fleet is not served, and the switch in it turns t
   }
 });
 
-test('the dock omits Phone when no link can be made on this machine', async ({ page }) => {
+test('a long address stays on one line, whole on the pointer, and the panel lists the steps to the Home Screen icon', async ({ page }) => {
   const fake = await fakeDaemon();
   try {
-    fake.status = { serving: false, url: '', port: 8443, logins: [], phones: [], error: 'tailscale is not installed' };
+    const url = 'https://linuss-macbook-pro.tail1a2b3c.ts.net:8461/';
+    fake.status = { ...SERVING, url };
     await open(page, fake.port);
-    await expect(page.getByTestId('usage-tab')).toBeVisible();
-    await expect(page.getByTestId('mobile-tab')).toHaveCount(0);
+    await page.getByTestId('mobile-tab').click();
+    const link = page.getByTestId('mobile-url');
+    await expect(link).toHaveText(url);
+    await expect(link).toHaveAttribute('data-tip', `Copy ${url}`);
+    // one line of 10.5px text and its padding; a second line would add another 12px or more
+    expect((await link.boundingBox())!.height).toBeLessThan(32);
+    await expect(page.getByTestId('mobile-steps').locator('li')).toHaveCount(3);
+  } finally {
+    await fake.close();
+  }
+});
+
+test('a link that cannot start keeps Phone in the dock and its panel open, which says why in place of the off line', async ({ page }) => {
+  const fake = await fakeDaemon();
+  try {
+    fake.status = { serving: false, url: '', port: 8443, logins: [], phones: [] };
+    await open(page, fake.port);
+    await page.getByTestId('mobile-tab').click();
+    await expect(page.getByTestId('mobile-body')).toHaveText('Reach this fleet from your phone, over your tailnet only.');
+
+    fake.status = { serving: false, url: '', port: 8443, logins: [], phones: [], error: 'Tailscale on mac does not let Svall share this fleet', fix: 'Run once on mac: sudo tailscale set --operator=$USER' };
+    await page.getByTestId('mobile-switch').click();
+    await expect(page.getByTestId('mobile-problem')).toContainText('Tailscale on mac does not let Svall share this fleet');
+    await expect(page.getByTestId('mobile-problem')).toContainText('Run once on mac: sudo tailscale set --operator=$USER');
+    await expect(page.getByTestId('mobile-body')).not.toContainText('Reach this fleet');
+    // no toast over the panel that says it
+    await expect(page.getByTestId('toast')).toHaveCount(0);
+    await expect(page.getByTestId('mobile-panel')).toBeVisible();
+    await expect(page.getByTestId('mobile-tab')).toHaveAttribute('aria-expanded', 'true');
+
+    // a Mac whose tailnet is down has the tab too, and its panel says so as it opens
+    fake.status = { serving: false, url: '', port: 8443, logins: [], phones: [], error: 'Tailscale is not running on mac' };
+    await page.reload();
+    await expect(page.getByTestId('board')).toBeVisible();
+    await page.getByTestId('mobile-tab').click();
+    await expect(page.getByTestId('mobile-problem')).toHaveText('Tailscale is not running on mac');
   } finally {
     await fake.close();
   }
@@ -199,7 +235,7 @@ test('the settings carry the same answer, and the panel calls out a checkout wit
     await open(page, fake.port);
     await page.getByTestId('settings-open').click();
     await page.getByTestId('settings-tab-phone').click();
-    await expect(page.getByTestId('set-mobile-here')).toHaveText(`me@example.com since ${hhmm(since)}`);
+    await expect(page.getByTestId('set-mobile-here')).toHaveText(`me@example.com since ${await hhmm(page, since)}`);
     fake.tell([]);
     await expect(page.getByTestId('set-mobile-here')).toHaveText('nobody');
 

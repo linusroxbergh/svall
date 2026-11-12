@@ -127,15 +127,15 @@ export const tierOf = (tier: Tier) => TIERS.find((t) => t.tier === tier)!;
 
 const plural = (n: number, one: string): string => (n === 0 ? `no ${one}s` : n === 1 ? `1 ${one}` : `${n} ${one}s`);
 
-/** The second line of a source's row: what tells it from another of the same name. */
-export function qualifierOf(s: ResourceSource, f: FleetState): string {
+/** The second line of a source's row: what tells it from another of the same name; `me` is this window's machine. */
+export function qualifierOf(s: ResourceSource, f: FleetState, me?: string): string {
   if (s.tier === 'fleet') return 'this window only';
   if (s.tier === 'profiles') return 'read only by a robot given one';
   if (s.tier === 'island') return plural(s.robotIds.length, 'robot');
   if (s.tier === 'robot') { const c = f.robots[s.robotIds[0]]; return c?.repo?.branch ?? shortPath(c?.cwd ?? s.root); }
   if (s.tier === 'repo' && s.docs === s.rootId) return 'no robots here';
   const far = farRootOf(s.rootId);
-  return far ? `${shortPath(s.root)} on ${machineName(f, far.machine)}` : shortPath(s.root);
+  return far ? `${shortPath(s.root)} on ${far.machine === me ? 'this Mac' : machineName(f, far.machine)}` : shortPath(s.root);
 }
 
 type WhereGroup = { tier: Tier; count: number; sections: { id?: string; heading?: string; sources: ResourceSource[] }[] };
@@ -148,9 +148,9 @@ const inIslandOrder = (sources: ResourceSource[], f: FleetState): ResourceSource
 };
 
 /** The Where column: one group a tier, robots sub-grouped by island; a query narrows every group by name and qualifier. */
-export function whereGroups(sources: ResourceSource[], f: FleetState, query: string): WhereGroup[] {
+export function whereGroups(sources: ResourceSource[], f: FleetState, query: string, me?: string): WhereGroup[] {
   const q = query.trim().toLowerCase();
-  const hit = (s: ResourceSource) => !q || s.name.toLowerCase().includes(q) || qualifierOf(s, f).toLowerCase().includes(q);
+  const hit = (s: ResourceSource) => !q || s.name.toLowerCase().includes(q) || qualifierOf(s, f, me).toLowerCase().includes(q);
   return TIERS.map(({ tier }) => {
     const mine = sources.filter((s) => s.tier === tier && hit(s));
     const sections = tier === 'robot'

@@ -3,10 +3,10 @@ import type { SetupRow } from '@svall/protocol';
 
 /**
  * One thing a doctor checked, and what it found; `run`: a next command toward the fix, for the user to run on that machine;
- * `action`, `forward`, `tick` and `gap`: a setup row's, as its step carries them.
+ * `action`, `forward`, `tick` and `gap`: a setup row's, as its step carries them; `raw`: what a tool said, word for word.
  */
 export type Check = {
-  name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string; run?: string; action?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap'];
+  name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string; run?: string; action?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; raw?: string;
 };
 
 export const tickMark = (tick?: SetupRow['tick']): string => (tick ? (tick.on ? '[x] ' : '[ ] ') : '');
@@ -32,6 +32,13 @@ export const grouped = (checks: Check[]): { title: string; checks: Check[] }[] =
 export const useColor = (): boolean =>
   process.env.FORCE_COLOR !== undefined ? process.env.FORCE_COLOR !== '0' : !process.env.NO_COLOR && process.stdout.isTTY === true;
 
+/** Text a terminal shows dim, as what a tool said under the sentence it backs. */
+export const dim = (text: string): string => (useColor() ? styleText('dim', text, { validateStream: false }) : text);
+
+/** What a tool said of a check that failed or warned, two spaces in under its line, and nothing of one that did not. */
+export const rawLines = (c: { status: string; raw?: string }, paint: (text: string) => string = dim): string =>
+  (c.raw && (c.status === 'fail' || c.status === 'warn') ? `\n${paint(c.raw.replace(/^/gm, '  '))}` : '');
+
 export function renderGroups(groups: { title: string; checks: Check[] }[], color: boolean): string {
   const paint = (style: Parameters<typeof styleText>[0], text: string) => (color ? styleText(style, text, { validateStream: false }) : text);
   const shown = groups.filter((g) => g.checks.length);
@@ -39,6 +46,6 @@ export function renderGroups(groups: { title: string; checks: Check[] }[], color
   const bar = paint('dim', '│');
   return shown.map((g) => [
     `${paint('cyan', '◇')}  ${g.title}`,
-    ...g.checks.map((c) => `${bar}  ${paint(COLOR[c.status], MARK[c.status])} ${c.name.padEnd(width)}  ${c.detail}`),
+    ...g.checks.map((c) => `${bar}  ${paint(COLOR[c.status], MARK[c.status])} ${c.name.padEnd(width)}  ${[c.detail, c.action].filter(Boolean).join(' -> ')}${rawLines(c, (t) => paint('dim', t.replace(/^/gm, `${bar}   `)))}`),
   ].join('\n')).join(`\n${bar}\n`);
 }

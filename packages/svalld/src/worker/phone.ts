@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import { z } from 'zod';
-import { ApiError } from '@svall/protocol';
+import { ApiError, type MobileStatus } from '@svall/protocol';
 import { writeDurable } from '../durable.js';
 import { readJsonOrQuarantine } from '../jsonfile.js';
+import { homeWord, inCallerNames } from '../machine.js';
 import { watchServed, type Mobile } from '../mobile.js';
 import { Subscription } from '../push/store.js';
 import type { Vapid } from '../push/vapid.js';
@@ -13,14 +14,21 @@ const PhoneOn = z.object({
 });
 type PhoneOn = z.infer<typeof PhoneOn>;
 
-/** What the home sends a worker for its phone link: what the home's own link accepts and signs pushes with, or off. */
-export const PhoneSet = z.discriminatedUnion('on', [PhoneOn, z.object({ on: z.literal(false) })]);
+/** What the home sends a worker for its phone link: what the home's own link accepts and signs pushes with, or off; `word`
+ *  is what the worker calls itself in why it does not serve. */
+export const PhoneSet = z.discriminatedUnion('on', [PhoneOn.extend({ word: z.string().optional() }), z.object({ on: z.literal(false) })]);
 export type PhoneSet = z.infer<typeof PhoneSet>;
-/** The worker's answer: its link and pass while it serves, else why not; `unseen` when tailscale did not say whether it serves. */
-export const PhoneAnswer = z.object({ url: z.string().optional(), pass: z.string().optional(), error: z.string().optional(), unseen: z.literal(true).optional() });
+/** The worker's answer: its link and pass while it serves, else why not, with what to do, the command that does it and what a tool said; `unseen` when tailscale did not say whether it serves. */
+export const PhoneAnswer = z.object({
+  url: z.string().optional(), pass: z.string().optional(), error: z.string().optional(), fix: z.string().optional(), run: z.string().optional(), raw: z.string().optional(),
+  unseen: z.literal(true).optional(),
+});
 export type PhoneAnswer = z.infer<typeof PhoneAnswer>;
 
 type Link = Pick<Mobile, 'get' | 'set'> & { served(): string | undefined };
+
+// why a link does not serve, as its status says it
+const why = ({ error, fix, run, raw }: MobileStatus): PhoneAnswer => ({ error, fix, run, raw });
 
 /**
  * On a worker: its own phone link, which the page falls back to while the home does not answer. It serves only while the
@@ -101,18 +109,22 @@ export class WorkerPhone {
       fs.rmSync(this.o.file, { force: true });
       if (!was) return {};
       const s = await this.link.set(false);
-      return s.error ? { error: s.error } : {};
+      return s.error ? why(s) : {};
     }
-    this.write(p.data);
-    this.look();
-    const look = await this.link.get();
-    // a look tailscale does not answer leaves the link as it was last seen
-    if (look.error) {
-      const was = this.link.served();
-      return was ? { url: was, pass: this.o.pass } : { error: look.error, unseen: true };
-    }
-    const s = look.serving ? look : await this.link.set(true);
-    return s.serving ? { url: s.url, pass: this.o.pass } : { error: s.error ?? `tailscale serve did not take port ${s.port}` };
+    const { word, ...on } = p.data;
+    this.write(on);
+    return inCallerNames({ home: word }, async () => {
+      this.look();
+      const look = await this.link.get();
+      // a look tailscale does not answer leaves the link as it was last seen
+      if (look.error) {
+        const was = this.link.served();
+        return was ? { url: was, pass: this.o.pass } : { ...why(look), unseen: true };
+      }
+      const s = look.serving ? look : await this.link.set(true);
+      if (s.serving) return { url: s.url, pass: this.o.pass };
+      return s.error ? why(s) : { error: `The phone link could not start on ${homeWord()}`, raw: `tailscale serve did not take port ${s.port}` };
+    });
   }
 
   private write(p: PhoneOn): void {

@@ -75,6 +75,17 @@ describe('routing calls for placed robots', () => {
     await until(() => { if (w.worker.store.state.robots.c_1.note !== 'reviewing') throw new Error('no snapshot yet'); });
   });
 
+  it('on the worker, a call it sends on comes back in its names: the home as it calls it, and its own machine as this Mac', async () => {
+    const moving = (to: typeof W) => ({ moving: { id: 'mv_0123456789', to, phase: 'prepare' as const } });
+    const robots = { c_1: robot({ id: 'c_1', ...moving(W) }), c_2: placed({ id: 'c_2', ...moving(H) }) };
+    const w = world({ home: { robots }, worker: { robots }, names: { home: 'studio', me: W } });
+    await w.link();
+    await until(() => { if (!w.worker.connection.connected()) throw new Error('w1 is not linked yet'); });
+    const close = (id: string) => dispatch({ id: 1, method: 'robot.close', params: { id } }, w.worker.ctx);
+    expect(await close('c_1')).toMatchObject({ error: { code: 'moving', message: 'moving to this Mac' } });
+    expect(await close('c_2')).toMatchObject({ error: { code: 'moving', message: 'moving to studio' } });
+  });
+
   it('robot.seen for a placed robot is taken where it runs, and the unread it clears comes back home', async () => {
     const unread = placed({ id: 'c_1', tmux: { windowId: '@1', paneId: '%1' }, unread: true });
     const w = world({ home: { robots: { c_1: unread } }, worker: { robots: { c_1: unread } } });
@@ -118,14 +129,14 @@ describe('routing calls for placed robots', () => {
 });
 
 describe('updateAgents', () => {
-  it('runs each agent\'s own update in turn, and the first that fails says why with the last line it printed', async () => {
+  it('runs each agent\'s own update in turn, and the first that fails says so by its name, the command and the last line it printed behind', async () => {
     const ran: string[] = [];
     const ok = async (cmd: string, args: string[]) => { ran.push([cmd, ...args].join(' ')); return { code: 0, stdout: '', stderr: '' }; };
     await updateAgents(['claude', 'opencode'], ok);
     expect(ran).toEqual(['claude update', 'opencode upgrade']);
 
     const failing = async (cmd: string) => (cmd === 'claude' ? { code: 1, stdout: 'Checking for updates\n', stderr: 'fetching\nnetwork unreachable\n' } : { code: 0, stdout: '', stderr: '' });
-    await expect(updateAgents(['claude', 'codex'], failing)).rejects.toThrow('claude update exited 1: network unreachable');
+    await expect(updateAgents(['claude', 'codex'], failing)).rejects.toMatchObject({ code: 'internal', message: 'Claude Code did not update', data: { raw: 'claude update exited 1: network unreachable' } });
   });
 
   it('runs an agent\'s update once for two asks at the same time, both waiting on it', async () => {

@@ -475,7 +475,7 @@ describe('last', () => {
     put(path.join(acme, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'acme', mcpServers: './token.json' }));
     put(path.join(acme, 'token.json'), JSON.stringify({ mcpServers: { t: { command: 'node', sandbox: { token: K } } } }));
     const row = setupRows(mirrorPlan(s.home, s.consent), undefined, { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((r) => r.key.includes(':mcp:t'));
-    expect(row).toMatchObject({ status: 'skip' });
+    expect(row).toMatchObject({ status: 'skip', detail: 'not copied: Svall does not copy this file', gap: { name: 't', what: 'not copied: Svall does not copy this file' } });
     expect(row?.tick).toBeUndefined();
   });
 });

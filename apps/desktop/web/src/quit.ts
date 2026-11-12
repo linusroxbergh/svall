@@ -1,5 +1,5 @@
 import { ApiError } from '@svall/protocol';
-import type { Api } from './api.js';
+import { NOT_CONNECTED, type Api } from './api.js';
 import type { Bridge } from './bridge.js';
 import { commitFocused } from './Field.js';
 import { chordFor } from './keys.js';
@@ -30,7 +30,7 @@ export function followQuit({ store, bridge, api }: { store: AppStore; bridge: Pi
   const off = bridge.onMessage((m) => {
     if (m.type === 'quit.stop') {
       if (keptUp) { bridge.send({ type: 'quit.stopped', ok: true }); return; }
-      const stopping = api()?.call('fleet.stop', {}) ?? Promise.reject(new Error('svalld not connected'));
+      const stopping = api()?.call('fleet.stop', {}) ?? Promise.reject(new Error(NOT_CONNECTED));
       // a daemon frozen for a home move stays up, and its robots with it, for the move to end; nothing there may be killed
       void stopping.then(() => true, (e: unknown) => e instanceof ApiError && e.code === 'frozen').then((ok) => bridge.send({ type: 'quit.stopped', ok }));
       return;

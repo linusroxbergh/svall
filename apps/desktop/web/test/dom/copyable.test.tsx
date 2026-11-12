@@ -41,7 +41,6 @@ test.each([
   ['a feedback error', '<div class="fb-error" id="w">could not send</div>'],
   ['a fleet error', '<div class="fleet-error" id="w">that name is taken</div>'],
   ['a failed setup tick', '<span class="host-failed" id="w">could not write</span>'],
-  ['a failed terminal on a machine', '<span class="host-term-failed" id="w">ssh refused</span>'],
   ['a failed setup step', '<div class="host-step" data-status="fail"><span class="host-said" id="w">no tmux</span></div>'],
   ['a setup outcome', '<span class="host-verdict" id="w">Setup failed</span>'],
   ['a move refusal', '<div class="host-note" id="w">the robot is working</div>'],

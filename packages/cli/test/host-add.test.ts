@@ -8,7 +8,8 @@ import { PROTOCOL_VERSION } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
 import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
 import { hostLock } from '@svall/svalld/kernel-lock';
-import { addHost, removeHost, rollbackHost, upgradeHost } from '../src/controller/host.js';
+import { addHost, removeHost, rollbackHost, StepError, tailnetHere, upgradeHost } from '../src/controller/host.js';
+import { TailscaleDown } from '@svall/svalld/mobile';
 import { wantedCompanion } from '../src/controller/install.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { companionArchive, ephemeralSigner } from './controller/archive.js';
@@ -43,9 +44,13 @@ describe('host add', () => {
       'claude --version', 'claude auth', 'codex --version', 'codex login', 'opencode --version', 'opencode auth',
       'svall connection-info', 'svall version', 'sh -c',
     ]);
-    expect(step('versions').at(-1)).toMatchObject({ status: 'ok', detail: 'claude 2.1.278, codex 0.156.1, opencode 2.0.22, as on this Mac' });
-    expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: 'trift answers on its own private fleet, serves this fleet as a worker, and tmux opens and closes a window there' });
-    expect(step('release').at(-1)?.detail).toMatch(/^1\.2\.3 for linux-arm64 from the archive you named \(signed\)$/);
+    expect(step('versions').at(-1)).toMatchObject({ status: 'ok', detail: 'Claude Code 2.1.278, Codex 0.156.1, OpenCode 2.0.22, same as this Mac' });
+    expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: 'answers', raw: 'trift answers on its own private fleet, serves this fleet as a worker, and tmux opens and closes a window there' });
+    expect(step('release').at(-1)).toMatchObject({ detail: '1.2.3', raw: '1.2.3 for linux-arm64 from the archive you named (signed)' });
+    // a row says how a thing stands, its name what the thing is
+    expect(events.filter((e) => e.status === 'ok' && !e.step.startsWith('mirror:')).map((e) => [e.step, e.detail])).toEqual(expect.arrayContaining([
+      ['ssh', 'logs in'], ['master', 'connected'], ['tools', 'all there'], ['upload', 'done'], ['install', '1.2.3 installed'], ['identity', '1.2.3'], ['registry', 'listed'],
+    ]));
   });
 
   it('host add enrols the machine as a worker: worker.json written there, the fleet unit restarted with --worker, no gateway unit', async () => {
@@ -63,7 +68,7 @@ describe('host add', () => {
     expect(ssh.remoteCalls().find((w) => w.includes('enroll'))).toEqual([SVALL, 'worker', 'enroll', '--home-machine', MAC, '--home-name', mac, '--fleet-id', FLEET, '--home-platform', registry.localMachine().platform]);
     // worker.json there takes, on its stdin, the token this fleet's daemon opens the link with
     expect(fs.readFileSync(input, 'utf8')).toBe(tokenFor(resolvePaths(fleet), REMOTE));
-    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'ok', detail: 'trift serves this fleet as a worker of this Mac; systemctl --user restart svall-svalld@private.service' });
+    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'ok', detail: 'joined this fleet', raw: 'trift serves this fleet as a worker of this Mac; systemctl --user restart svall-svalld@private.service' });
     expect(ssh.remoteCalls().some((w) => w.includes('gateway'))).toBe(false);
     // this fleet's daemon links it without waiting for its next start
     expect(refreshed).toBe(1);
@@ -91,7 +96,7 @@ describe('host add', () => {
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
     await d.close();
     expect(out).toEqual({ result: 'ready', actions: [] });
-    expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: expect.stringContaining('as its home') });
+    expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: 'answers', raw: expect.stringContaining('as its home') });
     const said = events.filter((e) => e.status !== 'start').map((e) => e.step);
     expect(said).not.toContain('enrol');
     expect(said.some((step) => step.startsWith('mirror:'))).toBe(false);
@@ -121,8 +126,8 @@ describe('host add', () => {
 
   it('fails the probe on a fleet there that does not run as a worker, or a tmux that cannot open a window, and registers nothing', async () => {
     for (const [match, reply, said] of [
-      [['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) }, 'trift does not serve this fleet as a worker'],
-      [['svall-tmux'], { stderr: 'error connecting to /tmp/svall-probe (No such file or directory)\n', code: 1 }, 'tmux could not open a window'],
+      [['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) }, 'answers, but not as a worker of this fleet'],
+      [['svall-tmux'], { stderr: 'error connecting to /tmp/svall-probe (No such file or directory)\n', code: 1 }, 'tmux could not open a window there'],
     ] as const) {
       ssh.clearReplies();
       ssh.reply([...match], reply);
@@ -134,7 +139,8 @@ describe('host add', () => {
       const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
       await d.close();
       expect(out.result).toBe('actions');
-      expect(step('probe').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(said) });
+      expect(step('probe').at(-1)).toMatchObject({ status: 'fail', detail: said, raw: expect.any(String) });
+      if (said.startsWith('answers')) expect(step('probe').at(-1)?.action).toBe('Add the machine again, which enrols it anew');
       expect(registry.get('trift')).toBeUndefined();
     }
   });
@@ -203,8 +209,16 @@ describe('host add', () => {
     const off = deps({ tailnet: () => Promise.reject(new Error('tailscale not found: install it from https://tailscale.com/download and sign in')), interactiveSsh: (to) => { asked.push(to); return Promise.resolve({ code: 0, stderr: '' }); } });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, off);
     expect(out.stopped).toBe('tailscale');
-    expect(step('tailscale').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('needs Tailscale on both machines, and this machine says: tailscale not found') });
+    expect(step('tailscale').at(-1)).toMatchObject({
+      status: 'fail', detail: 'this Mac has no Tailscale', action: 'Install it from https://tailscale.com/download and sign in', raw: expect.stringContaining('tailscale not found'),
+    });
     expect(asked).toEqual([]);
+    // one stopped or signed out says so, with what starts or signs it in on the machine's platform
+    const said = async (e: Error, platform: NodeJS.Platform) => tailnetHere({ tailnet: () => Promise.reject(e) }, platform).catch((err: StepError) => ({ detail: err.detail, action: err.action, run: err.run }));
+    expect(await said(new TailscaleDown('stopped', 'Command failed: tailscale status --json'), 'darwin')).toEqual({ detail: 'Tailscale is not running on this Mac', action: 'Open the Tailscale app', run: undefined });
+    expect(await said(new TailscaleDown('stopped', 'Command failed'), 'linux')).toMatchObject({ action: 'Start it: sudo systemctl start tailscaled', run: 'sudo systemctl start tailscaled' });
+    expect(await said(new TailscaleDown('signedOut', 'BackendState NeedsLogin'), 'darwin')).toEqual({ detail: 'Tailscale on this Mac is signed out', action: 'Sign in from the Tailscale app', run: undefined });
+    expect(await said(new TailscaleDown('signedOut', 'BackendState NeedsLogin'), 'linux')).toMatchObject({ action: 'Sign in: sudo tailscale up', run: 'sudo tailscale up' });
     events.length = 0;
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, { ...off, interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'no route' }) });
     expect(step('tailscale')).toEqual([]);
@@ -213,7 +227,7 @@ describe('host add', () => {
   it('a home with no terminal asks nothing, and says its own key is what is missing, with the line that fixes it', async () => {
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'Permission denied (publickey).', batch: true }) }));
     expect(out.stopped).toBe('ssh');
-    expect(step('ssh').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringMatching(/cannot log in to trift\.test: Permission denied/), run: expect.stringContaining("ssh-copy-id 'trift.test'") });
+    expect(step('ssh').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringMatching(/cannot log in to trift\.test$/), raw: 'Permission denied (publickey).', run: expect.stringContaining("ssh-copy-id 'trift.test'") });
     events.length = 0;
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'ssh: connect to host trift.test port 22: No route to host', batch: true }) }));
     expect(step('ssh').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringMatching(/cannot reach trift\.test/) });
@@ -223,7 +237,7 @@ describe('host add', () => {
   it('a run on a Mac home names it by its word, not by its registry name', async () => {
     const d = deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'Permission denied (publickey).', batch: true }) });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, d);
-    expect(step('ssh').at(-1)).toMatchObject({ detail: 'this Mac cannot log in to trift.test: Permission denied (publickey).', action: expect.stringMatching(/^on this Mac, run /) });
+    expect(step('ssh').at(-1)).toMatchObject({ detail: 'this Mac cannot log in to trift.test', action: expect.stringMatching(/^on this Mac, run /) });
     expect(JSON.stringify(step('ssh'))).not.toContain(d.registry.localMachine().name);
   });
 
@@ -231,7 +245,7 @@ describe('host add', () => {
     vi.stubEnv('SVALL_HOME_WORD', 'studio');
     try {
       await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'Permission denied (publickey).', batch: true }) }));
-      expect(step('ssh').at(-1)).toMatchObject({ detail: 'studio cannot log in to trift.test: Permission denied (publickey).', action: expect.stringMatching(/^on studio, run /) });
+      expect(step('ssh').at(-1)).toMatchObject({ detail: 'studio cannot log in to trift.test', action: expect.stringMatching(/^on studio, run /) });
     } finally { vi.unstubAllEnvs(); }
   });
 
@@ -253,7 +267,7 @@ describe('host add', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     expect(out).toEqual({ result: 'actions', stopped: 'release', actions: [action] });
-    expect(step('release').at(-1)).toEqual({ step: 'release', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action });
+    expect(step('release').at(-1)).toEqual({ step: 'release', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from bea-mbp first', action });
     expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup') || w.includes('enroll'))).toBe(false);
     expect(tokenFor(resolvePaths(fleet), REMOTE)).toBeUndefined();
     expect(registry.get('trift')).toBeUndefined();
@@ -328,7 +342,7 @@ esac
     const calls = ssh.remoteCalls();
     expect(calls).toContainEqual(expect.arrayContaining(['systemctl --user disable --now "$(basename "$1")" && rm -f "$1" && systemctl --user daemon-reload']));
     expect(calls.findIndex((w) => w.includes('svall-gateway-off'))).toBeLessThan(calls.findIndex((w) => w.includes('enroll')));
-    expect(step('enrol').at(-1)).toMatchObject({ status: 'ok', detail: expect.stringMatching(/; svall-gateway\.service is stopped and removed$/) });
+    expect(step('enrol').at(-1)).toMatchObject({ status: 'ok', detail: 'joined this fleet', raw: expect.stringMatching(/; svall-gateway\.service is stopped and removed$/) });
     expect(events.map((e) => e.step)).not.toContain('fleet');
   });
 
@@ -351,7 +365,8 @@ esac
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     await d.close();
     expect(out.result).toBe('actions');
-    expect(step('probe').at(-1)).toMatchObject({ status: 'fail', detail: 'trift answers from release 1.2.2, not 1.2.3' });
+    // the row says which release answered, which is all there is to say
+    expect(step('probe').at(-1)).toEqual({ step: 'probe', status: 'fail', detail: 'answers from 1.2.2, not 1.2.3' });
     expect(step('registry')).toEqual([]);
     expect(registry.get('trift')).toBeUndefined();
   });
@@ -430,9 +445,12 @@ esac
     }));
     expect(out.result).toBe('actions');
     expect(step('ssh').at(-1)).toEqual({
-      step: 'ssh', status: 'fail', detail: 'ssh trift.test exited 255: Host key verification failed.',
+      step: 'ssh', status: 'fail', detail: 'this Mac cannot log in to trift.test', raw: 'ssh trift.test exited 255: Host key verification failed.',
       action: 'run ssh trift.test once in Terminal and answer its host key and login there, then add the machine again',
     });
+    events.length = 0;
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'ssh: connect to host trift.test port 22: Connection refused' }) }));
+    expect(step('ssh').at(-1)).toMatchObject({ detail: 'trift.test is not reachable from this Mac' });
   });
 
   it('refuses an unsigned archive unless the user asked for one', async () => {
@@ -472,7 +490,7 @@ esac
     }));
     const out = await addHost({ name: 'trift', ssh: 'trift.test' }, deps());
     await d.close();
-    expect(step('release').at(-1)).toMatchObject({ status: 'ok', detail: expect.stringContaining('(unsigned)') });
+    expect(step('release').at(-1)).toMatchObject({ status: 'ok', detail: '1.2.3', raw: expect.stringContaining('(unsigned)') });
     expect(ssh.remoteCalls().find((w) => w.includes('setup'))).toContain('--allow-unsigned');
     expect(out.result).toBe('ready');
   });
@@ -501,19 +519,16 @@ esac
 
   it('reports a machine it cannot reach as unreachable', async () => {
     const out = await addHost({ name: 'trift', ssh: 'refused.test', release: archive() }, deps());
-    expect(step('master').at(-1)).toMatchObject({ status: 'fail' });
-    expect(step('master').at(-1)?.detail).toContain('refused.test');
-    expect(step('master').at(-1)?.action).toBe('ssh refused.test and see what it answers');
+    expect(step('master').at(-1)).toMatchObject({ status: 'fail', detail: 'trift is not reachable from this Mac', action: 'check that it is on and on Tailscale', raw: expect.stringContaining('refused.test') });
     expect(out.result).toBe('actions');
   });
 
   it('says ssh refused a login without a prompt, and names how to give it a key, when the control master is refused', async () => {
     const out = await addHost({ name: 'trift', ssh: 'denied.test', release: archive() }, deps());
-    const action = 'install a key there with ssh-copy-id denied.test, keep its passphrase in the keychain with ssh-add --apple-use-keychain and add UseKeychain yes and AddKeysToAgent yes to ~/.ssh/config so ssh still finds it after a restart, then add the machine again';
-    expect(step('master').at(-1)).toEqual({
-      step: 'master', status: 'fail',
-      detail: 'ssh refused the login to denied.test: every step from here logs in without a password or passphrase prompt', action,
-    });
+    // the keychain holds a passphrase only on a Mac
+    const keychain = process.platform === 'darwin' ? ', keep its passphrase in the keychain with ssh-add --apple-use-keychain and add UseKeychain yes and AddKeysToAgent yes to ~/.ssh/config so ssh still finds it after a restart' : '';
+    const action = `install a key there with ssh-copy-id denied.test${keychain}, then add the machine again`;
+    expect(step('master').at(-1)).toEqual({ step: 'master', status: 'fail', detail: 'this Mac cannot log in to trift', action, raw: expect.stringContaining('denied.test') });
     expect(out.actions).toEqual([action]);
   });
 
@@ -580,7 +595,7 @@ esac
       await d.close();
       expect(out.result).toBe('actions');
       expect(step('master').at(-1)).toMatchObject({
-        status: 'fail', detail: `trift.test now reaches machine ${OTHER_MAC}, not trift (${REMOTE})`,
+        status: 'fail', detail: 'trift.test now reaches another machine than trift', raw: `trift.test now reaches machine ${OTHER_MAC}, not trift (${REMOTE})`,
         action: 'point trift.test back at trift, or svall host remove trift --forget',
       });
       expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup'))).toBe(false);
@@ -617,7 +632,7 @@ esac
       expect(out.result).toBe('actions');
       expect(step('master').at(-1)).toMatchObject({ status: 'ok' });
       expect(step('identity').at(-1)).toEqual({
-        step: 'identity', status: 'fail', detail: `trift.test now reaches machine ${OTHER_MAC}, not trift (${REMOTE})`,
+        step: 'identity', status: 'fail', detail: 'trift.test now reaches another machine than trift', raw: `machine ${OTHER_MAC}, not ${REMOTE}`,
         action: 'point trift.test back at trift, or svall host remove trift --forget and add it again',
       });
       expect(registry.list().filter((m) => m.record.name === 'trift').map((m) => m.id)).toEqual([REMOTE]);

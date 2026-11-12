@@ -141,9 +141,9 @@ final class QuitFlow {
             placed == 0 ? "" : " \(placed) \(placed == 1 ? "robot keeps running on its machine" : "robots keep running on their machines")."
         }
         let move = if let callsOff {
-            " Quitting calls off the move to \(callsOff)" + (frozenFor != nil ? ", and this Mac's daemon stays up with its robots running." : ".")
+            " Quitting calls off the move to \(callsOff)" + (frozenFor != nil ? "; the robots on this Mac keep running." : ".")
         } else if let frozenFor {
-            " The fleet is moving to \(frozenFor), so this Mac's daemon stays up and its robots keep running until the move ends; open Svall to finish it or call it off."
+            " The fleet is moving to \(frozenFor), so the robots on this Mac keep running until the move ends. Open Svall to finish it or call it off."
         } else if movingHere {
             " The move to this Mac waits until you open Svall again, and \(home ?? "its old home") takes no changes until then."
         } else { "" }

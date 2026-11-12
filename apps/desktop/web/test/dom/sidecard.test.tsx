@@ -84,6 +84,16 @@ test('robot messages held for the user show as blocked, let in or dropped from t
   expect(calls().filter(([m]) => m === 'robot.answer').map(([, p]) => p)).toEqual([{ id: 'c0', answer: 'approve', promptId: 'h1' }, { id: 'c0', answer: 'deny', promptId: 'h1' }]);
 });
 
+test('a resume that failed says its sentence in the row, and what the tool said waits behind details', () => {
+  const f = store.getState().fleet;
+  const { tmux: _, ...dormant } = f.robots.c0!;
+  store.getState().setFleet({ ...f, robots: { ...f.robots, c0: { ...dormant, resumeError: 'codex did not resume: Command failed: tmux respawn-pane\nno server running' } } });
+  render(<Side />);
+  const row = screen.getByTestId('side-resume-error');
+  expect(row.querySelector('.said > div > span')!.textContent).toBe('codex did not resume');
+  expect(row.querySelector('details')!.textContent).toBe('detailsCommand failed: tmux respawn-pane\nno server running');
+});
+
 test('the note takes no more than the fleet does', () => {
   render(<Side />);
   expect(field('side-note').maxLength).toBe(ROBOT_NOTE_MAX);
@@ -530,7 +540,7 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   expect(screen.getByTestId('side-machine').getAttribute('data-tip')).toBeNull();
   expect(screen.getByTestId('side-machine').closest('.kicker')).toBeNull();
   expect(moves()).toEqual(['Move to this Mac']);
-  expect(foot()).toEqual(['Move to this Mac', 'Terminal there', 'Resources', 'Open terminal', 'Delete robot']);
+  expect(foot()).toEqual(['Move to this Mac', 'Shell on linus-vault', 'Resources', 'Open terminal', 'Delete robot']);
   // what of its agent setup will not work there, which here is nothing
   expect(calls()).toContainEqual(['machines.setup', { machine: VAULT, robot: 'c0' }]);
   expect(document.querySelector('[data-section="robot.machine"]')).toBeNull();
@@ -544,7 +554,8 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   try { fireEvent.click(screen.getByTestId('side-cwd')); } finally { bridge.present = false; }
   expect(sent).toContainEqual({ type: 'copy', text: 'linus-vault:/home/ada/svall' });
   fireEvent.click(screen.getByTestId('side-finder'));
-  expect(screen.getByTestId('side-finder').textContent).toBe('Terminal there');
+  expect(screen.getByTestId('side-finder').textContent).toBe('Shell on linus-vault');
+  expect(screen.getByTestId('side-finder').dataset.tip).toBe('A shell on linus-vault in /home/ada/svall');
   expect(sent).toContainEqual({ type: 'host.list' });
   expect(store.getState().hostTerminal).toEqual({ run: "cd '/home/ada/svall'" });
   fireEvent.click(screen.getByTestId('side-move-home'));
@@ -554,8 +565,15 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
 test('a robot on a worker this Mac cannot reach says so under its machine line, and Check opens the Machines panel on a check of it', () => {
   withVault(false, { machine: VAULT, cwd: '/home/ada/svall' });
   render(<Side />);
-  expect(document.querySelector('.side > .kicker')?.textContent).toBe('unreachable');
+  // the robot's status in the words its machine's line says, and why under it
+  expect(document.querySelector('.side > .kicker')?.textContent).toBe('not reachable');
   expect(screen.getByTestId('side-away').textContent).toBe('linus-vault is not reachableCheck linus-vault');
+  // its terminal, a shell there and the move's check, which asks the machine, open onto nothing, so they wait, saying why
+  const button = (t: string) => screen.getByTestId(t) as HTMLButtonElement;
+  expect(['side-open', 'side-finder', 'side-move-home'].map((t) => [button(t).disabled, button(t).dataset.tip])).toEqual([
+    [true, 'linus-vault is not reachable'], [true, 'linus-vault is not reachable'], [true, 'linus-vault is not reachable'],
+  ]);
+  expect([button('side-resources').disabled, button('side-close').disabled]).toEqual([false, false]);
   sent.length = 0;
   fireEvent.click(screen.getByTestId('side-away-run'));
   expect(sent).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'linus-vault' } }]);
@@ -575,6 +593,19 @@ test('a robot on a worker this Mac cannot reach says so under its machine line, 
 
   withVault(true, { machine: VAULT, cwd: '/home/ada/svall' });
   expect(screen.queryByTestId('side-away')).toBeNull();
+});
+
+test('a placed robot\'s login on the card is named for what it opens a terminal to do, and waits while its machine is not reachable', async () => {
+  const login = { key: 'oauth:claude:mcp:notion', status: 'warn', detail: 'not logged in', run: 'claude', gap: { name: 'notion', what: 'not logged in' } };
+  const was = call.getMockImplementation()!;
+  call.mockImplementation((method: string, params?: unknown) => (method === 'machines.setup' ? Promise.resolve({ rows: [login] }) : was(method, params)));
+  try {
+    withVault(false, { machine: VAULT, cwd: '/home/ada/svall' });
+    await act(async () => { render(<Side />); });
+    fireEvent.click(screen.getByTestId('sec-fold-robot.machine'));
+    const button = screen.getByTestId('side-gap-terminal-oauth:claude:mcp:notion') as HTMLButtonElement;
+    expect([button.textContent, button.disabled, button.dataset.tip]).toEqual(['Log in', true, 'linus-vault is not reachable']);
+  } finally { call.mockImplementation(was); }
 });
 
 test('Check of a far worker this Mac names as it names its home goes by the worker\'s id', () => {
@@ -641,7 +672,7 @@ test('mission control and a robot already moving offer no move', () => {
   expect(moves()).toEqual([]);
 });
 
-test('a window standing in for its home offers no move, as only the home runs one; following it, it does', () => {
+test('a window standing in for its home offers its move disabled, saying why, as only the home runs one; following it, it does', () => {
   const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
   const HOME = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
   const f = store.getState().fleet;
@@ -651,14 +682,17 @@ test('a window standing in for its home offers no move, as only the home runs on
   });
   render(<Side />);
   expect(moves()).toEqual(['Move to studio']);
+  const move = () => screen.getByTestId('side-move-home') as HTMLButtonElement;
+  expect([move().disabled, move().dataset.tip]).toEqual([false, undefined]);
   act(() => store.getState().setVia({ machine: ME, home: HOME, name: 'studio' }));
-  expect(moves()).toEqual([]);
+  expect(moves()).toEqual(['Move to studio']);
+  expect([move().disabled, move().dataset.tip]).toEqual([true, 'studio is not reachable']);
 });
 
-test('the summary counts far robots as unknown in a window standing in for its home', () => {
+test('the summary counts far robots as not reachable in a window standing in for its home', () => {
   act(() => store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId, home: 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId, name: 'studio' }));
   render(<FleetSummary />);
-  const row = [...document.querySelectorAll('.rows .row')].find((r) => r.textContent?.startsWith('unknown'));
+  const row = [...document.querySelectorAll('.rows .row')].find((r) => r.textContent?.startsWith('not reachable'));
   expect(Number(row?.querySelector('b')?.textContent)).toBe(Object.keys(store.getState().fleet.robots).length);
 });
 
@@ -693,8 +727,9 @@ describe('what a robot offers by where it runs', () => {
     onFar({ cwd: '/home/linus/app' });
     await act(async () => { render(<Side />); });
     expect(screen.getByTestId('side-machine').textContent).toBe('Runs on studio');
-    expect(screen.getByTestId('side-finder').textContent).toBe('Terminal there');
-    expect(screen.getByTestId('side-dev-server').textContent).toBe('dev serverstays on studio; forward its port by hand to open it here');
+    expect(screen.getByTestId('side-finder').textContent).toBe('Shell on studio');
+    expect(screen.getByTestId('side-dev-server').textContent).toBe('dev serverstays on studio');
+    expect(screen.getByTestId('side-dev-server').querySelector('b')!.dataset.tip).toBe('Forward its port by hand to open it here');
     await finder();
     expect(shownInFinder()).toEqual([]);
     expect(store.getState().hostMachine).toBe('studio');
@@ -714,7 +749,7 @@ describe('what a robot offers by where it runs', () => {
     onFar({ machine: LAPTOP }, { [LAPTOP]: { name: 'ada-laptop', reachable: true, since: 0 } });
     await act(async () => { render(<Side />); });
     expect(sent).toContainEqual({ type: 'host.list' });
-    expect(screen.getByTestId('side-finder').textContent).toBe('Terminal there');
+    expect(screen.getByTestId('side-finder').textContent).toBe('Shell on ada-laptop');
     act(() => store.getState().setMachines([{ name: 'studio', id: STUDIO, ssh: 'linus@studio', platform: 'linux' }, { name: 'ada-laptop', id: LAPTOP, platform: 'darwin' }]));
     expect(screen.queryByTestId('side-finder')).toBeNull();
     expect(screen.getByTestId('side-machine').textContent).toBe('Runs on ada-laptop');
@@ -782,7 +817,7 @@ describe('what a robot offers by where it runs', () => {
     sent.length = 0;
     await follow(pill('folder', '/home/linus/app'), 'c0');
     expect(store.getState().hostTerminal).toBeUndefined();
-    expect(store.getState().toast?.text).toBe('/home/linus/app is on added; open it there');
+    expect(store.getState().toast).toEqual({ text: '/home/linus/app is on added.', tone: 'info' });
     expect(sent).toEqual([{ type: 'host.list' }]);
   });
 
@@ -790,7 +825,7 @@ describe('what a robot offers by where it runs', () => {
     onFar({ machine: LAPTOP }, { [LAPTOP]: { name: 'ada-laptop', reachable: true, since: 0 } });
     act(() => store.getState().setMachines([], 'svall host list exited with code 1'));
     await act(async () => { render(<Side />); });
-    expect(screen.getByTestId('side-finder').textContent).toBe('Terminal there');
+    expect(screen.getByTestId('side-finder').textContent).toBe('Shell on ada-laptop');
   });
 
   test('a machine missing from the list is asked for once more, and offers its terminal once it is there', async () => {
@@ -800,7 +835,7 @@ describe('what a robot offers by where it runs', () => {
     expect(screen.queryByTestId('side-finder')).toBeNull();
     expect(sent.filter((m) => m.type === 'host.list')).toHaveLength(1);
     act(() => store.getState().setMachines([{ name: 'added', id: LAPTOP, ssh: 'linus@added', platform: 'linux' }]));
-    expect(screen.getByTestId('side-finder').textContent).toBe('Terminal there');
+    expect(screen.getByTestId('side-finder').textContent).toBe('Shell on added');
     expect(sent.filter((m) => m.type === 'host.list')).toHaveLength(1);
   });
 
@@ -809,7 +844,7 @@ describe('what a robot offers by where it runs', () => {
     act(() => store.getState().setMachines([{ name: 'ada-laptop', id: LAPTOP, platform: 'darwin' }]));
     await act(async () => { render(<Side />); });
     await act(async () => { fireEvent.click(screen.getByText('app')); });
-    expect(store.getState().toast?.text).toBe('/Users/bo/app is on ada-laptop; open it there');
+    expect(store.getState().toast).toEqual({ text: '/Users/bo/app is on ada-laptop.', tone: 'info' });
     expect(store.getState().hostTerminal).toBeUndefined();
   });
 });

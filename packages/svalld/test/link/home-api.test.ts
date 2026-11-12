@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { PROTOCOL_VERSION, type WorkerFile } from '@svall/protocol';
 import { greets, HomeApi } from '../../src/link/home-api.js';
+import { homeWord } from '../../src/machine.js';
 import { releaseVersion } from '../../src/release.js';
 import { classifySsh, SshError, type SshMaster } from '../../src/link/ssh.js';
 
@@ -80,7 +81,7 @@ describe('how a window reaches a far home', () => {
     const m = fakeMaster(() => info({ protocol, release: '0.20' }));
     const api = apiOf(dialOf(m.master));
     const a = await api.answer();
-    expect(a).toMatchObject({ state: 'version', release: '0.20', detail: `studio runs an older Svall than this Mac (0.20, here ${releaseVersion()}); upgrade it to reach its robots` });
+    expect(a).toMatchObject({ state: 'version', release: '0.20', detail: `studio runs an older Svall than ${homeWord()} (0.20, here ${releaseVersion()}); upgrade it to reach its robots` });
     expect(a).not.toHaveProperty('token');
     expect(a).not.toHaveProperty('port');
     await api.answer();
@@ -90,28 +91,39 @@ describe('how a window reaches a far home', () => {
     expect(m.run).toHaveBeenCalledTimes(2);
   });
 
-  it('reads an svall the far shell cannot run as version', async () => {
-    const a = await apiOf(dialOf(fakeMaster(() => ({ code: 127, signal: null, stderr: 'not found', stdout: '' })).master)).answer();
-    expect(a.state).toBe('version');
+  it('reads an svall the far shell cannot run as version, and logs what the far shell said', async () => {
+    const error = vi.fn();
+    const m = fakeMaster(() => ({ code: 127, signal: null, stderr: 'bash: svall: command not found', stdout: '' }));
+    const a = await new HomeApi({ worker: () => worker, dial: dialOf(m.master), linked: () => false, greets: async () => true, log: { error } }).answer();
+    expect(a).toMatchObject({ state: 'version', detail: 'Svall on studio did not answer' });
+    expect(error.mock.calls.join()).toContain('exited 127: bash: svall: command not found');
   });
 
   it('names both machines of one that answers as another, in a person\'s words', async () => {
     const other = crypto.randomUUID();
     const a = await apiOf(dialOf(fakeMaster(() => info({ machineId: other })).master)).answer();
-    expect(a).toMatchObject({ state: 'machine', detail: `studio is a different machine than this Mac expects (${other.slice(0, 8)}… there, ${HOME.slice(0, 8)}… here)` });
+    expect(a).toMatchObject({ state: 'machine', detail: `studio is a different machine than ${homeWord()} expects (${other.slice(0, 8)}… there, ${HOME.slice(0, 8)}… here)` });
   });
 
   it('names both fleets of a mismatch, and gives no advice that would enrol the far machine', async () => {
     const other = crypto.randomUUID();
     const a = await apiOf(dialOf(fakeMaster(() => info({ fleetId: other })).master)).answer();
     expect(a.state).toBe('mismatch');
-    expect(a.detail).toBe(`studio holds a different fleet than this Mac expects (${other.slice(0, 8)}… there, ${FLEET.slice(0, 8)}… here)`);
+    expect(a.detail).toBe(`studio holds a different fleet than ${homeWord()} expects (${other.slice(0, 8)}… there, ${FLEET.slice(0, 8)}… here)`);
   });
 
   it('says newer only of a far side ahead of this one, and sends a person to update this Mac', async () => {
     expect(await apiOf(dialOf(fakeMaster(() => info({ protocol: PROTOCOL_VERSION + 1, release: '0.99' })).master)).answer()).toMatchObject({ state: 'version', newer: true,
-      detail: `studio runs a newer Svall than this Mac (0.99, here ${releaseVersion()}); update Svall on this Mac` });
+      detail: `studio runs a newer Svall than ${homeWord()} (0.99, here ${releaseVersion()}); update Svall on ${homeWord()}` });
     expect(await apiOf(dialOf(fakeMaster(() => info({ protocol: PROTOCOL_VERSION - 1, release: '0.01' })).master)).answer()).not.toHaveProperty('newer');
+  });
+
+  it('says this machine by its own word, which on a server is its name, never this Mac', async () => {
+    vi.stubEnv('SVALL_HOME_WORD', 'box');
+    try {
+      expect((await apiOf(dialOf(fakeMaster(() => info({ protocol: PROTOCOL_VERSION + 1, release: '0.99' })).master)).answer()).detail)
+        .toBe(`studio runs a newer Svall than box (0.99, here ${releaseVersion()}); update Svall on box`);
+    } finally { vi.unstubAllEnvs(); }
   });
 
   it('gives back the forward it held when the far side settles, the dial fails, the master goes, or it stops', async () => {
@@ -210,7 +222,7 @@ describe('how a window reaches a far home', () => {
     expect(await api.answer()).toEqual(words);
     expect(await api.answer()).toEqual(words);
     expect(error).toHaveBeenCalledTimes(1);
-    expect(error.mock.calls[0][0]).toContain('svall-remote.invalid');
+    expect(error.mock.calls[0][0]).toBe("the home's API: Svall on studio did not answer: svall connection-info exited 255: ssh: connect to host svall-remote.invalid port 22: Undefined error: 0");
     // the same cause after the home answered in between is a new outage, logged again
     down = false;
     expect((await api.answer()).state).toBe('connected');
@@ -227,7 +239,7 @@ describe('how a window reaches a far home', () => {
 
   it('says auth for a refused login or host key with what to do and no ssh words, and a retry asks the dial again', async () => {
     for (const stderr of ['linus@studio: Permission denied (publickey).', 'Host key verification failed.']) {
-      const dial = dialOf(undefined, new SshError(classifySsh(stderr), `ssh could not reach ada@studio: ${stderr}; run ssh ada@studio once in a terminal, then try again`));
+      const dial = dialOf(undefined, new SshError(classifySsh(stderr), 'ssh could not reach ada@studio; run ssh ada@studio once in a terminal, then try again', stderr));
       const api = apiOf(dial);
       expect(await api.answer()).toMatchObject({ state: 'auth', detail: 'run ssh ada@studio once in a terminal, then try again' });
       expect(dial.restore).not.toHaveBeenCalled();

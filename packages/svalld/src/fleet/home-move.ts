@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import {
   AdoptAnswer, Enrolment, HomeDelivery, HomeManifest, HomeMoving, MachineId, MachineRecord, migrateState, relabelHome, WorkerFile,
-  type FleetState, type HomeMoveId, type HomeWorker,
+  type FleetState, type HomeMoveId, type HomeWorker, type MobileStatus,
 } from '@svall/protocol';
 import { InvalidConfig } from '../config.js';
 import { repoRootOf, repoSlug } from '../docs.js';
@@ -16,14 +16,14 @@ import { HomeCrash as Crash, homePoint } from '../failpoints.js';
 import { sha256Hex } from '../hash.js';
 import { daemonLock, homeMoveLock } from '../kernel-lock.js';
 import { silentLogger } from '../log.js';
-import { putRecord, readRegistry, type MachineEntry } from '../machine.js';
+import { homeWord, putRecord, readRegistry, type MachineEntry } from '../machine.js';
 import { filesIn, HomeDocs } from '../placement/docs-sync.js';
 import { packTar, ustarFits } from '../placement/bundle.js';
 import { carriedConsent } from '../placement/mirror-consent.js';
 import { keysOnly, readState } from '../placement/mirror-state.js';
 import { homeRootOf } from '../placement/repo-key.js';
 import { relocate } from '../placement/relocate.js';
-import { tokenFor, workerIds, workerProfile } from '../placement/workers.js';
+import { noLoginFix, tokenFor, workerIds, workerProfile } from '../placement/workers.js';
 import { expandHome, resolvePaths, type Paths } from '../paths.js';
 import { clean } from '../path-tools.js';
 import { fleetHomes } from '../uninstall.js';
@@ -48,7 +48,8 @@ const STOP_MS = 60_000;
 /** A destination's phases: `stopping` while its daemon is down with its files as they were; `installing` while its files are changing, which only a recovery ends; `installed` until its daemon answers as the home. `released`: the old home's own, that the machine holding the fleet ended its marker. */
 const AdoptPhase = z.enum(['staging', 'staged', 'stopping', 'installing', 'installed', 'rolledback', 'adopted', 'aborted', 'released', 'done']);
 type AdoptPhase = z.infer<typeof AdoptPhase>;
-const Record_ = z.object({ phase: z.string(), at: z.number(), detail: z.string().optional() });
+// `fix`, `run`, `raw`: beside a phone link's try that failed, what to do, the command that does it, and what the tool said
+const Record_ = z.object({ phase: z.string(), at: z.number(), detail: z.string().optional(), fix: z.string().optional(), run: z.string().optional(), raw: z.string().optional() });
 
 export const adoptDir = (p: Pick<Paths, 'home'>, id: string): string => path.join(p.home, `adopt-${id}`);
 const journalOf = (p: Pick<Paths, 'homeMoves'>, id: string): string => path.join(p.homeMoves, `${id}.ndjson`);
@@ -74,8 +75,11 @@ const lastPhase = (p: Pick<Paths, 'homeMoves'>, id: string): AdoptPhase | undefi
   return phase === undefined ? undefined : AdoptPhase.safeParse(phase).data;
 };
 
-export function enter(p: Pick<Paths, 'homeMoves'>, id: string, phase: string, detail?: string): void {
-  appendDurable(journalOf(p, id), { phase, at: Date.now(), ...(detail && { detail }) });
+// what to do about a phone link's try that failed, the command that does it, and what the tool said
+type PhoneSaid = Pick<MobileStatus, 'fix' | 'run' | 'raw'>;
+
+export function enter(p: Pick<Paths, 'homeMoves'>, id: string, phase: string, detail?: string, said: PhoneSaid = {}): void {
+  appendDurable(journalOf(p, id), { phase, at: Date.now(), ...(detail && { detail, ...said }) });
 }
 
 export type HomeDaemon = {
@@ -141,16 +145,20 @@ export function phoneOwed(p: Pick<Paths, 'homeMoves'>): string[] {
   });
 }
 
-export const servedPhone = (p: Pick<Paths, 'homeMoves'>, id: string, why?: string): void => enter(p, id, SERVED, why);
+export const servedPhone = (p: Pick<Paths, 'homeMoves'>, id: string, why?: string, said: PhoneSaid = {}): void => enter(p, id, SERVED, why, said);
 
 // by the newest try of any move: what its failure said stands until a later try, or a person's own switch, says otherwise
-const phoneTries = (p: Pick<Paths, 'homeMoves'>): { id: string; at: number; detail?: string }[] => moveIds(p).flatMap((id) => {
+const phoneTries = (p: Pick<Paths, 'homeMoves'>): (z.infer<typeof Record_> & { id: string })[] => moveIds(p).flatMap((id) => {
   // what a journal that cannot be read tried says nothing to a person's switch
-  try { return journalLines(p, id).filter((l) => l.phase === SERVED).map((l) => ({ id, at: l.at, ...(l.detail && { detail: l.detail }) })); } catch { return []; }
+  try { return journalLines(p, id).filter((l) => l.phase === SERVED).map((l) => ({ ...l, id })); } catch { return []; }
 }).sort((a, b) => a.at - b.at);
 
-/** Why the phone link did not come on when a move last tried it, for Settings → Phone to say. */
-export const phoneReason = (p: Pick<Paths, 'homeMoves'>): string | undefined => phoneTries(p).at(-1)?.detail;
+/** Why the phone link did not come on when a move last tried it, with what to do and what the tool said, for Settings → Phone to say. */
+export const phoneReason = (p: Pick<Paths, 'homeMoves'>): (PhoneSaid & { reason: string }) | undefined => {
+  const last = phoneTries(p).at(-1);
+  return last?.detail === undefined ? undefined
+    : { reason: last.detail, ...(last.fix && { fix: last.fix }), ...(last.run && { run: last.run }), ...(last.raw && { raw: last.raw }) };
+};
 
 /** A person's own switch: what a move's try said no longer stands. */
 export function forgetPhoneReason(p: Pick<Paths, 'homeMoves'>): void {
@@ -410,7 +418,7 @@ async function startAgain(d: AdoptDeps, id: HomeMoveId, why?: string): Promise<A
   homePoint('restore.restarting');
   try { await d.daemon.start(); } catch (e) {
     if (e instanceof Crash) throw e;
-    return pending('stopping', `${why ? `${why}; ` : ''}its daemon did not start again: ${(e as Error).message}`);
+    return pending('stopping', [...new Set([why, (e as Error).message])].filter(Boolean).join('; '));
   }
   enter(d.paths, id, 'rolledback', why);
   return pending('rolledback', why);
@@ -525,9 +533,19 @@ export function carriedWorkers(p: Paths, entries: MachineEntry[], own: string): 
   return entries.filter((e) => held.includes(e.id) && e.record.ssh && e.record.platform === 'linux').map((e) => ({ id: e.id, record: e.record, profile: workerProfile(p, e.id) ?? own }));
 }
 
-// `tried`: when the last try for that worker ended, by this home's clock
-const WorkersOwed = z.object({ id: z.string(), workers: z.record(z.string(), z.object({ why: z.string().optional(), tried: z.number().optional() })) });
+// `tried`: when the last try for that worker ended, by this home's clock; `login`: the ssh route this home could not log in by;
+// `unreached`: how this home's ssh did not reach it; `raw`: what ssh or the far svall said of the last try
+const WorkersOwed = z.object({ id: z.string(), workers: z.record(z.string(), z.object({
+  why: z.string().optional(), login: z.string().optional(), unreached: z.enum(['unreachable', 'timeout']).optional(), raw: z.string().optional(), tried: z.number().optional(),
+})) });
 export type WorkersOwed = z.infer<typeof WorkersOwed>;
+
+/** Why worker `name` has not joined, then `; ` and the fix; a refused login and a machine not reached name this home as its reader calls it. */
+export const owedWhy = (owed: WorkersOwed['workers'][string], name: string): string => {
+  if (owed.login) return `${homeWord()} cannot log in to ${name}; ${noLoginFix(homeWord(), owed.login)}`;
+  if (owed.unreached) return `${owed.unreached === 'timeout' ? `${name} did not answer in 20 s` : `${name} is not reachable from ${homeWord()}`}; check that it is on and on Tailscale`;
+  return owed.why ?? '';
+};
 
 export const readWorkersOwed = (p: Pick<Paths, 'workersOwed'>): WorkersOwed | undefined => {
   try { return WorkersOwed.parse(JSON.parse(fs.readFileSync(p.workersOwed, 'utf8'))); } catch { return undefined; }
@@ -796,7 +814,7 @@ export type Settling = {
 };
 
 /** Whether `e` says no daemon answers at all, and so not that one answered and refused. */
-const noDaemon = (e: unknown): boolean => /svalld is not running|ECONNREFUSED/.test((e as Error).message);
+const noDaemon = (e: unknown): boolean => (e as { kind?: unknown }).kind === 'daemon_down' || /svalld is not running|ECONNREFUSED/.test((e as Error).message);
 
 /**
  * Told by the machine that took the fleet how a move ended, as often as it takes, with the key its driver holds; what has heard

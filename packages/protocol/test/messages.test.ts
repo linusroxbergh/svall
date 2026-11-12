@@ -181,8 +181,16 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 45', () => {
-    expect(PROTOCOL_VERSION).toBe(45);
+  it('is 46', () => {
+    expect(PROTOCOL_VERSION).toBe(46);
+  });
+
+  it('was 45 without what a tool said beside a move\'s refusal and a setup row, and a phone problem\'s fix, command and tool words', () => {
+    const refusal = Refusal.parse({ reason: 'r', action: 'a', raw: 'exited 1: x', details: [], more: [{ reason: 'm', action: 'b', raw: 'y' }] });
+    expect([refusal.raw, refusal.more?.[0].raw]).toEqual(['exited 1: x', 'y']);
+    expect(methods['home.setup'].result.parse({ rows: [{ key: 'k', status: 'warn', detail: 'd', raw: 'z' }] }).rows[0].raw).toBe('z');
+    const phone = MobileStatus.parse({ serving: false, url: '', port: 1, logins: [], phones: [], error: 'e', fix: 'f', run: 'sudo tailscale up', raw: 'r' });
+    expect([phone.fix, phone.run, phone.raw]).toEqual(['f', 'sudo tailscale up', 'r']);
   });
 
   it('was 43 without a home move\'s freeze, check and run, a far fleet\'s id, and the move a crew robot goes ahead of', () => {

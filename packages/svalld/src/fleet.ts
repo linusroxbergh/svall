@@ -34,7 +34,7 @@ import { arrangeIslands, createIsland, deleteIsland, reorderIsland, updateIsland
 import { blockedCells, defaultPosition, freePosition, occupiedCells, placeOnIsland, settleHome, unfold, uniqueName } from './layout.js';
 import { refreshLinks, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
-import { homeWord } from './machine.js';
+import { homeWord, machineWord } from './machine.js';
 import { randomName } from './names.js';
 import { isFolder } from './workspace/clones.js';
 import { linkOpencodeConfig, opencodePaths } from './opencode/install.js';
@@ -292,7 +292,7 @@ export class Fleet extends EventEmitter<Events> {
   private still(id: string, move?: string): void {
     const { robots, machines } = this.deps.store.state;
     const m = Object.hasOwn(robots, id) ? robots[id].moving : undefined;
-    if (m && m.id !== move) throw new ApiError('moving', `moving to ${machines?.[m.to]?.name ?? homeWord()}`);
+    if (m && m.id !== move) throw new ApiError('moving', `moving to ${machineWord(m.to, machines?.[m.to]?.name ?? homeWord())}`);
   }
 
   // the robot, when it runs here; one placed elsewhere is refused, whatever ids its machine reported for its windows
@@ -571,7 +571,7 @@ export class Fleet extends EventEmitter<Events> {
     const cwd = expandHome(p.cwd);
     // tmux would start the window in the daemon's own directory, or in $HOME
     if (!path.isAbsolute(cwd)) throw new NotAFolder(`cwd ${p.cwd} is not an absolute path`);
-    if (!isFolder(cwd)) throw new NotAFolder(`cwd ${p.cwd} is not a directory`);
+    if (!isFolder(cwd)) throw new NotAFolder(`cwd ${p.cwd} is not a directory`, { kind: fs.existsSync(cwd) ? 'file' : 'missing' });
     const id = newId('c');
     // the path tmux reports for a pane started here, as for /tmp, so a poll moves the robot only once the pane moves
     const panePath = fs.realpathSync(cwd);

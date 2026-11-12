@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { preflight, realPreflightDeps, type PreflightDeps } from '../src/commands/preflight.js';
+import { preflight, realPreflightDeps, requireReady, type PreflightDeps } from '../src/commands/preflight.js';
 
 const loggedOut = () => Object.assign(new Error('Not logged in'), { code: 1 });
 
@@ -23,38 +23,36 @@ function deps(commands: Record<string, string | Error>, moves = true): Preflight
 }
 
 describe('preflight of an agent CLI below its version floor', () => {
-  it('still asks whether it is signed in, and says so when it is not', async () => {
+  it('still asks whether it is logged in, and says so when it is not, its version by its number', async () => {
     const d = deps({ 'claude --version': '2.1.250 (Claude Code)\n', 'claude auth status --json': loggedOut() });
     const claude = (await preflight(d)).find((c) => c.name === 'claude');
     expect(claude).toEqual({
-      name: 'claude', status: 'warn',
-      detail: '2.1.250 (Claude Code): Svall needs 2.1.251 or newer; update Claude Code; not signed in: claude auth login',
-      run: 'claude auth login',
+      name: 'claude', status: 'warn', detail: '2.1.250: needs 2.1.251 or newer, not logged in', action: 'update Claude Code, then claude auth login', run: 'claude auth login',
     });
     expect(d.calls).toContain('claude auth status --json');
   });
 
-  it('gives only the version warning when it is signed in', async () => {
+  it('gives only the version warning when it is logged in', async () => {
     const d = deps({ 'claude --version': '2.1.250 (Claude Code)\n', 'claude auth status --json': '{"loggedIn":true}\n' });
-    expect((await preflight(d)).find((c) => c.name === 'claude')?.detail).toBe('2.1.250 (Claude Code): Svall needs 2.1.251 or newer; update Claude Code');
+    expect((await preflight(d)).find((c) => c.name === 'claude')).toMatchObject({ detail: '2.1.250: needs 2.1.251 or newer', action: 'update Claude Code' });
   });
 
   it("leaves Claude Code below a move's floor be where no robot moves, and still holds the others to theirs", async () => {
     const d = deps({ 'claude --version': '2.1.250 (Claude Code)\n', 'claude auth status --json': '{"loggedIn":true}\n', 'codex --version': 'codex-cli 0.155.0\n', 'codex login status': '' }, false);
     const checks = await preflight(d);
-    expect(checks.find((c) => c.name === 'claude')).toEqual({ name: 'claude', status: 'ok', detail: '2.1.250 (Claude Code), signed in' });
-    expect(checks.find((c) => c.name === 'codex')?.detail).toBe('codex-cli 0.155.0: Svall needs 0.156.0 or newer; update Codex');
+    expect(checks.find((c) => c.name === 'claude')).toEqual({ name: 'claude', status: 'ok', detail: '2.1.250, logged in' });
+    expect(checks.find((c) => c.name === 'codex')?.detail).toBe('0.155.0: needs 0.156.0 or newer');
   });
 });
 
 describe('preflight of OpenCode', () => {
-  it("says it is signed in only when auth list names a model provider's login, as a move's checks read it", async () => {
+  it("says it is logged in only when auth list names a model provider's login, as a move's checks read it", async () => {
     const opencode = async (listed: object[]) => (await preflight(deps({
       'opencode --version': 'opencode v2.0.27\n', 'opencode auth list --standalone --format json': `${JSON.stringify(listed)}\n`,
     }))).find((c) => c.name === 'opencode');
-    expect(await opencode([])).toEqual({ name: 'opencode', status: 'warn', detail: 'opencode v2.0.27, not signed in: opencode auth login', run: 'opencode auth login' });
+    expect(await opencode([])).toEqual({ name: 'opencode', status: 'warn', detail: '2.0.27, not logged in', action: 'opencode auth login', run: 'opencode auth login' });
     expect((await opencode([{ id: 'mcp_linear' }]))?.status).toBe('warn');
-    expect(await opencode([{ id: 'openai' }])).toEqual({ name: 'opencode', status: 'ok', detail: 'opencode v2.0.27, signed in' });
+    expect(await opencode([{ id: 'openai' }])).toEqual({ name: 'opencode', status: 'ok', detail: '2.0.27, logged in' });
   });
 });
 
@@ -83,5 +81,13 @@ describe('realPreflightDeps', () => {
     // this Mac's own entry is no machine to move a robot to, and a registry that cannot be read may list one
     expect(await rows({ platform: 'darwin', machines: [local], claude: '2.1.200' })).not.toContainEqual(expect.objectContaining({ name: 'claude', status: 'warn' }));
     expect(await rows({ platform: 'darwin', registry: '{', claude: '2.1.200' })).toContainEqual(expect.objectContaining({ name: 'claude', status: 'warn' }));
+  });
+});
+
+describe('requireReady', () => {
+  it("keeps what a tool said under a check that stops setup, and under one that warns", () => {
+    expect(() => requireReady([{ name: 'tmux', status: 'fail', detail: 'does not run', raw: 'dyld: Library not loaded: libevent' }]))
+      .toThrow('nothing was changed; fix these first:\n✗ tmux  does not run\n  dyld: Library not loaded: libevent');
+    expect(requireReady([{ name: 'codex', status: 'warn', detail: 'does not run', raw: 'codex: bad CPU type' }])).toEqual(['! codex  does not run\n  codex: bad CPU type']);
   });
 });

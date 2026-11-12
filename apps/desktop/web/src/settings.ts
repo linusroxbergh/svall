@@ -31,6 +31,8 @@ export type Settings = {
   keepAwake: KeepAwake;
   // the board's first-launch toast, saying where every robot starts, has had its one showing
   boardToastShown: boolean;
+  // the settings window as last dragged; none keeps SETTINGS_SIZE
+  settingsSize?: { w: number; h: number };
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -38,11 +40,12 @@ export const DEFAULT_SETTINGS: Settings = {
   notifications: { on: false, sound: true, statuses: [...PUSH_STATUSES] }, keepAwake: 'needs', boardToastShown: false,
 };
 export const OPACITY = { min: 0.3, max: 1, step: 0.05 };
+export const SETTINGS_SIZE = { w: 760, h: 600 };
 
 export const canFill = (s: { settings: Settings; shell?: { op: boolean } }): boolean => s.settings.onePassword && !!s.shell?.op;
 
 // the gap CSS leaves between a settings row and the tip that belongs to it
-const TIP_GAP = 5;
+export const TIP_GAP = 5;
 
 type Box = { top: number; bottom: number };
 
@@ -104,6 +107,12 @@ export function readRecord(v: Record<string, unknown>): KeyRecord | undefined {
   return { bindings, others };
 }
 
+function readSize(v: unknown): Settings['settingsSize'] {
+  const o = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
+  const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0;
+  return ok(o.w) && ok(o.h) ? { w: o.w, h: o.h } : undefined;
+}
+
 function readNotify(v: unknown): NotifySettings {
   const o = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
   const statuses = Array.isArray(o.statuses) ? PUSH_STATUSES.filter((s) => (o.statuses as unknown[]).includes(s)) : DEFAULT_SETTINGS.notifications.statuses;
@@ -125,6 +134,7 @@ export function readSettings(v: unknown): Settings {
     notifications: readNotify(o.notifications),
     keepAwake: KEEP_AWAKE.find((k) => k === o.keepAwake) ?? DEFAULT_SETTINGS.keepAwake,
     boardToastShown: o.boardToastShown === true,
+    settingsSize: readSize(o.settingsSize),
   };
 }
 

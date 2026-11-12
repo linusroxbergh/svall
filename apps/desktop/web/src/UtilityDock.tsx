@@ -8,15 +8,15 @@ import { Feedback, Gear, Meter, Phone, Pulse } from './icons.js';
 import { refocusSurface } from './keyboard.js';
 import { keyTip } from './keys.js';
 import { LoadPanel } from './LoadPanel.js';
-import { MobilePanel, MobileSwitch } from './PhonePanel.js';
+import { MobilePanel, MobileSwitch, PhoneAway, usePhoneAway } from './PhonePanel.js';
 import { UsagePanel } from './Usage.js';
 
 /** The fleet utilities share the fixed foot of the island sidebar. */
 export function UtilityDock() {
   const usageOpen = useApp((s) => s.usageOpen);
-  // a worker's daemon holds no phone link, which is its home's to serve
-  const fallback = useApp((s) => !!s.via && !s.via.online);
-  const mobileOpen = useApp((s) => s.mobileOpen) && !fallback;
+  // a worker's daemon holds no phone link, which is its home's to serve: apart from the home its panel says so
+  const away = usePhoneAway();
+  const mobileOpen = useApp((s) => s.mobileOpen);
   const loadOpen = useApp((s) => s.loadOpen);
   const feedbackOpen = useApp((s) => s.feedbackOpen);
   const settingsOpen = useApp((s) => s.settingsOpen);
@@ -24,10 +24,10 @@ export function UtilityDock() {
   const width = usePanelWidth('sidebar');
   const usageTab = useApp((s) => s.settings.usageTab);
   const bindings = useApp((s) => s.settings.bindings);
-  // the control stands whether or not the fleet is served, so it can be switched on from here
-  const phoneTab = useApp((s) => !!s.mobile && !s.mobile.error) && !fallback;
-  const serving = useApp((s) => !!s.mobile?.serving);
-  const phoneLabel = serving ? 'Phone link on' : 'Phone link off';
+  // the control stands whether the fleet is served, not served, cannot be or is out of reach, so its panel switches the link on or says why not
+  const phoneTab = useApp((s) => !!s.mobile) || !!away.home;
+  const serving = useApp((s) => !!s.mobile?.serving) && !away.home;
+  const phoneLabel = away.home ? 'Phone link' : serving ? 'Phone link on' : 'Phone link off';
   // an open sidebar names a waiting update itself
   const update = useApp((s) => !!s.update && !s.sidebarOpen);
   const settingsLabel = update ? 'Settings, update available' : 'Settings';
@@ -98,11 +98,12 @@ export function UtilityDock() {
           data-load={loadOpen || undefined} aria-live={loadOpen || feedbackOpen ? 'off' : 'polite'}>
           <div className="use-panel-title">
             <span>{usageOpen ? 'Plan usage' : loadOpen ? 'Load' : feedbackOpen ? 'Send feedback' : 'Phone link'}</span>
-            {mobileOpen && <MobileSwitch testId="mobile-switch" />}
+            {mobileOpen && !away.home && <MobileSwitch testId="mobile-switch" />}
             {/* closing any one of the four closes whichever is open */}
             <CloseX onClose={() => app.store.getState().toggleUsage(false)} testid="corner-panel-close" />
           </div>
-          {usageOpen ? <UsagePanel /> : loadOpen ? <LoadPanel /> : feedbackOpen ? <FeedbackPanel diagnostics={() => app.api().call('feedback.preview', {}).then((r) => r.text)} /> : <MobilePanel />}
+          {usageOpen ? <UsagePanel /> : loadOpen ? <LoadPanel /> : feedbackOpen ? <FeedbackPanel diagnostics={() => app.api().call('feedback.preview', {}).then((r) => r.text)} />
+            : away.home ? <PhoneAway home={away.home} dialed={away.dialed} className="use-note" testid="mobile-away" /> : <MobilePanel />}
         </div>
       )}
     </div>

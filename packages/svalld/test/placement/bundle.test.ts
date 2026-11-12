@@ -302,7 +302,7 @@ describe.skipIf(!hasGit)('bundle', () => {
     expect(await changedSince(left, 'on this Mac', hooklessGit)).toBeUndefined();
     expect(await changedSince({ ...left, fingerprint: await fingerprintOf(src, hooklessGit) }, 'on this Mac', hooklessGit)).toBeUndefined();
     put(src, 'later.txt', 'later\n');
-    expect(await changedSince(left, 'on this Mac', hooklessGit)).toEqual({ reason: `changes on this Mac in ${src} since the move`, action: 'stash or commit them' });
+    expect(await changedSince(left, 'on this Mac', hooklessGit)).toEqual({ reason: `Changes on this Mac in ${src} since the move`, action: 'Stash or commit them' });
   });
 
   it('refuses an untracked path or link target ustar cannot hold, which bsdtar would leave out, before packing', async () => {

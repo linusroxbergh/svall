@@ -1,5 +1,5 @@
 import type { Robot, ContextItem } from '@svall/protocol';
-import type { DisplayStatus } from '../selectors.js';
+import { statusName, type DisplayStatus } from '../selectors.js';
 
 // a github PR or issue reads as `repo #number`, so the pill says which repository it belongs to
 const GH_ITEM = /^(?:https?:\/\/)?(?:www\.)?github\.com\/[^/]+\/([^/]+)\/(?:pull|issues)\/(\d+)/i;
@@ -32,7 +32,7 @@ export const hintLabel = (c: Robot): string => (c.codexDaemon ? '--no-daemon' : 
 
 // idle and a bare shell read from the ring; every other status is spelled out
 export function statusWord(status: DisplayStatus): string | undefined {
-  return status === 'idle' || status === 'shell' ? undefined : status;
+  return status === 'idle' || status === 'shell' ? undefined : statusName(status);
 }
 
 export function ago(at: number, now = Date.now()): string {

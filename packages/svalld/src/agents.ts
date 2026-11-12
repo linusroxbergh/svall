@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { AGENT_LABEL, AGENT_UPDATE, type AgentKind } from '@svall/protocol';
+import { AGENT_LABEL, AGENT_LOGIN, AGENT_UPDATE, type AgentKind } from '@svall/protocol';
 import { shq } from './text.js';
 
 export type Version = [number, number, number];
@@ -38,14 +38,14 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
     installCommand: 'curl -fsSL https://claude.ai/install.sh | bash', updateCommand: AGENT_UPDATE.claude,
     loginArgs: ['auth', 'status', '--json'],
     loggedIn: (out) => { try { return (JSON.parse(out) as { loggedIn?: boolean }).loggedIn === true; } catch { return false; } },
-    loginHint: 'claude auth login',
+    loginHint: AGENT_LOGIN.claude,
     crewCommand: withModel('claude', '--model'), crewModel: 'opus', scribeModel: 'haiku',
   },
   codex: {
     label: AGENT_LABEL.codex, bin: 'codex', installUrl: 'https://learn.chatgpt.com/docs/codex/cli', minVersion: [0, 156, 0],
     installCommand: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh', updateCommand: AGENT_UPDATE.codex,
     loginArgs: ['login', 'status'], loggedIn: () => true,
-    loginHint: 'codex login',
+    loginHint: AGENT_LOGIN.codex,
     crewCommand: withModel('codex', '-m'), scribeModel: 'gpt-6-luna',
   },
   opencode: {
@@ -60,7 +60,7 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
         return Array.isArray(listed) && listed.some((i: { id?: unknown }) => typeof i.id === 'string' && !i.id.startsWith('mcp_'));
       } catch { return false; }
     },
-    loginHint: 'opencode auth login',
+    loginHint: AGENT_LOGIN.opencode,
     // its TUI refuses -m: the model is the provider config's
     crewCommand: () => 'opencode',
   },

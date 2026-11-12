@@ -41,7 +41,7 @@ export function formatPlan(p: RetroPlan): string {
   const missing = Object.entries(c.missing).filter(([, n]) => n > 0);
   if (missing.length) lines.push(`missing: ${missing.map(([field, n]) => `${n} sessions without ${field}`).join(', ')}`);
   lines.push(`cards: ${w.sessions} sessions, ${w.cached} of ${w.chunks} chunks cached, ${w.calls} calls`);
-  lines.push(`reviews: ${p.reviews === 'gh' ? `${w.prs} PRs from gh, ${w.comments} later comments to label` : 'skipped: gh is not installed or signed in'}`);
+  lines.push(`reviews: ${p.reviews === 'gh' ? `${w.prs} PRs from gh, ${w.comments} later comments to label` : 'skipped: gh is not installed or logged in'}`);
   lines.push(`${AGENT_LABEL[p.agent]}, ${BILLING[p.billing]}`);
   const width = Math.max(...p.presets.map((x) => x.label.length));
   for (const x of p.presets) {

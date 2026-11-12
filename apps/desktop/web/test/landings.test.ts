@@ -25,13 +25,13 @@ describe('a robot landing on a worker', () => {
     return { store, call };
   };
 
-  it('says how many parts of its agent setup will not work there, and Show opens its card', async () => {
+  it('says how many parts of its agent setup are not there yet, and Show opens its card', async () => {
     const chrome: SetupRow = { key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } };
     const { store, call } = setup([linear, notion, { key: 'var:X', status: 'ok', detail: 'X is set on vault' }, chrome]);
     store.getState().setFleet(landed);
     await vi.waitFor(() => expect(store.getState().toast).toBeDefined());
     expect(call).toHaveBeenCalledWith('machines.setup', { machine: VAULT, robot: 'c1' });
-    expect(store.getState().toast).toMatchObject({ text: 'c1 is on vault. 2 parts of its agent setup will not work there, and 1 runs only on a Mac.', tone: 'ok', action: { label: 'Show' } });
+    expect(store.getState().toast).toMatchObject({ text: 'c1 is on vault. 2 parts of its agent setup are not there yet.', tone: 'ok', action: { label: 'Show' } });
     store.getState().toast!.action!.run();
     expect([store.getState().selectedId, store.getState().sideCardOpen]).toEqual(['c1', true]);
   });
@@ -41,7 +41,7 @@ describe('a robot landing on a worker', () => {
     store.getState().setVia({ machine: VAULT, home: 'a1b2c3d4-0000-4000-8000-000000000002' as MachineId, name: 'studio' });
     store.getState().setFleet(landed);
     await vi.waitFor(() => expect(store.getState().toast).toBeDefined());
-    expect(store.getState().toast?.text).toBe('c1 is on this Mac. 1 part of its agent setup will not work there.');
+    expect(store.getState().toast?.text).toBe('c1 is on this Mac. 1 part of its agent setup is not there yet.');
   });
 
   it("says nothing while that robot's move sheet is open, whose done line says it", async () => {

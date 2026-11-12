@@ -8,10 +8,12 @@ import { resolvePaths } from '@svall/svalld/paths';
 import { issueToken } from '@svall/svalld/placement/workers';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
 import type { Client } from '../src/client.js';
-import { joinHome, seedHome, type JoinDeps, type SeedAsk } from '../src/controller/home.js';
+import { joinedLine, seedQuestion } from '../src/commands/fleet.js';
+import { lastChecks } from '../src/controller/checks.js';
+import { joinHome, seedHome, thisMachine, type JoinDeps, type SeedAsk } from '../src/controller/home.js';
 import type { StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
-import type { SshMaster } from '../src/controller/ssh.js';
+import { SshError, type SshMaster } from '../src/controller/ssh.js';
 
 const HOME_ID = '66666666-7777-8888-9999-aaaaaaaaaaaa';
 const FLEET = '11111111-2222-3333-4444-555555555555';
@@ -103,7 +105,7 @@ describe('svall fleet join', () => {
     const refused = deps({}, { enrol: () => Promise.reject(new Error('worker.json not written: no private fleet yet; run svall setup first')) });
     const out = await joinHome({ ssh: 'ada@studio' }, refused);
     expect(out.result).toBe('actions');
-    expect(failure()).toMatchObject({ step: 'worker', detail: expect.stringContaining('run svall setup first') });
+    expect(failure()).toMatchObject({ step: 'worker', detail: 'this fleet did not start as a worker of studio', raw: expect.stringContaining('run svall setup first') });
     expect(fs.existsSync(home)).toBe(false);
     fs.mkdirSync(home, { recursive: true });
     const own = '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70';
@@ -140,10 +142,32 @@ describe('svall fleet join', () => {
     expect(d.far.asked).toEqual([]);
   });
 
-  it('says what a fleet it takes loses all the same', async () => {
-    const out = await joinHome({ ssh: 'ada@studio' }, deps({}));
+  it('says what a fleet it takes loses all the same, and names the home by its address and release alone', async () => {
+    const d = deps({});
+    fs.rmSync(path.join(d.registry.dir, 'checks.json'), { force: true });
+    const out = await joinHome({ ssh: 'ada@studio' }, d);
+    // a home this Mac never checked is kept as the join found it: the release it runs
+    expect(lastChecks(d.registry.dir)[HOME_ID]).toMatchObject({ release: '1.0.0', warned: 0 });
     expect(out.result).toBe('ready');
-    expect(events.find((e) => e.step === 'fleet' && e.status === 'ok')?.detail).toMatch(/island names and board columns go with the home's first snapshot/);
+    expect(events.find((e) => e.step === 'fleet' && e.status === 'ok')?.detail).toBe("this fleet holds no robot, worker or note; its island names and board columns go with the home's first snapshot");
+    expect(events.find((e) => e.step === 'home' && e.status === 'ok')).toEqual({ step: 'home', status: 'ok', detail: "ada@studio is the fleet's home, on release 1.0.0", raw: `machine ${HOME_ID}, fleet ${FLEET}` });
+  });
+
+  it('leaves the last check of a home this Mac checked as it was, and says a check it cannot keep without ending the join on it', async () => {
+    const d = deps({});
+    const dir = d.registry.dir;
+    fs.mkdirSync(dir, { recursive: true });
+    const checked = { at: 1, failed: 0, warned: 1, release: '1.0.0' };
+    fs.writeFileSync(path.join(dir, 'checks.json'), JSON.stringify({ [HOME_ID]: checked }));
+    expect((await joinHome({ ssh: 'ada@studio' }, d)).result).toBe('ready');
+    expect(lastChecks(dir)[HOME_ID]).toEqual(checked);
+    // a file that cannot be written, as a folder in its place
+    fs.rmSync(path.join(dir, 'checks.json'), { force: true });
+    fs.mkdirSync(path.join(dir, 'checks.json', 'held'), { recursive: true });
+    events.length = 0;
+    expect((await joinHome({ ssh: 'ada@studio' }, deps({}))).result).toBe('ready');
+    expect(events.find((e) => e.step === 'checks')).toMatchObject({ status: 'warn', detail: 'not saved', raw: expect.any(String) });
+    fs.rmSync(path.join(dir, 'checks.json'), { recursive: true, force: true });
   });
 
   it('refuses a destination no worker.json can hold before the home issues a token', async () => {
@@ -172,6 +196,12 @@ describe('svall fleet join', () => {
     expect(failure()?.detail).toMatch(/1 worker/);
   });
 
+  it('a login the control master is refused names how to give it a key, with what ssh said apart', async () => {
+    const out = await joinHome({ ssh: 'ada@studio' }, deps({}, { openMaster: () => Promise.reject(new SshError('auth', 'ssh could not reach ada@studio', 'Permission denied (publickey).')) }));
+    expect(out.stopped).toBe('master');
+    expect(failure()).toMatchObject({ detail: `${thisMachine()} cannot log in to ada@studio`, action: 'install a key there with ssh-copy-id ada@studio, then join again', raw: 'Permission denied (publickey).' });
+  });
+
   it('asks for Tailscale on this machine first', async () => {
     const d = deps({}, { tailnet: () => Promise.reject(new Error('tailscale not found')) });
     const out = await joinHome({ ssh: 'ada@studio' }, d);
@@ -186,7 +216,7 @@ describe('svall fleet join', () => {
 
   it.each([
     ['a machine with no Svall', { versionCode: 127 }, /has no Svall/],
-    ['another protocol', { version: { ...VERSION, protocol: PROTOCOL_VERSION + 1 } }, /on protocol/],
+    ['another protocol', { version: { ...VERSION, protocol: PROTOCOL_VERSION + 1 } }, /^ada@studio runs .*, which cannot talk to this (Mac|machine)'s$/],
     ['a worker of another home', { version: { ...VERSION, role: 'worker', worker: { homeName: 'other' } } }, /worker of other/],
   ] as const)('refuses %s', async (_what, far, said) => {
     const out = await joinHome({ ssh: 'ada@studio' }, deps(far));
@@ -200,7 +230,7 @@ describe('svall fleet join', () => {
     const d = deps({ tailscale: { error: 'tailscale is not connected (NeedsLogin); sign in and try again' } });
     const out = await joinHome({ ssh: 'ada@studio' }, d);
     expect(out.stopped).toBe('home');
-    expect(failure()).toMatchObject({ detail: expect.stringContaining('ada@studio says: tailscale is not connected (NeedsLogin)'), action: expect.stringMatching(/^ssh ada@studio, then install Tailscale/) });
+    expect(failure()).toMatchObject({ detail: 'ada@studio is not on the tailnet', raw: 'tailscale is not connected (NeedsLogin); sign in and try again', action: expect.stringMatching(/^ssh ada@studio, then install Tailscale/) });
     expect(d.far.asked.some((l) => l.includes('enroll-worker'))).toBe(false);
     expect(enrolled).toEqual([]);
   });
@@ -256,7 +286,7 @@ describe('svall fleet join', () => {
     ] };
     type Asked = [string, unknown];
     const client = (asked: Asked[], answers: Record<string, unknown>) => ({ call: (m: string, p: unknown) => { asked.push([m, p]); return Object.hasOwn(answers, m) ? Promise.resolve(answers[m]) : Promise.reject(new Error(`${m} not answered`)); } }) as unknown as Pick<Client, 'call'>;
-    const yes: SeedAsk = { go: () => Promise.resolve(true), key: (said) => Promise.resolve(said !== "Send c's C to studio") };
+    const yes: SeedAsk = { go: () => Promise.resolve(true), key: (said) => Promise.resolve(said !== "Send studio c's C") };
     const run = (o: { far: boolean; here: boolean; ask?: SeedAsk; copied?: unknown }) => {
       const [farCalls, hereCalls]: [Asked[], Asked[]] = [[], []];
       const out = seedHome({
@@ -306,13 +336,16 @@ describe('svall fleet join', () => {
       ] };
       const order: Asked[] = [];
       const asked: string[] = [];
+      const masks: string[][] = [];
       await seedHome({
         here: client(order, { 'machines.holdsSetup': { holds: true }, 'home.setup': rows, 'home.setupConsent': rows }),
         far: client(order, { 'machines.holdsSetup': { holds: false }, 'machines.copySetupFrom': { sent: 1 } }),
-        me: 'm' as never, name: 'studio', ask: { go: () => Promise.resolve(true), key: (said) => { asked.push(said); return Promise.resolve(said.startsWith("Send kept's")); } },
+        me: 'm' as never, name: 'studio', ask: { go: () => Promise.resolve(true), key: (said, preview) => { asked.push(said); masks.push(preview); return Promise.resolve(said === "Send studio kept's K"); } },
       });
-      // a question says what goes where, never a row's action
-      expect(asked).toEqual(["Send whole's W to studio", "Send part's A, B to studio", "Send kept's K to studio", "Send none's N to studio", 'Send odd to studio as it is, keys included', "Send rb's RB_API_KEY to studio"]);
+      // a question says what goes where by the key's own name, never a row's action or key
+      expect(asked).toEqual(["Send studio whole's W", "Send studio part's A, B", "Send studio kept's K", "Send studio none's N", 'Send studio odd, whole, keys included', "Send studio rb's RB_API_KEY"]);
+      // each key's masked value, without its field's name; what travels whole has none
+      expect(masks).toEqual([['****'], ['****, ****'], ['****'], ['****'], [], ['****']]);
       expect(order.filter(([m]) => m === 'home.setupConsent' || m === 'machines.copySetupFrom')).toEqual([
         ['home.setupConsent', { item: 'claude:mcp:whole', fields: ['env.W'], on: false }],
         ['home.setupConsent', { item: 'claude:mcp:part', fields: ['env.A', 'env.B'], on: false }],
@@ -330,7 +363,7 @@ describe('svall fleet join', () => {
       const failing = (): Promise<never> => Promise.reject(new Error('the forward closed'));
       const out = await joinHome({ ssh: 'ada@studio' }, deps({}, { seedClients: failing }));
       expect(out.result).toBe('ready');
-      expect(events.find((e) => e.step === 'seed' && e.status === 'warn')).toMatchObject({ detail: expect.stringMatching(/the forward closed.*Agent setup/) as string });
+      expect(events.find((e) => e.step === 'seed' && e.status === 'warn')).toMatchObject({ detail: expect.stringMatching(/not copied to studio; Settings → Agent setup copies it from there$/) as string, raw: 'the forward closed' });
     });
 
     it('comes after the first snapshot', async () => {
@@ -340,9 +373,19 @@ describe('svall fleet join', () => {
     });
   });
 
+  it('ends a join that went through on the home by its name and this machine by its word', () => {
+    expect(joinedLine('studio', 'darwin')).toBe('This fleet runs on studio now, and this Mac is its worker.');
+    expect(joinedLine('studio', 'linux')).toBe('This fleet runs on studio now, and this machine is its worker.');
+  });
+
+  it('asks to copy the agent setup of this machine by its word', () => {
+    expect(seedQuestion('studio', 'darwin')).toBe("studio has no agent setup yet. Copy this Mac's there first? [Y/n] ");
+    expect(seedQuestion('studio', 'linux')).toBe("studio has no agent setup yet. Copy this machine's there first? [Y/n] ");
+  });
+
   it('refuses a far machine that is this one', async () => {
     const out = await joinHome({ ssh: 'ada@studio' }, deps({ version: { ...VERSION, machineId: machineId() } }));
-    expect(failure()?.detail).toMatch(/is this machine/);
+    expect(failure()?.detail).toMatch(/^ada@studio is this (Mac|machine)$/);
     expect(out.stopped).toBe('home');
   });
 
@@ -376,6 +419,7 @@ describe('svall fleet join', () => {
     const worker = { homeMachineId: HOME_ID, fleetId: FLEET, token: TOKEN, homeName: 'studio' };
     fs.writeFileSync(resolvePaths(home).workerFile, JSON.stringify(worker));
     expect((await joinHome({ ssh: 'ada@studio' }, deps({}))).result).toBe('ready');
+    expect(events.find((e) => e.step === 'fleet' && e.status === 'ok')?.detail).toBe('this fleet serves studio as a worker, and joins it again');
     fs.writeFileSync(resolvePaths(home).workerFile, JSON.stringify({ ...worker, fleetId: '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70', homeName: 'other' }));
     events = [];
     const out = await joinHome({ ssh: 'ada@studio' }, deps({}));

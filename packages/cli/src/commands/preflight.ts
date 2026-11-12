@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import os from 'node:os';
 import { promisify } from 'node:util';
-import { AGENTS, AGENT_KINDS, versionOk } from '@svall/svalld/agents';
+import { AGENTS, AGENT_KINDS, versionOf, versionOk } from '@svall/svalld/agents';
 import { robotKeyEnv } from '@svall/svalld/claude';
 import { configuredMainAgent, fleetMainAgent } from '@svall/svalld/config';
 import { unitPath } from '@svall/svalld/linux/setup';
@@ -14,7 +14,7 @@ import { tmuxTooOld } from '@svall/svalld/tmux/conf';
 import { isWorker } from '@svall/svalld/worker/mode';
 import type { AgentKind } from '@svall/protocol';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
-import { MARK, type Check } from '../checks-view.js';
+import { MARK, rawLines, type Check } from '../checks-view.js';
 
 export type PreflightDeps = {
   /** `path`: the PATH to find `cmd` on, when it is not this process's own; `env`: added to this process's environment */
@@ -41,12 +41,13 @@ async function tmux(d: PreflightDeps): Promise<Check> {
   const linux = d.platform === 'linux';
   try {
     const v = firstLine(await d.run(resolveTmux(), ['-V']));
-    return tmuxTooOld(v)
-      ? { name: 'tmux', status: 'warn', detail: `${v}: Shift+Enter needs tmux 3.5 or newer; ${linux ? 'Ubuntu 24.04 ships 3.4' : 'brew upgrade tmux'}` }
-      : { name: 'tmux', status: 'ok', detail: v };
+    const shown = v.replace(/^tmux /, '');
+    if (!tmuxTooOld(v)) return { name: 'tmux', status: 'ok', detail: shown };
+    // Ubuntu 24.04 ships 3.4, and has no newer one to upgrade to
+    return { name: 'tmux', status: 'warn', detail: `${shown}: Shift+Enter needs 3.5`, ...(!linux && { action: 'brew upgrade tmux', run: 'brew upgrade tmux' }) };
   } catch (e) {
     const install = linux ? 'sudo apt install tmux' : 'brew install tmux';
-    return missing(e) ? { name: 'tmux', status: 'fail', detail: `not found on PATH: ${install}`, run: install } : { name: 'tmux', status: 'fail', detail: (e as Error).message };
+    return missing(e) ? { name: 'tmux', status: 'fail', detail: 'not installed', action: install, run: install } : { name: 'tmux', status: 'fail', detail: 'does not run', raw: (e as Error).message };
   }
 }
 
@@ -59,7 +60,7 @@ function node(d: PreflightDeps): Check {
 function shimDirOnPath(d: PreflightDeps): Check {
   return d.pathEnv.split(':').includes(d.shimDir)
     ? { name: 'path', status: 'ok', detail: `${d.shimDir} is on PATH` }
-    : { name: 'path', status: 'warn', detail: `${d.shimDir} is not on PATH, so your shell will not find ${SHIM}; add it in your shell profile` };
+    : { name: 'path', status: 'warn', detail: `${SHIM} is not on PATH in your shell`, action: `add ${d.shimDir} to PATH in your shell profile` };
 }
 
 // 1 is the CLI's own "not signed in"; anything else (a timeout, an unknown subcommand) leaves it unknown
@@ -80,20 +81,21 @@ async function agentCheck(d: PreflightDeps, kind: AgentKind, version: string | E
   if (version === undefined) {
     const other = AGENT_KINDS.find((k) => k !== kind && found.includes(k));
     return d.mainAgent === kind && other
-      ? { name: kind, status: 'warn', detail: `not installed, but it is the main agent: ${SHIM} agent ${other}` }
+      ? { name: kind, status: 'warn', detail: 'not installed, but it is the main agent', action: `${SHIM} agent ${other}` }
       : { name: kind, status: 'skip', detail: 'not installed' };
   }
-  if (version instanceof Error) return { name: kind, status: 'warn', detail: firstLine(version.message) };
+  if (version instanceof Error) return { name: kind, status: 'warn', detail: 'does not run', raw: firstLine(version.message) };
   const login = await signedIn(d, kind);
-  const signIn = login === false ? { run: a.loginHint } : {};
+  const logIn = login === false ? { run: a.loginHint } : {};
+  const v = versionOf(version) ?? version;
   if ((d.moves || !a.moveFloor) && !versionOk(a, version)) {
-    const old = `${version}: Svall needs ${a.minVersion!.join('.')} or newer; update ${a.label}`;
-    return { name: kind, status: 'warn', detail: login === false ? `${old}; not signed in: ${a.loginHint}` : old, ...signIn };
+    const old = `${v}: needs ${a.minVersion!.join('.')} or newer`;
+    return { name: kind, status: 'warn', detail: login === false ? `${old}, not logged in` : old, action: `update ${a.label}${login === false ? `, then ${a.loginHint}` : ''}`, ...logIn };
   }
-  if (login === undefined) return { name: kind, status: 'warn', detail: `${version}; couldn't tell whether it is signed in` };
+  if (login === undefined) return { name: kind, status: 'warn', detail: `${v}, could not tell whether logged in` };
   return login
-    ? { name: kind, status: 'ok', detail: `${version}, signed in` }
-    : { name: kind, status: 'warn', detail: `${version}, not signed in: ${a.loginHint}`, ...signIn };
+    ? { name: kind, status: 'ok', detail: `${v}, logged in` }
+    : { name: kind, status: 'warn', detail: `${v}, not logged in`, action: a.loginHint, ...logIn };
 }
 
 async function agentChecks(d: PreflightDeps): Promise<Check[]> {
@@ -116,7 +118,7 @@ export async function preflight(d: PreflightDeps): Promise<Check[]> {
   return [await tmux(d), node(d), ...await agentChecks(d), shimDirOnPath(d)];
 }
 
-export const checkLine = (c: Check): string => `${MARK[c.status]} ${c.name}  ${c.detail}`;
+export const checkLine = (c: Check): string => `${MARK[c.status]} ${c.name}  ${[c.detail, c.action].filter(Boolean).join(' -> ')}${rawLines(c, (t) => t)}`;
 
 // the lines to show for warnings; any failure stops the caller before it changes anything
 export function requireReady(checks: Check[]): string[] {

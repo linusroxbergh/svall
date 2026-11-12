@@ -154,7 +154,7 @@ describe('runUninstall', () => {
     fs.writeFileSync(path.join(f.home, 'cache/mirror-state.json'), JSON.stringify({
       files: {}, docs: {}, servers: {}, secrets: { [record]: sha256Hex('lin_fake_1234567890') }, bare: { [record]: { value: '${LINEAR_API_KEY}' } },
     }));
-    expect(await runUninstall(f.o)).toContain(`took 1 key the mirror copied out of ${claudeJson}`);
+    expect(await runUninstall(f.o)).toContain(`took 1 key Svall copied out of ${claudeJson}`);
     expect(JSON.parse(fs.readFileSync(claudeJson, 'utf8')).mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
   });
 

@@ -32,6 +32,7 @@ class Net {
   daemons = new Map<string, Daemon>();
   knocks: string[] = [];
   tokens: (string | undefined)[] = [];
+  hellos: unknown[] = [];
   get WS(): typeof WebSocket {
     const net = this;
     return class extends Socket { constructor(u: string) { super(u, net); } } as unknown as typeof WebSocket;
@@ -60,6 +61,7 @@ class Socket {
     if (!d) return;
     if ('token' in m) {
       this.net.tokens.push(m.token);
+      this.net.hellos.push(m);
       if (d.token !== undefined && m.token !== d.token) { setTimeout(() => this.lost(4401), 0); return; }
       d.sockets.push(this);
       setTimeout(() => this.deliver({ id: 0, result: { ok: true, protocol: d.protocol } }), 0);
@@ -123,7 +125,7 @@ describe('the page follows the home while it answers, and this machine otherwise
     switches = 0;
     backs = 0;
     api = new FollowApi(new Api({ url: 'ws://local', token: 't' }, { WS: net.WS }), store, {
-      makeApi: (u, token) => new Api({ url: u, token }, { WS: net.WS }),
+      makeApi: (endpoint) => new Api(endpoint, { WS: net.WS }),
       onSwitch: () => { switches++; },
       onLocalBack: () => { backs++; },
     });
@@ -176,6 +178,11 @@ describe('the page follows the home while it answers, and this machine otherwise
     local.drop();
     await vi.advanceTimersByTimeAsync(600);
     expect(local.said('home.connection').at(-1)).toEqual({});
+  });
+
+  it('tells the home what this window calls it and which machine the window is on, and its own daemon neither', async () => {
+    await following();
+    expect(net.hellos).toEqual([{ token: 't' }, { token: TOKEN, home: 'studio', me: ME }]);
   });
 
   it('never keeps the home\'s token where the page stores what it knows', async () => {
@@ -585,7 +592,7 @@ describe('the page follows the home while it answers, and this machine otherwise
     await settle();
     expect(answered).toBe(1);
     expect(statuses.at(-1)).toBe('offline');
-    await expect(api.call('state.get', {})).rejects.toThrow('svalld offline');
+    await expect(api.call('state.get', {})).rejects.toThrow("Svall's background service is not connected");
   });
 
   it('a daemon that answers it names no home is a home of its own, and is not asked again', async () => {

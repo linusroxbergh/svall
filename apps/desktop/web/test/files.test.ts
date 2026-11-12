@@ -436,7 +436,17 @@ describe('openPath', () => {
     s().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true });
     await openPath(d, 'c1', '/Users/ada/Desktop/shot.png', 'terminal');
     expect(sent).toEqual([]);
-    expect(s().toast?.text).toBe('~/Desktop/shot.png is on studio, and the editor cannot show it');
+    expect(s().toast).toMatchObject({ text: '~/Desktop/shot.png is on studio; the editor cannot show it.', tone: 'info', action: { label: 'Open terminal' } });
+    s().runToastAction();
+    expect(sent).toEqual([{ type: 'host.list' }]);
+    expect(s().hostTerminal).toEqual({ run: "cd '/Users/ada/Desktop'" });
+    expect(s().hostMachine).toBe('studio');
+    s().closeHostTerminal();
+    sent.length = 0;
+    // a machine this Mac has no ssh to offers no terminal
+    s().setMachines([{ name: 'studio', id: STUDIO, platform: 'darwin' }]);
+    await openPath(d, 'c1', '/Users/ada/Desktop/shot.png', 'terminal');
+    expect(s().toast).toEqual({ text: '~/Desktop/shot.png is on studio; the editor cannot show it.', tone: 'info' });
     s().setFleet({ ...s().fleet, robots: { ...s().fleet.robots, c1: { ...s().fleet.robots.c1, machine: MAC } } });
     await openPath(d, 'c1', '/Users/ada/Desktop/shot.png', 'terminal');
     expect(sent).toEqual([{ type: 'openFile', path: '/Users/ada/Desktop/shot.png', machine: MAC }]);

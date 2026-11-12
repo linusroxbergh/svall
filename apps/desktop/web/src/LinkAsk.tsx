@@ -7,7 +7,7 @@ import { CloseX } from './CloseX.js';
 import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
 import { terminalOn } from './MoveSheet.js';
-import { cdLine } from './OnMachine.js';
+import { cdLine, hasRoute } from './host.js';
 import { machineOf, robotMachine } from './placement.js';
 import { theme } from './theme.js';
 
@@ -18,9 +18,9 @@ function followPath(item: ContextItem, robotId: string | undefined): void {
   const name = machineOf(s.fleet, c, s.via);
   if (!name) { openItem(app.bridge, item, robotMachine(c, s)); return; }
   const dir = item.kind === 'file' ? item.ref.slice(0, item.ref.lastIndexOf('/')) || '/' : item.ref;
-  if (s.machines && !s.machinesError && !s.machines.find((m) => m.name === name)?.ssh) {
+  if (!hasRoute(s, name)) {
     app.bridge.send({ type: 'host.list' });
-    s.showToast(`${item.ref} is on ${name}; open it there`);
+    s.showToast(`${item.ref} is on ${name}.`, 'info');
   } else terminalOn(name, dir.startsWith('/') ? cdLine(dir) : undefined);
 }
 

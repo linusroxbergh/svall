@@ -29,6 +29,9 @@ beforeEach(() => document.body.replaceChildren());
 test('opening the menu focuses its first item; arrows step; Escape and an outside press close it, Escape returning focus to the button', () => {
   setup(undefined, 0);
   fireEvent.click(more());
+  expect(screen.getByTestId('machine-terminal').textContent).toBe('Open terminal');
+  // what takes the machine away stands apart
+  expect(screen.getByTestId('machine-remove').previousElementSibling!.getAttribute('role')).toBe('separator');
   expect(document.activeElement).toBe(screen.getByTestId('machine-upgrade'));
   key('ArrowDown');
   expect(document.activeElement).toBe(screen.getByTestId('machine-terminal'));
@@ -49,12 +52,12 @@ test('opening the menu focuses its first item; arrows step; Escape and an outsid
   expect(screen.queryByTestId('machine-upgrade')).toBeNull();
 });
 
-test('Remove is held back while a fleet on this account dials the machine as its home, and says which', () => {
+test('Remove is held back while a fleet on this account dials the machine as its home, and says what clears it', () => {
   setup(undefined, 0);
   act(() => store.getState().setMachines(store.getState().machines!.map((m) => ({ ...m, dialedBy: '/Users/ada/.svall-fartest' }))));
   fireEvent.click(more());
   expect((screen.getByTestId('machine-remove') as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByTestId('machine-remove').getAttribute('data-tip')).toContain('/Users/ada/.svall-fartest');
+  expect(screen.getByTestId('machine-remove').getAttribute('data-tip')).toBe('It is the home of another fleet on this Mac; bring that fleet back first.');
 });
 
 test('Forget says why it is held back too, what clears it, and an unreadable worker.json reads apart', () => {
@@ -63,7 +66,7 @@ test('Forget says why it is held back too, what clears it, and an unreadable wor
   fireEvent.click(more());
   const forget = () => screen.getByTestId('machine-forget') as HTMLButtonElement;
   expect(forget().disabled).toBe(true);
-  expect(forget().getAttribute('data-tip')).toContain('Bring that fleet back to this Mac first: SVALL_HOME=/Users/ada/.svall-fartest svall fleet home set local');
+  expect(forget().getAttribute('data-tip')).toBe('It is the home of another fleet on this Mac; bring that fleet back first.');
   act(() => store.getState().setMachines(store.getState().machines!.map(({ dialedBy: _d, ...m }) => ({ ...m, unreadWorker: '/Users/ada/.svall-x/worker.json' }))));
   expect(forget().disabled).toBe(true);
   for (const b of [forget(), screen.getByTestId('machine-remove')]) {
@@ -121,4 +124,33 @@ test('the far home offers to bring the fleet back, keeps Check, Upgrade and its 
   expect(screen.queryByTestId('machine-forget')).toBeNull();
   fireEvent.click(screen.getByTestId('machine-bring-back'));
   expect(store.getState().homeSheet).toEqual({ to: VAULT, name: 'vault', back: true });
+});
+
+test('Open terminal is off for a machine this Mac has no ssh route to, and says so', () => {
+  freshStore();
+  store.getState().setFleet(fleet());
+  act(() => store.getState().setMachines([]));
+  render(<MachineActions name="studio" menuOnly />);
+  fireEvent.click(more());
+  const terminal = screen.getByTestId('machine-terminal');
+  expect([terminal.hasAttribute('disabled'), terminal.getAttribute('data-tip')]).toEqual([true, 'This Mac has no ssh route to studio']);
+});
+
+test.each([
+  ['hangs from the left edge of ⋯ where it fits in its window', 100, '100px'],
+  ['hangs from the right edge of ⋯ where its window ends first', 700, '540px'],
+])('the menu %s', (_name, x, left) => {
+  freshStore();
+  store.getState().setFleet(fleet());
+  act(() => store.getState().setMachines([{ name: 'vault', id: VAULT, ssh: 'ada@vault', platform: 'linux-x64' }]));
+  const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    const [l, r] = this.classList.contains('set-win') ? [0, 760] : this.dataset.testid === 'machine-more' ? [x, x + 40] : [0, 0];
+    return { left: l, right: r, top: 100, bottom: 128, width: r - l, height: 28, x: l, y: 100, toJSON() {} } as DOMRect;
+  });
+  const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('machine-menu') ? 200 : 0; });
+  try {
+    render(<div className="set-win"><MachineActions name="vault" /></div>);
+    fireEvent.click(more());
+    expect(document.querySelector<HTMLElement>('.machine-menu')!.style.left).toBe(left);
+  } finally { rect.mockRestore(); width.mockRestore(); }
 });

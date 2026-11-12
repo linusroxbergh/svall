@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { INTERRUPT_ACTIONS, type MachineId } from '@svall/protocol';
-import { call, freshStore, sent, store } from './harness.js';
+import { bridge, call, freshStore, sent, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
@@ -29,13 +29,21 @@ const open = async (back = false) => {
 };
 const step = (s: string, status: string, more = {}, op = 'home') => act(() => { store.getState().hostStep(op as never, { step: s, status, ...more } as never); });
 const go = async () => { fireEvent.click(await screen.findByTestId('home-go')); };
+// the summary's rows, each its label and its value; the label's own words, without its info tip
+const summary = () => [...screen.getByTestId('home-summary').querySelectorAll('.row')].map((r) => `${r.firstElementChild!.firstChild!.textContent}: ${r.querySelector('b')!.textContent}`);
+// what a problem says: its line, and what to do under it
+const said = (el: Element) => [...el.querySelectorAll('.said > div > span')].map((e) => e.textContent);
+const raw = (el: Element) => el.querySelector('.said details .modal-more-body')?.textContent;
 
 describe('the sheet of a home move', () => {
   it('asks the check of where the fleet goes, and says what moves and where robots stay', async () => {
     await open();
     expect(call).toHaveBeenCalledWith('fleet.homeCheck', { to: STUDIO });
     expect(screen.getByTestId('home-title').textContent).toBe("Make studio this fleet's home");
-    expect(screen.getByTestId('home-summary').textContent).toContain("The fleet's islands, notes, settings, phone pairing and push keys. Robots stay where they run: 3 here, 7 on studio.");
+    expect(screen.getByRole('dialog').classList.contains('sheet')).toBe(true);
+    expect(screen.getByTestId('home-ready').textContent).toBe('Ready to move');
+    expect(summary()).toEqual(['moves: islands, notes, settings, phone link', 'robots: stay where they run · 3 here, 7 on studio']);
+    expect(document.getElementById('set-tip-home-moves')!.textContent).toBe('Push keys and phone pairing move too, so paired phones stay paired. Open the phone once from the new QR code.');
     expect(screen.getByTestId('home-go').textContent).toBe('Make it the home');
   });
 
@@ -50,40 +58,91 @@ describe('the sheet of a home move', () => {
     expect(screen.getByTestId('home-steps').textContent).not.toContain('The other workers join');
   });
 
-  it('a move that carried one shows its row as it waits, and what it found', async () => {
+  it('a move its check says carries other workers counts their row from the start, so the bar and the steps done agree', async () => {
+    answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, carries: true } } });
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    expect(screen.getByTestId('home-step-workers').textContent).toBe('Join the other workers to studio');
+    step('mission', 'skip');
+    expect(screen.getByTestId('home-bar').children).toHaveLength(7);
+    for (const s of ['check', 'pause', 'copy', 'adopt', 'join', 'probe']) step(s, 'ok');
+    step('workers', 'start');
+    expect(screen.getByTestId('home-step-workers').textContent).toBe('Joining the other workers to studio…');
+    step('workers', 'ok');
+    act(() => { store.getState().hostDone('home', 0); });
+    expect(screen.getByTestId('home-steps-fold').textContent).toBe('7 steps done');
+  });
+
+  it('a move that carried one says what it found of them', async () => {
     await open();
     fireEvent.click(screen.getByTestId('home-go'));
     step('workers', 'start');
-    expect(screen.getByTestId('home-steps').textContent).toContain('The other workers join');
     step('workers', 'warn', { detail: 'box has not joined studio yet; its row under Machines says why' });
     expect(screen.getByTestId('home-steps').textContent).toContain('box has not joined studio yet');
+  });
+
+  it('while it checks, holds the place of what it will say: the rows it knows, and its button, off with why', async () => {
+    call.mockImplementation((method: string) => (method === 'fleet.homeCheck' ? new Promise(() => {}) : Promise.resolve({})));
+    act(() => { store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: false }); });
+    render(<HomeSheet />);
+    expect(screen.getByTestId('home-checking').textContent).toBe('Checking that the fleet can move…');
+    expect([...document.querySelectorAll('.modal .rows .row')].map((r) => r.querySelector('b')!.textContent)).toEqual(['islands, notes, settings, phone link', '…']);
+    const go = screen.getByTestId('home-go-checking') as HTMLButtonElement;
+    expect([go.textContent, go.className, go.disabled, go.dataset.tip]).toEqual(['Make it the home', 'btn pri', true, 'Waits for the check']);
+  });
+
+  it('once through, says it reaches the new home in a quiet line under the done one', async () => {
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    for (const s of ['check', 'pause', 'copy', 'adopt', 'join', 'probe']) step(s, 'ok');
+    act(() => { store.getState().hostDone('home', 0); });
+    expect(screen.getByTestId('home-reaching').className).toContain('modal-sub');
+    expect(screen.getByTestId('home-reaching').closest('.home-phone')).toBeTruthy();
   });
 
   it('names a worker that does not answer, which joins the new home when it does', async () => {
     answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, waits: [{ id: 'cccccccc-0000-4000-8000-000000000000', name: 'box' }] } } });
     await open();
-    expect(screen.getByTestId('home-waits').textContent).toBe('box does not answer; it joins studio when it does.');
+    expect(said(screen.getByTestId('home-waits'))).toEqual(['box is not answering', 'It joins studio when it does']);
+    expect(screen.getByTestId('home-waits').querySelector('.said')!.getAttribute('data-mark')).toBe('warn');
+    expect(screen.getByTestId('home-ready')).toBeTruthy();
   });
 
   it('names mission control\'s robots, and each path it rewrites', async () => {
     answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, mission: [{ id: 'c_a', name: 'crew' }, { id: 'c_b', name: 'crew2' }], rewrites: [{ key: 'defaultCwd', to: '~/code' }] } } });
     await open();
-    expect(screen.getByTestId('home-mission').textContent).toBe("Mission control's 2 robots move to studio first.");
-    expect(screen.getByTestId('home-rewrite').textContent).toBe('defaultCwd becomes ~/code');
+    expect(screen.getByTestId('home-mission').textContent).toBe('2 robots move to studio first');
+    expect(summary().slice(2)).toEqual(['mission control: 2 robots move to studio first', "new robots' folder: ~/code"]);
   });
 
   it('says of a rewritten path that the machine taking the fleet does not have it, and goes on', async () => {
     answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }, { key: 'home.cwd', to: '~/crew' }, { key: 'onboarding.firstProject', to: '~/app', kept: true, lacks: true }] } } });
     await open();
-    expect(screen.getAllByTestId('home-rewrite').map((r) => r.textContent)).toEqual(['defaultCwd becomes ~/code, which studio does not have yet', 'home.cwd becomes ~/crew', 'onboarding.firstProject is ~/app, which studio does not have yet']);
+    expect(summary().slice(2)).toEqual(["new robots' folder: ~/code · not on studio yet", "mission control's folder: ~/crew", 'first project folder: ~/app · not on studio yet']);
+  });
+
+  it('says of mission control\'s folder the new home lacks that the move makes it, its path in the tip', async () => {
+    answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, rewrites: [{ key: 'home.cwd', to: '/home/ada/.svall/home', lacks: true }] } } });
+    await open();
+    expect(summary().slice(2)).toEqual(["mission control's folder: made on studio during the move"]);
+    expect(screen.getByTestId('home-rewrite').querySelector('b')!.dataset.tip).toBe('/home/ada/.svall/home');
     expect(screen.getByTestId('home-go')).toBeTruthy();
   });
 
   it('lists every refusal with what to do, offers no way past them, and checks again', async () => {
     answer({ 'fleet.homeCheck': { ok: false, sheet: SHEET, refusal: { reason: 'studio is not reachable', action: 'try again when it is awake', details: [], more: [{ reason: 'studio2 is a worker of this fleet too', action: 'remove studio2 first, and add it again from studio' }] } } });
     await open();
-    expect(screen.getAllByTestId('home-reason').map((r) => r.textContent)).toEqual(['studio is not reachable', 'studio2 is a worker of this fleet too']);
+    expect(screen.getByTestId('home-blocked').textContent).toBe('Not ready to move yet');
+    // the state line's mark is its own, apart from each refusal's warning
+    expect(screen.getAllByTestId('home-refusal')[0].querySelector('.said')!.getAttribute('data-mark')).toBe('warn');
+    expect(screen.getByTestId('home-blocked').querySelector('.move-mark')!.innerHTML).not.toBe(screen.getAllByTestId('home-refusal')[0].querySelector('.said-mark')!.innerHTML);
+    expect(screen.queryByTestId('home-ready')).toBeNull();
+    expect(screen.getAllByTestId('home-refusal').map(said)).toEqual([['studio is not reachable', 'try again when it is awake'], ['studio2 is a worker of this fleet too', 'remove studio2 first, and add it again from studio']]);
     expect(screen.queryByTestId('home-go')).toBeNull();
+    // the problems lead, what moves follows, and checking again is the way forward
+    const order = [...document.querySelectorAll('[data-testid="home-refusal"], [data-testid="home-summary"]')].map((e) => e.getAttribute('data-testid'));
+    expect(order).toEqual(['home-refusal', 'home-refusal', 'home-summary']);
+    expect(screen.getByTestId('home-again').className).toBe('btn pri');
     answer({ 'fleet.homeCheck': { ok: true, sheet: SHEET } });
     fireEvent.click(screen.getByTestId('home-again'));
     expect(await screen.findByTestId('home-go')).toBeTruthy();
@@ -99,8 +158,9 @@ describe('the sheet of a home move', () => {
     expect(screen.getByTestId('home-step-check').dataset.state).toBe('done');
     expect(screen.queryByTestId('home-step-mission')).toBeNull();
     expect(screen.getByTestId('home-step-pause').dataset.state).toBe('doing');
-    expect(screen.getByTestId('home-step-pause').textContent).toBe('Pause this Mac');
-    expect(screen.getByTestId('home-step-adopt').textContent).toBe('studio takes over');
+    expect(screen.getByTestId('home-step-check').textContent).toBe('Checked');
+    expect(screen.getByTestId('home-step-pause').textContent).toBe('Pausing this Mac…');
+    expect(screen.getByTestId('home-step-adopt').textContent).toBe('Hand the fleet to studio');
     expect(screen.queryByTestId('home-close')).toBeNull();
     fireEvent.pointerDown(screen.getByTestId('home-sheet'));
     expect(store.getState().homeSheet).toBeDefined();
@@ -110,11 +170,18 @@ describe('the sheet of a home move', () => {
     await open();
     fireEvent.click(screen.getByTestId('home-go'));
     for (const s of ['check', 'pause', 'copy', 'adopt', 'join', 'probe']) step(s, 'ok');
+    const NEW = { serving: true, url: 'https://studio.tailnet.ts.net:8443', qr: 'data:image/png;base64,NEW', logins: ['ada@github'], phones: [] };
+    answer({ 'mobile.get': NEW });
     act(() => { store.getState().hostDone('home', 0); });
-    expect(screen.getByTestId('home-done').textContent).toContain('The fleet runs on studio. Open the phone from its new QR code once.');
+    expect(screen.getByTestId('home-done').querySelector('.move-state')!.textContent).toBe('The fleet runs on studio');
     expect(call).not.toHaveBeenCalledWith('mobile.get', {});
-    act(() => { store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
+    await act(async () => { store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
     expect(call).toHaveBeenCalledWith('mobile.get', {});
+    // the code alone, and one line under it: none of the phone panel's other words
+    const done = screen.getByTestId('home-done');
+    expect(done.querySelector('img')?.getAttribute('src')).toBe(NEW.qr);
+    expect(done.querySelector('.mob + .modal-sub')!.textContent).toBe('Scan once with your phone. Paired phones stay paired.');
+    expect(done.querySelector('.use-note, .mob-here')).toBeNull();
     fireEvent.click(screen.getByTestId('home-finish'));
     expect(store.getState().homeSheet).toBeUndefined();
   });
@@ -150,9 +217,12 @@ describe('the sheet of a home move', () => {
       for (const st of ['check', 'pause', ...(served ? ['phone'] : []), 'copy', 'adopt', 'join', 'probe']) step(st, 'ok');
       await act(async () => { store.getState().hostDone('home', 0); await vi.advanceTimersByTimeAsync(0); });
       expect(screen.queryByTestId('home-phone-wait')).toBeNull();
+      // a wait says so as it goes, so the code takes the place of a line rather than of nothing
+      expect(screen.getByTestId('home-done').textContent).toContain(served ? 'Starting the phone link on studio…' : 'The fleet runs on studio');
       await act(async () => { await vi.advanceTimersByTimeAsync(31_000); });
-      if (!served) { expect(screen.queryByTestId('home-phone-wait')).toBeNull(); return; }
-      expect(screen.getByTestId('home-phone-wait').textContent).toBe('studio has not turned its phone link on yet; Settings → Phone shows its QR code once it does.');
+      if (!served) { expect(screen.queryByTestId('home-phone-wait')).toBeNull(); expect(screen.getByTestId('home-done').textContent).not.toContain('phone link'); return; }
+      expect(said(screen.getByTestId('home-phone-wait'))).toEqual(['studio has not turned its phone link on yet']);
+      expect(screen.getByTestId('home-phone-wait').textContent).toContain('Turn the phone link on later in Settings → Phone.');
       const asked = call.mock.calls.filter(([m]) => m === 'mobile.get').length;
       await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
       expect(call.mock.calls.filter(([m]) => m === 'mobile.get').length).toBe(asked);
@@ -195,7 +265,7 @@ describe('the sheet of a home move', () => {
     act(() => { store.getState().hostDone('home', 1); });
     expect(screen.getByTestId('home-step-mark').dataset.state).toBe('failed');
     expect(screen.getByTestId('home-failed').textContent).toContain('this home is not frozen for hm_abcdefghij');
-    fireEvent.click(screen.getByTestId('home-close-failed'));
+    fireEvent.click(await screen.findByTestId('home-close-failed'));
     expect(store.getState().homeSheet).toBeUndefined();
   });
 
@@ -204,8 +274,11 @@ describe('the sheet of a home move', () => {
     fireEvent.click(screen.getByTestId('home-go'));
     step('check', 'ok');
     act(() => { store.getState().hostDone('home', 143); });
-    expect(screen.getByTestId('home-ended').textContent).toContain('143');
-    fireEvent.click(screen.getByTestId('home-close-failed'));
+    expect(said(screen.getByTestId('home-ended'))).toEqual(['The move stopped without saying why']);
+    expect(raw(screen.getByTestId('home-ended'))).toBe('exit 143');
+    // the steps it got to, none it never reached
+    expect([...screen.getByTestId('home-steps').querySelectorAll('li')].map((li) => li.dataset.state)).toEqual(['done']);
+    fireEvent.click(await screen.findByTestId('home-close-failed'));
     expect(store.getState().homeSheet).toBeUndefined();
   });
 
@@ -227,26 +300,56 @@ describe('the sheet of a home move', () => {
     await open();
     fireEvent.click(screen.getByTestId('home-go'));
     for (const s of ['check', 'pause', 'copy', 'mark']) step(s, 'ok');
-    step('adopt', 'fail', { detail: 'this machine asked, and studio did not take the fleet: rolledback', action: 'svall fleet home abort, or svall fleet home retry', say: 'Close to finish the move or call it off' });
+    step('adopt', 'fail', { detail: 'this machine asked, and studio did not take the fleet: rolledback', action: 'svall fleet home abort, or svall fleet home retry', say: 'The move is not finished' });
     act(() => { store.getState().hostDone('home', 1); });
-    const row = screen.getByTestId('home-step-adopt').textContent;
-    expect(row).toContain('this Mac asked, and studio did not take the fleet');
-    expect(row).toContain('Close to finish the move or call it off');
-    expect(row).not.toContain('svall fleet');
+    expect(said(screen.getByTestId('home-failed'))).toEqual(['this Mac asked, and studio did not take the fleet: rolledback', 'The move is not finished']);
+    expect(screen.getByTestId('home-step-adopt').textContent).not.toContain('svall fleet');
   });
 
-  it('a refusal\'s raw words sit behind details', async () => {
-    answer({ 'fleet.homeCheck': { ok: false, sheet: SHEET, refusal: { reason: 'Tailscale is not running on studio', action: 'start it there: sudo systemctl start tailscaled', details: ['Command failed: tailscale status --json'] } } });
+  it('a refusal\'s raw words sit behind details: its own, the check\'s, or a tail its sentence carries', async () => {
+    answer({
+      'fleet.homeCheck': {
+        ok: false, sheet: SHEET, refusal: {
+          reason: 'Tailscale is not running on studio', action: 'Start it there: sudo systemctl start tailscaled', raw: 'tailscale is stopped', details: ['Command failed: tailscale status --json'],
+          more: [{ reason: 'box has no Tailscale: Command failed: tailscale status --json\ntailscale: command not found', action: 'install Tailscale there and sign in' }],
+        },
+      },
+    });
     await open();
-    expect(screen.getByTestId('home-reason').textContent).toBe('Tailscale is not running on studio');
-    expect(screen.getByTestId('home-details').textContent).toContain('Command failed: tailscale status --json');
-    expect(screen.getByTestId('home-refusal').textContent).not.toContain('Command failed');
+    const [first, second] = screen.getAllByTestId('home-refusal');
+    expect(said(first)).toEqual(['Tailscale is not running on studio', 'Start it there: sudo systemctl start tailscaled']);
+    expect(raw(first)).toBe('tailscale is stopped\nCommand failed: tailscale status --json');
+    expect(first.querySelector('details')!.hasAttribute('open')).toBe(false);
+    expect(said(second)).toEqual(['box has no Tailscale', 'install Tailscale there and sign in']);
+    expect(raw(second)).toBe('Command failed: tailscale status --json\ntailscale: command not found');
+  });
+
+  it('a refusal with a command to run opens a terminal on the machine with it typed', async () => {
+    act(() => store.getState().setMachines([{ name: 'studio', id: STUDIO, ssh: 'ada@studio', platform: 'linux-x64' }]));
+    answer({ 'fleet.homeCheck': { ok: false, sheet: SHEET, refusal: { reason: 'Tailscale on studio is signed out', action: 'Sign in there: sudo tailscale up', run: 'sudo tailscale up', details: [] } } });
+    await open();
+    fireEvent.click(within(screen.getByTestId('home-refusal')).getByRole('button', { name: 'Open terminal' }));
+    expect(store.getState().hostMachine).toBe('studio');
+    expect(store.getState().hostTerminal).toEqual({ run: 'sudo tailscale up' });
+  });
+
+  it('a fleet too big to carry offers its folder in Finder, on this Mac only', async () => {
+    act(() => store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, machine: ME }));
+    answer({ 'fleet.homeCheck': { ok: false, sheet: SHEET, refusal: { reason: "the fleet's files are 201 MB; a move carries 180 MB", action: 'remove what you no longer need from docs and retro', details: [] } } });
+    await open();
+    bridge.present = true;
+    try { fireEvent.click(screen.getByTestId('home-show-files')); } finally { bridge.present = false; }
+    expect(sent).toContainEqual({ type: 'openFolder', path: '/Users/ada/.svall' });
+    cleanup();
+    act(() => { store.getState().setHomeSheet(undefined); store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
+    await open(true);
+    expect(screen.queryByTestId('home-show-files')).toBeNull();
   });
 
   it('a refusal calls this machine this Mac', async () => {
     answer({ 'fleet.homeCheck': { ok: false, sheet: SHEET, refusal: { reason: 'this machine has no Tailscale: not running', action: 'install Tailscale and sign in', details: [] } } });
     await open();
-    expect(screen.getByTestId('home-reason').textContent).toBe('this Mac has no Tailscale: not running');
+    expect(said(screen.getByTestId('home-refusal'))[0]).toBe('this Mac has no Tailscale: not running');
   });
 
   it('holds the focus, and Escape does not close it while it runs', async () => {
@@ -277,8 +380,160 @@ describe('the sheet of a home move', () => {
     expect(screen.getByTestId('home-failed').textContent).toContain('its daemon did not answer');
     expect(screen.queryByTestId('home-step-join')).toBeNull();
     expect(screen.queryByTestId('home-done')).toBeNull();
-    fireEvent.click(screen.getByTestId('home-close-failed'));
+    fireEvent.click(await screen.findByTestId('home-close-failed'));
     expect(store.getState().homeSheet).toBeUndefined();
+  });
+
+  it('a move that stopped with nothing standing and no crew away offers to try it again, which runs it again, or Close', async () => {
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    step('check', 'ok');
+    step('copy', 'fail', { detail: "studio did not stage the fleet's files", raw: 'svall fleet adopt there exited 1: no space left on device' });
+    act(() => { store.getState().hostDone('home', 1); });
+    await screen.findByTestId('home-try-again');
+    expect([...document.querySelectorAll('.modal .acts button')].map((b) => [b.textContent, b.className])).toEqual([['Try again', 'btn pri'], ['Close', 'btn']]);
+    sent.length = 0;
+    fireEvent.click(screen.getByTestId('home-try-again'));
+    expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home', args: { name: 'studio' } });
+    expect(screen.getByTestId('home-steps')).toBeTruthy();
+    expect(screen.queryByTestId('home-try-again')).toBeNull();
+  });
+
+  it('a stopped move offers nothing at its foot while the home has yet to say whether the move stands', async () => {
+    call.mockImplementation((method: string) => (method === 'fleet.homeMove' ? new Promise(() => {}) : Promise.resolve(method === 'fleet.homeCheck' ? { ok: true, sheet: SHEET } : {})));
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    step('copy', 'fail', { detail: "studio did not stage the fleet's files" });
+    await act(async () => { store.getState().hostDone('home', 1); await Promise.resolve(); });
+    expect(call).toHaveBeenCalledWith('fleet.homeMove', { op: 'status' });
+    expect(document.querySelector('.modal .acts')).toBeNull();
+  });
+
+  it('a stopped move whose home could not say whether the move stands says so and asks again, never guessing at its foot', async () => {
+    let read = (): Promise<unknown> => Promise.reject(new Error('svalld connection closed --token s3cr3t'));
+    call.mockImplementation((method: string) => (method === 'fleet.homeMove' ? read() : Promise.resolve(method === 'fleet.homeCheck' ? { ok: true, sheet: SHEET } : {})));
+    // the banner's last poll, which says no move stands, is not what the foot goes by
+    act(() => { store.getState().setHomeMove(undefined); });
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    step('copy', 'fail', { detail: "studio did not stage the fleet's files" });
+    act(() => { store.getState().hostDone('home', 1); });
+    const unread = await screen.findByTestId('home-move-unread');
+    expect(said(unread)).toEqual(['This Mac could not tell whether the move still stands']);
+    expect(raw(unread)).toBe('svalld connection closed --token …');
+    expect(screen.queryByTestId('home-try-again')).toBeNull();
+    expect([...document.querySelectorAll('.modal .acts button')].map((b) => b.textContent)).toEqual(['Check again', 'Close']);
+    // asked again, the last failure goes while the home answers, so nothing stale stands at the foot
+    let answer: (v: unknown) => void = () => {};
+    read = () => new Promise((r) => { answer = r; });
+    fireEvent.click(screen.getByTestId('home-move-read'));
+    expect(screen.queryByTestId('home-move-unread')).toBeNull();
+    expect(document.querySelector('.modal .acts')).toBeNull();
+    await act(async () => { answer({ moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } }); });
+    expect(await screen.findByTestId('home-retry')).toBeTruthy();
+    expect(screen.queryByTestId('home-move-unread')).toBeNull();
+  });
+
+  it('a running move shows a bar of its steps over them, and once through folds them behind one line', async () => {
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    step('check', 'ok');
+    step('mission', 'skip');
+    step('pause', 'start');
+    const bar = () => [...screen.getByTestId('home-bar').children].map((i) => i.getAttribute('data-state'));
+    expect(bar()).toEqual(['done', 'doing', 'todo', 'todo', 'todo', 'todo']);
+    expect(screen.getByTestId('home-steps').getAttribute('aria-live')).toBe('polite');
+    for (const s of ['pause', 'copy', 'adopt', 'join', 'probe']) step(s, 'ok');
+    act(() => { store.getState().hostDone('home', 0); });
+    expect(screen.queryByTestId('home-bar')).toBeNull();
+    expect(screen.queryByTestId('home-steps')).toBeNull();
+    expect(screen.getByTestId('home-steps-fold').textContent).toBe('6 steps done');
+    expect(screen.queryByTestId('home-steps-done')).toBeNull();
+    fireEvent.click(screen.getByTestId('home-steps-fold'));
+    expect([...screen.getByTestId('home-steps-done').querySelectorAll('li')].map((li) => li.textContent)).toEqual(['Checked', 'Paused this Mac', 'Copied the fleet', 'Handed the fleet to studio', 'Made this Mac a worker', 'Reconnected']);
+  });
+
+  it('a failed step says why, what to do under it, and what a tool said behind details', async () => {
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    step('check', 'ok');
+    step('pause', 'fail', { detail: 'the phone link cannot be read: Command failed: tailscale status --json\ntailscale is stopped', action: 'svall fleet home abort' });
+    step('copy', 'fail', { detail: 'rsync could not reach studio', raw: 'rsync: connection unexpectedly closed', say: 'Check that studio is reachable, then try the move again' });
+    act(() => { store.getState().hostDone('home', 1); });
+    const [pause, copy] = screen.getAllByTestId('home-failed');
+    expect(said(pause)).toEqual(['the phone link cannot be read', 'svall fleet home abort']);
+    expect(raw(pause)).toBe('Command failed: tailscale status --json\ntailscale is stopped');
+    expect(said(copy)).toEqual(['rsync could not reach studio', 'Check that studio is reachable, then try the move again']);
+    expect(raw(copy)).toBe('rsync: connection unexpectedly closed');
+    expect(screen.getByTestId('home-bar').lastElementChild!.getAttribute('data-state')).toBe('todo');
+  });
+
+  it('a stopped move with mission control left away offers to bring them back, which the banner then runs', async () => {
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    step('check', 'ok');
+    step('pause', 'fail', { detail: 'the phone link cannot be read' });
+    step('crew', 'warn', { detail: "Mission control's crew stayed where the move sent them", say: "Mission control's crew is still on studio" });
+    act(() => { store.getState().hostDone('home', 1); });
+    await screen.findByTestId('home-crew-back');
+    // said once, as the row itself, its way back at the foot, and no segment of the move's bar
+    expect(screen.getByTestId('home-step-crew').textContent).toBe("Mission control's crew is still on studio");
+    expect([...screen.getByTestId('home-bar').children].map((i) => i.getAttribute('data-state'))).toEqual(['done', 'todo', 'failed', 'todo', 'todo', 'todo', 'todo']);
+    expect([...document.querySelectorAll('.modal .acts button')].map((b) => [b.textContent, b.className])).toEqual([['Bring them back', 'btn pri'], ['Close', 'btn']]);
+    fireEvent.click(screen.getByTestId('home-crew-back'));
+    expect(store.getState().homeSheet).toBeUndefined();
+    expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-crew', args: { name: '' } });
+  });
+
+  it('one robot of mission control left away is brought back as it', async () => {
+    act(() => {
+      store.setState((st) => ({ fleet: { ...st.fleet, islands: { ...st.fleet.islands, home: { id: 'home', kind: 'home' } }, robots: { r1: { id: 'r1', name: 'golden heron', islandId: 'home', machine: STUDIO, sentAhead: 'hm_abcdefghij' } } } }) as never);
+    });
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    step('check', 'ok');
+    step('pause', 'fail', { detail: 'The phone link cannot be read' });
+    step('crew', 'warn', { detail: "Mission control's golden heron stayed where the move sent it", say: "Mission control's golden heron is still on studio" });
+    act(() => { store.getState().hostDone('home', 1); });
+    expect((await screen.findByTestId('home-crew-back')).textContent).toBe('Bring it back');
+  });
+
+  it.each([['finish', 'home-retry'], ['call off', 'home-abort']] as const)('a stopped move that still stands offers to finish it or call it off, and no Close: the × closes; %s hands it on', async (_what, testid) => {
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    for (const s of ['check', 'pause', 'copy', 'mark']) step(s, 'ok');
+    step('adopt', 'fail', { detail: 'studio did not take the fleet: rolledback', say: 'The move is not finished' });
+    step('crew', 'warn', { detail: "mission control's crew stayed where the move sent them" });
+    // the store's last poll is older than the run's end; the home's own word on the move decides the foot
+    answer({ 'fleet.homeCheck': { ok: true, sheet: SHEET }, 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } } });
+    act(() => { store.getState().hostDone('home', 1); });
+    await screen.findByTestId('home-retry');
+    // the foot says what a standing move needs, so its failed row says only why
+    expect(said(screen.getByTestId('home-failed'))).toEqual(['studio did not take the fleet: rolledback']);
+    expect([...document.querySelectorAll('.modal .acts button')].map((b) => [b.textContent, b.className])).toEqual([['Finish the move', 'btn pri'], ['Call it off', 'btn']]);
+    expect(screen.getByTestId('home-close')).toBeTruthy();
+    fireEvent.click(screen.getByTestId(testid));
+    expect(store.getState().homeSheet).toBeUndefined();
+    expect(sent.at(-1)).toEqual({ type: 'host.start', op: testid === 'home-retry' ? 'home-retry' : 'home-abort', args: { name: '' } });
+  });
+
+  it('a new home whose phone link would not start says why, how to fix it there, and where to turn it on later', async () => {
+    act(() => store.getState().setMachines([{ name: 'studio', id: STUDIO, ssh: 'ada@studio', platform: 'linux-x64' }]));
+    const OFF = {
+      serving: false, url: '', port: 8443, logins: [], phones: [], error: 'Tailscale on studio does not let Svall share this fleet',
+      fix: 'Run once on studio: sudo tailscale set --operator=$USER', run: 'sudo tailscale set --operator=$USER', raw: 'Access denied: serve config denied',
+    };
+    answer({ 'fleet.homeCheck': { ok: true, sheet: SHEET }, 'mobile.get': OFF });
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    for (const s of ['check', 'pause', 'phone', 'copy', 'adopt', 'join', 'probe']) step(s, 'ok');
+    await act(async () => { store.getState().hostDone('home', 0); store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
+    const failed = (await screen.findByTestId('mobile-problem')).parentElement!;
+    expect(said(failed)).toEqual(['Tailscale on studio does not let Svall share this fleet', 'Run once on studio: sudo tailscale set --operator=$USER']);
+    expect(raw(failed)).toBe('Access denied: serve config denied');
+    expect(failed.textContent).toContain('Turn the phone link on later in Settings → Phone.');
+    fireEvent.click(within(failed).getByRole('button', { name: 'Open terminal' }));
+    expect(store.getState().hostTerminal).toEqual({ run: 'sudo tailscale set --operator=$USER' });
   });
 
   it('the way back asks about this Mac, and says the sheet the other way', async () => {
@@ -287,10 +542,11 @@ describe('the sheet of a home move', () => {
     await open(true);
     expect(call).toHaveBeenCalledWith('fleet.homeCheck', { to: ME });
     expect(screen.getByTestId('home-title').textContent).toBe('Bring the fleet back to this Mac');
-    expect(screen.getByTestId('home-summary').textContent).toContain('Robots stay where they run: 3 here, 7 on studio.');
+    expect(summary()[1]).toBe('robots: stay where they run · 3 here, 7 on studio');
     fireEvent.click(screen.getByTestId('home-go'));
     expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home', args: { name: 'local' } });
-    expect(screen.getByTestId('home-step-adopt').textContent).toBe('This Mac takes over');
+    expect(screen.getByTestId('home-step-adopt').textContent).toBe('Hand the fleet to this Mac');
+    expect(screen.getByTestId('home-step-pause').textContent).toBe('Pause studio');
   });
 });
 
@@ -324,17 +580,26 @@ describe('mission control in the check', () => {
     robots((p) => (p.interruptAfterMs === undefined ? WORKING : { ok: true, sheet: {} }));
     await open();
     fireEvent.click((await screen.findByTestId('home-interrupt')).querySelector('input')!);
-    expect((await screen.findByTestId('home-crew-reason')).textContent).toBe('crew is working');
+    expect(said(await screen.findByTestId('home-crew-refusal'))).toEqual(['crew is working']);
+    expect(screen.getByTestId('home-blocked')).toBeTruthy();
     expect(screen.queryByTestId('home-go')).toBeNull();
     fireEvent.click(screen.getByTestId('home-crew-action'));
     expect(await screen.findByTestId('home-interrupt')).toBeTruthy();
     expect(await screen.findByTestId('home-go')).toBeTruthy();
   });
 
+  it('a robot at work answered only by its own button still leaves a way forward at the foot', async () => {
+    robots((p) => (p.interruptAfterMs === undefined ? WORKING : { ok: true, sheet: {} }));
+    await open();
+    fireEvent.click((await screen.findByTestId('home-interrupt')).querySelector('input')!);
+    await screen.findByTestId('home-crew-refusal');
+    expect(screen.getByTestId('home-again').className).toBe('btn pri');
+  });
+
   it('any other refusal of theirs shows in the check by the robot\'s name, and nothing goes', async () => {
     robots(() => ({ ok: false, refusal: { reason: 'claude is not logged in on studio', action: 'log in there', details: [] } }));
     await open();
-    expect((await screen.findByTestId('home-crew-reason')).textContent).toBe('crew: claude is not logged in on studio');
+    expect(said(await screen.findByTestId('home-crew-refusal'))).toEqual(['crew: claude is not logged in on studio', 'log in there']);
     expect(screen.queryByTestId('home-go')).toBeNull();
     expect(screen.getByTestId('home-again')).toBeTruthy();
   });
@@ -365,8 +630,10 @@ describe('a move nothing is driving', () => {
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, answer: 'staged', phase: 'staged' } } });
     render(<HomeMoveBanner />);
     const said = (await screen.findByTestId('home-move-banner')).textContent;
-    expect(said).toContain('The fleet is moving to studio, and this Mac takes no changes until the move ends; robots keep running.');
-    expect(screen.getByTestId('home-move-answer').textContent).toBe(" studio holds the fleet's files and has not taken over.");
+    expect(said).toBe("The fleet is moving to studio. studio holds the fleet's files and has not taken over. This Mac takes no changes until the move ends; robots keep running.Finish the moveCall it off");
+    expect(screen.getByTestId('home-move-banner').querySelector('b')!.textContent).toBe('The fleet is moving to studio.');
+    expect(screen.getByTestId('home-move-answer').textContent).toBe("studio holds the fleet's files and has not taken over.");
+    expect(screen.getByTestId('home-move-answer').parentElement!.className).toBe('banner-sub');
     fireEvent.click(screen.getByTestId('home-move-retry'));
     expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-retry', args: { name: '' } });
     act(() => { store.getState().hostDone('home-retry', 1); });
@@ -380,7 +647,7 @@ describe('a move nothing is driving', () => {
     act(() => { store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: ME, name: 'this mac', asks: false, from: 'studio' } } });
     const { rerender } = render(<HomeMoveBanner />);
-    expect((await screen.findByTestId('home-move-banner')).textContent).toContain('The fleet is moving to this Mac, and studio takes no changes until the move ends');
+    expect((await screen.findByTestId('home-move-banner')).textContent).toContain('The fleet is moving to this Mac. studio takes no changes until the move ends; robots keep running.');
     act(() => { store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: true }); });
     rerender(<HomeMoveBanner />);
     expect(screen.queryByTestId('home-move-banner')).toBeNull();
@@ -425,20 +692,19 @@ describe('a move nothing is driving', () => {
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: ME, name: 'this mac', asks: false, from: 'studio', unmarked: true } } });
     render(<HomeMoveBanner />);
     const said = (await screen.findByTestId('home-move-banner')).textContent;
-    expect(said).toContain('A move of the fleet to this Mac has not taken hold, and studio is still the home.');
-    expect(said).not.toContain('takes no changes');
+    expect(said).toBe('A move to this Mac did not take hold. studio is still the home.Clear it');
     expect(screen.queryByTestId('home-move-retry')).toBeNull();
     expect(screen.getByTestId('home-move-abort').dataset.tip).toBeUndefined();
     fireEvent.click(screen.getByTestId('home-move-abort'));
     expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-abort', args: { name: '' } });
   });
 
-  it('a machine whose daemon has not started again says so', async () => {
+  it('a machine whose background service has not started again says so', async () => {
     online();
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, answer: 'its daemon did not start again: failed to connect to bus', phase: 'stopping' } } });
     render(<HomeMoveBanner />);
     const said = await screen.findByTestId('home-move-answer');
-    expect(said.textContent).toBe(' studio went back as it was, and its daemon has not started again.');
+    expect(said.textContent).toBe('studio went back as it was and has not started again.');
     expect(said.getAttribute('data-tip')).toMatch(/failed to connect to bus/);
   });
 
@@ -447,7 +713,8 @@ describe('a move nothing is driving', () => {
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, answer: 'ssh: connect to host studio port 22: Connection refused', phase: 'unreachable' } } });
     render(<HomeMoveBanner />);
     const said = await screen.findByTestId('home-move-answer');
-    expect(said.textContent).toBe(' studio does not answer; the move waits until it does.');
+    expect(screen.getByTestId('home-move-banner').querySelector('b')!.textContent).toBe('studio is not answering.');
+    expect(said.textContent).toBe('The move to studio waits for it; this Mac takes no changes until then.');
     expect(said.getAttribute('data-tip')).toBe('ssh: connect to host studio port 22: Connection refused');
   });
 
@@ -455,10 +722,10 @@ describe('a move nothing is driving', () => {
     online();
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, answer: 'this folder does not serve the home that asks as a worker of its fleet', phase: 'unknown' } } });
     render(<HomeMoveBanner />);
-    expect((await screen.findByTestId('home-move-answer')).textContent).toBe(' studio cannot say how the move went; the move waits until it can.');
+    expect((await screen.findByTestId('home-move-answer')).textContent).toBe('studio cannot say how the move went; the move waits until it can.');
   });
 
-  it('a press that fails says why and what to do in the window, and Abort says it is at work', async () => {
+  it('a press that fails says why and what to do in the window, and Call it off says it is at work', async () => {
     online();
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } } });
     render(<HomeMoveBanner />);
@@ -466,10 +733,23 @@ describe('a move nothing is driving', () => {
     expect(screen.getByTestId('home-move-abort').textContent).toBe('Calling it off…');
     step('abort', 'fail', { detail: 'studio has not let go of it: staged', action: 'svall fleet home abort again once it answers, or svall fleet home retry', say: 'Call it off again once it answers, or finish the move' }, 'home-abort');
     act(() => { store.getState().hostDone('home-abort', 1); });
-    expect(screen.getByTestId('home-move-failed').textContent).toBe(' studio has not let go of it: staged. Call it off again once it answers, or finish the move');
+    expect(screen.getByTestId('home-move-failed').textContent).toBe('studio has not let go of it: staged. Call it off again once it answers, or finish the move.');
+    expect(screen.getByTestId('home-move-failed').className).toBe('banner-sub');
+    // the failure stands in place of how the move stands, so the banner ends on it
+    expect(screen.getByTestId('home-move-banner').querySelector('span')!.textContent).toBe('The fleet is moving to studio. studio has not let go of it: staged. Call it off again once it answers, or finish the move.');
   });
 
-  it('while Abort runs, neither button takes a press', async () => {
+  it('while the window has lost Svall\'s background service, neither button takes a press, and says why', async () => {
+    online();
+    answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } } });
+    render(<HomeMoveBanner />);
+    await screen.findByTestId('home-move-banner');
+    act(() => { store.getState().setStatus('offline'); });
+    expect(['home-move-retry', 'home-move-abort'].map((t) => { const b = screen.getByTestId(t) as HTMLButtonElement; return [b.disabled, b.dataset.tip]; }))
+      .toEqual([[true, "Lost the connection to Svall's background service"], [true, "Lost the connection to Svall's background service"]]);
+  });
+
+  it('while Call it off runs, neither button takes a press', async () => {
     online();
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } } });
     render(<HomeMoveBanner />);
@@ -486,7 +766,7 @@ describe('a move nothing is driving', () => {
     act(() => { store.getState().hostStarted('home', { name: 'studio' }); });
     step('adopt', 'fail', { detail: 'studio did not take the fleet: rolledback', action: 'svall fleet home abort, or svall fleet home retry', say: 'Close to finish the move or call it off' }, 'home');
     act(() => { store.getState().hostDone('home', 1); });
-    expect(screen.getByTestId('home-move-failed').textContent).toBe(' studio did not take the fleet: rolledback');
+    expect(screen.getByTestId('home-move-failed').textContent).toBe('studio did not take the fleet: rolledback.');
   });
 
   it('a press while another run is under way starts nothing, and says so', async () => {
@@ -504,7 +784,8 @@ describe('a move nothing is driving', () => {
 
 describe('mission control left away by a move that stopped', () => {
   const crew = (machine?: string) => act(() => {
-    store.setState((s) => ({ fleet: { ...s.fleet, islands: { home: { id: 'home', kind: 'home' } }, robots: { r1: { id: 'r1', name: 'golden heron', islandId: 'home', ...(machine && { machine, sentAhead: 'hm_abcdefghij' }) } } } }) as never);
+    store.getState().setStatus('online');
+    store.setState((s) => ({ fleet: { ...s.fleet, islands: { home: { id: 'home', kind: 'home' } }, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 0 } }, robots: { r1: { id: 'r1', name: 'golden heron', islandId: 'home', ...(machine && { machine, sentAhead: 'hm_abcdefghij' }) } } } }) as never);
   });
 
   it('says nothing with them on the home', () => {
@@ -513,12 +794,29 @@ describe('mission control left away by a move that stopped', () => {
     expect(container.textContent).toBe('');
   });
 
-  it('names them, and offers to bring them back', () => {
+  it('names them and where they are, and offers to bring them back', () => {
     crew(STUDIO);
     render(<CrewAwayBanner />);
-    expect(screen.getByTestId('crew-away-banner').textContent).toContain('golden heron');
+    expect(screen.getByTestId('crew-away-banner').textContent).toBe('Mission control\'s golden heron is still on studio. A move that stopped left it there.Bring it back');
     fireEvent.click(screen.getByTestId('crew-away-back'));
     expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-crew', args: { name: '' } });
+  });
+
+  it('waits while the window has lost Svall\'s background service, saying why', () => {
+    crew(STUDIO);
+    render(<CrewAwayBanner />);
+    act(() => { store.getState().setStatus('offline'); });
+    const back = screen.getByTestId('crew-away-back') as HTMLButtonElement;
+    expect([back.disabled, back.dataset.tip]).toEqual([true, "Lost the connection to Svall's background service"]);
+  });
+
+  it('names two as they, and this Mac as this Mac', () => {
+    crew(ME);
+    act(() => {
+      store.setState((s) => ({ via: { machine: ME, home: STUDIO, name: 'studio', online: true }, fleet: { ...s.fleet, robots: { ...s.fleet.robots, r2: { ...s.fleet.robots.r1, id: 'r2', name: 'swift' } } } }) as never);
+    });
+    render(<CrewAwayBanner />);
+    expect(screen.getByTestId('crew-away-banner').textContent).toBe('Mission control\'s golden heron and swift are still on this Mac. A move that stopped left them there.Bring them back');
   });
 
   it('names what could not come back, and stands down for a sheet that is moving them', () => {
@@ -530,6 +828,7 @@ describe('mission control left away by a move that stopped', () => {
     act(() => { store.getState().hostStep('home-crew', { step: 'crew', status: 'fail', detail: 'these cannot come back: golden heron: dirty' } as never); store.getState().hostDone('home-crew', 1); });
     rerender(<CrewAwayBanner />);
     expect(screen.getByTestId('crew-away-failed').textContent).toContain('dirty');
+    expect(screen.getByTestId('crew-away-banner').textContent).not.toContain('A move that stopped');
     act(() => { store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: false }); });
     rerender(<CrewAwayBanner />);
     expect(screen.queryByTestId('crew-away-banner')).toBeNull();

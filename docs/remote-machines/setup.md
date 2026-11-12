@@ -41,18 +41,19 @@ such as `studio`) and its ssh destination (such as `ada@studio`), and choose **A
 svall host add studio --ssh ada@studio
 ```
 
-Both run the same steps and show each as it finishes. The app shows them in these groups:
+Both run the same steps and show each as it finishes. The app lists what needs you as it is found, then folds the
+notes, the checks that went fine and your agent setup behind a line each; the fine checks fold under these sections:
 
-1. **Reaching it.** One interactive ssh, so you can accept the host key and log in, then one control connection for
+1. **Connection.** One interactive ssh, so you can accept the host key and log in, then one control connection for
    the rest, which needs a key ssh can use without asking. From the app, ssh asks in a dialog.
-2. **What it needs.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
+2. **System.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
    Tailscale, Git, systemd, free space (under 5 GiB is a warning) and lingering, which it turns on where it is off.
-3. **Svall there.** The Linux release matching this Mac's own release, checked against the digest this Mac's release
+3. **Svall on studio.** The Linux release matching this Mac's own release, checked against the digest this Mac's release
    pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there, and the tmux it
    brings checked. Then `svall-svalld@private.service` as a systemd user unit, its machine id, and the release it
    answers from, and **Worker**: the machine becomes this fleet's worker, with a token the home issues, and the unit
    restarts as `svalld --worker`, which accepts the home alone.
-4. **Agents there.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
+4. **Agents on studio.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
    0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` names a model provider),
    and with Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's
    own `svall doctor` finds them; and `gh`'s login. Each agent is asked on the `PATH` and with the `CLAUDE_CONFIG_DIR`,
@@ -60,28 +61,38 @@ Both run the same steps and show each as it finishes. The app shows them in thes
    **Agent versions** compares each with this Mac's, as its own daemon finds it.
 5. **Your agent setup.** A row for each part of [your agent setup](#your-agent-setup-on-the-machine) that waits on
    you there: a key to tick, a variable to set, a login, a program to install.
-6. **Trying it out.** The machine's own fleet answers through a forwarded port, says it serves this fleet as a
+6. **Final check.** The machine's own fleet answers through a forwarded port, says it serves this fleet as a
    worker, and tmux opens and closes a window there. Then the machine is added to this Mac's list in
    `~/.config/svall/machines.json`, and this Mac's daemon links to it.
 
-It ends in one line: "studio is ready. Robots you move there keep working while this Mac sleeps.", or "studio has
-2 things to fix", followed by them. Each failed step counts, and so does each warning with an action. A warning with
-no action, such as `gh` not logged in there, is advice and does not count. Your agent setup is never a thing to fix,
-as a move goes ahead without it: what of it will not work on the machine yet follows in a short list, a line each
-with its name, what it lacks and the one thing to do from this Mac:
+It ends on what needs you, in full, then the notes and the rows that went well counted on a line each, then one line:
+"studio is ready", or "studio has 2 things to fix". Each failed step needs you, and so does a warning on what a robot
+there cannot do without, such as linger off or an agent your fleet runs not logged in. A warning anything else, such
+as `gh` not logged in there or an agent your fleet does not run, is a note. Your agent setup is never a thing to fix,
+as a move goes ahead without it: one line counts what of it is not on the machine yet, and `svall host doctor studio
+--all` lists it, a line each with its name, what it lacks and the one thing to do from this Mac:
 
 ```
-studio is ready. 3 parts of your agent setup will not work there yet:
+! linger  off: the fleet stops when you log out -> ssh ada@studio, then sudo loginctl enable-linger ada
+! 2 notes
+✓ 19 checks fine
+studio has 1 thing to fix
+3 parts of your agent setup are not on studio yet: svall host doctor studio --all lists them
+Set them up now? [Y/n]
+```
+
+`--all` ends in that list:
+
+```
+3 parts of your agent setup are not on studio yet:
   linear  keys not copied (env.LINEAR_API_KEY)  → svall host consent studio claude:mcp:linear on
   notion  not logged in                         → ssh -L 3118:localhost:3118 ada@studio, then MCP_OAUTH_CALLBACK_PORT=3118 claude, /mcp
   uvx     not installed; context7 needs it      → ssh ada@studio, then curl -LsSf https://astral.sh/uv/install.sh | sh
-Set them up now? [Y/n]
 ```
 
 A server that runs only on a Mac, or a program you ticked as one the machine does not need, stands aside: the list ends
 in one line naming them, "chrome runs only on a Mac, and adlc is not needed there", and the count leaves them out; so do a
-move's list and the app's footer, whose line reads "…will not work there yet, and 1 runs only on a Mac". A list with
-nothing to do about any of it, such as a file this Mac cannot read, says "will not work there" without "yet".
+move's list and the app's footer, whose line reads "…will not work there yet, and 1 runs only on a Mac".
 
 When one of them is a key to copy or a command to run there, `svall host add` and `svall host upgrade` in a terminal
 then ask whether to set them up now: yes asks for each key in turn whether to copy it there, which it does only on a
@@ -101,7 +112,7 @@ is to forget the machine offers **Forget**, which asks first. Each other fix tha
 nothing and forwards no ssh agent, with the command typed at its prompt. Press Return to run it, or change it first;
 click a link it prints to open it in your browser. When you exit or choose **Done**,
 or close the panel with ×, the terminal hangs up and the panel checks the machine again, once it is in this Mac's
-list. **Open a terminal there**, in the machine's ⋯ menu, opens one with nothing typed. From a terminal on the Mac,
+list. **Open terminal**, in the machine's ⋯ menu, opens one with nothing typed. From a terminal on the Mac,
 each action names the command and the machine to run it on:
 
 - A missing package: the action names the `apt` command, as `ssh ada@studio, then sudo apt install git`.
@@ -180,21 +191,21 @@ OpenCode, the name in the server's `env_vars` for Codex), so the server reads th
 the machine, which robots there take from the fleet's `.env` (below); a key in its headers, URL or arguments is left
 out; a reference with a default keeps the reference alone. The row stays until you tick it or the machine has its own
 key: a key for that server in the overrides (below) counts, and so does the variable an `env` key reads set there with
-`svall worker env LINEAR_API_KEY`; the row then reads "studio has its own keys". While the home is linked to the
+`svall worker env LINEAR_API_KEY`; the row then reads "studio has its own". While the home is linked to the
 machine, ticking or unticking changes the copy there at once, whatever runs there; otherwise the change is saved, and
 takes effect when studio links. An untick while the home cannot read the file that holds the key is saved too, and the
 copy stays on studio until the home can read that file again; while studio still holds a copy you unticked, the row
-reads "still on studio; check studio again", and the list names it "unticked; still on studio". A file there that holds a ticked key is readable by your account alone. A
+reads "switched off, still on studio", with **Check again**, and the list names it "unticked; still on studio". A file there that holds a ticked key is readable by your account alone. A
 server or plugin config with settings Svall cannot copy one by one, or a server that runs a shell's `-c` script, whose
-keys Svall cannot read, is a row "copy notion to studio as it is", and is copied only once ticked, its file as it is, keys included. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
+keys Svall cannot read, is a row "not copied", to tick to copy the whole file, and is copied only once ticked, its file as it is, keys included. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
 `plugin.json`, or a file its marketplace entry names) with a key in a server's `env`, a marketplace's
 `marketplace.json` whose entries set `headers` or `headersHelper`, and a subagent, in `agents/`, a plugin's `agents/`
 or a file a plugin's `plugin.json` or marketplace entry names in `agents`, whose `mcpServers` defines a server with a
 key or settings Svall cannot copy one by one, or that names `mcpServers` in a way Svall does not read. Until ticked, each stays on
 this Mac.
-From a terminal, `svall host doctor studio` lists what will not work there, and `svall host consent studio <item>
+From a terminal, `svall host doctor studio --all` lists what will not work there, and `svall host consent studio <item>
 <on|off> [--field <field>]` ticks one: `<item>` is its row's name after `mirror:`, such as `claude:mcp:linear`;
-`--field env.LINEAR_API_KEY` ticks that key alone, and `off` unticks every key of the item. `--json` gives every row.
+`--field env.LINEAR_API_KEY` ticks that key alone, and `off` takes every key of the item. `--json` gives every row.
 After a move, the parts of one robot's setup that will not work where it lands are listed for it
 ([Moving one](placement.md#moving-one)).
 
@@ -202,7 +213,7 @@ Fleets that share a machine share its agent files there: a key ticked in one fle
 so tick or untick it in each fleet that uses the machine.
 
 **Variables.** A server can read a variable, as `"GITHUB_TOKEN": "${GITHUB_TOKEN}"` in its `env` does, or hold an
-empty value for one. That is a row "set GITHUB_TOKEN on studio" until the machine's daemon has the variable. In the
+empty value for one. That is a row "not set · github reads it" until the machine's daemon has the variable. In the
 app the row has a field: type the value, shown to no one, and **Set on studio** sends it over the link into the fleet's
 `.env` on the machine, mode 600, and nowhere on this Mac; the field is cleared as it goes. When this Mac has the
 variable itself, in the daemon's environment or the fleet's `.env` here, **Copy from this Mac** sends that value
@@ -210,14 +221,14 @@ without showing it. From a terminal, `svall worker env GITHUB_TOKEN` on the mach
 it, or takes it from a pipe, and keeps it in the same file. Robots that start there afterwards have it; a machine on a
 release before this one takes no value from the app, and the row says to upgrade it.
 
-**Logins and programs.** A Claude Code server that signs in with OAuth is a row "log in once on studio". **Open
+**Logins and programs.** A Claude Code server that signs in with OAuth is a row "not logged in". **Open
 terminal** types `MCP_OAUTH_CALLBACK_PORT=3118 claude` there and forwards port 3118 of this Mac there; run it, type
 `/mcp` and sign in. A server that names its own callback port gets plain `claude` and that port forwarded instead,
 and an `mcp-remote` server the port that follows its URL. Over your own ssh, forward the port with
 `ssh -L 3118:localhost:3118`. A Codex or OpenCode server's login is listed with the command to run there, and the row stays
 whether or not you did; those logins pick their own port, so sign in there over an ssh tunnel of your own to the
 port the login names. A server whose program the machine lacks is a
-row "install uvx on studio"; its tick says the machine does not need the program (`svall host consent studio runtime:uvx
+row "not installed · fetch needs it", with the command that installs it; its tick says the machine does not need the program (`svall host consent studio runtime:uvx
 on` from a terminal), and the row then stands aside. A server that runs only on a Mac, such as the Chrome extension or
 one that runs `xcrun`, is listed and not copied.
 
@@ -322,26 +333,28 @@ The worker's `worker.json` names the home and its platform, so it calls a Linux 
 
 `svall host add <name> --ssh <destination> --as-home` installs the companion as above and enrols nothing, so the machine runs a
 fleet of its own, as its home. `svall fleet join <destination>` on the Mac then makes the Mac its worker. The first run does both,
-under **Install Svall on a server and connect this Mac**. A worker that is already there becomes the home with `svall fleet home
+under **A server, set up now**. A worker that is already there becomes the home with `svall fleet home
 set <name>`: see [Changing home](home.md#changing-home).
 
 `host add` refuses the fleet's own home but with `--as-home`, which installs it again, `host remove` keeps it until the fleet is back, and `host upgrade` restarts it as the home it is.
 
 ## The phone while the home is off
 
-A worker can serve the phone itself while the home is off. Tick **Phone while this Mac is off** under Machines →
+A worker can serve the phone itself while the home is off. Tick **Phone while this Mac is off** (on a far home, its name
+in place of this Mac) under Machines →
 **Check** → Your agent setup, or run `svall host consent studio phone on`. Ticking copies the home's push keys and the
 phone's devices to the machine, which is why it stays off until ticked. While the home's own phone link is on, the
 worker then serves the phone with `tailscale serve` on a free https port (443 stays with whatever already serves
-there), and the row shows the address. Unticking, or turning the home's phone link off, stops it. If the row says
-tailscale refused, run `sudo tailscale set --operator=$USER` on the machine and **Check** again. The phone learns the
+there), and the row reads "on" with the address. Unticking, or turning the home's phone link off, stops it. A row
+"on, not serving" says why behind it; where Tailscale there does not let Svall share the fleet, run
+`sudo tailscale set --operator=$USER` on the machine and **Check** again. The phone learns the
 address the next time it opens while the home is on; there is nothing to pair. [What the phone does
 then](placement.md#while-the-home-is-away).
 
 ## Looking after it
 
 Settings → Machines lists every machine with its ssh destination and the release and result of its last check, add,
-upgrade or rollback, each with **Check** and a ⋯ menu: **Upgrade to this Mac's release**, **Open a terminal there**,
+upgrade or rollback, each with **Check** and a ⋯ menu: **Upgrade to this Mac's release**, **Open terminal**,
 **Remove**, which waits while robots are placed there, and **Forget**, offered only while the machine cannot be
 reached. With no machine, it says what a machine is.
 
@@ -352,7 +365,7 @@ reached. With no machine, it says what a machine is.
 | `svall host upgrade <name>` | Upgrade to this Mac's release, in the ⋯ menu | Installs this Mac's release there, restarts every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. It then makes the machine this fleet's worker, unless it is one already, and ends with your agent setup there as `host add` does, asking the same. On an Ubuntu older than 22.04 it installs nothing. A fleet's tmux server running through the upgrade, such as one on Ubuntu's own tmux, keeps its tmux while a robot runs in it, and starts over on the new release's at a daemon start with none. Robots running there keep running, and while an older companion's tmux runs them, what is copied in their terminals may not reach the Mac. |
 | `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. It refuses, changing nothing, while a fleet there keeps its state at a newer schema than that release reads, or runs a tmux server that release could not reach. |
 | `svall host remove <name>` | Remove, in the ⋯ menu | Runs `svall uninstall` there, which first takes back what [your agent setup](#your-agent-setup-on-the-machine) copied there with keys (see `svall uninstall` below), shows what it took back, and ends with a warning to do by hand where it could not take a key back or a copy changed there since; it drops the machine from the registry, its last check from `checks.json` and its ticks from every fleet on this Mac. It refuses while a robot of a fleet here runs on the machine or is moving to it ("2 robots are on linus-vault: ada, bo; move them back first"), and while a fleet home there serves another Mac as a worker or its `worker.json` cannot be read, as `svall uninstall` there stops every fleet on it. Its fleets and their files stay on that machine. |
-| `svall host remove <name> --forget` | Forget, in the ⋯ menu while the machine cannot be reached | Drops the machine, its last check and its ticks without reaching it, when it is gone. Keys the mirror copied there stay there. |
+| `svall host remove <name> --forget` | Forget, in the ⋯ menu while the machine cannot be reached | Drops the machine, its last check and its ticks without reaching it, when it is gone. Keys Svall copied there stay there. |
 
 After you update Svall on the Mac, run `svall host upgrade <name>`: until both machines run the same release, a move
 refuses with "studio runs X, this Mac Y; upgrade it under Machines". Robots already there keep running meanwhile.
@@ -363,13 +376,13 @@ On the Linux machine itself:
   checks each fleet's daemon answers from it. `svall setup` sets the machine up again from the release `current`
   names.
 - `svall uninstall` ends the robots that run there, so move them back first. Before it removes Svall, it takes back
-  what each fleet's mirror copied there with keys, each while it is as the mirror wrote it: a copied key becomes what
+  what Svall copied there with keys from each fleet's agent setup, each while it is as Svall wrote it: a copied key becomes what
   an untick leaves (an `env` key the agent's reference to its variable, a key in a URL or argument the rest of it, any
   other key emptied), a server copied as it is leaves its config file, a key in `known_marketplaces.json`, a
   `marketplace.json` or a subagent is taken out where it lies there, even where an entry added above it moved it, and
-  the file stays, another file the mirror wrote holding a ticked key, such as a plugin's server file or a subagent
+  the file stays, another file Svall wrote holding a ticked key, such as a plugin's server file or a subagent
   whose `mcpServers` Svall cannot read or whose server has settings Svall cannot copy one by one, is deleted, and a copy a daemon
-  left unapplied in the fleet's `cache` goes. A key, server or file changed on the machine since the mirror wrote it
+  left unapplied in the fleet's `cache` goes. A key, server or file changed on the machine since Svall wrote it
   stays, named in what it prints, and so does every key in a config file there that no longer parses, as do the
   fleet's `.env` and its `mirror-overrides/`, which are the machine's own.
 - Each fleet's own log is `svalld.log` in its fleet home (`~/.svall` for the private fleet), beside the units'
@@ -396,7 +409,7 @@ On the Linux machine, all under the account:
 - `~/.svall` (and `~/.svall-<name>`), each fleet's home there: `worker.json`, which names the home, the fleet and
   the token the home issued; `.env`, the variables its robots there get, mode 600, written by `svall worker env` or
   the app's **Set on studio**;
-  `cache/docs`, a copy of the fleet's notes; `cache/mirror-state.json`, what the agent setup mirror last wrote there,
+  `cache/docs`, a copy of the fleet's notes; `cache/mirror-state.json`, what Svall last wrote there of your agent setup,
   as hashes; `cache/mirror-vars.json`, the names of the variables the copied setup reads; `journal/`, what happened
   there that the home has not taken yet, and each move's journal; `mirror-overrides/`, settings of the machine's own
   that the agent setup the home copies there never replaces; and the robots' tmux server, hooks socket and

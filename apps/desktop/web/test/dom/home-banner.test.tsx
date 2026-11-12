@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MachineId } from '@svall/protocol';
 import type { HomeLink } from '../../src/store/fleet.js';
-import { freshStore, retryHome, sent, store } from './harness.js';
+import { bridge, call, freshStore, retryHome, sent, store } from './harness.js';
 import { HomeBanner } from '../../src/HomeBanner.js';
 import { TerminalArea } from '../../src/TerminalArea.js';
 
@@ -13,7 +13,7 @@ const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
 const HOME = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
 const VIA = { machine: ME, home: HOME, name: 'studio' };
 
-beforeEach(() => { freshStore(); retryHome.mockClear(); });
+beforeEach(() => { freshStore(); retryHome.mockClear(); call.mockReset(); });
 afterEach(cleanup);
 
 const standingIn = (home: Omit<HomeLink, 'name'>) => {
@@ -39,20 +39,26 @@ describe('the banner of a home this window cannot follow', () => {
     store.getState().setFleet({ ...store.getState().fleet, machines: { [HOME]: { name: 'studio', reachable: false, since: 0, snapshot: { version: 1, at: new Date('2026-11-04T10:00:00').getTime() } } } });
     standingIn({ state: 'unreachable' });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toMatch(/^studio is not reachable · showing the fleet as of .*2026.*Try again$/);
+    expect(screen.getByTestId('home-banner').textContent).toMatch(/^studio is not reachable\. Showing the fleet as of [^;]*; robots on this Mac keep working\.Try again$/);
+    // dated as Machines dates a check, with no year
+    expect(screen.getByTestId('home-age').textContent).not.toMatch(/2026/);
+    expect(screen.getByTestId('home-banner').querySelector('b')!.textContent).toBe('studio is not reachable.');
     expect(screen.queryByTestId('home-detail')).toBeNull();
-    expect(screen.getByTestId('home-age').textContent).toMatch(/showing the fleet as of .*2026/);
+    expect(screen.getByTestId('home-age').className).toBe('banner-sub');
+    expect(screen.getByTestId('home-banner').querySelector('small')).toBeNull();
     fireEvent.click(screen.getByTestId('home-retry'));
     expect(retryHome).toHaveBeenCalledTimes(1);
   });
 
   it.each([
-    ['another fleet', 'mismatch', 'studio holds a different fleet than this Mac expects (x… there, y… here)'],
-    ['another machine', 'machine', 'studio answered with machineId x, not y'],
-  ] as const)('shows %s in the words the daemon gives, and goes to no other home', (_what, state, detail) => {
+    ['another fleet', 'mismatch', 'studio holds a different fleet than this Mac expects (x… there, y… here)', 'studio holds a different fleet than this Mac expects.', 'x… there, y… here'],
+    ['another machine', 'machine', 'studio answered with machineId x, not y', 'studio answered with machineId x, not y.', undefined],
+  ] as const)('shows %s in the words the daemon gives, the ids it compared in a tip, and goes to no other home', (_what, state, detail, said, tip) => {
     standingIn({ state, detail });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toBe(`${detail}Try again`);
+    // a fact and what the window shows meanwhile, as the other banners
+    expect(screen.getByTestId('home-banner').textContent).toBe(`${said} Robots on this Mac keep working.Try again`);
+    expect(screen.getByTestId('home-banner').querySelector('b')!.dataset.tip).toBe(tip);
     expect(screen.queryByTestId('home-detail')).toBeNull();
     expect(screen.queryByTestId('home-upgrade')).toBeNull();
   });
@@ -60,15 +66,22 @@ describe('the banner of a home this window cannot follow', () => {
   it('names a refused login with what to do, with no upgrade to press', () => {
     standingIn({ state: 'auth', detail: 'run ssh ada@studio once in a terminal, then try again' });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toBe('this Mac cannot log in to studio run ssh ada@studio once in a terminal, then try againTry again');
+    expect(screen.getByTestId('home-banner').textContent).toBe('This Mac cannot log in to studio. Run ssh ada@studio once in a terminal, then try again.CopyTry again');
+    // the command alone is mono, whole, and Copy beside the buttons copies it for a terminal on this Mac
+    expect([...screen.getByTestId('home-detail').querySelectorAll('code')].map((c) => c.textContent)).toEqual(['ssh ada@studio']);
+    bridge.present = true;
+    try { fireEvent.click(screen.getByTestId('home-copy')); } finally { bridge.present = false; }
+    expect(sent).toContainEqual({ type: 'copy', text: 'ssh ada@studio' });
+    expect(screen.getByTestId('home-copy').textContent).toBe('Copied');
     expect(screen.getByTestId('home-retry')).toBeTruthy();
     expect(screen.queryByTestId('home-upgrade')).toBeNull();
   });
 
-  it('offers to upgrade a home behind this Mac, runs host upgrade, and asks again once it ends', async () => {
-    standingIn({ state: 'version', detail: 'studio runs 0.20, this Mac 0.21' });
+  it('offers to upgrade a home behind this Mac, with both releases, runs host upgrade, and asks again once it ends', async () => {
+    call.mockImplementation((m: string) => Promise.resolve(m === 'system.info' ? { release: '0.21' } : {}));
+    standingIn({ state: 'version', release: '0.20', detail: 'studio runs an older Svall than this Mac (0.20, here 0.21); upgrade it to reach its robots' });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toContain('studio runs 0.20, this Mac 0.21');
+    await waitFor(() => expect(screen.getByTestId('home-banner').textContent).toBe('studio runs an older Svall than this Mac. 0.20 there, 0.21 here.Upgrade studioTry again'));
     fireEvent.click(screen.getByTestId('home-upgrade'));
     expect(sent).toContainEqual({ type: 'host.start', op: 'upgrade', args: { name: HOME } });
     expect((screen.getByTestId('home-upgrade') as HTMLButtonElement).disabled).toBe(true);
@@ -84,21 +97,41 @@ describe('the banner of a home this window cannot follow', () => {
     expect(screen.getByTestId('home-banner').textContent).toMatch(/^studio runs another version of Svall/);
   });
 
-  it('says an upgrade failed in its own words, and leaves the button', async () => {
-    standingIn({ state: 'version', detail: 'studio runs 0.20, this Mac 0.21' });
+  it('says an upgrade failed in its own words, a tool\'s behind them, and leaves the button', async () => {
+    standingIn({ state: 'version', release: '0.20' });
     render(<HomeBanner />);
     fireEvent.click(screen.getByTestId('home-upgrade'));
     store.getState().hostStep('upgrade', { step: 'release', status: 'fail', detail: 'this build publishes no companion for linux-x64' } as never);
     store.getState().hostDone('upgrade', 1);
-    await waitFor(() => expect(screen.getByTestId('home-upgrade-failed').textContent).toContain('no companion'));
+    await waitFor(() => expect(screen.getByTestId('home-upgrade-failed').textContent).toBe('this build publishes no companion for linux-x64.'));
+    expect(screen.getByTestId('home-upgrade-failed').className).toBe('banner-sub');
     expect((screen.getByTestId('home-upgrade') as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByTestId('home-upgrade'));
+    store.getState().hostStep('upgrade', { step: 'install', status: 'fail', detail: 'the install did not finish: svall setup exited 1: no space left on device' } as never);
+    store.getState().hostDone('upgrade', 1);
+    await waitFor(() => expect(screen.getByTestId('home-upgrade-failed').textContent).toBe('the install did not finish: svall setup.'));
+    expect(screen.getByTestId('home-upgrade-failed').dataset.tip).toBe('exited 1: no space left on device');
+
+    fireEvent.click(screen.getByTestId('home-upgrade'));
+    store.getState().hostStep('upgrade', { step: 'install', status: 'fail', detail: 'the install did not finish', raw: 'E: dpkg was interrupted' } as never);
+    store.getState().hostDone('upgrade', 1);
+    await waitFor(() => expect(screen.getByTestId('home-upgrade-failed').dataset.tip).toBe('E: dpkg was interrupted'));
   });
 
-  it('sends a person to update this Mac when the home is ahead of it, with no upgrade to press', () => {
-    standingIn({ state: 'version', newer: true, detail: 'studio runs a newer Svall than this Mac (0.22, here 0.21); update Svall on this Mac' });
+  it('names a home ahead of this Mac, with both releases and no upgrade to press', async () => {
+    call.mockImplementation((m: string) => Promise.resolve(m === 'system.info' ? { release: '0.21' } : {}));
+    standingIn({ state: 'version', newer: true, release: '0.22', detail: 'studio runs a newer Svall than this Mac (0.22, here 0.21); update Svall on this Mac' });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toBe('studio runs a newer Svall than this Mac (0.22, here 0.21); update Svall on this MacTry again');
+    await waitFor(() => expect(screen.getByTestId('home-banner').textContent).toBe('studio runs a newer Svall than this Mac. 0.22 there, 0.21 here.Try again'));
     expect(screen.queryByTestId('home-upgrade')).toBeNull();
+  });
+
+  it('says why it cannot run there in the daemon\'s words when there is no release to name', () => {
+    standingIn({ state: 'version', detail: 'this Mac does not know where svall is on studio; enrol it again with svall fleet enroll-worker there' });
+    render(<HomeBanner />);
+    expect(screen.getByTestId('home-banner').textContent).toBe('this Mac does not know where svall is on studio; enrol it again with svall fleet enroll-worker there.Upgrade studioTry again');
+    expect(call).not.toHaveBeenCalledWith('system.info', {});
   });
 });
 

@@ -3,6 +3,7 @@ import { ApiError, serverWait, type AgentKind, type MachineId, type SetupRow } f
 import type { WorkerLink } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Logger } from '../log.js';
+import { homeWord } from '../machine.js';
 import { Mirror, mirrorCalls, type MirrorLink, type Pushed } from './mirror.js';
 import { entryName, type Manifest } from './mirror-apply.js';
 import { CONFIG_ITEMS } from './mirror-consent.js';
@@ -26,11 +27,11 @@ const OWNED: Record<string, readonly string[]> = {
 
 /** Stops a Copy's blob that is not what mirrorPlan makes: a worker's account is not the only thing that could have written it. */
 export function refuseForeign(m: Manifest, files: string[]): void {
-  for (const to of [...files, ...m.keep, ...m.keyed, ...m.unticked, ...m.inPlace.map((f) => f.to)]) if (!carriable(to)) throw new Error(`the agent configuration names ${to}, which the mirror does not carry`);
-  for (const s of m.servers) if (s.doc && (s.place.includes('__proto__') || !SERVER_PLACE[s.agent](s.place, s.doc))) throw new Error(`the agent configuration places a ${s.agent} server at ${s.place.join('.')}`);
+  for (const to of [...files, ...m.keep, ...m.keyed, ...m.unticked, ...m.inPlace.map((f) => f.to)]) if (!carriable(to)) throw new Error(`the agent setup names ${to}, which Svall does not copy`);
+  for (const s of m.servers) if (s.doc && (s.place.includes('__proto__') || !SERVER_PLACE[s.agent](s.place, s.doc))) throw new Error(`the agent setup places a ${s.agent} server at ${s.place.join('.')}`);
   const fields = [...m.configs.flatMap((c) => c.fields.map((f) => [c.key, f])), ...m.opencode.flatMap((x) => x.fields.map((f) => [CONFIG_ITEMS.opencode, f]))];
   for (const [key, f] of fields) {
-    if (OWNED[key]?.includes(f.split('.')[0]) && !(key === CONFIG_ITEMS.settings && f.startsWith('env.'))) throw new Error(`the agent configuration names a key at ${f}, which this machine owns`);
+    if (OWNED[key]?.includes(f.split('.')[0]) && !(key === CONFIG_ITEMS.settings && f.startsWith('env.'))) throw new Error(`the agent setup names a key at ${f}, which this machine owns`);
   }
 }
 
@@ -60,7 +61,7 @@ export class SetupCopy {
 
   /** Lets `machine` make one push for `ms`; one copy at a time. */
   arm(machine: MachineId, ms = GRANT_MS): object {
-    if (this.grant && Date.now() <= this.grant.until) throw new ApiError('busy', 'another copy of an agent setup is landing here');
+    if (this.grant && Date.now() <= this.grant.until) throw new ApiError('busy', `Another copy is landing on ${homeWord()}`, { fix: 'Try again when it is done' });
     this.grant = { machine, until: Date.now() + ms };
     return this.grant;
   }

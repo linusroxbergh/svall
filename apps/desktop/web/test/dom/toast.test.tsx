@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { act, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { ApiError } from '@svall/protocol';
 import { bridge, freshStore, sent, store } from './harness.js';
 
 bridge.present = true;
@@ -150,6 +151,58 @@ test('a toast dismissed under the pointer, which never saw it leave, does not ho
   expect(store.getState().toast).toBeUndefined();
 });
 
+test('an error shows its sentence, and Copy details copies what a tool said after it, then says it did for a moment', () => {
+  vi.useFakeTimers();
+  const { getByTestId } = render(<Toast />);
+  act(() => store.getState().showToast('the phone link could not start: Command failed: tailscale serve --bg 8443\nAccess denied'));
+  expect(getByTestId('toast-text').textContent).toBe('the phone link could not start');
+  expect(getByTestId('toast-dismiss')).toBeTruthy();
+  sent.length = 0;
+  act(() => getByTestId('toast-copy').click());
+  expect(sent).toContainEqual({ type: 'copy', text: 'Command failed: tailscale serve --bg 8443\nAccess denied' });
+  expect(store.getState().toast).toBeDefined();
+  expect(getByTestId('toast-copy').textContent).toBe('Copied');
+  after(1499);
+  expect(getByTestId('toast-copy').textContent).toBe('Copied');
+  after(1);
+  expect(getByTestId('toast-copy').textContent).toBe('Copy details');
+  act(() => getByTestId('toast-copy').click());
+  act(() => store.getState().showToast('studio is not reachable: ssh: connect to host studio port 22: Connection refused'));
+  expect(getByTestId('toast-text').textContent).toBe('studio is not reachable');
+  expect(getByTestId('toast-copy').textContent).toBe('Copy details');
+});
+
+test('a daemon\'s refusal shows its sentence whole, and Copy details copies what the tool said as the daemon sent it apart', () => {
+  const { getByTestId } = render(<Toast />);
+  act(() => store.getState().showToast(new ApiError('internal', 'Claude Code did not update', { raw: 'claude update exited 1: token=abcdef1234567890 refused' })));
+  expect(getByTestId('toast-text').textContent).toBe('Claude Code did not update');
+  sent.length = 0;
+  act(() => getByTestId('toast-copy').click());
+  expect(sent).toContainEqual({ type: 'copy', text: 'claude update exited 1: token=… refused' });
+});
+
+test('an error with no tool\'s words offers nothing to copy, and any other toast is shown whole', () => {
+  const { getByTestId, queryByTestId } = render(<Toast />);
+  act(() => store.getState().showToast('no such file'));
+  expect(queryByTestId('toast-copy')).toBeNull();
+  act(() => store.getState().showToast('Copied: Command failed: nothing', 'ok'));
+  expect(getByTestId('toast-text').textContent).toBe('Copied: Command failed: nothing');
+  expect(queryByTestId('toast-copy')).toBeNull();
+});
+
+test('a fact stands as long as a toast with an action, in a look of its own', () => {
+  vi.useFakeTimers();
+  const { getByTestId, queryByTestId } = render(<Toast />);
+  act(() => store.getState().showToast('notes.md is on studio; the editor cannot show it.', 'info'));
+  expect(getByTestId('toast').dataset.tone).toBe('info');
+  expect(queryByTestId('toast-dismiss')).toBeNull();
+  after(theme.toastActionMs - 1);
+  expect(store.getState().toast).toBeDefined();
+  after(1);
+  expect(store.getState().toast).toBeUndefined();
+  expect(sheet('map/chrome.css')).toMatch(/\.toast\[data-tone="info"\] \{ background: var\(--panel-hi\); color: var\(--ink\); border: 1px solid var\(--line\); backdrop-filter: blur\(var\(--blur-panel\)\); \}/);
+});
+
 describe('the keys a press on an error toast takes from the terminal under it', () => {
   const ID = 'c1';
   const focuses = () => sent.filter((m) => m.type === 'term.focus');
@@ -213,4 +266,14 @@ describe('the keys a press on an error toast takes from the terminal under it', 
     act(() => getByTestId('toast-action').click());
     expect(focuses()).toEqual([]);
   });
+});
+
+test('a problem with a fix says the fix under its sentence, its command as code, and copies what the tool said', () => {
+  const { getByTestId } = render(<Toast />);
+  act(() => store.getState().showToast({ text: 'Tailscale on this Mac does not let Svall share this fleet', fix: 'Run once on this Mac: sudo tailscale set --operator=$USER', run: 'sudo tailscale set --operator=$USER', raw: 'Access denied' }));
+  expect(getByTestId('toast').getAttribute('data-tone')).toBe('error');
+  expect(getByTestId('toast-text').firstChild!.textContent).toBe('Tailscale on this Mac does not let Svall share this fleet');
+  expect(getByTestId('toast-fix').textContent).toBe('Run once on this Mac: sudo tailscale set --operator=$USER');
+  expect(getByTestId('toast-fix').querySelector('code')!.textContent).toBe('sudo tailscale set --operator=$USER');
+  expect(getByTestId('toast-copy').textContent).toBe('Copy details');
 });
