@@ -23,6 +23,7 @@ test('the connect screen asks for svall setup while the daemon has never logged'
   await page.clock.install();
   await page.goto('/');
   await page.clock.fastForward(theme.connectGraceMs);
+  await expect(page.getByTestId('connect-screen')).toContainText('Svall\'s background service is not running.');
   await expect(page.getByTestId('connect-screen')).toContainText('run svall-dev setup');
 });
 

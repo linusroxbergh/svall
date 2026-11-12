@@ -66,7 +66,7 @@ function Screen() {
     return (
       <div className="connect" data-testid="connect-screen">
         <div>
-          {status === 'outdated' ? OUTDATED().join(' ') : 'svalld not running'}<br />
+          {status === 'outdated' ? OUTDATED().join(' ') : 'Svall\'s background service is not running.'}<br />
           {!log && <small>run <code>{shim()} setup</code>, or open this page with <code>?port=&amp;token=</code></small>}
           {log && (
             <>
