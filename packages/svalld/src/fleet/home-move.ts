@@ -75,8 +75,11 @@ const lastPhase = (p: Pick<Paths, 'homeMoves'>, id: string): AdoptPhase | undefi
   return phase === undefined ? undefined : AdoptPhase.safeParse(phase).data;
 };
 
-export function enter(p: Pick<Paths, 'homeMoves'>, id: string, phase: string, detail?: string): void {
-  appendDurable(journalOf(p, id), { phase, at: Date.now(), ...(detail && { detail }) });
+// what to do about a phone link's try that failed, the command that does it, and what the tool said
+type PhoneSaid = Pick<MobileStatus, 'fix' | 'run' | 'raw'>;
+
+export function enter(p: Pick<Paths, 'homeMoves'>, id: string, phase: string, detail?: string, said: PhoneSaid = {}): void {
+  appendDurable(journalOf(p, id), { phase, at: Date.now(), ...(detail && { detail, ...said }) });
 }
 
 export type HomeDaemon = {
@@ -142,11 +145,7 @@ export function phoneOwed(p: Pick<Paths, 'homeMoves'>): string[] {
   });
 }
 
-type PhoneSaid = Pick<MobileStatus, 'fix' | 'run' | 'raw'>;
-
-export const servedPhone = (p: Pick<Paths, 'homeMoves'>, id: string, why?: string, said: PhoneSaid = {}): void => {
-  appendDurable(journalOf(p, id), { phase: SERVED, at: Date.now(), ...(why && { detail: why, ...said }) });
-};
+export const servedPhone = (p: Pick<Paths, 'homeMoves'>, id: string, why?: string, said: PhoneSaid = {}): void => enter(p, id, SERVED, why, said);
 
 // by the newest try of any move: what its failure said stands until a later try, or a person's own switch, says otherwise
 const phoneTries = (p: Pick<Paths, 'homeMoves'>): (z.infer<typeof Record_> & { id: string })[] => moveIds(p).flatMap((id) => {
