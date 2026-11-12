@@ -80,7 +80,7 @@ export const elsewhere = (c: Pick<Robot, 'machine'>, via?: Via): boolean => !!vi
 
 // what the home last answered: a version gap names the home's release; with none, a detail is the daemon saying why it cannot run there
 type Answered = { state: HomeState; release?: string; detail?: string };
-type Standing = { fleet: Pick<FleetState, 'robots' | 'machines'>; via?: Via; home?: Answered };
+type Standing = Seat & { fleet: Pick<FleetState, 'robots' | 'machines'>; home?: Answered; homeMove?: { to: string; name: string; unmarked?: boolean } };
 
 /** Why a window on this Mac's copy of the fleet takes no change to a robot elsewhere: only its home takes one, and that cannot be asked. */
 export const frozenWhy = (s: Standing, id: string): (Apart & { robot: string; machine: string; through?: string }) | undefined => {
@@ -96,8 +96,10 @@ export const frozenWhy = (s: Standing, id: string): (Apart & { robot: string; ma
 /** When this Mac's copy of the fleet was taken, dated as Machines dates a check: no year. */
 export const copiedAt = (at: number): string => new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-/** What a try at changing such a robot is told. */
+/** What a try at changing such a robot is told; while a move of the home stands, no robot takes a change. */
 export const frozenLine = (s: Standing, id: string): string | undefined => {
+  const move = s.homeMove && !s.homeMove.unmarked ? s.homeMove : undefined;
+  if (move && Object.hasOwn(s.fleet.robots, id)) return `${s.fleet.robots[id].name} takes no changes until the move to ${move.to === myMachine(s) ? 'this Mac' : move.name} ends.`;
   const why = frozenWhy(s, id);
   return why && `${why.robot} runs on ${why.machine}${why.through ? `, reached through ${why.through}` : ''}, which ${why.which}; you can change it once ${why.once}.`;
 };

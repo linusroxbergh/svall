@@ -168,6 +168,32 @@ test('a far robot\'s island and held message take no change on the Mac\'s copy a
   expect(told()).toBeUndefined();
 });
 
+test('while a move of the home stands, a robot\'s card takes no change and says why at each try, and one that did not take hold holds nothing', async () => {
+  const f = store.getState().fleet;
+  act(() => {
+    store.getState().setFleet({ ...f, machines: { ...f.machines, [GPU]: { name: 'gpu-box', reachable: true, since: 0 } } });
+    store.getState().setHomeMove({ id: 'hm_0123456789', to: GPU, name: 'gpu-box', asks: true } as never);
+  });
+  const { unmount } = render(<SideCard id="c0" />);
+  await act(async () => {});
+  const why = 'c0 takes no changes until the move to gpu-box ends.';
+  expect(box('side-note').readOnly).toBe(true);
+  fireEvent.keyDown(box('side-note'), { key: 'a' });
+  expect(told()).toBe(why);
+  expect(screen.queryByTestId('context-ref')).toBeNull();
+  for (const t of ['side-close', `side-move-${GPU}`]) {
+    expect(screen.getByTestId(t).getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(screen.getByTestId(t));
+    expect(told()).toBe(why);
+  }
+  expect([store.getState().closingRobot, store.getState().moveSheet]).toEqual([undefined, undefined]);
+  unmount();
+  act(() => store.getState().setHomeMove({ id: 'hm_0123456789', to: GPU, name: 'gpu-box', asks: false, unmarked: true } as never));
+  render(<SideCard id="c0" />);
+  await act(async () => {});
+  expect(box('side-note').readOnly).toBe(false);
+});
+
 test('a far robot with no context on the Mac\'s copy says so in its open section, where one this Mac can change offers the field', async () => {
   const f = store.getState().fleet;
   act(() => { store.getState().setFleet({ ...f, robots: { ...f.robots, c0: { ...f.robots.c0, context: [] }, c1: { ...f.robots.c1, context: [] } } }); store.getState().setVia(COPY); });

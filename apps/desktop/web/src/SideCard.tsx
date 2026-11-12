@@ -188,11 +188,11 @@ export function SideCard({ id }: { id: string }) {
           <div className="moves">
             {!onHome
               ? (
-                <button className="btn sm move" data-testid="side-move-home" disabled={!checkable} data-tip={checkable ? undefined : away ?? `${homeName(fleet, via!)} is not reachable`}
+                <button className="btn sm move" data-testid="side-move-home" disabled={!checkable} data-tip={checkable ? undefined : away ?? `${homeName(fleet, via!)} is not reachable`} {...buttonTry(refuse)}
                   onClick={() => app.store.getState().setMoveSheet({ id, ...(via && { to: via.home }) })}>{via ? <Machine /> : <Mac />}<span>Move to {via ? homeName(fleet, via) : 'this Mac'}</span><Caret dir="right" /></button>
               )
               : workers.map(([m, w]) => (
-                <button key={m} className="btn sm move" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}>{m === via?.machine ? <Mac /> : <Machine />}<span>Move to {m === via?.machine ? 'this Mac' : w.name}</span><Caret dir="right" /></button>
+                <button key={m} className="btn sm move" data-testid={`side-move-${m}`} {...buttonTry(refuse)} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}>{m === via?.machine ? <Mac /> : <Machine />}<span>Move to {m === via?.machine ? 'this Mac' : w.name}</span><Caret dir="right" /></button>
               ))}
           </div>
         )}
