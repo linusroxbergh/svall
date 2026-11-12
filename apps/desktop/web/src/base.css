@@ -92,6 +92,10 @@ textarea { overflow-x: hidden; }
 .banner > span { flex: 1; min-width: 0; }
 .banner.dan { background: color-mix(in srgb, var(--blocked) 16%, transparent); color: var(--danger); }
 .banner.warn { background: color-mix(in srgb, var(--working) 14%, transparent); color: var(--ink); }
+/* the fact, then what it means and how it stands, at one size in two weights */
+.banner b { font-weight: var(--w-medium); color: var(--ink); }
+.banner-sub { color: var(--ink-2); }
+.banner .btn.sm { flex: none; }
 /* the words of what went wrong can be selected and copied */
 .toast[data-tone="error"] .toast-text, .banner > span, .connect > div, .fb-error, .fleet-error, .host-failed, .host-term-failed,
 .host-step[data-status="fail"] .host-said, .host-verdict, .host-note, .move-steps > li[data-state="failed"] > span:last-child,

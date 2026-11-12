@@ -6,6 +6,7 @@ test('shows an offline banner while svalld is down and recovers with fresh state
   await expect(page.getByTestId(`sb-island-${island.id}`)).toBeVisible();
   await svall.stopDaemon();
   await expect(page.getByTestId('offline-banner')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('offline-banner')).toHaveText('Lost the connection to Svall\'s background service. Reconnecting…');
   await svall.startDaemon();
   await expect(page.getByTestId('offline-banner')).toBeHidden({ timeout: 15_000 });
   await expect(page.getByTestId(`sb-island-${island.id}`)).toBeVisible();

@@ -365,8 +365,10 @@ describe('a move nothing is driving', () => {
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, answer: 'staged', phase: 'staged' } } });
     render(<HomeMoveBanner />);
     const said = (await screen.findByTestId('home-move-banner')).textContent;
-    expect(said).toContain('The fleet is moving to studio, and this Mac takes no changes until the move ends; robots keep running.');
-    expect(screen.getByTestId('home-move-answer').textContent).toBe(" studio holds the fleet's files and has not taken over.");
+    expect(said).toBe("The fleet is moving to studio. studio holds the fleet's files and has not taken over. This Mac takes no changes until the move ends; robots keep running.Finish the moveCall it off");
+    expect(screen.getByTestId('home-move-banner').querySelector('b')!.textContent).toBe('The fleet is moving to studio.');
+    expect(screen.getByTestId('home-move-answer').textContent).toBe("studio holds the fleet's files and has not taken over.");
+    expect(screen.getByTestId('home-move-answer').parentElement!.className).toBe('banner-sub');
     fireEvent.click(screen.getByTestId('home-move-retry'));
     expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-retry', args: { name: '' } });
     act(() => { store.getState().hostDone('home-retry', 1); });
@@ -380,7 +382,7 @@ describe('a move nothing is driving', () => {
     act(() => { store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: ME, name: 'this mac', asks: false, from: 'studio' } } });
     const { rerender } = render(<HomeMoveBanner />);
-    expect((await screen.findByTestId('home-move-banner')).textContent).toContain('The fleet is moving to this Mac, and studio takes no changes until the move ends');
+    expect((await screen.findByTestId('home-move-banner')).textContent).toContain('The fleet is moving to this Mac. studio takes no changes until the move ends; robots keep running.');
     act(() => { store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: true }); });
     rerender(<HomeMoveBanner />);
     expect(screen.queryByTestId('home-move-banner')).toBeNull();
@@ -425,8 +427,7 @@ describe('a move nothing is driving', () => {
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: ME, name: 'this mac', asks: false, from: 'studio', unmarked: true } } });
     render(<HomeMoveBanner />);
     const said = (await screen.findByTestId('home-move-banner')).textContent;
-    expect(said).toContain('A move of the fleet to this Mac has not taken hold, and studio is still the home.');
-    expect(said).not.toContain('takes no changes');
+    expect(said).toBe('A move to this Mac did not take hold. studio is still the home.Clear it');
     expect(screen.queryByTestId('home-move-retry')).toBeNull();
     expect(screen.getByTestId('home-move-abort').dataset.tip).toBeUndefined();
     fireEvent.click(screen.getByTestId('home-move-abort'));
@@ -438,7 +439,7 @@ describe('a move nothing is driving', () => {
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, answer: 'its daemon did not start again: failed to connect to bus', phase: 'stopping' } } });
     render(<HomeMoveBanner />);
     const said = await screen.findByTestId('home-move-answer');
-    expect(said.textContent).toBe(' studio went back as it was and has not started again.');
+    expect(said.textContent).toBe('studio went back as it was and has not started again.');
     expect(said.getAttribute('data-tip')).toMatch(/failed to connect to bus/);
   });
 
@@ -447,7 +448,8 @@ describe('a move nothing is driving', () => {
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, answer: 'ssh: connect to host studio port 22: Connection refused', phase: 'unreachable' } } });
     render(<HomeMoveBanner />);
     const said = await screen.findByTestId('home-move-answer');
-    expect(said.textContent).toBe(' studio does not answer; the move waits until it does.');
+    expect(screen.getByTestId('home-move-banner').querySelector('b')!.textContent).toBe('studio is not answering.');
+    expect(said.textContent).toBe('The move to studio waits for it; this Mac takes no changes until then.');
     expect(said.getAttribute('data-tip')).toBe('ssh: connect to host studio port 22: Connection refused');
   });
 
@@ -455,10 +457,10 @@ describe('a move nothing is driving', () => {
     online();
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, answer: 'this folder does not serve the home that asks as a worker of its fleet', phase: 'unknown' } } });
     render(<HomeMoveBanner />);
-    expect((await screen.findByTestId('home-move-answer')).textContent).toBe(' studio cannot say how the move went; the move waits until it can.');
+    expect((await screen.findByTestId('home-move-answer')).textContent).toBe('studio cannot say how the move went; the move waits until it can.');
   });
 
-  it('a press that fails says why and what to do in the window, and Abort says it is at work', async () => {
+  it('a press that fails says why and what to do in the window, and Call it off says it is at work', async () => {
     online();
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } } });
     render(<HomeMoveBanner />);
@@ -466,10 +468,11 @@ describe('a move nothing is driving', () => {
     expect(screen.getByTestId('home-move-abort').textContent).toBe('Calling it off…');
     step('abort', 'fail', { detail: 'studio has not let go of it: staged', action: 'svall fleet home abort again once it answers, or svall fleet home retry', say: 'Call it off again once it answers, or finish the move' }, 'home-abort');
     act(() => { store.getState().hostDone('home-abort', 1); });
-    expect(screen.getByTestId('home-move-failed').textContent).toBe(' studio has not let go of it: staged. Call it off again once it answers, or finish the move');
+    expect(screen.getByTestId('home-move-failed').textContent).toBe('studio has not let go of it: staged. Call it off again once it answers, or finish the move');
+    expect(screen.getByTestId('home-move-failed').className).toBe('banner-sub');
   });
 
-  it('while Abort runs, neither button takes a press', async () => {
+  it('while Call it off runs, neither button takes a press', async () => {
     online();
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } } });
     render(<HomeMoveBanner />);
@@ -486,7 +489,7 @@ describe('a move nothing is driving', () => {
     act(() => { store.getState().hostStarted('home', { name: 'studio' }); });
     step('adopt', 'fail', { detail: 'studio did not take the fleet: rolledback', action: 'svall fleet home abort, or svall fleet home retry', say: 'Close to finish the move or call it off' }, 'home');
     act(() => { store.getState().hostDone('home', 1); });
-    expect(screen.getByTestId('home-move-failed').textContent).toBe(' studio did not take the fleet: rolledback');
+    expect(screen.getByTestId('home-move-failed').textContent).toBe('studio did not take the fleet: rolledback');
   });
 
   it('a press while another run is under way starts nothing, and says so', async () => {
@@ -504,7 +507,7 @@ describe('a move nothing is driving', () => {
 
 describe('mission control left away by a move that stopped', () => {
   const crew = (machine?: string) => act(() => {
-    store.setState((s) => ({ fleet: { ...s.fleet, islands: { home: { id: 'home', kind: 'home' } }, robots: { r1: { id: 'r1', name: 'golden heron', islandId: 'home', ...(machine && { machine, sentAhead: 'hm_abcdefghij' }) } } } }) as never);
+    store.setState((s) => ({ fleet: { ...s.fleet, islands: { home: { id: 'home', kind: 'home' } }, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 0 } }, robots: { r1: { id: 'r1', name: 'golden heron', islandId: 'home', ...(machine && { machine, sentAhead: 'hm_abcdefghij' }) } } } }) as never);
   });
 
   it('says nothing with them on the home', () => {
@@ -513,12 +516,21 @@ describe('mission control left away by a move that stopped', () => {
     expect(container.textContent).toBe('');
   });
 
-  it('names them, and offers to bring them back', () => {
+  it('names them and where they are, and offers to bring them back', () => {
     crew(STUDIO);
     render(<CrewAwayBanner />);
-    expect(screen.getByTestId('crew-away-banner').textContent).toContain('golden heron');
+    expect(screen.getByTestId('crew-away-banner').textContent).toBe('Mission control\'s golden heron is still on studio. A move that stopped left it there.Bring them back');
     fireEvent.click(screen.getByTestId('crew-away-back'));
     expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-crew', args: { name: '' } });
+  });
+
+  it('names two as they, and this Mac as this Mac', () => {
+    crew(ME);
+    act(() => {
+      store.setState((s) => ({ via: { machine: ME, home: STUDIO, name: 'studio', online: true }, fleet: { ...s.fleet, robots: { ...s.fleet.robots, r2: { ...s.fleet.robots.r1, id: 'r2', name: 'swift' } } } }) as never);
+    });
+    render(<CrewAwayBanner />);
+    expect(screen.getByTestId('crew-away-banner').textContent).toBe('Mission control\'s golden heron and swift are still on this Mac. A move that stopped left them there.Bring them back');
   });
 
   it('names what could not come back, and stands down for a sheet that is moving them', () => {

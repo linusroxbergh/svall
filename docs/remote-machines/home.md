@@ -184,9 +184,9 @@ the fleet, and from then on it starts as a home only once the other machine has 
 machine stops, however it stops, what is left is one of these:
 
 - **Nothing was marked.** The old home goes on as it was, and a later move gives up what was copied. Coming back to this Mac, the
-  window says the move has not taken hold, and **Abort** clears it, which the next move needs.
-- **Marked, and not taken.** The window says "The fleet is moving to studio, and this Mac takes no changes until the move
-  ends", where studio says the move stands, with **Finish the move** and **Abort** (`svall fleet home retry`, `svall fleet
+  window says the move did not take hold, and **Clear it** clears it, which the next move needs.
+- **Marked, and not taken.** The window says "The fleet is moving to studio.", where studio says the move stands, and that
+  this Mac takes no changes until the move ends, with **Finish the move** and **Call it off** (`svall fleet home retry`, `svall fleet
   home abort`). The old home takes no writes until one of them ends it. An abort works
   only once the machine that would take the fleet has its daemon up and refuses it for good, and that machine then refuses the move for good too.
 - **Taken.** The new home runs the fleet, and the old home joins it as soon as it hears, however late, so an abort answers
