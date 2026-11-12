@@ -4,6 +4,8 @@
 .modal-back > .modal { animation: dialog-in var(--dur-slow) var(--ease-out); }
 @keyframes dialog-in { from { opacity: 0; translate: 0 6px; scale: .98; } }
 .modal { width: 380px; max-width: calc(100vw - 40px); padding: var(--sp-3xl); display: flex; flex-direction: column; gap: var(--sp-xl); }
+/* the home, move and seed sheets, one family */
+.modal.sheet { width: 440px; }
 .modal:focus { outline: none; }
 /* every dialog's way out is the × at the right of its kicker, bled over the padding so the row keeps its height */
 :is(.kicker, .use-panel-title, .linkask-head, .set-bar) > .side-x { margin: calc(-1 * var(--sp-xs)) calc(-1 * var(--sp-sm)) calc(-1 * var(--sp-xs)) auto; }
@@ -19,6 +21,13 @@
 .modal .acts { display: flex; gap: var(--sp-md); }
 .modal .acts .btn { flex: 1; }
 .modal-sub { display: block; font-size: var(--text-sm); line-height: var(--lh); color: var(--ink-3); }
+/* a sheet's facts are labelled rows in one weight, each label's info tip placed against its row */
+.modal .rows { border-top: 0; padding-top: 0; }
+.modal .row b { font-weight: var(--w-regular); }
+.modal :is(.row, .kicker):has(.set-info) { position: relative; }
+/* the phone's code after a home move, small and centred over the line that says what to do with it */
+.modal .mob-qr { width: 168px; align-self: center; }
+.modal .mob + .modal-sub { text-align: center; }
 .modal-more > summary { display: flex; align-items: center; gap: var(--sp-2xs); cursor: pointer; list-style: none; font-size: var(--text-sm); color: var(--ink-3); user-select: none; }
 .modal-more > summary::-webkit-details-marker { display: none; }
 .modal-more[open] > summary svg { rotate: 0deg; }
@@ -29,6 +38,7 @@
 /* a problem said once: its line, what to do under it and a tool's words behind details, with its one button at the right */
 .said { display: flex; align-items: center; gap: var(--sp-md); min-width: 0; }
 .said > div { flex: 1; display: flex; flex-direction: column; gap: var(--sp-2xs); min-width: 0; color: var(--ink); font-size: var(--text-md); line-height: var(--lh); overflow-wrap: anywhere; }
+.said > div { -webkit-user-select: text; user-select: text; }
 .said > .btn { flex: none; }
 /* New Robot on a home elsewhere: that machine's folders, at one height while they are read, and a field for any other path there */
 .new-folder { display: flex; flex-direction: column; gap: var(--sp-xs); min-width: 0; }
