@@ -171,7 +171,7 @@ test("once through on a worker the sheet says how much of the robot's agent setu
   expect(store.getState().sections['robot.machine']).toMatchObject({ shut: false });
 });
 
-test('a move undone before its commit says in one sentence which step failed, with details, and Try again moves again', async () => {
+test('a move undone before its commit says in one sentence which step failed, with no move id, and Try again moves again', async () => {
   const move = heldMove();
   await open(VAULT);
   await act(async () => fireEvent.click(screen.getByTestId('move-go')));
@@ -180,7 +180,7 @@ test('a move undone before its commit says in one sentence which step failed, wi
   await move.settle(new ApiError('not_reachable', 'linus-vault is not reachable', { phase: 'prepare', moveId: MOVE }));
   expect(lines()).toEqual(['done Checked', 'done Rested ada', 'done Packed branch and session', 'failed Carry failed: linus-vault is not reachable; ada is back on this Mac.']);
   expect(bar()).toEqual(['done', 'done', 'done', 'failed', 'todo', 'todo']);
-  expect(raw(screen.getByTestId('move-step-carry'))).toBe(`move ${MOVE}`);
+  expect(raw(screen.getByTestId('move-step-carry'))).toBeUndefined();
   expect(screen.getByTestId('move-action').textContent).toBe('Try again');
 
   heldMove();
@@ -196,7 +196,7 @@ test('a move stalled after its commit names its step from the robot\'s mark, and
   await mark({ id: MOVE, to: VAULT, phase: 'activate', error: 'claude exited back to its shell' });
   await move.settle({ moveId: MOVE });
   expect(lines().at(-1)).toBe('failed Start failed: claude exited back to its shell.');
-  expect(raw(screen.getByTestId('move-step-start'))).toBe(`move ${MOVE}`);
+  expect(raw(screen.getByTestId('move-step-start'))).toBeUndefined();
   expect(screen.getByTestId('move-action').textContent).toBe('Retry');
 
   await act(async () => fireEvent.click(screen.getByTestId('move-action')));
@@ -440,7 +440,7 @@ test('a check that cannot be asked says so in a sentence, what a tool said behin
   expect(raw(screen.getByTestId('move-failed'))).toBe('Command failed: ssh linus@vault true');
 });
 
-test('a failed step\'s sentence keeps what a tool said behind its details, with the rest of the error and the move', async () => {
+test('a failed step\'s sentence keeps what a tool said behind its details, with the rest of the error and no move id', async () => {
   const move = heldMove();
   await open(VAULT);
   await act(async () => fireEvent.click(screen.getByTestId('move-go')));
@@ -448,7 +448,7 @@ test('a failed step\'s sentence keeps what a tool said behind its details, with 
   await mark();
   await move.settle(new ApiError('failed', 'linus-vault could not take the bundle: Command failed: tar -x\ntar: short read', { phase: 'prepare', moveId: MOVE }));
   expect(lines().at(-1)).toBe('failed Carry failed: linus-vault could not take the bundle; ada is back on this Mac.');
-  expect(raw(screen.getByTestId('move-step-carry'))).toBe(`Command failed: tar -x\ntar: short read\nmove ${MOVE}`);
+  expect(raw(screen.getByTestId('move-step-carry'))).toBe('Command failed: tar -x\ntar: short read');
 });
 
 test('every check a move failed shows at once, each with its own button, and one Check again for the ones without', async () => {

@@ -6,6 +6,7 @@ import { copyText, openFolder } from './bridge.js';
 import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
 import { useApp, usePanelWidth, useTick } from './hooks.js';
+import { splitRaw } from './host.js';
 import { Caret, Mac, Machine, Star } from './icons.js';
 import { MachineLine } from './indicators.js';
 import { Info } from './Info.js';
@@ -18,6 +19,7 @@ import { figureOf, figureUrl, stepFigure } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
+import { Said } from './Said.js';
 import { Section } from './Section.js';
 import { contextPctOf, islandsSorted, isUnread, resumeErrorOf, statusOf } from './selectors.js';
 
@@ -175,7 +177,7 @@ export function SideCard({ id }: { id: string }) {
               </div>
             )}
             <LastActivity at={c.agent ? lastActive(c.agent) : c.shell.lastOutputAt} />
-            {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><b data-error>{failed}</b></div>}
+            {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><div className="set-said" data-error><Said {...splitRaw(failed)} /></div></div>}
             {placed && <div className="row" data-testid="side-dev-server"><span>dev server</span><b>stays on {placed}; forward its port by hand to open it here</b></div>}
           </div>
         </Section>

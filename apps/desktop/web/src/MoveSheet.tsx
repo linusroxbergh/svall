@@ -59,7 +59,7 @@ const said = (robot: string, where: string, what: string): Record<Step, Words> =
 
 // a move started from the sheet: on its way, through, undone before its commit with the step it failed at, or its answer
 // lost with the link to svalld, when the robot's mark tells how it ends
-type Run = { at: 'going' } | { at: 'moved' } | { at: 'failed'; step: Step; error: string; moveId?: string; refused: boolean } | { at: 'lost'; error: string };
+type Run = { at: 'going' } | { at: 'moved' } | { at: 'failed'; step: Step; error: string; refused: boolean } | { at: 'lost'; error: string };
 // a retry of a stalled move: on its way, or failed with `error`, which the mark's error `over` it retried still stands for
 type Retry = { at: 'running' } | { at: 'failed'; error: string; over: string };
 // where a run stands, the robot's moving mark first, since a move stalled after its commit is retried from its step;
@@ -72,7 +72,7 @@ function stand(run: Run, moving: Moving | undefined, retry: Retry | undefined, r
     return { step: steps[moving.phase], failed: { error, moveId: moving.id, landed: true } };
   }
   if (moving) return { step: steps[moving.phase] };
-  if (run.at === 'failed') return { step: run.step, failed: { error: run.error, moveId: run.moveId, landed: false, refused: run.refused } };
+  if (run.at === 'failed') return { step: run.step, failed: { error: run.error, landed: false, refused: run.refused } };
   // a lost answer with no mark yet goes on until one comes, or the robot arrives
   if (run.at === 'lost' && !arrived) return reached ? { step: reached, failed: { error: run.error, landed: false } } : { step: 'check' };
   return run.at === 'going' ? { step: reached ?? 'check' } : { step: 'start', done: true };
@@ -201,9 +201,8 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
       const refused = e instanceof ApiError && e.code === 'refused';
       const data = e instanceof ApiError ? e.data : undefined;
       const phase = MovePhase.safeParse(data?.phase).data;
-      const moveId = typeof data?.moveId === 'string' ? data.moveId : undefined;
       if (!shown.current) store().showToast(e, 'error', refused ? { label: 'Check again', run: () => store().setMoveSheet({ id, to }) } : undefined);
-      else if (e instanceof ApiError) setRun({ at: 'failed', step: phase ? steps[phase] : 'check', error: e.message, moveId, refused });
+      else if (e instanceof ApiError) setRun({ at: 'failed', step: phase ? steps[phase] : 'check', error: e.message, refused });
       else setRun({ at: 'lost', error: e.message });
     });
   };
@@ -337,7 +336,7 @@ function Progress({ stand: st, words, robot, where, here, setup, close, show, ag
   // undone before its commit, the robot is back where it was, but for a check that never moved it
   const back = f && !f.landed && st.step !== 'check' ? `; ${robot} is back on ${here}` : '';
   const sentence = f && `${words[st.step].name} failed: ${told.line.replace(/\.$/, '')}${back}.`;
-  const details = f ? [...(told.raw ? [told.raw] : []), ...more, ...(f.moveId ? [`move ${f.moveId}`] : [])] : [];
+  const details = f ? [...(told.raw ? [told.raw] : []), ...more] : [];
   const act = st.done ? { testid: 'move-done', label: 'Done', run: close }
     : f && { testid: 'move-action', label: f.landed ? 'Retry' : f.refused ? 'Check again' : 'Try again', run: () => again(st) };
   const list = (

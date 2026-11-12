@@ -329,6 +329,8 @@ describe('a sentence and what a tool said after it', () => {
     expect(splitRaw('could not open a master to ada@studio: ssh: connect to host studio port 22: Connection refused'))
       .toEqual({ line: 'could not open a master to ada@studio', raw: 'ssh: connect to host studio port 22: Connection refused' });
     expect(splitRaw('studio did not answer within 20000ms: timed out')).toEqual({ line: 'studio did not answer', raw: 'within 20000ms: timed out' });
+    expect(splitRaw('svall: hooks could not be written\n  EACCES: permission denied, open /u/.claude/settings.json'))
+      .toEqual({ line: 'svall: hooks could not be written', raw: 'EACCES: permission denied, open /u/.claude/settings.json' });
   });
 
   it('cuts at the first of them, and not inside a word', () => {

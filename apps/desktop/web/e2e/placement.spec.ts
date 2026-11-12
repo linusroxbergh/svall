@@ -190,8 +190,7 @@ test('a move runs in its sheet, one line per step as it gets there, and a failur
   await expect(sheet.getByTestId('move-step-carry')).toHaveAttribute('data-state', 'failed');
   await expect(sheet.getByTestId('move-step-land')).toHaveCount(0);
   await expect(sheet.locator('.acts button')).toHaveText(['Try again']);
-  await sheet.getByTestId('move-step-carry').locator('summary').click();
-  await expect(sheet.getByTestId('move-step-carry').locator('.modal-more-body')).toHaveText('move mv_0123456789');
+  await expect(sheet.getByTestId('move-step-carry').locator('details')).toHaveCount(0);
 });
 
 test('a robot that lands on a machine says what of its agent setup is not there yet, and its card lists each with its way on', async ({ page, svall }) => {

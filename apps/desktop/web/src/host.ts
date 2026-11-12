@@ -13,7 +13,7 @@ export function withoutTokens(text: string): string {
 }
 
 // where a sentence ends and what a tool said of it begins
-const RAW_AT = /: Command failed:|Command failed:| exited \d+:|: ssh could not reach|\bssh: |within \d+ms:/;
+const RAW_AT = /: Command failed:|Command failed:| exited \d+:|: ssh could not reach|\bssh: |within \d+ms:|\n(?=\s*\S)/;
 
 /** A text that carries no `raw` of its own, cut where a tool's words begin: the sentence before them, and them behind it. */
 export function splitRaw(text: string): { line: string; raw?: string } {

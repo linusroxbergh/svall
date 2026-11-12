@@ -9,6 +9,8 @@ import { Setup } from '../../src/Setup.js';
 import { createAppStore, localAppStorage } from '../../src/store/index.js';
 
 afterEach(() => { delete window.webkit; delete window.__svallHome; });
+// as main.tsx starts the setup page
+setAppStore(createAppStore());
 
 test('a plan that is not the JSON asked for is shown as it came, not left on the loading line', async () => {
   window.webkit = { messageHandlers: { svall: { postMessage(json: string) {
@@ -120,6 +122,20 @@ test('running setup communicates progress and locks configuration', () => {
   s.receive({ type: 'setup.result', step: 'run', ok: false, json: 'Could not write hooks. Try again.' });
   expect(screen.getByRole('alert').textContent).toMatch(/Could not write hooks/);
   expect((screen.getByRole('button', { name: 'Set up Svall' }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+test('a check or a setup that fails says the CLI\'s sentence, and what a tool said waits behind details', () => {
+  const said = () => { const alert = screen.getByRole('alert'); return [alert.querySelector('.said span')!.textContent, alert.querySelector('details')?.textContent]; };
+  window.webkit = { messageHandlers: { svall: { postMessage() {} } } };
+  const { unmount } = render(<Setup />);
+  act(() => window.__svall!.receive(JSON.stringify({ type: 'setup.result', step: 'plan', ok: false, json: 'svall: the login shell did not answer\n  zsh: command not found: brew\n' })));
+  expect(said()).toEqual(['svall: the login shell did not answer', 'detailszsh: command not found: brew']);
+  unmount();
+  const s = shell(ready);
+  next(); next();
+  fireEvent.click(screen.getByRole('button', { name: 'Set up Svall' }));
+  s.receive({ type: 'setup.result', step: 'run', ok: false, json: 'svall: hooks could not be written: Command failed: chmod 600 /u/.claude' });
+  expect(said()).toEqual(['svall: hooks could not be written', 'detailsCommand failed: chmod 600 /u/.claude']);
 });
 
 test('successful setup retains actionable warnings before continuing', () => {

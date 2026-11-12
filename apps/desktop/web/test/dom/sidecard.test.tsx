@@ -84,6 +84,16 @@ test('robot messages held for the user show as blocked, let in or dropped from t
   expect(calls().filter(([m]) => m === 'robot.answer').map(([, p]) => p)).toEqual([{ id: 'c0', answer: 'approve', promptId: 'h1' }, { id: 'c0', answer: 'deny', promptId: 'h1' }]);
 });
 
+test('a resume that failed says its sentence in the row, and what the tool said waits behind details', () => {
+  const f = store.getState().fleet;
+  const { tmux: _, ...dormant } = f.robots.c0!;
+  store.getState().setFleet({ ...f, robots: { ...f.robots, c0: { ...dormant, resumeError: 'codex did not resume: Command failed: tmux respawn-pane\nno server running' } } });
+  render(<Side />);
+  const row = screen.getByTestId('side-resume-error');
+  expect(row.querySelector('.said span')!.textContent).toBe('codex did not resume');
+  expect(row.querySelector('details')!.textContent).toBe('detailsCommand failed: tmux respawn-pane\nno server running');
+});
+
 test('the note takes no more than the fleet does', () => {
   render(<Side />);
   expect(field('side-note').maxLength).toBe(ROBOT_NOTE_MAX);

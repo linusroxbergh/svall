@@ -167,7 +167,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
   );
   if (!plan && error) return (
     <Page>
-      <p className="setup-error" role="alert">{error}</p>
+      <div className="setup-error" role="alert"><Said {...splitRaw(error)} /></div>
       <div className="setup-acts"><button type="button" className="btn" disabled={busy} onClick={check}>Check again</button></div>
     </Page>
   );
@@ -349,7 +349,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
           <Review writes={writes} />
         </>}
       </fieldset>
-      {error && <p className="setup-error" role="alert">{error}</p>}
+      {error && <div className="setup-error" role="alert"><Said {...splitRaw(error)} /></div>}
       <div className="setup-acts">
         {/* the main agent must be one whose CLI setup found */}
         <button type="button" className="btn pri" disabled={busy || !on.some((a) => !a.folderOnly) || plan.blockers.length > 0 || (step > 1 && !projects.trim())} onClick={() => step < 3 ? setStep(step + 1) : run()}>{running ? 'Setting up…' : step < 3 ? 'Continue' : 'Set up Svall'}</button>
