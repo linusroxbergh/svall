@@ -252,7 +252,7 @@ function Machines() {
       end={(!via || via.online) && <button className="btn sm" data-testid="machine-add" onClick={() => app.store.getState().toggleHost(true)}>Add machine</button>}>
       <div data-testid="machines">
         {reading && <div className="set-note" data-testid="machines-reading"><span className="move-spin" />Reading the machines…</div>}
-        {!reading && machines && !shown.length && (
+        {!reading && machines && !shown.length && !error && !unread && (
           <div className="set-note" data-testid="machines-empty">No other machine yet. A Linux machine can run this fleet&apos;s robots while this Mac sleeps, or run the whole fleet.</div>
         )}
         {!reading && shown.map((m) => {
@@ -308,7 +308,7 @@ function Machines() {
         )}
         {error && (
           <div className="row" data-testid="machines-error">
-            <div className="set-said" data-error><Said {...splitRaw(error)} settings /></div>
+            <div className="set-said" data-error><Said line="This Mac's list of machines could not be read" raw={withoutTokens(error)} settings /></div>
             <b><button className="btn sm" data-testid="machines-reload" onClick={list}>Read again</button></b>
           </div>
         )}

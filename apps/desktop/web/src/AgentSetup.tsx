@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { type Result, type SetupRow } from '@svall/protocol';
 import { app, deps } from './boot.js';
 import { openFolder } from './bridge.js';
-import { keyLabel, keyMask, plural, splitRaw } from './host.js';
+import { keyLabel, keyMask, plural, splitRaw, withoutTokens } from './host.js';
 import { useApp } from './hooks.js';
 import { Caret } from './icons.js';
 import { openFile } from './ide/files.js';
@@ -31,7 +31,7 @@ function HomeFiles({ id, skills }: { id: string; skills: number }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     let left = false;
-    void filesUnder(id, 'rules').then((found) => { if (!left) setRules(found); }, (e: Error) => { if (!left) setUnread(splitRaw(e.message).line); });
+    void filesUnder(id, 'rules').then((found) => { if (!left) setRules(found); }, (e: Error) => { if (!left) setUnread(e.message); });
     return () => { left = true; };
   }, [id]);
   const shelf = (what?: 'skills') => {
@@ -59,7 +59,7 @@ function HomeFiles({ id, skills }: { id: string; skills: number }) {
         </button>
       )}
       {(!folds || open) && rules.map((file) => row(file, file, () => void go(file)))}
-      {unread && <div className="set-note" data-testid="setup-rules-failed">The rules could not be read: {unread}</div>}
+      {unread && <div className="set-said" data-testid="setup-rules-failed"><Said line="The rules could not be read" raw={withoutTokens(unread)} settings mark="warn" /></div>}
     </div>
   );
 }

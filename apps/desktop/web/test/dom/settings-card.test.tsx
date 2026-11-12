@@ -865,9 +865,11 @@ describe('Machines', () => {
     show('machines');
     act(() => store.getState().setMachines([], 'svall host list exited 1: ssh: connect to host'));
     const error = screen.getByTestId('machines-error');
-    expect(within(error).getByText('svall host list')).toBeTruthy();
-    expect(error.querySelector('details')!.textContent).toBe('detailsexited 1: ssh: connect to host');
+    expect(within(error).getByText("This Mac's list of machines could not be read")).toBeTruthy();
+    expect(error.querySelector('details')!.textContent).toBe('detailssvall host list exited 1: ssh: connect to host');
     expect(error.lastElementChild!.contains(screen.getByTestId('machines-reload'))).toBe(true);
+    // a list that could not be read says nothing of there being no other machine
+    expect(screen.queryByTestId('machines-empty')).toBeNull();
   });
 });
 
@@ -945,7 +947,9 @@ test('past six rules the rules fold behind one line, and rules that cannot be re
     farWindow({ ...SETUP, 'fs.list': () => { throw new Error('ssh: connect to host studio port 22: timed out'); } });
     render(<SettingsCard />);
     show('setup');
-    expect((await screen.findByTestId('setup-rules-failed')).textContent).toBe('The rules could not be read: Something went wrong on the machine');
+    const failed = await screen.findByTestId('setup-rules-failed');
+    expect(failed.querySelector('.said > div > span')!.textContent).toBe('The rules could not be read');
+    expect(failed.querySelector('.modal-more-body')!.textContent).toBe('ssh: connect to host studio port 22: timed out');
     expect(store.getState().toast).toBeUndefined();
   } finally {
     call.mockImplementation(() => Promise.resolve({}));

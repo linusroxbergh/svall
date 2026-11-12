@@ -194,7 +194,8 @@
 /* a problem in a pane; in a row beside a label its words sit at the right */
 .set-said { min-width: 0; }
 .row > .set-said { flex: 1 1 auto; }
-.row > span + .set-said .said > div { align-items: flex-end; text-align: right; }
+.row > span + .set-said .said { justify-content: flex-end; }
+.row > span + .set-said .said > div { flex: 0 1 auto; align-items: flex-end; text-align: right; }
 .set-qr { display: flex; align-items: center; gap: var(--sp-xl); padding: var(--sp-xs) 0; }
 .set-qr .mob-qr { width: 168px; }
 /* the explanation waits behind the mark, so the panel reads as a list of controls rather than a page of prose */
