@@ -6,7 +6,7 @@ import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
 import {
   addedBy, asideStep, cdDir, groupSteps, keyLabel, loginForward, machineName, machineNames, OP_TITLE, outcomeOf, overHome, plainStep, plural, rowToStep,
-  runningLine, splitRaw, sshDestination, stepLabel, stepSaid, stepTier, type HostRun,
+  removedBy, runningLine, splitRaw, sshDestination, stepLabel, stepSaid, stepTier, type HostRun,
 } from './host.js';
 import { useApp, useMeasure } from './hooks.js';
 import { startHost } from './hostRun.js';
@@ -151,7 +151,7 @@ function Outcome({ run, edit }: { run: HostRun; edit(): void }) {
   );
   const again = <button className="btn" data-testid="machine-doctor" onClick={() => startHost('doctor', { name, ...farId(run.args) })}>Check again</button>;
   const acts = run.op === 'add' && !addedBy(run) ? <><button className="btn pri" data-testid="host-edit" onClick={edit}>Edit and try again</button>{close(false, 'Close')}</>
-    : run.op === 'remove' ? (o.done ? close(true) : <><button className="btn pri" data-testid="host-again" onClick={() => startHost('remove', run.args)}>Try again</button>{close(false, 'Close')}</>)
+    : run.op === 'remove' ? (removedBy(run) ? close(true) : <><button className="btn pri" data-testid="host-again" onClick={() => startHost('remove', run.args)}>Try again</button>{close(false, 'Close')}</>)
     : o.next === 'rollback' ? (
       <>
         <button className="btn pri" data-testid="host-rollback" data-tip="Put back the release the machine ran before"
@@ -465,7 +465,7 @@ export function HostSetup() {
   const running = run?.running ?? false;
   // a run another machine's panel started stays in sight while it runs, so it can be stopped
   const shown = run && (running || run.args.name === machine) ? run : undefined;
-  const gone = shown?.op === 'remove' && !running && shown.code === 0;
+  const gone = !!shown && !running && removedBy(shown);
   // an add the registry does not hold yet is still the add, not the machine
   const adding = shown?.op === 'add' && (running || !addedBy(shown));
   const form = (!machine && !shown) || (!!editing && editing === shown);

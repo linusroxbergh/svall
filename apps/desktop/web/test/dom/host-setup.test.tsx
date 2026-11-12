@@ -274,6 +274,22 @@ test('a remove that failed offers Try again at its foot, not on its row, and one
   expect(screen.queryByTestId('machine-more')).toBeNull();
 });
 
+test('a remove that took the machine off the list but left copied keys there says what to fix, and offers Done, not Try again', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('remove', { name: 'trift' });
+    store.getState().hostStep('remove', { step: 'uninstall', status: 'ok', detail: 'Svall removed' });
+    store.getState().hostStep('remove', { step: 'registry', status: 'ok', detail: 'removed' });
+    store.getState().hostStep('remove', { step: 'keys', status: 'warn', detail: '2 copied keys could not be removed', action: 'on ada@trift, remove them by hand' });
+    store.getState().hostDone('remove', 1);
+  });
+  expect(screen.getByTestId('host-outcome').textContent).toBe('trift has 1 thing to fixDone');
+  expect(screen.queryByTestId('host-again')).toBeNull();
+  expect(screen.queryByTestId('machine-more')).toBeNull();
+});
+
 test('a running check shows what needs the person as found and the step under way; the notes, the fine checks and the agent setup each fold behind one line', () => {
   render(<HostSetup />);
   act(() => {

@@ -208,6 +208,9 @@ export const stepTier = (s: HostStep, op: HostOp, fleet: FleetAgents | undefined
 /** Whether an add put the machine in the registry: it went through, or its last step listed it. */
 export const addedBy = (run: HostRun): boolean => run.code === 0 || run.steps.some((s) => s.step === 'registry' && s.status === 'ok');
 
+/** Whether a remove took the machine off the registry, whatever it left there to clean up. */
+export const removedBy = (run: HostRun): boolean => run.op === 'remove' && (run.code === 0 || run.steps.some((s) => s.step === 'registry' && s.status === 'ok'));
+
 /** The run's verdict in one line; `fleet`, the agents its rows are tiered by. */
 export function outcomeOf(run: HostRun, fleet?: FleetAgents): RunOutcome {
   const name = run.args.name;
@@ -218,6 +221,7 @@ export function outcomeOf(run: HostRun, fleet?: FleetAgents): RunOutcome {
     if (todo) return { text: `${name} has ${plural(todo, 'thing')} to fix`, ...rollback };
     if (run.code === 0) return { text: `${name} is ready`, done: true };
   }
+  if (removedBy(run) && todo) return { text: `${name} has ${plural(todo, 'thing')} to fix` };
   if (run.steps.some((s) => s.status === 'fail')) return { text: `${OP_TITLE[run.op]} did not finish` };
   if (run.code !== 0) return { text: `${OP_TITLE[run.op]} ended without saying why`, raw: `exit ${run.code}` };
   const done: Partial<Record<HostOp, string>> = { rollback: `${name} is rolled back`, remove: `${name} is ${run.args.forget ? 'forgotten' : 'removed'}` };
