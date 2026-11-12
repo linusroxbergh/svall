@@ -133,6 +133,8 @@
 .side-doc-del { position: absolute; top: var(--sp-xs); right: var(--sp-xs); opacity: 0; pointer-events: none; }
 .side-doc-row:hover .side-doc-del, .side-doc-del:focus-visible { opacity: 1; pointer-events: auto; }
 .side .acts { display: flex; gap: var(--sp-md); margin-top: auto; padding-top: var(--sp-2xl); }
+/* the sections reach down to the foot, a section's gap above it */
+.side > .side-secs + .acts { padding-top: 0; }
 .side .acts .btn { flex: 1; }
 /* a card's own buttons: two even columns, where a button alone takes both; the moves start rows of their own, a move alone on its row taking both */
 .side > .acts, .side > .acts > .moves { display: grid; grid-template-columns: 1fr 1fr; }

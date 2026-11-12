@@ -109,7 +109,7 @@ export function SideCard({ id }: { id: string }) {
   return (
     <aside className="side" style={width} data-testid="side-card" data-drop={`robot:${id}`} data-drop-hover={hover}>
       <div className="kicker" style={{ color: accent }}>
-        <i className="sdot" data-status={status} />{status !== 'unknown' ? status : readOnly && homeState && homeState !== 'unreachable' && homeState !== 'connecting' ? 'read-only' : 'unreachable'}{isUnread(c) ? ' · unread' : ''}
+        <i className="sdot" data-status={status} />{status === 'unknown' && readOnly && homeState && homeState !== 'unreachable' && homeState !== 'connecting' ? 'read-only' : status}{isUnread(c) ? ' · unread' : ''}
       </div>
       <div className="side-id">
         <div className="side-head">
@@ -145,6 +145,7 @@ export function SideCard({ id }: { id: string }) {
           <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove' }}
             robotId={id} onChange={refuse ? undefined : saveContext} />
           {!refuse && <AddLink id={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />}
+          {refuse && !c.context.length && <p className="set-note" data-testid="side-context-empty">nothing listed</p>}
         </Section>
         {started && (
           <Section name="robot.started" title="Robots it started">

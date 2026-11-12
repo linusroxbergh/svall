@@ -565,7 +565,8 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
 test('a robot on a worker this Mac cannot reach says so under its machine line, and Check opens the Machines panel on a check of it', () => {
   withVault(false, { machine: VAULT, cwd: '/home/ada/svall' });
   render(<Side />);
-  expect(document.querySelector('.side > .kicker')?.textContent).toBe('unreachable');
+  // the robot's status in the board's word, and why under it
+  expect(document.querySelector('.side > .kicker')?.textContent).toBe('unknown');
   expect(screen.getByTestId('side-away').textContent).toBe('linus-vault is not reachableCheck linus-vault');
   // its terminal and a shell there open onto nothing, so they wait, saying why; the move's check runs on this Mac, so it stays
   const button = (t: string) => screen.getByTestId(t) as HTMLButtonElement;
