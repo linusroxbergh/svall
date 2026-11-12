@@ -525,13 +525,19 @@ export function carriedWorkers(p: Paths, entries: MachineEntry[], own: string): 
   return entries.filter((e) => held.includes(e.id) && e.record.ssh && e.record.platform === 'linux').map((e) => ({ id: e.id, record: e.record, profile: workerProfile(p, e.id) ?? own }));
 }
 
-// `tried`: when the last try for that worker ended, by this home's clock; `login`: the ssh route this home could not log in by
-const WorkersOwed = z.object({ id: z.string(), workers: z.record(z.string(), z.object({ why: z.string().optional(), login: z.string().optional(), tried: z.number().optional() })) });
+// `tried`: when the last try for that worker ended, by this home's clock; `login`: the ssh route this home could not log in by;
+// `unreached`: how this home's ssh did not reach it; `raw`: what ssh or the far svall said of the last try
+const WorkersOwed = z.object({ id: z.string(), workers: z.record(z.string(), z.object({
+  why: z.string().optional(), login: z.string().optional(), unreached: z.enum(['unreachable', 'timeout']).optional(), raw: z.string().optional(), tried: z.number().optional(),
+})) });
 export type WorkersOwed = z.infer<typeof WorkersOwed>;
 
-/** Why worker `name` has not joined; a refused login names this home as its reader calls it. */
-export const owedWhy = (owed: WorkersOwed['workers'][string], name: string): string =>
-  (owed.login ? `${homeWord()} cannot log in to ${name}; ${noLoginFix(homeWord(), owed.login)}` : owed.why ?? '');
+/** Why worker `name` has not joined, then `; ` and the fix; a refused login and a machine not reached name this home as its reader calls it. */
+export const owedWhy = (owed: WorkersOwed['workers'][string], name: string): string => {
+  if (owed.login) return `${homeWord()} cannot log in to ${name}; ${noLoginFix(homeWord(), owed.login)}`;
+  if (owed.unreached) return `${owed.unreached === 'timeout' ? `${name} did not answer in 20 s` : `${name} is not reachable from ${homeWord()}`}; check that it is on and on Tailscale`;
+  return owed.why ?? '';
+};
 
 export const readWorkersOwed = (p: Pick<Paths, 'workersOwed'>): WorkersOwed | undefined => {
   try { return WorkersOwed.parse(JSON.parse(fs.readFileSync(p.workersOwed, 'utf8'))); } catch { return undefined; }
