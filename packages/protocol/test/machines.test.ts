@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FleetConfig, FleetId, MachineId, MachineRecord, NodeConfig } from '../src/index.js';
+import { agentsInUse, FleetConfig, FleetId, MachineId, MachineRecord, NodeConfig, tierOf, type FleetAgents } from '../src/index.js';
 
 const UUID_A = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
 const UUID_B = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
@@ -81,5 +81,39 @@ describe('split configuration', () => {
     expect(NodeConfig.parse({ defaultCwd: '/x' })).not.toHaveProperty('defaultCwd');
     expect(NodeConfig.parse({ mainAgent: 'codex' })).not.toHaveProperty('mainAgent');
     expect(FleetConfig.parse({ id: UUID_A, mainAgent: 'codex' }).mainAgent).toBe('codex');
+  });
+});
+
+describe('tierOf', () => {
+  // a fleet whose mission control runs Claude Code, whose scribe is off on Codex, and one of whose robots runs OpenCode in its second terminal
+  const fleet = { mainAgent: 'claude', scribeAgent: 'codex', scribeOff: true, robots: { r: { second: { agent: { kind: 'opencode' } } } } } as unknown as FleetAgents;
+  const tier = (step: string, status: string, flow?: boolean) => tierOf({ step, status }, fleet, flow);
+
+  it('the agents a fleet runs are mission control\'s, a robot\'s in either terminal, and the scribe\'s only while it is on', () => {
+    expect([...agentsInUse(fleet)].sort()).toEqual(['claude', 'opencode']);
+    expect([...agentsInUse({ ...fleet, scribeOff: undefined })].sort()).toEqual(['claude', 'codex', 'opencode']);
+  });
+
+  it('a row that went well or was skipped is fine, and every failure is to do', () => {
+    expect([tier('ssh', 'ok'), tier('claude', 'skip'), tier('tmux', 'fail'), tier('gh', 'fail')]).toEqual(['fine', 'fine', 'todo', 'todo']);
+  });
+
+  it('of a machine\'s checks, a warning needs a person only on what a robot there cannot do without', () => {
+    for (const step of ['linger', 'release', 'worker', 'service', 'systemd', 'versions', 'hooks', 'codex hooks', 'opencode plugin']) expect(tier(step, 'warn')).toBe('todo');
+    for (const step of ['tmux', 'space', 'path', 'gh', 'os', 'daemon env', 'launchd plist', 'shims', 'codex sandbox', 'machine id']) expect(tier(step, 'warn')).toBe('note');
+  });
+
+  it('an agent\'s warning is to do where the fleet runs it, a note where it does not, and to do while the fleet is unknown', () => {
+    expect([tier('claude', 'warn'), tier('opencode', 'warn'), tier('codex', 'warn')]).toEqual(['todo', 'todo', 'note']);
+    expect(tierOf({ step: 'codex', status: 'warn' }, undefined)).toBe('todo');
+  });
+
+  it('in a step flow every warning is to do but the join\'s offer to copy the agent setup', () => {
+    expect([tier('rollback', 'warn', true), tier('os', 'warn', true), tier('crew', 'warn', true), tier('seed', 'warn', true)]).toEqual(['todo', 'todo', 'todo', 'note']);
+    expect(tier('os', 'warn')).toBe('note');
+  });
+
+  it('the agent setup\'s rows are never a thing to do', () => {
+    expect([tier('mirror:claude:mcp:linear', 'warn'), tier('mirror:claude:mcp:linear', 'warn', true), tier('mirror:phone', 'ok')]).toEqual(['note', 'note', 'fine']);
   });
 });
