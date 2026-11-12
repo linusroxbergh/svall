@@ -18,7 +18,7 @@ import { svallExe } from '../release.js';
 import type { Store } from '../store.js';
 import { shq } from '../text.js';
 import { Inventory, RobotSync, Snapshot } from '../worker/snapshot.js';
-import { SshMaster } from './ssh.js';
+import { inFull, SshMaster } from './ssh.js';
 import { answerCall, LinkStream, MAX_LINE } from './stream.js';
 
 /** How often the home pings a worker; a ping still unanswered at the next beat closes the link. A worker closes a link
@@ -300,7 +300,7 @@ export class WorkerLink {
   /** Sends the home's agent configuration; a failure is logged, the mirror being a convenience. */
   pushMirror(): Promise<void> {
     if (!this.o.mirror || !this.connected()) return Promise.resolve();
-    return this.o.mirror.push(this).then(() => {}, (e: Error) => this.o.log.error(`${this.name}: the agent configuration was not mirrored: ${e.message}`));
+    return this.o.mirror.push(this).then(() => {}, (e: Error) => this.o.log.error(`${this.name}: the agent setup was not copied: ${e.message}`));
   }
 
   /** Sends the fleet's docs to a synced worker, and once more after if they change meanwhile. */
@@ -346,7 +346,7 @@ export class WorkerLink {
       if (!token) return this.lost(`no token for ${this.name} in ${this.o.paths.workersFile}`, false);
       conn = await (this.dialsIn ? this.o.dialIn : this.o.connect)(this.entry);
     } catch (e) {
-      return this.lost((e as Error).message);
+      return this.lost(inFull(e));
     } finally {
       this.connecting = false;
     }

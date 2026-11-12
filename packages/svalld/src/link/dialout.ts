@@ -5,7 +5,7 @@ import { isDialSocket, type Paths } from '../paths.js';
 import { shq } from '../text.js';
 import { readWorkerFile } from '../worker/mode.js';
 import { HEARTBEAT_MS } from './home.js';
-import { SshError, SshMaster } from './ssh.js';
+import { inFull, SshError, SshMaster } from './ssh.js';
 
 const FIRST_RETRY_MS = 1_000;
 const LAST_RETRY_MS = 60_000;
@@ -171,7 +171,7 @@ export class HomeDial {
     } catch (e) {
       await this.drop();
       this.failed = e instanceof SshError ? e : new SshError('other', (e as Error).message);
-      return this.lost((e as Error).message);
+      return this.lost(inFull(e));
     }
     this.failed = undefined;
     this.retryMs = FIRST_RETRY_MS;

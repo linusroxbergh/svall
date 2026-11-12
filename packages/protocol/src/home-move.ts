@@ -43,8 +43,8 @@ export type AdoptAnswer = z.infer<typeof AdoptAnswer>;
 export const HomeWorker = z.object({ id: MachineId, record: MachineRecord, profile: z.string().optional() });
 export type HomeWorker = z.infer<typeof HomeWorker>;
 
-/** What the machine that would take the fleet finds of a worker, over its own ssh: `ssh`, the route it took. */
-export const HomeReach = z.object({ ok: z.boolean(), ssh: z.string(), kind: z.enum(['auth', 'host_key', 'unreachable', 'release', 'machine', 'fleet', 'name', 'other']).optional(), why: z.string().optional() });
+/** What the machine that would take the fleet finds of a worker, over its own ssh: `ssh`, the route it took; `raw`, what ssh or the far command said. */
+export const HomeReach = z.object({ ok: z.boolean(), ssh: z.string(), kind: z.enum(['auth', 'host_key', 'unreachable', 'release', 'machine', 'fleet', 'name', 'other']).optional(), why: z.string().optional(), raw: z.string().optional() });
 export type HomeReach = z.infer<typeof HomeReach>;
 
 /** What the fleet's archive says of itself. `phone`: whether its link served, and who it let through, as `mobile.logins` empty means a login only that machine has. */
@@ -67,13 +67,13 @@ export type HomeManifest = z.infer<typeof HomeManifest>;
 const HomeRewrite = z.object({ key: z.string(), to: z.string(), lacks: z.boolean().optional(), kept: z.literal(true).optional() });
 
 /**
- * What a machine says of itself to a home move's check, none of it secret. `tailscale.stopped`: installed, and its daemon does not answer. `workers`: those its fleet holds a token for and its registry lists, none said where it
+ * What a machine says of itself to a home move's check, none of it secret. `tailscale.state`: how Tailscale stands there, and `error` what it said. `workers`: those its fleet holds a token for and its registry lists, none said where it
  * cannot read them. `paths`: whether each path it was asked of is there. `fleetKb`, `rewrites`: a home's, what a move of its fleet carries and which paths change.
  */
 export const HomeFacts = z.object({
   machineId: MachineId, fleetId: FleetId.optional(), release: z.string(), protocol: z.number().int(), stateSchema: z.number().int(),
   clock: z.number(), freeKb: z.number().optional(), fleetKb: z.number().optional(), fleetHome: MachinePath, moving: z.string().optional(),
-  tailscale: z.object({ host: z.string().optional(), error: z.string().optional(), stopped: z.literal(true).optional() }),
+  tailscale: z.object({ host: z.string().optional(), state: z.enum(['missing', 'stopped', 'signedOut', 'ok']).optional(), error: z.string().optional() }),
   paths: z.record(z.string(), z.boolean()).optional(), workers: z.array(z.string()).optional(), rewrites: z.array(HomeRewrite).optional(),
   // on a home: the workers a move would carry, as what takes the fleet comes back has no registry of its own for them
   carried: z.array(HomeWorker).optional(),

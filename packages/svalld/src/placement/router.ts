@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { z } from 'zod';
-import { AGENT_UPDATE, AGENT_UPDATE_MS, AgentKind, ApiError, Column, ContextItem, farRootOf, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
+import { AGENT_LABEL, AGENT_UPDATE, AGENT_UPDATE_MS, AgentKind, ApiError, Column, ContextItem, farRootOf, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
 import { loseSecond, markDormant } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import type { HomeLinks } from '../link/home.js';
@@ -215,7 +215,7 @@ async function updateAgent(kind: AgentKind, run: CliRun): Promise<void> {
   const [bin, ...args] = AGENT_UPDATE[kind].split(' ');
   const r = await run(bin, args);
   const said = (r.stderr.trim() || r.stdout.trim()).split('\n').at(-1);
-  if (r.code !== 0) throw new ApiError('internal', `${AGENT_UPDATE[kind]} exited ${r.code}${said ? `: ${said}` : ''}`);
+  if (r.code !== 0) throw new ApiError('internal', `${AGENT_LABEL[kind]} did not update`, { raw: `${AGENT_UPDATE[kind]} exited ${r.code}${said ? `: ${said}` : ''}` });
 }
 
 const FarViewer = z.object({ key: z.string(), kind: z.enum(['app', 'phone']) });

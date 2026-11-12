@@ -5,7 +5,7 @@ import { homeWord } from '../machine.js';
 import { fleetHomeOfSocket } from '../paths.js';
 import { releaseVersion } from '../release.js';
 import { FleetMismatch, MachineMismatch, remoteConnectionInfo } from './connection-info.js';
-import { SshError, type SshMaster } from './ssh.js';
+import { inFull, SshError, type SshMaster } from './ssh.js';
 
 type Answer = Result<'home.connection'>;
 type Dial = { master(): SshMaster | undefined; failure(): SshError | undefined; restore(): void };
@@ -99,7 +99,7 @@ export class HomeApi {
       }
       if (e instanceof SshError && e.kind === 'version') return await this.settle(base, { state: 'version', detail: message });
       await this.drop();
-      return this.away(base, message);
+      return this.away(base, inFull(e));
     }
   }
 

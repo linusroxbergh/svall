@@ -122,7 +122,7 @@ runIf('a home move through real starts', () => {
       try {
         const r = await d.ask('fleet.homeCheck', { to: STUDIO }) as unknown as { result: { refusal: { reason: string; more?: { reason: string }[] } } };
         const reasons = [r.result.refusal, ...(r.result.refusal.more ?? [])].map((m) => m.reason);
-        expect(reasons).toContain(`the fleet is moving already (${ID})`);
+        expect([r.result.refusal, ...(r.result.refusal.more ?? [])]).toContainEqual(expect.objectContaining({ reason: 'the fleet is moving already', raw: ID }));
         expect(reasons).not.toContain('a worker is being enrolled');
       } finally { held(); }
     }, 60_000);

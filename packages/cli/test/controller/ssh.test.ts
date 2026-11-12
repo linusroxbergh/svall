@@ -291,16 +291,21 @@ describe('SshMaster', () => {
     expect(ssh.calls().at(-1)).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'exit', '--', 'svall-remote.invalid']);
   });
 
-  it('names what kept it from opening a master', async () => {
-    const cases = [['refused.test', 'unreachable'], ['denied.test', 'auth'], ['hostkey.test', 'host_key'], ['vanish.test', 'unreachable']] as const;
-    for (const [destination, kind] of cases) {
+  it('names what kept it from opening a master, in a sentence of its own, with what ssh said apart', async () => {
+    const cases = [
+      ['refused.test', 'unreachable', 'ssh could not reach refused.test', 'ssh: connect to host refused.test port 22: Connection refused'],
+      ['denied.test', 'auth', 'ssh could not reach denied.test; run ssh denied.test once in a terminal, then try again', 'linus@denied.test: Permission denied (publickey).'],
+      ['hostkey.test', 'host_key', 'ssh could not reach hostkey.test', 'Host key verification failed.'],
+      ['vanish.test', 'unreachable', 'ssh could not reach vanish.test', undefined],
+    ] as const;
+    for (const [destination, kind, message, raw] of cases) {
       const err = await open(destination).catch((e: SshError) => e);
       expect(err).toBeInstanceOf(SshError);
-      expect((err as SshError).kind).toBe(kind);
+      expect([(err as SshError).kind, (err as SshError).message, (err as SshError).raw]).toEqual([kind, message, raw]);
     }
   });
 
-  it('reads a master still waiting on a Tailscale check when it gives up as auth, and names ssh as the way past it', async () => {
+  it('reads a master still waiting on a Tailscale check when it gives up as auth, and names ssh as the way past it, what ssh said kept apart', async () => {
     // only Date is faked, so the master's own clock reaches its timeout when the test says
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
@@ -314,8 +319,8 @@ describe('SshMaster', () => {
       const err = await opening;
       expect(err).toBeInstanceOf(SshError);
       expect((err as SshError).kind).toBe('auth');
-      expect((err as SshError).message).toContain('https://login.tailscale.com/a/1a2b3c4d5e');
-      expect((err as SshError).message).toContain('run ssh check.test once in a terminal');
+      expect((err as SshError).message).toBe('ssh did not open a control master to check.test within 20 s; run ssh check.test once in a terminal, then try again');
+      expect((err as SshError).raw).toContain('https://login.tailscale.com/a/1a2b3c4d5e');
     } finally {
       vi.useRealTimers();
     }

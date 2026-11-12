@@ -3,7 +3,7 @@ import { writeDurable } from '../durable.js';
 import { homePoint } from '../failpoints.js';
 import { enrolLock } from '../kernel-lock.js';
 import { farFleet, FleetMismatch, MachineMismatch } from '../link/connection-info.js';
-import { classifyExit, SshError, SshMaster } from '../link/ssh.js';
+import { classifyExit, inFull, SshError, SshMaster } from '../link/ssh.js';
 import type { Logger } from '../log.js';
 import { homeWord, type MachineEntry } from '../machine.js';
 import type { Paths } from '../paths.js';
@@ -30,13 +30,9 @@ const farKind = (e: unknown): NonNullable<HomeReach['kind']> => {
   return kind === 'auth' || kind === 'host_key' || kind === 'unreachable' ? kind : 'other';
 };
 
-// what ssh said of a refused login, past its "could not reach" and its advice of a terminal here, which the fix replaces
-const loginSaid = (why: string): string => why.replace(/^ssh could not reach \S+: /, '').replace(/; run ssh \S+ once in a terminal, then try again$/, '').replace(/\.$/, '');
-
 const notReached = (e: unknown, ssh: string): HomeReach => {
-  const kind = farKind(e);
-  const why = (e as Error).message;
-  return { ok: false, ssh, kind, why: kind === 'auth' || kind === 'host_key' ? loginSaid(why) : why };
+  const raw = e instanceof SshError ? e.raw : undefined;
+  return { ok: false, ssh, kind: farKind(e), why: (e as Error).message, ...(raw && { raw }) };
 };
 
 // what asks a person, and is not tried again by itself
@@ -116,29 +112,32 @@ export function startRejoins(o: {
   let running = false;
   let threw: string | undefined;
 
-  // a cause goes on the row and in the log once, however often it comes back
-  const failed = (machine: string, why: string): false => {
-    if (said.get(machine) === why) return false;
-    said.set(machine, why);
+  // a cause goes on the row and in the log once, however often it comes back; what a tool said goes to the log alone
+  const failed = (machine: string, why: string, raw?: string): false => {
+    const cause = raw ? `${why}: ${raw}` : why;
+    if (said.get(machine) === cause) return false;
+    said.set(machine, cause);
     changeOwed(o.paths, machine, { why });
-    o.log.error(`${machine} has not joined this home yet: ${why}`);
+    o.log.error(`${machine} has not joined this home yet: ${cause}`);
     return false;
-  };
-
-  const notTaken = (machine: string, kind: string, why: string, ssh: string): false => {
-    if (STOPS.includes(kind)) refused.add(machine);
-    return failed(machine, kind === 'auth' || kind === 'host_key' ? `${loginSaid(why)}; ${noLoginFix(homeWord(), ssh)}` : why);
   };
 
   async function enrol(machine: MachineId, entry: MachineEntry): Promise<boolean> {
     const ssh = entry.record.ssh!;
+    const name = entry.record.name;
+    const notTaken = (e: unknown): false => {
+      const kind = farKind(e);
+      if (STOPS.includes(kind)) refused.add(machine);
+      const login = kind === 'auth' || kind === 'host_key';
+      return failed(machine, login ? `${homeWord()} cannot log in to ${name}; ${noLoginFix(homeWord(), ssh)}` : (e as Error).message, e instanceof SshError ? e.raw : undefined);
+    };
     const profile = workerProfile(o.paths, machine);
     let master: Far;
-    try { master = await open(ssh); } catch (e) { return notTaken(machine, farKind(e), (e as Error).message, ssh); }
+    try { master = await open(ssh); } catch (e) { return notTaken(e); }
     try {
       try {
-        await farFleet(master, { svall: svallOn(entry.record, profile), name: entry.record.name, ssh, machine, fleetId: String(o.fleetId()), as: 'worker', timeoutMs: PROBE_MS });
-      } catch (e) { return notTaken(machine, farKind(e), (e as Error).message, ssh); }
+        await farFleet(master, { svall: svallOn(entry.record, profile), name, ssh, machine, fleetId: String(o.fleetId()), as: 'worker', timeoutMs: PROBE_MS });
+      } catch (e) { return notTaken(e); }
       // the token goes under the lock a person's enrol and a forget hold too, so it is the one that stands when it arrives
       const unlock = await enrolLock(o.paths.home);
       if (!unlock) return false;
@@ -147,7 +146,10 @@ export function startRejoins(o: {
         if (!token) { settleOwed(o.paths, machine); return true; }
         homePoint('rejoin.enrolling');
         const r = await master.run(enrollArgv({ svallBase: entry.record.svallBase, profile: profile === PRIVATE ? undefined : profile, home: o.me, homeName: o.name(), fleetId: String(o.fleetId()), homePlatform: o.platform }), { input: token, timeoutMs: ENROL_MS });
-        if (r.code !== 0) return notTaken(machine, classifyExit(r, 'other'), `svall worker enroll exited ${r.code ?? r.signal}: ${r.stderr.trim().replace(/^svall: /, '').slice(0, 300) || 'no output'}`, ssh);
+        if (r.code !== 0) {
+          const raw = `svall worker enroll exited ${r.code ?? r.signal}: ${r.stderr.trim().replace(/^svall: /, '').slice(0, 300) || 'no output'}`;
+          return notTaken(new SshError(classifyExit(r, 'other'), `${name} did not take the enrolment`, raw));
+        }
       } finally { unlock(); }
       homePoint('rejoin.enrolled');
       enrolled.set(machine, Date.now());
@@ -188,7 +190,7 @@ export function startRejoins(o: {
       threw = undefined;
     } catch (e) {
       // once per cause, as a failed enrol is
-      if (threw !== (e as Error).message) o.log.error(`a worker was not enrolled: ${(e as Error).message}`);
+      if (threw !== (e as Error).message) o.log.error(`a worker was not enrolled: ${inFull(e)}`);
       threw = (e as Error).message;
     }
     running = false;

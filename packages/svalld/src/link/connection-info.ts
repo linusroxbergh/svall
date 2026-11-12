@@ -39,7 +39,7 @@ const FarFleet = z.object({ machineId: z.string(), release: z.string(), role: z.
  */
 export async function farFleet(master: Pick<SshMaster, 'run'>, o: { svall: string[]; name: string; ssh: string; machine: string; fleetId: string; as: 'home' | 'worker'; timeoutMs?: number }): Promise<{ release: string }> {
   const r = await master.run([...o.svall, 'version', '--json'], { ...(o.timeoutMs !== undefined && { timeoutMs: o.timeoutMs }) });
-  if (r.code !== 0) throw new SshError(classifyExit(r, 'other'), `svall version exited ${r.code ?? r.signal}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
+  if (r.code !== 0) throw new SshError(classifyExit(r, 'other'), `Svall on ${o.name} did not answer`, `svall version exited ${r.code ?? r.signal}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
   let v: z.infer<typeof FarFleet>;
   // past whatever a login shell says first
   try { v = FarFleet.parse(JSON.parse(r.stdout.slice(r.stdout.search(/^\{/m)))); } catch { throw new SshError('other', `svall version --json did not answer what it should`); }
@@ -70,7 +70,7 @@ export async function remoteConnectionInfo(master: Pick<SshMaster, 'run'>, machi
   const r = await master.run([...env, exe, 'connection-info', '--json', ...(o.profile ? ['-p', shq(o.profile)] : [])]);
   if (r.code !== 0) {
     // an exit that is neither ssh's nor the far shell's came back from the companion
-    throw new SshError(classifyExit(r, 'daemon_down'), `${name}: svall connection-info exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`);
+    throw new SshError(classifyExit(r, 'daemon_down'), `Svall on ${name} did not answer`, `svall connection-info exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`);
   }
   let info: ConnectionInfo;
   try {

@@ -184,7 +184,7 @@ describe('the way back: the outcome is owed before the old home is marked', () =
     const w = await markedBack();
     await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
     const open = () => Promise.resolve({ run: () => Promise.resolve({ code: 1, signal: null, stdout: JSON.stringify({ status: 'done' }), stderr: 'svall: it did not take' }), close: () => Promise.resolve() });
-    await expect(deliverOwed(w.mac.paths, open as never)).rejects.toThrow(/it did not take/);
+    await expect(deliverOwed(w.mac.paths, open as never)).rejects.toMatchObject({ message: 'svall version did not finish', raw: 'svall version exited 1: svall: it did not take' });
     expect(readOwed(w.mac.paths)?.id).toBe(BACK);
   });
 

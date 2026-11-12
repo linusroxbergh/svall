@@ -118,14 +118,14 @@ describe('routing calls for placed robots', () => {
 });
 
 describe('updateAgents', () => {
-  it('runs each agent\'s own update in turn, and the first that fails says why with the last line it printed', async () => {
+  it('runs each agent\'s own update in turn, and the first that fails says so by its name, the command and the last line it printed behind', async () => {
     const ran: string[] = [];
     const ok = async (cmd: string, args: string[]) => { ran.push([cmd, ...args].join(' ')); return { code: 0, stdout: '', stderr: '' }; };
     await updateAgents(['claude', 'opencode'], ok);
     expect(ran).toEqual(['claude update', 'opencode upgrade']);
 
     const failing = async (cmd: string) => (cmd === 'claude' ? { code: 1, stdout: 'Checking for updates\n', stderr: 'fetching\nnetwork unreachable\n' } : { code: 0, stdout: '', stderr: '' });
-    await expect(updateAgents(['claude', 'codex'], failing)).rejects.toThrow('claude update exited 1: network unreachable');
+    await expect(updateAgents(['claude', 'codex'], failing)).rejects.toMatchObject({ code: 'internal', message: 'Claude Code did not update', data: { raw: 'claude update exited 1: network unreachable' } });
   });
 
   it('runs an agent\'s update once for two asks at the same time, both waiting on it', async () => {

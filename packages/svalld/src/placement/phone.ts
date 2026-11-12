@@ -16,9 +16,6 @@ import { fieldKey, readConsent } from './mirror-consent.js';
 export const PHONE_ITEM = 'phone';
 const PHONE_FIELD = 'on';
 
-// tailscale refuses serve to a user it was not told to take it from
-const NOT_OPERATOR = /access denied|--operator/i;
-
 const Entry = z.object({ url: z.string(), pass: z.string() });
 // `off`: this Mac's own phone link was last turned off, which turns every worker's off
 const Held = z.object({ off: z.literal(true).optional(), workers: z.record(MachineId, Entry) });
@@ -31,7 +28,7 @@ type Held = z.infer<typeof Held>;
 export class PhoneFallbacks {
   private held: Held;
   // why a worker last did not serve
-  private failed = new Map<MachineId, string>();
+  private failed = new Map<MachineId, PhoneAnswer>();
   // each worker's last sync, which its next one waits for
   private chains = new Map<MachineId, Promise<unknown>>();
 
@@ -103,13 +100,13 @@ export class PhoneFallbacks {
     const tick = { item: PHONE_ITEM, fields: [PHONE_FIELD], on: this.consented(machine), preview: [] };
     const held = this.held.workers[machine];
     const why = this.failed.get(machine);
-    if (!tick.on) return { key: PHONE_ITEM, status: 'skip', detail: `off: the phone reaches ${name}'s robots only through ${home}; ticked, ${name} serves them while ${home} is off, with ${home}'s push keys`, tick };
-    if (held) return { key: PHONE_ITEM, status: 'ok', detail: `the phone reaches ${name}'s robots at ${held.url} while ${home} is off`, tick };
-    if (why === undefined) return { key: PHONE_ITEM, status: 'skip', detail: `ticked; ${name} serves the phone once ${home}'s phone link is on and ${name} is linked`, tick };
+    if (!tick.on) return { key: PHONE_ITEM, status: 'skip', detail: 'off', action: `On, ${name} serves its robots to the phone while ${home} is off`, tick };
+    if (held) return { key: PHONE_ITEM, status: 'ok', detail: `on · ${held.url}`, tick };
+    if (why === undefined) return { key: PHONE_ITEM, status: 'skip', detail: `on, waiting for ${home}'s phone link`, tick };
     // no gap: the phone is no part of the agent setup that will not work there
     return {
-      key: PHONE_ITEM, status: 'warn', detail: `${name} does not serve the phone: ${why}`, tick,
-      action: NOT_OPERATOR.test(why) ? 'sudo tailscale set --operator=$USER' : `check ${name} again`,
+      key: PHONE_ITEM, status: 'warn', detail: 'on, not serving', tick,
+      action: why.fix ? `${why.error}. ${why.fix}` : why.error, ...(why.run && { run: why.run }), ...(why.raw && { raw: why.raw }),
     };
   }
 
@@ -140,14 +137,14 @@ export class PhoneFallbacks {
       answer = PhoneAnswer.parse(await link.call('phone.set', set));
     } catch (e) {
       if (!(e instanceof ApiError && e.code === 'unknown_method')) throw e;
-      answer = { error: 'it runs a release that cannot serve the phone; upgrade it' };
+      answer = { error: `${this.name(machine)} runs a release that cannot serve the phone`, fix: `Upgrade ${this.name(machine)}` };
     }
     if (answer.url && answer.pass) {
       this.failed.delete(machine);
       this.keep(machine, { url: answer.url, pass: answer.pass });
       return;
     }
-    this.failed.set(machine, answer.error ?? 'it did not say why');
+    this.failed.set(machine, { ...answer, error: answer.error ?? `${this.name(machine)} did not say why it does not serve` });
     if (!answer.unseen) this.drop(machine);
   }
 

@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { AdoptAnswer, HomeFacts, type HomeDelivery, type HomeMoving, type MachineId, type WorkerFile } from '@svall/protocol';
 import { homePoint } from '../failpoints.js';
 import type { Logger } from '../log.js';
-import { SshMaster } from '../link/ssh.js';
+import type { RunResult } from '../link/process.js';
+import { classifyExit, inFull, SshError, SshMaster } from '../link/ssh.js';
 import { fleetHomeOfSocket, type Paths } from '../paths.js';
 import { svallExe } from '../release.js';
 import { shq } from '../text.js';
@@ -16,10 +17,10 @@ const ASK_MS = 30_000;
 const farSvall = (svallBase: string, fleetHome: string, args: string[]): string[] => ['env', shq(`SVALL_HOME=${fleetHome}`), shq(svallExe(svallBase)), '--json', ...args.map(shq)];
 
 // ssh exits 255 on its own failure, which leaves the far command's end unknown
-const farFailed = (what: string, r: { code: number | null; signal: string | null; stderr: string }): Error => {
+const farFailed = (what: string, r: Pick<RunResult, 'code' | 'signal' | 'stderr'>): SshError => {
   const said = r.stderr.trim().slice(0, 400);
-  const how = r.code === 255 ? `ssh lost the connection before ${what} answered` : `${what} exited ${r.code ?? r.signal}`;
-  return new Error(said ? `${how}: ${said}` : how);
+  if (r.code === 255) return new SshError('unreachable', `ssh lost the connection before ${what} answered`, said || undefined);
+  return new SshError(classifyExit(r, 'other'), `${what} did not finish`, `${what} exited ${r.code ?? r.signal}${said ? `: ${said}` : ''}`);
 };
 
 async function farJson<T>(master: Pick<SshMaster, 'run'>, svallBase: string, fleetHome: string, args: string[], schema: z.ZodType<T>, what: string): Promise<T> {
@@ -106,10 +107,10 @@ export async function deliverOwed(paths: Paths, open: Open = openMaster): Promis
 }
 
 // the link the old home's was, on this home once it has taken the fleet: tried once, and what fails is logged, and Settings → Phone says why
-async function servePhones(paths: Paths, log: Pick<Logger, 'error' | 'info'>, serve: () => Promise<{ error?: string | null }>): Promise<void> {
+async function servePhones(paths: Paths, log: Pick<Logger, 'error' | 'info'>, serve: () => Promise<{ error?: string | null; raw?: string }>): Promise<void> {
   for (const id of phoneOwed(paths)) {
-    const why = await serve().then((s) => s.error ?? undefined, (e: Error) => e.message);
-    if (why) log.error(`the phone link did not come on here: ${why}`);
+    const [why, raw] = await serve().then((s) => [s.error ?? undefined, s.raw], (e: Error) => [e.message, undefined]);
+    if (why) log.error(`the phone link did not come on here: ${raw ? `${why}: ${raw}` : why}`);
     servedPhone(paths, id, why);
   }
 }
@@ -132,7 +133,7 @@ export const phoneWithReason = (mobile: Mobile, paths: Paths): Mobile => ({
  * Tells the old home what this machine owes it, from the moment that is known, for as long as this daemon runs, and with `serve`,
  * a home's, turns on the phone link a move it took owes; the returned function stops it.
  */
-export function startDeliveries(paths: Paths, log: Pick<Logger, 'error' | 'info'>, open?: Parameters<typeof deliverOwed>[1], serve?: () => Promise<{ error?: string | null }>): () => void {
+export function startDeliveries(paths: Paths, log: Pick<Logger, 'error' | 'info'>, open?: Parameters<typeof deliverOwed>[1], serve?: () => Promise<{ error?: string | null; raw?: string }>): () => void {
   let timer: NodeJS.Timeout | undefined;
   let stopped = false;
   let ms = FIRST_MS;
@@ -147,7 +148,7 @@ export function startDeliveries(paths: Paths, log: Pick<Logger, 'error' | 'info'
       if (await deliverOwed(paths, open) === 'told') log.info('the old home has heard how the move ended');
       ms = FIRST_MS;
     } catch (e) {
-      log.error(`the old home was not told how the move ended: ${(e as Error).message}; trying again`);
+      log.error(`the old home was not told how the move ended: ${inFull(e)}; trying again`);
       ms = Math.min(ms * 2, LAST_MS);
     }
     if (stopped) return;

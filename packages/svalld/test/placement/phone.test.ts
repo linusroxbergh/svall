@@ -18,6 +18,12 @@ const FAR = 'https://w1.tailnet.ts.net:8443/';
 const VAPID = { publicKey: 'pub', privateKey: 'priv' };
 const SUB = { endpoint: 'https://push.example/a', keys: { p256dh: 'p', auth: 'a' }, statuses: ['blocked' as const], login: 'me@example.com', addedAt: 1 };
 const status = (o: Partial<MobileStatus> = {}): MobileStatus => ({ serving: true, url: MAC, port: 8443, logins: ['me@example.com'], phones: [], ...o });
+// what a Linux worker's own link says of a tailscale that refuses its user, and of one signed out
+const DENIED = {
+  error: 'Tailscale on w1 does not let Svall share this fleet', fix: 'Run once on w1: sudo tailscale set --operator=$USER', run: 'sudo tailscale set --operator=$USER',
+  raw: 'sending serve config: Access denied: serve config denied',
+};
+const SIGNED_OUT = { error: 'Tailscale on w1 is signed out', fix: 'Sign in: sudo tailscale up', run: 'sudo tailscale up', raw: 'BackendState NeedsLogin' };
 
 /**
  * The home's phone link as tailscale shows it, and w1's own: it serves on its first on unless tailscale refuses it, and a
@@ -30,15 +36,15 @@ function phones(w: ReturnType<typeof world>) {
     me: H, file: w.home.paths.phoneFallbacks, consent: w.home.paths.mirrorConsent, store: w.home.store, links: w.home.links,
     mobile: { get: async () => mac.status, logins: () => ['me@example.com'] }, vapid: VAPID, push, log: silentLogger,
   });
-  const far = { serving: false, sets: [] as boolean[], refuse: undefined as string | undefined, lookFails: false };
+  const far = { serving: false, sets: [] as boolean[], refuse: undefined as Pick<MobileStatus, 'error' | 'fix' | 'run' | 'raw'> | undefined, lookFails: false };
   const workerPhone = new WorkerPhone({
     file: w.worker.paths.phone, pass: 'far-pass', log: () => {},
     link: () => ({
-      get: async () => (far.lookFails ? status({ serving: false, url: '', error: 'tailscale is Starting' }) : status({ url: FAR, serving: far.serving })),
+      get: async () => (far.lookFails ? status({ serving: false, url: '', ...SIGNED_OUT }) : status({ url: FAR, serving: far.serving })),
       set: async (on) => {
         far.sets.push(on);
         far.serving = on && !far.refuse;
-        return status({ url: FAR, serving: far.serving, ...(on && far.refuse && { error: far.refuse }) });
+        return status({ url: FAR, serving: far.serving, ...(on && far.refuse) });
       },
       served: () => (far.serving ? FAR : undefined),
     }),
@@ -66,11 +72,13 @@ describe('a worker serving the phone', () => {
     const p = phones(w);
     p.push.upsert(SUB);
     await w.link();
-    expect(p.fallbacks.row(W)).toMatchObject({ key: 'phone', status: 'skip', tick: { item: 'phone', fields: ['on'], on: false } });
+    expect(p.fallbacks.row(W)).toMatchObject({
+      key: 'phone', status: 'skip', detail: 'off', action: 'On, w1 serves its robots to the phone while this Mac is off', tick: { item: 'phone', fields: ['on'], on: false },
+    });
     expect(p.fallbacks.row(W).gap).toBeUndefined();
 
     const rows = await p.tick(true);
-    expect(rows).toMatchObject({ result: { rows: [{ key: 'phone', status: 'ok', detail: expect.stringContaining(FAR), tick: { on: true } }] } });
+    expect(rows).toMatchObject({ result: { rows: [{ key: 'phone', status: 'ok', detail: `on · ${FAR}`, tick: { on: true } }] } });
     expect(readConsent(w.home.paths.mirrorConsent, W)).toEqual(new Set(['phone#on']));
     expect(JSON.parse(fs.readFileSync(w.worker.paths.phone, 'utf8'))).toEqual({
       on: true, logins: ['me@example.com'], origin: 'https://mac.tailnet.ts.net:8443', vapid: VAPID, subscriptions: [SUB],
@@ -115,6 +123,7 @@ describe('a worker serving the phone', () => {
     await dispatch({ id: 1, method: 'mobile.set', params: { enabled: false } }, p.ctx);
     await until(() => expect([p.workerPhone.on, p.far.sets, p.fallbacks.fallbacks().fallbacks, p.fallbacks.serves(W)]).toEqual([false, [true, false], [], false]));
     expect(fs.existsSync(w.worker.paths.phone)).toBe(false);
+    expect(p.fallbacks.row(W)).toMatchObject({ status: 'skip', detail: "on, waiting for this Mac's phone link" });
 
     await dispatch({ id: 1, method: 'mobile.set', params: { enabled: true } }, p.ctx);
     await until(() => expect(p.fallbacks.fallbacks()).toEqual(listed));
@@ -161,22 +170,29 @@ describe('a worker serving the phone', () => {
     const w = world({});
     const p = phones(w);
     await w.link();
-    p.far.refuse = 'sending serve config: Access denied: serve config denied';
+    p.far.refuse = DENIED;
     await p.tick(true);
     const row = p.fallbacks.row(W);
-    expect(row).toMatchObject({ key: 'phone', status: 'warn', detail: expect.stringContaining('Access denied'), action: 'sudo tailscale set --operator=$USER' });
-    expect(row.gap).toBeUndefined();
+    expect(row).toEqual({
+      key: 'phone', status: 'warn', detail: 'on, not serving', tick: { item: 'phone', fields: ['on'], on: true, preview: [] },
+      action: 'Tailscale on w1 does not let Svall share this fleet. Run once on w1: sudo tailscale set --operator=$USER', run: 'sudo tailscale set --operator=$USER', raw: DENIED.raw,
+    });
     expect(p.fallbacks.fallbacks().fallbacks).toEqual([]);
-    p.far.refuse = 'tailscale is not connected (Stopped)';
+    p.far.refuse = { error: 'The phone link could not start on w1', raw: 'tailscale serve exited 1' };
     await p.fallbacks.sync(W);
-    expect(p.fallbacks.row(W)).toMatchObject({ status: 'warn', action: 'check w1 again' });
+    expect(p.fallbacks.row(W)).toEqual(expect.objectContaining({ status: 'warn', detail: 'on, not serving', action: 'The phone link could not start on w1', raw: 'tailscale serve exited 1' }));
+    expect(p.fallbacks.row(W).run).toBeUndefined();
+    // a worker on a release from before its phone link
+    delete w.worker.handlers['phone.set'];
+    await p.fallbacks.sync(W);
+    expect(p.fallbacks.row(W)).toMatchObject({ status: 'warn', detail: 'on, not serving', action: 'w1 runs a release that cannot serve the phone. Upgrade w1' });
   });
 
   it('tells a worker that did not serve again when its machine is checked, and a check of one robot there has no phone row', async () => {
     const w = world({});
     const p = phones(w);
     await w.link();
-    p.far.refuse = 'tailscale is not connected (Stopped)';
+    p.far.refuse = SIGNED_OUT;
     await p.tick(true);
     p.far.refuse = undefined;
     w.home.store.update((d) => { d.robots.c_1 = placed({ id: 'c_1', machine: W }); });

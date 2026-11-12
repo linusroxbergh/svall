@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { promisify } from 'node:util';
 import QRCode from 'qrcode';
 import type { MobileStatus } from '@svall/protocol';
+import { homeWord } from './machine.js';
 import { resolvePaths } from './paths.js';
 import type { Phones } from './phones.js';
 import { PRIVATE, PRIVATE_HTTPS_PORT, SHIM, profileLabel } from './profile.js';
@@ -20,11 +21,33 @@ export type MobileDeps = {
 // the GUI app keeps its CLI inside the bundle rather than on PATH
 const TAILSCALE = ['tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale', '/usr/local/bin/tailscale'];
 
+/** Why the phone link cannot serve, in Svall's words: what is wrong, what to do, the command that does it there, and what a tool said. */
+export class LinkProblem extends Error {
+  constructor(message: string, readonly said: Pick<MobileStatus, 'fix' | 'run' | 'raw'> = {}) { super(message); }
+}
+
+export type TailscaleState = 'missing' | 'stopped' | 'signedOut';
+
+// a Mac runs Tailscale as an app; a Linux machine as a systemd service with its own CLI
+function tailscaleSaid(state: TailscaleState, machine: string, linux: boolean): [string, Pick<MobileStatus, 'fix' | 'run'>] {
+  if (state === 'missing') return [`${machine.replace(/^this /, 'This ')} has no Tailscale`, { fix: 'Install it from tailscale.com/download and sign in' }];
+  if (state === 'stopped') return [`Tailscale is not running on ${machine}`, linux ? { fix: 'Start it: sudo systemctl start tailscaled', run: 'sudo systemctl start tailscaled' } : { fix: 'Open the Tailscale app' }];
+  return [`Tailscale on ${machine} is signed out`, linux ? { fix: 'Sign in: sudo tailscale up', run: 'sudo tailscale up' } : { fix: 'Sign in from the Tailscale app' }];
+}
+
+/** A Tailscale that cannot serve this machine: not installed, its daemon stopped, or not signed in. */
+export class TailscaleDown extends LinkProblem {
+  constructor(readonly state: TailscaleState, raw?: string) {
+    const [message, said] = tailscaleSaid(state, homeWord(), process.platform === 'linux');
+    super(message, { ...said, ...(raw && { raw }) });
+  }
+}
+
 export async function resolveTailscale(d: MobileDeps): Promise<string> {
   for (const bin of TAILSCALE) {
     try { await d.run(bin, ['version']); return bin; } catch { /* next candidate */ }
   }
-  throw new Error('tailscale not found: install it from https://tailscale.com/download and sign in');
+  throw new TailscaleDown('missing');
 }
 
 type Status = {
@@ -33,18 +56,16 @@ type Status = {
   User?: Record<string, { ID?: number; LoginName?: string }>;
 };
 
-/** A Tailscale that is installed and whose status does not run: its daemon is stopped. */
-export class TailscaleStopped extends Error {}
-
 /** The name this Mac answers to on the tailnet, also the origin the phone loads the page from, and the login it is
  *  signed in as; a tagged Mac belongs to no login. */
 export async function tailnetSelf(d: MobileDeps, bin: string): Promise<{ host: string; owner?: string }> {
   let said: string;
-  try { said = await d.run(bin, ['status', '--json']); } catch (e) { throw new TailscaleStopped((e as Error).message); }
+  // installed, and its status does not run: its daemon is stopped
+  try { said = await d.run(bin, ['status', '--json']); } catch (e) { throw new TailscaleDown('stopped', (e as Error).message); }
   const status = JSON.parse(said) as Status;
-  if (status.BackendState !== 'Running') throw new Error(`tailscale is not connected${status.BackendState ? ` (${status.BackendState})` : ''}; sign in and try again`);
+  if (status.BackendState !== 'Running') throw new TailscaleDown('signedOut', `BackendState ${status.BackendState ?? 'none'}`);
   const host = status.Self?.DNSName?.replace(/\.$/, '');
-  if (!host) throw new Error('tailscale did not report a name for this machine');
+  if (!host) throw new TailscaleDown('signedOut', 'tailscale status names no DNSName for this machine');
   // matched by number, not by key: an id past 2^53 parses short on both sides alike
   const owner = status.Self?.Tags?.length ? undefined : Object.values(status.User ?? {}).find((u) => u.ID === status.Self?.UserID)?.LoginName;
   return { host, owner };
@@ -58,10 +79,10 @@ export const fleetOrigin = (d: MobileDeps, home: string): string | undefined => 
 /** Where serve sends the phone: the daemon's port behind the key tailscaled prepends to each request it proxies. */
 export function fleetTarget(d: MobileDeps, home: string): string {
   const origin = fleetOrigin(d, home);
-  if (!origin) throw new Error(`the fleet is not running: start the app, or run \`${SHIM} <profile>\``);
+  if (!origin) throw new LinkProblem('The fleet is not running', { fix: `Start the app, or run ${SHIM} <profile>` });
   const { mobileKey } = resolvePaths(home);
   const key = d.read(mobileKey)?.trim();
-  if (!key) throw new Error(`no phone key at ${mobileKey}: restart the daemon so it writes one`);
+  if (!key) throw new LinkProblem('The fleet has no phone key', { fix: "Restart Svall's background service, which writes one", raw: `no ${mobileKey}` });
   return `${origin}${key}`;
 }
 
@@ -92,6 +113,10 @@ export async function ensureBundle(d: MobileDeps, o: { rebuild?: boolean } = {})
 export const servePort = (profile: string, configured?: number): number => configured ?? (profile === PRIVATE ? PRIVATE_HTTPS_PORT : 8443);
 
 export const phoneUrl = (host: string, port: number): string => `https://${host}${port === 443 ? '' : `:${port}`}/`;
+
+// tailscale refuses serve to a user it was not told to take it from
+const DENIED = /access denied|serve config denied|--operator/i;
+const OPERATOR = 'sudo tailscale set --operator=$USER';
 
 export const serve = (d: MobileDeps, bin: string, target: string, port: number): Promise<string> =>
   d.run(bin, ['serve', '--bg', '--yes', `--https=${port}`, target]);
@@ -200,10 +225,18 @@ export function mobileControl(d: MobileDeps, opts: {
   const logins = (): string[] => { const configured = opts.logins(); return configured.length ? configured : owner ? [owner] : []; };
 
   // the commands carry the phone key in their target, and a failed one repeats its whole command line
-  const reason = (e: unknown): string => {
-    const message = e instanceof Error ? e.message : String(e);
+  const masked = (text: string): string => {
     const key = d.read(mobileKey)?.trim();
-    return key ? message.split(key).join('…') : message;
+    return key ? text.split(key).join('…') : text;
+  };
+  // what is wrong, in Svall's words; anything else a tool refused is the link's own failure, its words behind
+  const problem = (e: unknown, enable?: boolean): Pick<MobileStatus, 'error' | 'fix' | 'run' | 'raw'> => {
+    if (e instanceof LinkProblem) return { error: e.message, ...e.said, ...(e.said.raw && { raw: masked(e.said.raw) }) };
+    const raw = masked(e instanceof Error ? e.message : String(e));
+    const machine = homeWord();
+    if (DENIED.test(raw)) return { error: `Tailscale on ${machine} does not let Svall share this fleet`, fix: `Run once on ${machine}: ${OPERATOR}`, run: OPERATOR, raw };
+    const could = enable === undefined ? 'could not be read' : enable ? 'could not start' : 'could not stop';
+    return { error: `The phone link ${could} on ${machine}`, raw };
   };
 
   const read = async (enable?: boolean): Promise<MobileStatus> => {
@@ -215,7 +248,9 @@ export function mobileControl(d: MobileDeps, opts: {
     const self = await tailnetSelf(d, bin);
     const { host } = self;
     owner = self.owner;
-    if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this machine: set mobile.logins in fleet.json, then restart the daemon with ${restartLine(opts.profile)}`);
+    if (enable === true && logins().length === 0) {
+      throw new LinkProblem(`Tailscale names no login for ${homeWord()}`, { fix: "Set mobile.logins in fleet.json, then restart Svall's background service", run: restartLine(opts.profile) });
+    }
     const dist = mobileDist();
     // tailscale serve holds one mapping per port for the whole Mac, so a port another holds stays theirs. A fleet that
     // keeps no port yet takes a free one in place of its default; a kept port is the address a phone app already has
@@ -226,7 +261,9 @@ export function mobileControl(d: MobileDeps, opts: {
     // the port this attempt serves on, which becomes the fleet's only once it is served
     let at = port;
     if (picks && before && (other || kept.includes(port))) at = freePort(before, kept);
-    else if (enable === true && other) throw new Error(`https port ${port} already serves another fleet or site: turn that one off with tailscale serve --https=${port} off, or set mobile.httpsPort to a free port in this fleet's node.json and restart it`);
+    else if (enable === true && other) {
+      throw new LinkProblem(`Port ${port} on ${homeWord()} already serves another fleet or site`, { fix: `Turn that one off with tailscale serve --https=${port} off, or set mobile.httpsPort to a free port in this fleet's node.json and restart it` });
+    }
     // an on turns the key over only once tailscale and the page are ready, so one that fails leaves a working link alone
     if (enable === true) {
       await ensureBundle(d);
@@ -264,7 +301,7 @@ export function mobileControl(d: MobileDeps, opts: {
   const settle = async (enable?: boolean): Promise<MobileStatus> => {
     let s: MobileStatus;
     try { s = await read(enable); } catch (e) {
-      s = { serving: false, url: '', port, logins: logins(), phones: opts.phones.list(), error: reason(e) };
+      s = { serving: false, url: '', port, logins: logins(), phones: opts.phones.list(), ...problem(e, enable) };
     }
     if (enable !== undefined || !s.error) served = s.serving ? s.url : undefined;
     return s;

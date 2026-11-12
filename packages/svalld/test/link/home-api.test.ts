@@ -219,7 +219,7 @@ describe('how a window reaches a far home', () => {
     expect(await api.answer()).toEqual(words);
     expect(await api.answer()).toEqual(words);
     expect(error).toHaveBeenCalledTimes(1);
-    expect(error.mock.calls[0][0]).toContain('svall-remote.invalid');
+    expect(error.mock.calls[0][0]).toBe("the home's API: Svall on studio did not answer: svall connection-info exited 255: ssh: connect to host svall-remote.invalid port 22: Undefined error: 0");
     // the same cause after the home answered in between is a new outage, logged again
     down = false;
     expect((await api.answer()).state).toBe('connected');
@@ -236,7 +236,7 @@ describe('how a window reaches a far home', () => {
 
   it('says auth for a refused login or host key with what to do and no ssh words, and a retry asks the dial again', async () => {
     for (const stderr of ['linus@studio: Permission denied (publickey).', 'Host key verification failed.']) {
-      const dial = dialOf(undefined, new SshError(classifySsh(stderr), `ssh could not reach ada@studio: ${stderr}; run ssh ada@studio once in a terminal, then try again`));
+      const dial = dialOf(undefined, new SshError(classifySsh(stderr), 'ssh could not reach ada@studio; run ssh ada@studio once in a terminal, then try again', stderr));
       const api = apiOf(dial);
       expect(await api.answer()).toMatchObject({ state: 'auth', detail: 'run ssh ada@studio once in a terminal, then try again' });
       expect(dial.restore).not.toHaveBeenCalled();

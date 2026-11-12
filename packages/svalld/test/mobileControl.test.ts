@@ -67,14 +67,23 @@ describe('resolveTailscale', () => {
   it('falls through to the CLI inside the GUI app when PATH has none', async () => {
     const inBundle = '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
     await expect(resolveTailscale(onlyAt([inBundle]))).resolves.toBe(inBundle);
-    await expect(resolveTailscale(onlyAt([]))).rejects.toThrow('tailscale not found');
+    await expect(resolveTailscale(onlyAt([]))).rejects.toMatchObject({ message: 'This Mac has no Tailscale', state: 'missing', said: { fix: 'Install it from tailscale.com/download and sign in' } });
   });
 });
 
 describe('tailnetSelf', () => {
-  it('names the backend that is not running rather than the name it lacks', async () => {
+  it('reads a backend that is not running as signed out, its state behind, and a status that cannot run as stopped, with what it said', async () => {
+    const linux = process.platform === 'linux';
     const stopped: MobileDeps = { run: () => Promise.resolve(JSON.stringify({ BackendState: 'Stopped' })), exists: () => true, read: () => undefined };
-    await expect(tailnetSelf(stopped, 'tailscale')).rejects.toThrow('tailscale is not connected (Stopped); sign in and try again');
+    await expect(tailnetSelf(stopped, 'tailscale')).rejects.toMatchObject({
+      message: 'Tailscale on this Mac is signed out', state: 'signedOut',
+      said: linux ? { fix: 'Sign in: sudo tailscale up', run: 'sudo tailscale up', raw: 'BackendState Stopped' } : { fix: 'Sign in from the Tailscale app', raw: 'BackendState Stopped' },
+    });
+    const down: MobileDeps = { ...stopped, run: () => Promise.reject(new Error('Command failed: tailscale status --json\nfailed to connect to local tailscaled')) };
+    await expect(tailnetSelf(down, 'tailscale')).rejects.toMatchObject({
+      message: 'Tailscale is not running on this Mac', state: 'stopped',
+      said: { ...(linux ? { fix: 'Start it: sudo systemctl start tailscaled', run: 'sudo systemctl start tailscaled' } : { fix: 'Open the Tailscale app' }), raw: expect.stringContaining('failed to connect') },
+    });
   });
 
   it('names the login this Mac is signed in as, and none for a tagged Mac', async () => {
@@ -132,9 +141,9 @@ describe('fleetTarget', () => {
   it('names what is missing when the daemon left no port or no key', () => {
     expect(fleetTarget(deps(), HOME)).toBe(TARGET);
     const noPort = deps({ files: { [path.join(HOME, 'mobile-key')]: 'abcdef' } });
-    expect(() => fleetTarget(noPort, HOME)).toThrow('the fleet is not running');
+    expect(() => fleetTarget(noPort, HOME)).toThrow('The fleet is not running');
     const noKey = deps({ files: { [path.join(HOME, 'port')]: '47812' } });
-    expect(() => fleetTarget(noKey, HOME)).toThrow('restart the daemon so it writes one');
+    expect(() => fleetTarget(noKey, HOME)).toThrow(expect.objectContaining({ message: 'The fleet has no phone key', said: expect.objectContaining({ fix: "Restart Svall's background service, which writes one" }) }));
   });
 });
 
@@ -193,7 +202,9 @@ describe('mobileControl', () => {
     let made = 0;
     const control_ = mobileControl(d, { ...NONE, home: HOME, profile: 'work', logins: () => [], phones: new Phones(), rotateKey: () => { made++; } });
     const status = await control_.set(true);
-    expect(status).toMatchObject({ serving: false, logins: [], error: expect.stringContaining('set mobile.logins in fleet.json') });
+    expect(status).toMatchObject({
+      serving: false, logins: [], error: 'Tailscale names no login for this Mac', fix: "Set mobile.logins in fleet.json, then restart Svall's background service", run: restartLine('work'),
+    });
     expect(d.calls.some((c) => c.args.includes('--bg'))).toBe(false);
     expect(made).toBe(0);
     expect(control_.logins()).toEqual([]);
@@ -272,7 +283,10 @@ describe('mobileControl', () => {
       const d = deps({ web: { 8443: theirs, 443: theirs } });
       let made = 0;
       const control_ = mobileControl(d, { ...NONE, home: HOME, logins: () => ['me@example.com'], phones: new Phones(), rotateKey: () => { made++; }, ...o });
-      expect((await control_.set(true)).error).toMatch(/^https port (8443|443) already serves another fleet or site/);
+      expect(await control_.set(true)).toMatchObject({
+        error: `Port ${o.httpsPort} on this Mac already serves another fleet or site`,
+        fix: `Turn that one off with tailscale serve --https=${o.httpsPort} off, or set mobile.httpsPort to a free port in this fleet's node.json and restart it`,
+      });
       expect(d.calls.some((c) => c.args.includes('--bg'))).toBe(false);
       expect(made).toBe(0);
     }
@@ -283,7 +297,7 @@ describe('mobileControl', () => {
     const control_ = control(d);
     const run = d.run;
     d.run = (cmd, args, cwd) => (args.includes('--bg') ? Promise.reject(new Error('serve failed')) : run(cmd, args, cwd));
-    expect(await control_.set(true)).toMatchObject({ port: 8443, error: expect.stringMatching(/serve failed/) });
+    expect(await control_.set(true)).toMatchObject({ port: 8443, error: 'The phone link could not start on this Mac', raw: 'serve failed' });
     d.run = run;
     delete d.web[8443];
     expect(await control_.set(true)).toMatchObject({ serving: true, port: 8443 });
@@ -381,12 +395,12 @@ describe('mobileControl', () => {
     const control_ = mobileControl(d, { ...NONE, home: HOME, profile: 'work', logins: () => [], phones: new Phones(), rotateKey: () => { files[path.join(HOME, 'mobile-key')] = `key${++made}`; } });
     const run = d.run;
     d.run = (cmd, args, cwd) => (args.at(-1) === 'off' ? Promise.reject(new Error('serve off failed')) : run(cmd, args, cwd));
-    expect((await control_.set(false)).error).toMatch(/serve off failed/);
+    expect(await control_.set(false)).toMatchObject({ error: 'The phone link could not stop on this Mac', raw: 'serve off failed' });
     d.run = run;
     expect((await control_.set(false)).serving).toBe(false);
     expect((await control_.set(true)).serving).toBe(true);
     d.run = (cmd, args, cwd) => (args.includes('--bg') ? Promise.reject(new Error('serve failed')) : run(cmd, args, cwd));
-    expect((await control_.set(true)).error).toMatch(/serve failed/);
+    expect(await control_.set(true)).toMatchObject({ error: 'The phone link could not start on this Mac', raw: 'serve failed' });
     d.run = run;
     expect((await control_.set(true)).serving).toBe(true);
     expect(made).toBe(5);
@@ -400,10 +414,10 @@ describe('mobileControl', () => {
     await control_.set(true);
     const run = d.run;
     d.run = (cmd, args, cwd) => (args[0] === 'status' ? Promise.resolve(JSON.stringify({ BackendState: 'Stopped' })) : run(cmd, args, cwd));
-    expect((await control_.set(true)).error).toMatch(/Stopped/);
+    expect(await control_.set(true)).toMatchObject({ error: 'Tailscale on this Mac is signed out', raw: 'BackendState Stopped' });
     d.run = (cmd, args, cwd) => (cmd === 'pnpm' ? Promise.reject(new Error('build failed')) : run(cmd, args, cwd));
     delete files[mobileDist()];
-    expect((await control_.set(true)).error).toMatch(/build failed/);
+    expect(await control_.set(true)).toMatchObject({ error: 'The phone link could not start on this Mac', raw: 'build failed' });
     files[mobileDist()] = 'built';
     d.run = run;
     expect(made).toBe(1);
@@ -438,25 +452,43 @@ describe('mobileControl', () => {
     expect(d.calls.map((c) => c.cmd)).toContain('pnpm');
   });
 
-  it('keeps the phone key out of the reason it hands the panel', async () => {
+  it('says a failed serve in its own words, the command tailscale ran behind them without the phone key', async () => {
     const d = deps();
     const ran = d.run;
     // tailscale carries the key in the target it is given, and execFile repeats the command it failed to run
     d.run = (cmd, args, cwd) => (args.includes('--bg')
       ? Promise.reject(new Error(`Command failed: ${cmd} ${args.join(' ')}`))
       : ran(cmd, args, cwd));
-    const { error } = await control(d).set(true);
-    expect(error).toContain('Command failed: tailscale serve');
-    expect(error).not.toContain('abcdef');
+    const s = await control(d).set(true);
+    expect(s).toMatchObject({ error: 'The phone link could not start on this Mac', raw: expect.stringContaining('Command failed: tailscale serve') });
+    expect(s.raw).not.toContain('abcdef');
+    expect(s).not.toHaveProperty('fix');
+    // a look that cannot read what tailscale serves starts nothing, and says so
+    d.run = (cmd, args, cwd) => (args[0] === 'serve' && args[1] === 'status' ? Promise.reject(new Error('serve status failed')) : ran(cmd, args, cwd));
+    expect(await control(d).get()).toMatchObject({ error: 'The phone link could not be read on this Mac', raw: 'serve status failed' });
+  });
+
+  it('says a serve tailscale refuses this user as a share it does not allow, with the command that allows it', async () => {
+    const d = deps();
+    const ran = d.run;
+    d.run = (cmd, args, cwd) => (args.includes('--bg')
+      ? Promise.reject(new Error(`Command failed: ${cmd} ${args.join(' ')}\nAccess denied: serve config denied`))
+      : ran(cmd, args, cwd));
+    const s = await control(d).set(true);
+    expect(s).toMatchObject({
+      error: 'Tailscale on this Mac does not let Svall share this fleet', fix: 'Run once on this Mac: sudo tailscale set --operator=$USER', run: 'sudo tailscale set --operator=$USER',
+      raw: expect.stringContaining('Access denied'),
+    });
+    expect(s.raw).not.toContain('abcdef');
   });
 
   it('hands the panel the reason instead of failing the call', async () => {
     const broken: MobileDeps = { run: () => Promise.reject(new Error('nope')), exists: () => true, read: () => undefined };
-    expect(await control(broken).get()).toMatchObject({ serving: false, error: expect.stringMatching(/tailscale not found/) });
+    expect(await control(broken).get()).toMatchObject({ serving: false, error: 'This Mac has no Tailscale', fix: 'Install it from tailscale.com/download and sign in' });
 
     const stopped = deps();
     stopped.read = () => undefined;
-    expect(await control(stopped).get()).toMatchObject({ serving: false, error: expect.stringMatching(/not running/) });
+    expect(await control(stopped).get()).toMatchObject({ serving: false, error: 'The fleet is not running' });
   });
 });
 
@@ -615,7 +647,7 @@ describe('a worker\'s phone link', () => {
     expect(d.calls).toEqual([]);
     const run = d.run;
     d.run = () => Promise.reject(new Error('tailscaled is wedged'));
-    expect(await phone.set(ON)).toEqual({ error: expect.stringContaining('tailscale'), unseen: true });
+    expect(await phone.set(ON)).toEqual({ error: 'This Mac has no Tailscale', fix: 'Install it from tailscale.com/download and sign in', unseen: true });
     d.run = run;
     await vi.waitFor(() => expect(phone.served()).toBe('https://mac.tailnet.ts.net:8443/'));
     expect(d.web[8443]).toBe(TARGET);
@@ -630,7 +662,10 @@ describe('a worker\'s phone link', () => {
     expect(d.calls).toEqual([]);
     const run = d.run;
     d.run = (cmd, args, cwd) => (args.includes('--bg') ? Promise.reject(new Error('Access denied: serve config denied')) : run(cmd, args, cwd));
-    expect(await phone.set(ON)).toEqual({ error: expect.stringContaining('Access denied') });
+    expect(await phone.set(ON)).toEqual({
+      error: 'Tailscale on this Mac does not let Svall share this fleet', fix: 'Run once on this Mac: sudo tailscale set --operator=$USER', run: 'sudo tailscale set --operator=$USER',
+      raw: 'Access denied: serve config denied',
+    });
     await expect(phone.set({ on: true })).rejects.toThrow(/logins/);
   });
 });
