@@ -280,6 +280,9 @@ type RemoteVersion = {
   worker?: { homeMachineId: string; homeName: string; fleetId: string };
 };
 
+// a machine's own doctor speaks to a person at its shell; read from here, that shell is there
+const farRow = (c: Check): Check => (c.name === 'path' && c.status === 'warn' ? { ...c, detail: 'svall is not on PATH in a shell there' } : c);
+
 function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<RemoteDoctor> {
   const named = (name: string) => report.checks.find((c) => c.name === name);
   const unit = named('systemd');
@@ -725,10 +728,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         opened = await d.openMaster(o.ssh);
       } catch (err) {
         if (batch && err instanceof SshError) throw noLogin(o.ssh, err.raw ?? err.message);
-        // the login above asked its questions; every step from here logs in without a prompt
-        const keychain = process.platform === 'darwin'
-          ? ', keep its passphrase in the keychain with ssh-add --apple-use-keychain and add UseKeychain yes and AddKeysToAgent yes to ~/.ssh/config so ssh still finds it after a restart' : '';
-        throw unreached(err, o.name, o.ssh, homeWord(), `install a key there with ssh-copy-id ${o.ssh}${keychain}, then add the machine again`);
+        throw unreached(err, o.name, o.ssh, homeWord());
       }
       if (held) await sameMachine(opened, held, d).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
       return { value: opened, detail: 'connected' };
@@ -918,7 +918,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
       const { env, flags } = farFleet(entry.id, d);
       report = await remoteJson<RemoteDoctor>(master, base, [...flags, 'doctor', '--json'], 'svall doctor --json', env);
       d.emit({ step: 'doctor', status: 'ok', detail: 'answered' });
-      found(...report.checks);
+      found(...report.checks.map(farRow));
     } catch (err) { found(failed('doctor', err)); }
     start('release');
     try {
@@ -1069,7 +1069,7 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
         const runs = !replaced ? (now === before ? `back on ${now}` : `on ${now}; ${before} could not be put back`)
           : now === before ? `stays on ${now}: no earlier release is kept there` : `on ${now}, the newest release kept there`;
         const long = `ssh ${entry.record.ssh} and read the service's log; ${rollbackTo(name, d)}`;
-        if (out instanceof Error) throw new StepError(`did not finish; ${runs}`, seeWhy(name, d), undefined, undefined, `${out.message}\n${long}`);
+        if (out instanceof Error) throw new StepError(`did not finish; ${runs}`, seeWhy(name, d), undefined, undefined, `${inFull(out)}\n${long}`);
         return { value: undefined, status: 'warn' as const, detail: runs, action: seeWhy(name, d), raw: [out.trim().split('\n').at(-1), long].filter(Boolean).join('\n') };
       });
     } finally {
@@ -1122,7 +1122,7 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
           .catch(async (err: Error) => {
             const now = await currentRelease(master, base);
             d.runs?.(now);
-            throw new StepError(`did not finish; on ${now}`, seeWhy(name, d), undefined, undefined, `${err.message}\n${long(now)}`);
+            throw new StepError(`did not finish; on ${now}`, seeWhy(name, d), undefined, undefined, `${inFull(err)}\n${long(now)}`);
           });
         const now = await currentRelease(master, base);
         return { value: now, detail: `back on ${now}`, raw: out.trim() };

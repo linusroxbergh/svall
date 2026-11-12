@@ -403,7 +403,7 @@ const publicHalf = (i: Pick<HomeCheckInput, 'back' | 'farSsh'>, ssh: string): st
   return i.back ? `cat ~/.ssh/id_ed25519.pub | ssh ${i.farSsh} "ssh ${ssh} ${AUTHORIZED}"` : `ssh ${i.farSsh} cat .ssh/id_ed25519.pub | ssh ${ssh} ${AUTHORIZED}`;
 };
 
-/** Every reason the fleet cannot move now, each with its action, and what it would move. A reason names the other machine, and this one as this machine, or as this Mac on a Mac where it speaks of the move's workers. */
+/** Every reason the fleet cannot move now, each with its action, and what it would move. A reason names the other machine, and this one as this machine, or as this Mac on a Mac where it speaks of the move's workers or its Tailscale. */
 export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   const { state, from, to, toName } = i;
   const far = i.back ?? toName;
@@ -467,7 +467,8 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
     else if (state === 'signedOut') fail(`Tailscale on ${on} is signed out`, app ? `sign in from the Tailscale app${where}` : `sign in${where}: sudo tailscale up`, { ...(!app && typed && { run: 'sudo tailscale up' }), ...raw });
   };
   tailscale(there, far, farPlatform, ' there', true);
-  tailscale(here, 'this machine', i.platformOf?.(here.machineId) ?? process.platform, '', false);
+  const herePlatform = i.platformOf?.(here.machineId) ?? process.platform;
+  tailscale(here, herePlatform === 'darwin' ? 'this Mac' : 'this machine', herePlatform, '', false);
   const sheet: HomeSheet = {
     here: robots.filter((r) => (r.machine ?? from.machineId) === from.machineId && state.islands[r.islandId]?.kind !== 'home').length,
     there: robots.filter((r) => r.machine === to.machineId).length,

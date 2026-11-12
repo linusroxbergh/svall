@@ -1074,7 +1074,8 @@ describe('the check', () => {
     const here = check({ [MAC]: 'linux' }, { from: facts({ tailscale: down }) });
     expect(here).toMatchObject({ refusal: { reason: 'Tailscale is not running on this machine', action: 'start it: sudo systemctl start tailscaled', raw } });
     expect(here.ok || here.refusal.run).toBeUndefined();
-    expect(check({ [MAC]: 'darwin' }, { from: facts({ tailscale: down }) })).toMatchObject({ refusal: { action: 'open the Tailscale app', raw } });
+    expect(check({ [MAC]: 'darwin' }, { from: facts({ tailscale: down }) })).toMatchObject({ refusal: { reason: 'Tailscale is not running on this Mac', action: 'open the Tailscale app', raw } });
+    expect(check({ [MAC]: 'darwin' }, { from: facts({ tailscale: { state: 'missing' } }) })).toMatchObject({ refusal: { reason: 'this Mac has no Tailscale' } });
     expect(check({ [MAC]: 'linux' }, { from: facts({ tailscale: { state: 'missing' } }) })).toMatchObject({ refusal: { reason: 'this machine has no Tailscale', action: 'install it from tailscale.com/download and sign in' } });
     expect(check({}, { linked: false, ...far(down) })).toMatchObject({ refusal: { reason: 'studio is not reachable', details: [], more: [{ reason: 'Tailscale is not running on studio', raw }] } });
   });

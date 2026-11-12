@@ -305,6 +305,9 @@ describe.skipIf(!hasGit)('a crash of the home during a move', () => {
     expect(here.moving).toBeUndefined();
     expect(here.tmux).toBeDefined();
     expect(w.mac1.left).toEqual([]);
+    // a stop that left no error of its own says so in the window's words
+    const [file] = fs.readdirSync(w.homePaths.moves).filter((f) => f.endsWith('.json'));
+    expect(again.placement.status(file.replace(/\.json$/, '')).error).toBe("Svall's background service stopped during the move");
   });
 
   it('a return cut short before its commit leaves the robot on the worker and the Mac worktree locked, and the next return goes through', async () => {

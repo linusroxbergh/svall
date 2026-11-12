@@ -65,6 +65,17 @@ describe('host doctor', () => {
     expect(report.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'ok', detail: expect.stringContaining('1.2.3') });
   });
 
+  it("says the far doctor's PATH row of a shell there, as its reader is here", async () => {
+    const said = JSON.parse(DOCTOR) as { checks: object[] };
+    said.checks.push({ name: 'path', status: 'warn', detail: 'svall is not on PATH in your shell', action: 'add /home/linus/.local/bin to PATH in your shell profile' });
+    ssh.reply(['doctor', '--json'], { stdout: JSON.stringify(said) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['svall-space'], { stdout: DF });
+    ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
+    const report = await doctorHost('trift', deps({ registry: registered() }));
+    expect(report.checks.find((c) => c.name === 'path')).toEqual({ name: 'path', status: 'warn', detail: 'svall is not on PATH in a shell there', action: 'add /home/linus/.local/bin to PATH in your shell profile' });
+  });
+
   it('emits a start before each probe and every check as a step once found, in the report\'s order, the connection and the companion\'s doctor steps of their own', async () => {
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });

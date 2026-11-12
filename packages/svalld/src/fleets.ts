@@ -5,7 +5,7 @@ import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import WebSocket from 'ws';
-import { fleetNameProblem, HelloReply, MAX_REQUEST_BYTES, PROTOCOL_VERSION, type FleetEntry } from '@svall/protocol';
+import { ApiError, fleetNameProblem, HelloReply, MAX_REQUEST_BYTES, PROTOCOL_VERSION, type FleetEntry } from '@svall/protocol';
 import { peekConfig } from './config.js';
 import { Invalid, NotFound } from './errors.js';
 import { plistFile } from './launchd.js';
@@ -64,7 +64,7 @@ export async function startFleet(t: FleetTarget, d: StartDeps): Promise<void> {
     try { (await d.connect(t.home)).close(); return; } catch (e) {
       if (e instanceof ProtocolMismatch) throw e;
       const why = (e as Error).message;
-      if (Date.now() >= end) throw new Error(`svalld did not start; see ${path.join(t.home, 'svalld.log')} (${why})`);
+      if (Date.now() >= end) throw new ApiError('internal', "Svall's background service did not start", { raw: `${why}\nlog: ${path.join(t.home, 'svalld.log')}` });
       await sleep(d.intervalMs);
     }
   }
@@ -106,20 +106,20 @@ export async function handshake({ url, token, timeoutMs, maxPayload = MAX_REQUES
   try {
     await deadline(new Promise<void>((resolve, reject) => {
       ws.once('open', () => resolve());
-      ws.once('error', (e) => reject(new Error(`svalld not reachable on ${url}: ${e.message}`)));
-    }), timeoutMs, `svalld did not accept a connection on ${url} within ${timeoutMs}ms`);
+      ws.once('error', (e) => reject(new Error(`Svall's background service is not reachable on ${url}: ${e.message}`)));
+    }), timeoutMs, `Svall's background service did not accept a connection on ${url} within ${timeoutMs}ms`);
     ws.send(JSON.stringify({ token, home: homeWord }));
     await deadline(new Promise<void>((resolve, reject) => {
       ws.once('message', (raw) => {
         let msg: unknown;
         try { msg = JSON.parse(raw.toString()); } catch { msg = undefined; }
         const r = HelloReply.safeParse(msg);
-        if (!r.success) reject(new Error('svalld refused the token'));
+        if (!r.success) reject(new Error("Svall's background service refused the token"));
         else if (mismatch && r.data.result.protocol !== PROTOCOL_VERSION) reject(new ProtocolMismatch(mismatch(r.data.result.protocol)));
         else resolve();
       });
-      ws.once('close', (code) => reject(new Error(`svalld closed the connection (${code})`)));
-    }), timeoutMs, `svalld did not answer the handshake within ${timeoutMs}ms`);
+      ws.once('close', (code) => reject(new Error(`Svall's background service closed the connection (${code})`)));
+    }), timeoutMs, `Svall's background service did not answer the handshake within ${timeoutMs}ms`);
   } catch (e) {
     // a socket left open keeps a caller that handles the error from exiting
     ws.terminate();
@@ -137,7 +137,7 @@ export function handshakeHome(home: string, timeoutMs: number, o: { anyProtocol?
   return handshake({
     url: `ws://${peekConfig(paths).host}:${port}`, token: fs.readFileSync(paths.token, 'utf8').trim(), timeoutMs, homeWord: process.env.SVALL_HOME_WORD,
     ...(!o.anyProtocol && {
-      mismatch: (theirs: number) => `the svalld of ${home} speaks protocol ${theirs} and this build speaks ${PROTOCOL_VERSION}: ${fix}${o.restart ? `, or ${o.restart}` : ''}`,
+      mismatch: (theirs: number) => `Svall's background service for ${home} speaks protocol ${theirs} and this build speaks ${PROTOCOL_VERSION}: ${fix}${o.restart ? `, or ${o.restart}` : ''}`,
     }),
   });
 }

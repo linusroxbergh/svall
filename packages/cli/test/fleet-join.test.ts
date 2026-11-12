@@ -8,11 +8,11 @@ import { resolvePaths } from '@svall/svalld/paths';
 import { issueToken } from '@svall/svalld/placement/workers';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
 import type { Client } from '../src/client.js';
-import { joinedLine } from '../src/commands/fleet.js';
-import { joinHome, seedHome, type JoinDeps, type SeedAsk } from '../src/controller/home.js';
+import { joinedLine, seedQuestion } from '../src/commands/fleet.js';
+import { joinHome, seedHome, thisMachine, type JoinDeps, type SeedAsk } from '../src/controller/home.js';
 import type { StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
-import type { SshMaster } from '../src/controller/ssh.js';
+import { SshError, type SshMaster } from '../src/controller/ssh.js';
 
 const HOME_ID = '66666666-7777-8888-9999-aaaaaaaaaaaa';
 const FLEET = '11111111-2222-3333-4444-555555555555';
@@ -141,10 +141,11 @@ describe('svall fleet join', () => {
     expect(d.far.asked).toEqual([]);
   });
 
-  it('says what a fleet it takes loses all the same', async () => {
+  it('says what a fleet it takes loses all the same, and names the home by its address and release alone', async () => {
     const out = await joinHome({ ssh: 'ada@studio' }, deps({}));
     expect(out.result).toBe('ready');
-    expect(events.find((e) => e.step === 'fleet' && e.status === 'ok')?.detail).toMatch(/island names and board columns go with the home's first snapshot/);
+    expect(events.find((e) => e.step === 'fleet' && e.status === 'ok')?.detail).toBe("this fleet holds no robot, worker or note; its island names and board columns go with the home's first snapshot");
+    expect(events.find((e) => e.step === 'home' && e.status === 'ok')).toEqual({ step: 'home', status: 'ok', detail: "ada@studio is the fleet's home, on release 1.0.0", raw: `machine ${HOME_ID}, fleet ${FLEET}` });
   });
 
   it('refuses a destination no worker.json can hold before the home issues a token', async () => {
@@ -171,6 +172,12 @@ describe('svall fleet join', () => {
     const out = await joinHome({ ssh: 'ada@studio' }, deps({}));
     expect(out.stopped).toBe('fleet');
     expect(failure()?.detail).toMatch(/1 worker/);
+  });
+
+  it('a login the control master is refused asks for one login in a terminal, with what ssh said apart', async () => {
+    const out = await joinHome({ ssh: 'ada@studio' }, deps({}, { openMaster: () => Promise.reject(new SshError('auth', 'ssh could not reach ada@studio', 'Permission denied (publickey).')) }));
+    expect(out.stopped).toBe('master');
+    expect(failure()).toMatchObject({ detail: `${thisMachine()} cannot log in to ada@studio`, action: 'run ssh ada@studio once in a terminal and answer what it asks', raw: 'Permission denied (publickey).' });
   });
 
   it('asks for Tailscale on this machine first', async () => {
@@ -349,6 +356,11 @@ describe('svall fleet join', () => {
     expect(joinedLine('studio', 'linux')).toBe('This fleet runs on studio now, and this machine is its worker.');
   });
 
+  it('asks to copy the agent setup of this machine by its word', () => {
+    expect(seedQuestion('studio', 'darwin')).toBe("studio has no agent setup yet. Copy this Mac's there first? [Y/n] ");
+    expect(seedQuestion('studio', 'linux')).toBe("studio has no agent setup yet. Copy this machine's there first? [Y/n] ");
+  });
+
   it('refuses a far machine that is this one', async () => {
     const out = await joinHome({ ssh: 'ada@studio' }, deps({ version: { ...VERSION, machineId: machineId() } }));
     expect(failure()?.detail).toMatch(/^ada@studio is this (Mac|machine)$/);
@@ -385,6 +397,7 @@ describe('svall fleet join', () => {
     const worker = { homeMachineId: HOME_ID, fleetId: FLEET, token: TOKEN, homeName: 'studio' };
     fs.writeFileSync(resolvePaths(home).workerFile, JSON.stringify(worker));
     expect((await joinHome({ ssh: 'ada@studio' }, deps({}))).result).toBe('ready');
+    expect(events.find((e) => e.step === 'fleet' && e.status === 'ok')?.detail).toBe('this fleet serves studio as a worker, and joins it again');
     fs.writeFileSync(resolvePaths(home).workerFile, JSON.stringify({ ...worker, fleetId: '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70', homeName: 'other' }));
     events = [];
     const out = await joinHome({ ssh: 'ada@studio' }, deps({}));

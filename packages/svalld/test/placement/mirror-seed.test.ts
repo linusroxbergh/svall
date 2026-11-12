@@ -7,6 +7,7 @@ import { holdsSetup, mirrorPlan, type MirrorPlan } from '../../src/placement/mir
 import { readState } from '../../src/placement/mirror-state.js';
 import { editJson, farHome, macHome, put, read } from './mirror-homes.js';
 import type { Logger } from '../../src/log.js';
+import { inCallerNames } from '../../src/machine.js';
 import { stopWorlds, until, W, world } from './world.js';
 
 afterEach(async () => {
@@ -189,9 +190,11 @@ describe('a home with no agent setup yet', () => {
     expect(read(path.join(server.claudeDir, 'CLAUDE.md'))).toBe(mine);
     expect(JSON.parse(read(path.join(server.claudeDir, 'settings.json'))).permissions.allow).toContain('Bash(git:*)');
     expect(await call(w.home.ctx, 'machines.holdsSetup', {})).toEqual({ holds: true });
-    // the next is no seed: a person's Copy from the pane still goes, and a seed refuses
-    await expect(seed(w.home.ctx)).rejects.toMatchObject({ code: 'refused' });
+    // the next is no seed: a person's Copy from the pane still goes, and a seed refuses, naming the home as its caller does
+    await expect(inCallerNames({ home: 'studio' }, () => seed(w.home.ctx))).rejects.toMatchObject({ code: 'refused', message: 'studio already has an agent setup' });
     await call(w.home.ctx, 'machines.copySetupFrom', { machine: W });
+    // a daemon that takes no copy, as a worker's own, says where one goes
+    await expect(call({ ...w.home.ctx, setupCopy: undefined } as Ctx, 'machines.copySetupFrom', { machine: W })).rejects.toMatchObject({ code: 'not_on_worker', message: "A copy goes to the fleet's home only" });
 
     await w.home.links.pushMirror(W);
     expect(read(path.join(mac.claudeDir, 'CLAUDE.md'))).toBe(mine);

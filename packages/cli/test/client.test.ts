@@ -83,7 +83,7 @@ describe('Client', () => {
 
     const err = await Client.connect(home).then(() => new Error('connected'), (e: Error) => e);
     expect(err).toBeInstanceOf(ProtocolMismatch);
-    expect(err.message).toMatch(new RegExp(`svalld of ${home} speaks protocol ${PROTOCOL_VERSION + 1} and this build speaks ${PROTOCOL_VERSION}`));
+    expect(err.message).toMatch(new RegExp(`Svall's background service for ${home} speaks protocol ${PROTOCOL_VERSION + 1} and this build speaks ${PROTOCOL_VERSION}`));
     expect(err.message).toMatch(new RegExp(`: quit and reopen Svall, or restart the svalld serving ${home}$`));
 
     // a profile's own home names that profile's launchd agent

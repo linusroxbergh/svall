@@ -126,7 +126,7 @@ export async function downloadCompanion(o: { url: string; sha256: string; dir: s
 
 async function remote(master: Pick<SshMaster, 'run'>, argv: string[], what: string, timeoutMs: number): Promise<string> {
   const r = await master.run(argv, { timeoutMs });
-  if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `${what} exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`);
+  if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `${what} exited ${r.code}`, r.stderr.trim().slice(0, 400) || undefined);
   return r.stdout;
 }
 
@@ -189,16 +189,16 @@ async function unpackStaged(master: SshMaster, o: { archive: string; staging: st
   const r = await master.run(['sh', '-c', shq(UNPACK), 'svall-unpack', ...[o.archive, o.staging, o.version, o.svallBase ?? ''].map(shq)], { timeoutMs: TAR_TIMEOUT });
   const said = r.stderr.trim().slice(0, 400);
   const fail: Record<number, string> = {
-    3: `the uploaded release is not signed by a key ${signers} pins: ${said || 'ssh-keygen refused it'}`,
-    4: `the uploaded release's files do not match its ${SUMS}: ${said || 'sha256sum refused it'}`,
+    3: `the uploaded release is not signed by a key ${signers} pins`,
+    4: `the uploaded release's files do not match its ${SUMS}`,
     5: `${signers} is missing, so the installed release names no signer to check the uploaded one against`,
     6: `the uploaded release's ${MANIFEST} does not name release ${o.version}, the one asked for`,
-    7: `the uploaded archive carries no signed ${SUMS} for release ${o.version}: ${said}`,
+    7: `the uploaded archive carries no signed ${SUMS} for release ${o.version}`,
     // after any warning the system's tar printed while it listed the archive
     9: r.stderr.trim().split('\n').at(-1) ?? '',
   };
-  if (r.code !== null && fail[r.code]) throw new SshError('other', fail[r.code]);
-  if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `the far machine could not unpack and check the uploaded release (exit ${r.code}): ${said}`);
+  if (r.code !== null && fail[r.code]) throw new SshError('other', fail[r.code], said || undefined);
+  if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `the far machine could not unpack and check the uploaded release (exit ${r.code})`, said || undefined);
   const how = r.stdout.trim();
   return { check: how === 'pinned' || how === 'unpinned' || how === 'first' ? how : 'digests', signers };
 }

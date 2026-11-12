@@ -95,8 +95,8 @@ export const stepLine = (e: StepEvent): string =>
 
 type Op = 'add' | 'upgrade' | 'rollback' | 'remove';
 const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;
-// what a run that stopped was doing
-const DOING: Record<Op, string> = { add: 'Adding', upgrade: 'Upgrading', rollback: 'Rolling back', remove: 'Removing' };
+// a run's name, as the window's verdict on one that stopped says it
+const TITLE: Record<Op, string> = { add: 'Add machine', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove' };
 
 /** What a run that went through did, in the words the Machines panel uses. */
 export function doneLine(op: Op, name: string, o: { forget?: boolean } = {}): string {
@@ -181,7 +181,9 @@ export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forge
   const setup = op === 'add' || op === 'upgrade';
   // an add's rows are the machine's checks; every other op's are a step flow's
   const { lines, todo } = tiered(ended(flags.steps ?? []), flags.fleet, op !== 'add');
-  const last = o.stopped ? `${DOING[op]} ${name} did not finish` : setup ? verdict(name, todo) : doneLine(op, name, flags);
+  // a machine left in the list by a run that stopped has things to fix, as its window says
+  const listed = op === 'upgrade' || (op === 'add' && (flags.steps ?? []).some((s) => s.step === 'registry' && s.status === 'ok'));
+  const last = o.stopped ? (listed && todo ? verdict(name, todo) : `${TITLE[op]} did not finish`) : setup ? verdict(name, todo) : doneLine(op, name, flags);
   return [...lines, last, ...(setup ? setupLine((o.setup ?? []).map(asRow), name, flags.there!) : [])].join('\n');
 }
 
@@ -472,11 +474,11 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     });
 
   host.command('consent')
-    .description("tick or untick one setting of the machine's mirror, as host doctor lists it")
+    .description('tick or untick one item of your agent setup for the machine, as host doctor --all lists it')
     .argument('<name>', 'the machine in the registry')
-    .argument('<item>', 'the setting, such as claude:mcp:linear')
+    .argument('<item>', 'the agent setup item, such as claude:mcp:linear')
     .argument('<state>', 'on to copy its keys there, off to stop')
-    .option('--field <field...>', 'with on, only these fields of it; off unticks every field')
+    .option('--field <field...>', 'with on, only these keys of it; off takes every key')
     .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
     .action(async (name: string, item: string, state: string, o: { field?: string[] }) => {
       if (state !== 'on' && state !== 'off') throw new Error(`${state} is not on or off`);

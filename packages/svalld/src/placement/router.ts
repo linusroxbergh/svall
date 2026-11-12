@@ -87,7 +87,7 @@ export class Router {
       throw e;
     });
     const settled = z.array(ContextItem).length(items.length).safeParse(raw);
-    if (!settled.success) throw new ApiError('internal', `${name} answered with a context svalld cannot read`);
+    if (!settled.success) throw new ApiError('internal', `${name} answered with a context Svall's background service cannot read`);
     return settled.data;
   }
 

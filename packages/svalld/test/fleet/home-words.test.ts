@@ -43,7 +43,7 @@ describe('the check names each machine for what it is', () => {
   });
 
   it('on the way back, what is this machine\'s it says of this machine, a worker besides included', () => {
-    const r = back({ synced: false, from: facts({ machineId: STUDIO, workers: ['99999999-7777-8888-9999-aaaaaaaaaaaa'] }), to: facts({ freeKb: 10, moving: 'hm_abcdefghij', tailscale: { state: 'missing' } }) });
+    const r = back({ synced: false, from: facts({ machineId: STUDIO, workers: ['99999999-7777-8888-9999-aaaaaaaaaaaa'] }), to: facts({ freeKb: 10, moving: 'hm_abcdefghij', tailscale: { state: 'missing' } }), platformOf: (id: string) => (id === MAC ? 'linux' : undefined) });
     expect(blockers(r)).toEqual([
       ['studio is still catching up', 'try again in a moment'],
       ['99999999-7777-8888-9999-aaaaaaaaaaaa is a worker of this fleet too', 'remove 99999999-7777-8888-9999-aaaaaaaaaaaa first; add it again after the move'],
@@ -57,7 +57,7 @@ describe('the check names each machine for what it is', () => {
   it('on the way out, studio is where the fleet goes', () => {
     const r = homeCheck({
       state: emptyState(), from: facts({ release: '0.22', tailscale: { state: 'missing' }, workers: [STUDIO] }), to: facts({ machineId: STUDIO, release: '0.21', freeKb: 10, moving: 'hm_abcdefghij', tailscale: { state: 'missing' } }), toName: 'studio',
-      linked: false, synced: true, fromIsHome: true,
+      linked: false, synced: true, fromIsHome: true, platformOf: (id) => (id === MAC ? 'linux' : undefined),
     });
     expect(blockers(r)).toEqual([
       ['studio is not reachable', 'try again when it is awake'],

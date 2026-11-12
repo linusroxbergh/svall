@@ -186,7 +186,7 @@ export class Placement {
       if (machine && there !== machine) continue;
       const busy = this.running.get(j.robotId);
       if (busy) { await busy; continue; }
-      const why = new Error(j.error ?? 'svalld stopped during the move');
+      const why = new Error(j.error ?? "Svall's background service stopped during the move");
       await this.run(j.robotId, async () => {
         if (!BEFORE_COMMIT.has(j.phase)) return this.finish(j);
         if (j.to === this.d.me) return this.abortBack(j, why);

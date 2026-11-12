@@ -103,6 +103,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const out = await moveHomeOut('studio', deps);
     expect(out.result).toBe('ready');
     expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
+    expect(events.find((e) => e.step === 'copy' && e.status === 'ok')).toMatchObject({ detail: "the fleet's files are on studio", raw: expect.stringMatching(/^\d+ bytes checked and staged$/) });
     expect(called.map((c) => (c.params.op ? `${c.method}:${c.params.op}` : c.method)).filter((m) => m !== 'state.get')).toEqual(['fleet.homeCheck', 'fleet.homeMove:open', 'fleet.freeze', 'fleet.homeMove:mark', 'fleet.homeMove:join']);
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(false);
     expect(started()).toBe(1);
@@ -227,7 +228,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const { deps, called } = outDeps((line) => answer(line.includes('--stage') ? { status: 'pending', phase: 'staged' } : { status: 'pending', phase: 'rolledback', detail: 'its daemon did not answer' }));
     const out = await moveHomeOut('studio', deps);
     expect(out.result).toBe('actions');
-    expect(failed()).toMatchObject({ step: 'adopt', detail: 'studio did not take the fleet: its daemon did not answer', action: 'svall fleet home abort, or svall fleet home retry', say: 'The move is not finished' });
+    expect(failed()).toMatchObject({ step: 'adopt', detail: 'studio did not take the fleet: studio tried to take over and went back as it was', action: 'svall fleet home abort, or svall fleet home retry', say: 'The move is not finished', raw: 'its daemon did not answer' });
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(false);
   });
 
@@ -311,7 +312,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     it('one at work is named in the check, with the flag that decides it, and nothing has moved or frozen', async () => {
       const { deps, called } = outDeps(happy, { state: crewState(), crewRefused: WORKING });
       const out = await moveHomeOut('studio', deps);
-      expect(failed()).toMatchObject({ step: 'check', detail: 'crew is working' });
+      expect(failed()).toMatchObject({ step: 'check', detail: 'crew is working', say: 'Check again to choose what happens to what it runs' });
       expect(out.actions.join()).toContain('svall fleet home set studio --interrupt-after 0');
       expect(called.some((c) => c.method === 'robot.moveTo' || c.method === 'fleet.freeze' || c.params.op === 'open')).toBe(false);
     });
@@ -368,7 +369,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
       deps.client = () => Promise.resolve({ ...client, call: (m: never, p: never) => { if ((m as string) === 'robot.moveTo') Object.assign(state.robots.crew, { machine: STUDIO, sentAhead: 'hm_abcdefghij' }); return client.call(m, p); }, close: () => {} } as unknown as Client);
       const out = await moveHomeOut('studio', deps);
       expect(out.actions).toContain('svall fleet home crew-back');
-      expect(events.find((e) => e.step === 'crew' && e.status === 'warn')?.detail).toContain('crew');
+      expect(events.find((e) => e.step === 'crew' && e.status === 'warn')).toMatchObject({ detail: expect.stringContaining('crew'), say: "Mission control's crew is still on studio" });
     });
 
     it('crew-back moves each back to the home under an id it opened, and names any that cannot return', async () => {
@@ -748,6 +749,7 @@ describe('fleet home set local', () => {
     const out = await moveHomeBack(deps);
     stop();
     expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
+    expect(events.find((e) => e.step === 'copy' && e.status === 'ok')?.detail).toBe(`the fleet's files are on ${thisMachine()}`);
     expect(out.result).toBe('ready');
     expect(order).toContain('fleet.homeMove:mark owed');
     expect(settled).toEqual(['adopted']);
@@ -1026,11 +1028,13 @@ describe('fleet home set local', () => {
   }, 30_000);
 
   it('a stop before the mark with mission control sent ahead says so, with the way back for it', async () => {
-    const away = { robots: { crew: { id: 'crew', name: 'crew', islandId: 'home', machine: MAC, sentAhead: 'hm_abcdefghij' } }, islands: { home: { id: 'home', kind: 'home' } }, machines: {} };
+    const sent = (id: string) => ({ id, name: id, islandId: 'home', machine: MAC, sentAhead: 'hm_abcdefghij' });
+    const away = { robots: { crew: sent('crew'), scout: sent('scout') }, islands: { home: { id: 'home', kind: 'home' } }, machines: {} };
     const { deps } = await workerHere(() => true, { state: away, refuse: { 'fleet.freeze': new ApiError('busy', 'a worker is still catching up') } });
     const out = await moveHomeBack(deps);
     expect(failed()?.step).toBe('pause');
     expect(out.actions).toContain('svall fleet home crew-back');
+    expect(events.find((e) => e.step === 'crew' && e.status === 'warn')?.say).toBe(`Mission control's crew, scout are still on ${thisMachine()}`);
   }, 30_000);
 
   it('crew-back from a worker asks the home, and moves them to the machine the home says it is', async () => {
@@ -1069,8 +1073,7 @@ describe('fleet home set local', () => {
     const crew = { robots: { crew: { id: 'crew', name: 'crew', islandId: 'home' } }, islands: { home: { id: 'home', kind: 'home' } }, machines: {} };
     const { deps } = await workerHere(() => true, { state: crew, refuse: { 'robot.moveTo': new Error('its worktree is dirty') } });
     await moveHomeBack(deps);
-    expect(failed()).toMatchObject({ step: 'mission', action: 'fix it, and svall fleet home set local again; svall fleet home crew-back brings back the crew that moved' });
-    expect(failed()?.say).toBeDefined();
+    expect(failed()).toMatchObject({ step: 'mission', action: 'fix it, and svall fleet home set local again; svall fleet home crew-back brings back the crew that moved', say: 'Fix it and try again; the crew that moved can be brought back', raw: 'its worktree is dirty' });
   });
 
   describe('fleet home abort', () => {
@@ -1097,7 +1100,7 @@ describe('fleet home set local', () => {
       unlock();
       expect(Date.now() - at).toBeLessThan(10_000);
       expect(out.result).toBe('actions');
-      expect(failed()).toMatchObject({ step: 'abort', detail: 'the move is still under way here: another step of this move runs there' });
+      expect(failed()).toMatchObject({ step: 'abort', detail: `the move is still under way here: ${thisMachine()} is at work on the move`, raw: 'another step of this move runs there' });
       expect(readOwed(w.mac.paths)).toBeDefined();
     }, 30_000);
 

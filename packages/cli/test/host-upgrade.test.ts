@@ -389,6 +389,19 @@ esac
     });
   });
 
+  it('says a release before that could not be put back, and the one the machine stays on, with what its setup said behind', async () => {
+    let base = '';
+    // the release before goes once the new one is found not to answer, so going back to it fails
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], accepts: (r) => { if (r === '1.2.3') fs.rmSync(`${base}/releases/1.2.2`, { recursive: true, force: true }); return r !== '1.2.3'; } });
+    base = far.base;
+    await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(step('rollback').at(-1)).toMatchObject({
+      status: 'fail', detail: 'did not finish; on 1.2.3; 1.2.2 could not be put back', action: 'see why: svall host doctor trift',
+      raw: expect.stringContaining(`svall setup --rollback 1.2.2 exited 1: no release at ${base}/releases/1.2.2 to go back to`),
+    });
+  });
+
   it('counts a new release whose own setup put the old one back as not answering, and says which the machine runs', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
     fs.writeFileSync(`${far.base}/down-1.2.3`, '');

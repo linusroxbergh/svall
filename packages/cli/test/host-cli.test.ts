@@ -153,7 +153,12 @@ describe('the last line a run prints', () => {
     ]);
     const failed: StepEvent = { step: 'install', status: 'fail', detail: 'did not finish', raw: 'svall setup exited 1: no space' };
     expect(outcomeText({ result: 'actions', actions: ['did not finish'], stopped: 'install' }, 'add', 'trift', { ...work, steps: [failed] }).split('\n'))
-      .toEqual(['✗ install  did not finish', '  svall setup exited 1: no space', 'Adding trift did not finish']);
+      .toEqual(['✗ install  did not finish', '  svall setup exited 1: no space', 'Add machine did not finish']);
+    // a run that stopped ends as the window's verdict on it: a machine still listed has things to fix, else the run did not finish
+    expect(outcomeText({ result: 'actions', actions: [], stopped: 'install' }, 'upgrade', 'trift', { ...work, steps: [failed] }).split('\n').at(-1)).toBe('trift has 1 thing to fix');
+    const listed: StepEvent = { step: 'registry', status: 'ok', detail: 'listed' };
+    expect(outcomeText({ result: 'actions', actions: [], stopped: 'install' }, 'add', 'trift', { ...work, steps: [listed, failed] }).split('\n').at(-1)).toBe('trift has 1 thing to fix');
+    expect(outcomeText({ result: 'actions', actions: [], stopped: 'install' }, 'rollback', 'trift', { steps: [failed] }).split('\n').at(-1)).toBe('Roll back did not finish');
     expect(outcomeText({ result: 'ready', actions: [] }, 'remove', 'trift', { forget: true })).toBe('trift is forgotten');
     const keys: StepEvent = { step: 'keys', status: 'warn', detail: 'copied keys left in 1 file', action: 'ssh trift, then remove them by hand' };
     expect(outcomeText({ result: 'actions', actions: [keys.action!] }, 'remove', 'trift', { steps: [keys] }).split('\n'))

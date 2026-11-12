@@ -88,7 +88,7 @@ describe('launch', () => {
 
   it('gives up when the daemon never answers', async () => {
     const f = fake({ homes: [work.home], loaded: ['io.github.linusroxbergh.svall.svalld.work'], daemonUp: false });
-    await expect(launch(work, f.deps)).rejects.toThrow('svalld did not start; see /u/.svall-work/svalld.log');
+    await expect(launch(work, f.deps)).rejects.toMatchObject({ message: "Svall's background service did not start", data: { raw: expect.stringMatching(/\nlog: \/u\/\.svall-work\/svalld\.log$/) } });
     expect(f.calls.some(([c]) => c === 'open')).toBe(false);
   });
 
@@ -126,6 +126,6 @@ describe('launch', () => {
 
   it('carries the underlying reason into the timeout', async () => {
     const f = fake({ homes: [work.home], loaded: ['io.github.linusroxbergh.svall.svalld.work'], daemonUp: false });
-    await expect(launch(work, f.deps)).rejects.toThrow('(down)');
+    await expect(launch(work, f.deps)).rejects.toMatchObject({ data: { raw: expect.stringMatching(/^down\n/) } });
   });
 });

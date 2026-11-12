@@ -27,13 +27,15 @@ import { enrollHere, realEnrol } from './worker.js';
 
 type Facts = { name: string; platform: string; arch: string; home: string; svallBase: string };
 
+export const seedQuestion = (name: string, platform: NodeJS.Platform = process.platform): string => `${name} has no agent setup yet. Copy ${thisMachine(platform)}'s there first? [Y/n] `;
+
 const askSeed = (): SeedAsk => {
   const ask = async (q: string): Promise<string> => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     try { return await new Promise((resolve) => { rl.question(q, resolve); }); } finally { rl.close(); }
   };
   return {
-    go: async (name) => /^(y|yes)?$/i.test((await ask(`${name} has no agent setup yet. Copy this machine's there first? [Y/n] `)).trim()),
+    go: async (name) => /^(y|yes)?$/i.test((await ask(seedQuestion(name))).trim()),
     key: async (said, preview) => /^y(es)?$/i.test((await ask(`${said}? ${[...preview, '[y/N] '].join(' ')}`)).trim()),
   };
 };

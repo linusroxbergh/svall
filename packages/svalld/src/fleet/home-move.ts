@@ -410,7 +410,7 @@ async function startAgain(d: AdoptDeps, id: HomeMoveId, why?: string): Promise<A
   homePoint('restore.restarting');
   try { await d.daemon.start(); } catch (e) {
     if (e instanceof Crash) throw e;
-    return pending('stopping', `${why ? `${why}; ` : ''}its daemon did not start again: ${(e as Error).message}`);
+    return pending('stopping', [...new Set([why, (e as Error).message])].filter(Boolean).join('; '));
   }
   enter(d.paths, id, 'rolledback', why);
   return pending('rolledback', why);

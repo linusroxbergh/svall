@@ -521,11 +521,9 @@ esac
     expect(out.result).toBe('actions');
   });
 
-  it('says ssh refused a login without a prompt, and names how to give it a key, when the control master is refused', async () => {
+  it('says ssh refused a login without a prompt, and asks for one login in a terminal, when the control master is refused', async () => {
     const out = await addHost({ name: 'trift', ssh: 'denied.test', release: archive() }, deps());
-    // the keychain holds a passphrase only on a Mac
-    const keychain = process.platform === 'darwin' ? ', keep its passphrase in the keychain with ssh-add --apple-use-keychain and add UseKeychain yes and AddKeysToAgent yes to ~/.ssh/config so ssh still finds it after a restart' : '';
-    const action = `install a key there with ssh-copy-id denied.test${keychain}, then add the machine again`;
+    const action = 'run ssh denied.test once in a terminal and answer what it asks';
     expect(step('master').at(-1)).toEqual({ step: 'master', status: 'fail', detail: 'this Mac cannot log in to trift', action, raw: expect.stringContaining('denied.test') });
     expect(out.actions).toEqual([action]);
   });
