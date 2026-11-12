@@ -568,10 +568,10 @@ test('a robot on a worker this Mac cannot reach says so under its machine line, 
   // the robot's status in the board's word, and why under it
   expect(document.querySelector('.side > .kicker')?.textContent).toBe('unknown');
   expect(screen.getByTestId('side-away').textContent).toBe('linus-vault is not reachableCheck linus-vault');
-  // its terminal and a shell there open onto nothing, so they wait, saying why; the move's check runs on this Mac, so it stays
+  // its terminal, a shell there and the move's check, which asks the machine, open onto nothing, so they wait, saying why
   const button = (t: string) => screen.getByTestId(t) as HTMLButtonElement;
   expect(['side-open', 'side-finder', 'side-move-home'].map((t) => [button(t).disabled, button(t).dataset.tip])).toEqual([
-    [true, 'linus-vault is not reachable'], [true, 'linus-vault is not reachable'], [false, undefined],
+    [true, 'linus-vault is not reachable'], [true, 'linus-vault is not reachable'], [true, 'linus-vault is not reachable'],
   ]);
   expect([button('side-resources').disabled, button('side-close').disabled]).toEqual([false, false]);
   sent.length = 0;

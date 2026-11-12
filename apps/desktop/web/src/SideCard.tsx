@@ -96,8 +96,8 @@ export function SideCard({ id }: { id: string }) {
   const cwd = placed ? `${placed}:${c.cwd}` : c.cwd;
   // one on a worker moves back from wherever on the map it stands
   const onHome = c.machine === undefined || c.machine === via?.home;
-  // and nothing moves while the page stands in for a home it cannot reach, whose check of the move cannot run
-  const checkable = !via || via.online === true;
+  // and nothing moves while the page stands in for a home it cannot reach, or the robot's machine is out of reach, as the move's check asks both
+  const checkable = (!via || via.online === true) && !away;
   const movable = (!onHome || fleet.islands[c.islandId]?.kind !== 'home') && !c.moving;
   const workers = Object.entries(fleet.machines ?? {}).filter(([, m]) => answers(m));
   const accent = `var(--${status})`;
