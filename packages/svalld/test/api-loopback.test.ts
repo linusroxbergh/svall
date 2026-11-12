@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { startApi } from '../src/api/server.js';
 import { silentLogger } from '../src/log.js';
+import { homeWord, machineWord } from '../src/machine.js';
+import type { Mobile } from '../src/mobile.js';
 import { resolvePaths } from '../src/paths.js';
 import { Phones } from '../src/phones.js';
 import { PushStore } from '../src/push/store.js';
@@ -33,12 +35,12 @@ describe('home.connection over a real socket', () => {
   const closes: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const c of closes.splice(0)) await c(); cleanHomes(); });
 
-  async function api(host: string, freeze?: object) {
+  async function api(host: string, freeze?: object, mobile: Mobile = stubMobile) {
     const home = makeHome();
     const paths = resolvePaths(home);
     const store = Store.load(path.join(home, 'state.json'), () => {});
     const a = await startApi({
-      host, port: 0, token: 'secret', pass: 'p4ss', store, fleet: {} as never, fleets: stubFleets, terminals: { closeAll() {}, viewerGone() {} } as never, workspace: { unwatchAll() {} } as never, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
+      host, port: 0, token: 'secret', pass: 'p4ss', store, fleet: {} as never, fleets: stubFleets, terminals: { closeAll() {}, viewerGone() {} } as never, workspace: { unwatchAll() {} } as never, usage: stubUsage, load: stubLoad, mobileControl: mobile, log: silentLogger,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') }, docs: paths.docs,
       systemInfo: stubSystemInfo, key: () => KEY, logins: () => ['me@example.com'], homeApi: { answer: () => Promise.resolve(ANSWER as never) }, ...(freeze && { freeze: freeze as never }),
     });
@@ -78,6 +80,23 @@ describe('home.connection over a real socket', () => {
     ws.close();
     await vi.waitFor(() => expect(left).toHaveLength(1));
     expect(left[0]).toBe(opened[0]);
+  });
+
+  it('words a socket\'s answers in the names its hello gave: the home as its window calls it, the window\'s machine as this Mac', async () => {
+    const mac = '11111111-1111-4111-8111-111111111111';
+    const port = await api('127.0.0.1', undefined, { ...stubMobile, get: async () => ({ ...await stubMobile.get(), error: `${homeWord()} · ${machineWord(mac, 'linuss-macbook-pro')}` }) });
+    const said = (hello: object) => new Promise<string>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+      ws.on('open', () => ws.send(JSON.stringify({ token: 'secret', ...hello })));
+      ws.on('message', (raw) => {
+        const m = JSON.parse(String(raw)) as { id?: number; result?: { error: string } };
+        if (m.id === 0) ws.send(JSON.stringify({ id: 1, method: 'mobile.get', params: {} }));
+        if (m.id === 1) { ws.close(); resolve(m.result!.error); }
+      });
+      ws.on('error', reject);
+    });
+    expect(await said({ home: 'studio', me: mac })).toBe('studio · this Mac');
+    expect(await said({})).toBe(`${homeWord()} · linuss-macbook-pro`);
   });
 
   it('refuses a socket from another address, whatever node.json binds and with the right token', async () => {

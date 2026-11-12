@@ -559,7 +559,8 @@ export type Event =
   | { event: 'mobile.phones'; data: { phones: PhoneSession[] } }
   | { event: 'app.show'; data: AppShow };
 
-export const Hello = z.object({ token: z.string() });
+// a caller from another machine says what it calls this home and which machine it is on, for the words the daemon makes for its calls
+export const Hello = z.object({ token: z.string(), home: z.string().optional(), me: MachineId.optional() });
 export const HelloResult = z.object({ ok: z.literal(true), protocol: z.number().int() });
 export type HelloResult = z.infer<typeof HelloResult>;
 // the daemon's answer to a socket it admits, which a client checks the protocol by

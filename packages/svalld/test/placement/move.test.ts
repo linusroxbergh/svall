@@ -5,6 +5,7 @@ import { FleetState, HOME_ISLAND, INTERRUPT_ACTIONS, moveSummary } from '@svall/
 import { AGENTS } from '../../src/agents.js';
 import { RESUME_NOTE } from '../../src/dormancy.js';
 import { armFailpoints, type Edge, type Failpoint } from '../../src/failpoints.js';
+import { inCallerNames } from '../../src/machine.js';
 import { hooklessGit, type GitRunner } from '../../src/links/git.js';
 import { fingerprintOf } from '../../src/placement/bundle.js';
 import { trustRecordFile } from '../../src/placement/trust.js';
@@ -1453,6 +1454,8 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const onMain = { root: w.clone, mainRoot: w.clone, branch: 'main', isWorktree: false };
     for (const s of [w.worker.store, home.store]) s.update((d) => { Object.assign(d.robots[b.id], { cwd: w.clone, repo: onMain }); });
     expect(await refusal()).toEqual({ reason: `${name} works in app's main checkout on w1`, action: 'give it its own worktree on w1 first' });
+    // asked from a window on that machine
+    expect(await inCallerNames({ me: W }, refusal)).toEqual({ reason: `${name} works in app's main checkout on this Mac`, action: 'give it its own worktree on this Mac first' });
     for (const s of [w.worker.store, home.store]) s.update((d) => { Object.assign(d.robots[b.id], { cwd: b.far, repo: { root: b.far, mainRoot: w.clone, branch: 'scout', isWorktree: true } }); });
 
     // no clone here, named by the worker's origin without its token; another repository, folder or origin there

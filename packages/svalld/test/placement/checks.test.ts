@@ -10,6 +10,7 @@ import { BUNDLE_MAX } from '../../src/placement/bundle.js';
 import { moveChecks, probeRepo, refusalOf, type CheckDeps, type RepoProbe } from '../../src/placement/checks.js';
 import { git, hasGit } from '../git-fixture.js';
 import { makeHome } from '../helpers.js';
+import { inCallerNames } from '../../src/machine.js';
 import { H, W, island, robot, stopWorlds, world } from './world.js';
 
 afterEach(stopWorlds);
@@ -286,11 +287,13 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(fs.readdirSync(path.dirname(log))).toEqual([`${sid}.jsonl`]);
   });
 
-  it('refuses a robot already moving, naming where to', async () => {
+  it('refuses a robot already moving, naming where to, and the caller\'s own machine as this Mac', async () => {
     const t = machines();
     const moving = { id: 'mv_0123456789', to: W, phase: 'bundle' as const };
     expect(await refusal(depsOf(t, [shellIn(t, { moving })])))
       .toEqual({ reason: 'moving to linus-vault', action: 'wait for the move to finish', details: [] });
+    expect(await inCallerNames({ me: W }, () => refusal(depsOf(t, [shellIn(t, { moving })]))))
+      .toEqual({ reason: 'moving to this Mac', action: 'wait for the move to finish', details: [] });
   });
 
   it('check 1: refuses a worker out of reach, one older to upgrade and one newer to catch this Mac up with, and passes one on this release', async () => {

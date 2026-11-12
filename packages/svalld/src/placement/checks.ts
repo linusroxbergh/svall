@@ -7,7 +7,7 @@ import {
 } from '@svall/protocol';
 import { AGENTS, compareVersions } from '../agents.js';
 import { NotFound } from '../errors.js';
-import { homeWord } from '../machine.js';
+import { homeWord, machineWord } from '../machine.js';
 import { clean, holds } from '../path-tools.js';
 import { expandHome } from '../paths.js';
 import { relocate, type Relocation } from './relocate.js';
@@ -270,7 +270,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const s = d.store.state;
   if (!Object.hasOwn(s.robots, robotId)) throw new NotFound(`no robot ${robotId}`);
   const c = s.robots[robotId];
-  const named = (m: MachineId): string => s.machines?.[m]?.name ?? m;
+  const named = (m: MachineId): string => machineWord(m, s.machines?.[m]?.name ?? m);
   const name = named(to);
   const failed: Failure[] = [];
   const fail = (f: Failure): void => { failed.push(f); };

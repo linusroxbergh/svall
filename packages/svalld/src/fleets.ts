@@ -99,8 +99,8 @@ const deadline = <T>(p: Promise<T>, ms: number, message: string): Promise<T> => 
 };
 
 /** A socket to the daemon at `url` that took `token`; given `mismatch`, one that speaks another protocol is refused with what it says. */
-export async function handshake({ url, token, timeoutMs, maxPayload = MAX_REQUEST_BYTES, mismatch }: {
-  url: string; token: string; timeoutMs: number; maxPayload?: number; mismatch?: (theirs: number) => string;
+export async function handshake({ url, token, timeoutMs, maxPayload = MAX_REQUEST_BYTES, mismatch, homeWord }: {
+  url: string; token: string; timeoutMs: number; maxPayload?: number; mismatch?: (theirs: number) => string; homeWord?: string;
 }): Promise<WebSocket> {
   const ws = new WebSocket(url, { maxPayload });
   try {
@@ -108,7 +108,7 @@ export async function handshake({ url, token, timeoutMs, maxPayload = MAX_REQUES
       ws.once('open', () => resolve());
       ws.once('error', (e) => reject(new Error(`svalld not reachable on ${url}: ${e.message}`)));
     }), timeoutMs, `svalld did not accept a connection on ${url} within ${timeoutMs}ms`);
-    ws.send(JSON.stringify({ token }));
+    ws.send(JSON.stringify({ token, home: homeWord }));
     await deadline(new Promise<void>((resolve, reject) => {
       ws.once('message', (raw) => {
         let msg: unknown;
@@ -133,8 +133,9 @@ export function handshakeHome(home: string, timeoutMs: number, o: { anyProtocol?
   const paths = resolvePaths(home);
   const port = Number(fs.readFileSync(paths.port, 'utf8'));
   const fix = variant === 'release' ? 'quit and reopen Svall' : 'run `pnpm desktop:install`';
+  // a run relayed to the home names it as the Mac that drives it does, and so do the daemon's words for its calls
   return handshake({
-    url: `ws://${peekConfig(paths).host}:${port}`, token: fs.readFileSync(paths.token, 'utf8').trim(), timeoutMs,
+    url: `ws://${peekConfig(paths).host}:${port}`, token: fs.readFileSync(paths.token, 'utf8').trim(), timeoutMs, homeWord: process.env.SVALL_HOME_WORD,
     ...(!o.anyProtocol && {
       mismatch: (theirs: number) => `the svalld of ${home} speaks protocol ${theirs} and this build speaks ${PROTOCOL_VERSION}: ${fix}${o.restart ? `, or ${o.restart}` : ''}`,
     }),

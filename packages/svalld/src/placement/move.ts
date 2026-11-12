@@ -13,7 +13,7 @@ import type { CliRun } from '../sessions/types.js';
 import type { HomeLinks, WorkerHello } from '../link/home.js';
 import { must, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
-import { homeWord } from '../machine.js';
+import { homeWord, machineWord } from '../machine.js';
 import { expandHome, type Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import { shq } from '../text.js';
@@ -226,7 +226,7 @@ export class Placement {
   }
 
   private name(m: MachineId): string {
-    return m === this.d.me ? homeWord() : this.d.store.state.machines?.[m]?.name ?? m;
+    return m === this.d.me ? homeWord() : machineWord(m, this.d.store.state.machines?.[m]?.name ?? m);
   }
 
   private save(j: MoveJournal): void {

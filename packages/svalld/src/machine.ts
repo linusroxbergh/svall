@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -141,12 +142,27 @@ export function ownName(): string {
   return os.hostname().split('.')[0];
 }
 
-/** What a daemon on the fleet's home calls its own machine in a sentence a person reads: "this Mac" on a Mac, else its name.
- *  SVALL_HOME_WORD overrides it. */
+type CallerNames = { home?: string; me?: string };
+const caller = new AsyncLocalStorage<CallerNames>();
+
+/** Runs a call in the names its caller gave: what it calls this home, and its own machine, which is this Mac. Words made
+ *  after the call returns, by what it left running, go back to this machine's own names. */
+export async function inCallerNames<T>(names: CallerNames, call: () => Promise<T>): Promise<T> {
+  const held = { ...names };
+  try { return await caller.run(held, call); } finally { held.home = undefined; held.me = undefined; }
+}
+
+/** What a daemon on the fleet's home calls its own machine in a sentence a person reads: what the caller calls it, else
+ *  "this Mac" on a Mac, else its name. SVALL_HOME_WORD overrides the last two. */
 export function homeWord(platform: NodeJS.Platform = process.platform): string {
+  const called = caller.getStore()?.home;
+  if (called) return called;
   if (process.env.SVALL_HOME_WORD) return process.env.SVALL_HOME_WORD;
   return platform === 'darwin' ? 'this Mac' : ownName();
 }
+
+/** A machine named in a sentence for a caller: the caller's own machine is this Mac. */
+export const machineWord = (id: string, name: string): string => (id === caller.getStore()?.me ? 'this Mac' : name);
 
 /** What a worker calls its home in a sentence: by name, but "this Mac" on a server that its Mac home dials. */
 export const homeWordOnWorker = (home: string, dials: boolean, homePlatform?: string, platform: NodeJS.Platform = process.platform): string => (dials || platform === 'darwin' || (homePlatform ?? 'darwin') !== 'darwin' ? home : 'this Mac');

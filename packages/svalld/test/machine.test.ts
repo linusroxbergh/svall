@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { daemonPath } from '../src/launchd.js';
-import { configDir, copiedRemedy, hardwareId, homeWord, homeWordOnWorker, machineId, machineIdentity, machineIdFailure, mintMachineId, readRegistry, rebindMachine } from '../src/machine.js';
+import { configDir, copiedRemedy, hardwareId, homeWord, homeWordOnWorker, inCallerNames, machineId, machineIdentity, machineIdFailure, machineWord, mintMachineId, readRegistry, rebindMachine } from '../src/machine.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); delete process.env.SVALL_CONFIG_DIR; cleanHomes(); });
@@ -89,6 +89,20 @@ describe('what a home calls its own machine', () => {
     expect(homeWord('linux')).toBe('studio');
     fs.writeFileSync(path.join(dir, 'machines.json'), '{ machines');
     expect(homeWord('linux')).toBe(hostname);
+  });
+
+  it('speaks to a caller in its names while its call runs: the home as it calls it, its machine as this Mac; and in its own after', async () => {
+    const mac = '11111111-1111-4111-8111-111111111111';
+    vi.stubEnv('SVALL_HOME_WORD', 'trift');
+    const said = () => `${homeWord('linux')} · ${machineWord(mac, 'linuss-macbook-pro')} · ${machineWord('22222222-2222-4222-8222-222222222222', 'albumap')}`;
+    let later: Promise<string> | undefined;
+    expect(await inCallerNames({ home: 'studio', me: mac }, async () => {
+      later = new Promise((resolve) => setTimeout(() => resolve(said()), 5));
+      return said();
+    })).toBe('studio · this Mac · albumap');
+    // what the call left running
+    expect(await later).toBe('trift · linuss-macbook-pro · albumap');
+    expect(said()).toBe('trift · linuss-macbook-pro · albumap');
   });
 
   it('a worker calls its home by name, but a server its Mac home dials calls that Mac this Mac', () => {

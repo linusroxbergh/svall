@@ -6,6 +6,7 @@ import { DROP_MAX, DROP_PART, type Response } from '@svall/protocol';
 import { dispatch, type Ctx } from '../src/api/methods.js';
 import { Drops, dropCalls, dropFolder, dropName, landHere } from '../src/drops.js';
 import { sha256Hex } from '../src/hash.js';
+import { inCallerNames } from '../src/machine.js';
 import { resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
 import { makeHome } from './helpers.js';
@@ -147,6 +148,9 @@ describe('a drop through the API', () => {
     const w = world({ home: { machines: { [W]: { name: 'w1', reachable: true, since: 1 } }, robots: { c_1: robot({ id: 'c_1' }) } } });
     w.home.store.update((d) => { d.robots.c_1.moving = { id: 'mv_0123456789', to: W, phase: 'prepare' } as never; });
     expect(await drop(w.home.ctx, 'c_1', 'a.png', Buffer.from('x'))).toMatchObject({ error: { code: 'moving', message: 'moving to w1' } });
+    // asked from a window on the machine it moves to, as is its terminal
+    expect(await inCallerNames({ me: W }, () => drop(w.home.ctx, 'c_1', 'a.png', Buffer.from('x')))).toMatchObject({ error: { code: 'moving', message: 'moving to this Mac' } });
+    await expect(inCallerNames({ me: W }, async () => w.home.fleet.live('c_1'))).rejects.toThrow('moving to this Mac');
     const phone = { ...w.home.ctx, viewer: { ...w.home.ctx.viewer, kind: 'phone' as const } };
     const upload = crypto.randomBytes(16).toString('hex');
     expect(await dispatch({ id: 1, method: 'drop.part', params: { upload, index: 0, data: '' } }, phone)).toMatchObject({ error: { code: 'forbidden' } });
