@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import { HelloReply, PROTOCOL_VERSION, type Result, type WorkerFile } from '@svall/protocol';
 import type { Logger } from '../log.js';
+import { homeWord } from '../machine.js';
 import { fleetHomeOfSocket } from '../paths.js';
 import { releaseVersion } from '../release.js';
 import { FleetMismatch, MachineMismatch, remoteConnectionInfo } from './connection-info.js';
@@ -71,14 +72,14 @@ export class HomeApi {
       await this.drop();
       return { ...base, state: 'connecting' };
     }
-    if (!worker.homeSvallBase || !worker.homeSocket) return this.settle(base, { state: 'version', detail: `this Mac does not know where svall is on ${worker.homeName}; enrol it again with svall fleet enroll-worker there` });
+    if (!worker.homeSvallBase || !worker.homeSocket) return this.settle(base, { state: 'version', detail: `${homeWord()} does not know where svall is on ${worker.homeName}; enrol it again with svall fleet enroll-worker there` });
     try {
       const info = await remoteConnectionInfo(master, { id: worker.homeMachineId, record: { name: worker.homeName, svallBase: worker.homeSvallBase } }, {
         fleetId: worker.fleetId, anyProtocol: true, fleetHome: fleetHomeOfSocket(worker.homeSocket),
       });
       if (info.protocol !== PROTOCOL_VERSION) {
         const newer = info.protocol > PROTOCOL_VERSION;
-        const detail = `${worker.homeName} runs ${newer ? 'a newer' : 'an older'} Svall than this Mac (${info.release}, here ${releaseVersion()}); ${newer ? 'update Svall on this Mac' : 'upgrade it to reach its robots'}`;
+        const detail = `${worker.homeName} runs ${newer ? 'a newer' : 'an older'} Svall than ${homeWord()} (${info.release}, here ${releaseVersion()}); ${newer ? `update Svall on ${homeWord()}` : 'upgrade it to reach its robots'}`;
         return await this.settle(base, { state: 'version', release: info.release, detail, ...(newer && { newer: true as const }) });
       }
       const { local } = await this.forwardTo(master, info.port);
@@ -92,9 +93,9 @@ export class HomeApi {
       const message = (e as Error).message;
       // none of these holds a token: the description is never quoted, and a forward's failure names only ports
       const ids = (there: string, here: string) => `(${there.slice(0, 8)}… there, ${here.slice(0, 8)}… here)`;
-      if (e instanceof FleetMismatch) return await this.settle(base, { state: 'mismatch', detail: `${worker.homeName} holds a different fleet than this Mac expects ${ids(e.found, worker.fleetId)}` });
+      if (e instanceof FleetMismatch) return await this.settle(base, { state: 'mismatch', detail: `${worker.homeName} holds a different fleet than ${homeWord()} expects ${ids(e.found, worker.fleetId)}` });
       if (e instanceof MachineMismatch) {
-        return await this.settle(base, { state: 'machine', detail: e.found ? `${worker.homeName} is a different machine than this Mac expects ${ids(e.found, worker.homeMachineId)}` : message });
+        return await this.settle(base, { state: 'machine', detail: e.found ? `${worker.homeName} is a different machine than ${homeWord()} expects ${ids(e.found, worker.homeMachineId)}` : message });
       }
       if (e instanceof SshError && e.kind === 'version') return await this.settle(base, { state: 'version', detail: message });
       await this.drop();

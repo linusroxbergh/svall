@@ -37,6 +37,9 @@ export function profileLabel(name: string): string {
   return name === PRIVATE ? LAUNCHD_LABEL : `${LAUNCHD_LABEL}.${name}`;
 }
 
+/** That a fleet's daemon was restarted, in a person's words: a named fleet's by its name, the private one's alone. */
+export const restarted = (fleet?: string): string => `restarted Svall's background service${fleet ? ` for ${fleet}` : ''}`;
+
 /** Each `~/.svall-<name>` fleet under a name reserved for a command, which no `-p` reaches, with a name to move to. */
 export function reservedProfileHomes(homedir = os.homedir()): { home: string; name: string; rename: string }[] {
   let names: string[];

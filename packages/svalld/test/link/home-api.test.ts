@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { PROTOCOL_VERSION, type WorkerFile } from '@svall/protocol';
 import { greets, HomeApi } from '../../src/link/home-api.js';
+import { homeWord } from '../../src/machine.js';
 import { releaseVersion } from '../../src/release.js';
 import { classifySsh, SshError, type SshMaster } from '../../src/link/ssh.js';
 
@@ -80,7 +81,7 @@ describe('how a window reaches a far home', () => {
     const m = fakeMaster(() => info({ protocol, release: '0.20' }));
     const api = apiOf(dialOf(m.master));
     const a = await api.answer();
-    expect(a).toMatchObject({ state: 'version', release: '0.20', detail: `studio runs an older Svall than this Mac (0.20, here ${releaseVersion()}); upgrade it to reach its robots` });
+    expect(a).toMatchObject({ state: 'version', release: '0.20', detail: `studio runs an older Svall than ${homeWord()} (0.20, here ${releaseVersion()}); upgrade it to reach its robots` });
     expect(a).not.toHaveProperty('token');
     expect(a).not.toHaveProperty('port');
     await api.answer();
@@ -98,20 +99,28 @@ describe('how a window reaches a far home', () => {
   it('names both machines of one that answers as another, in a person\'s words', async () => {
     const other = crypto.randomUUID();
     const a = await apiOf(dialOf(fakeMaster(() => info({ machineId: other })).master)).answer();
-    expect(a).toMatchObject({ state: 'machine', detail: `studio is a different machine than this Mac expects (${other.slice(0, 8)}… there, ${HOME.slice(0, 8)}… here)` });
+    expect(a).toMatchObject({ state: 'machine', detail: `studio is a different machine than ${homeWord()} expects (${other.slice(0, 8)}… there, ${HOME.slice(0, 8)}… here)` });
   });
 
   it('names both fleets of a mismatch, and gives no advice that would enrol the far machine', async () => {
     const other = crypto.randomUUID();
     const a = await apiOf(dialOf(fakeMaster(() => info({ fleetId: other })).master)).answer();
     expect(a.state).toBe('mismatch');
-    expect(a.detail).toBe(`studio holds a different fleet than this Mac expects (${other.slice(0, 8)}… there, ${FLEET.slice(0, 8)}… here)`);
+    expect(a.detail).toBe(`studio holds a different fleet than ${homeWord()} expects (${other.slice(0, 8)}… there, ${FLEET.slice(0, 8)}… here)`);
   });
 
   it('says newer only of a far side ahead of this one, and sends a person to update this Mac', async () => {
     expect(await apiOf(dialOf(fakeMaster(() => info({ protocol: PROTOCOL_VERSION + 1, release: '0.99' })).master)).answer()).toMatchObject({ state: 'version', newer: true,
-      detail: `studio runs a newer Svall than this Mac (0.99, here ${releaseVersion()}); update Svall on this Mac` });
+      detail: `studio runs a newer Svall than ${homeWord()} (0.99, here ${releaseVersion()}); update Svall on ${homeWord()}` });
     expect(await apiOf(dialOf(fakeMaster(() => info({ protocol: PROTOCOL_VERSION - 1, release: '0.01' })).master)).answer()).not.toHaveProperty('newer');
+  });
+
+  it('says this machine by its own word, which on a server is its name, never this Mac', async () => {
+    vi.stubEnv('SVALL_HOME_WORD', 'box');
+    try {
+      expect((await apiOf(dialOf(fakeMaster(() => info({ protocol: PROTOCOL_VERSION + 1, release: '0.99' })).master)).answer()).detail)
+        .toBe(`studio runs a newer Svall than box (0.99, here ${releaseVersion()}); update Svall on box`);
+    } finally { vi.unstubAllEnvs(); }
   });
 
   it('gives back the forward it held when the far side settles, the dial fails, the master goes, or it stops', async () => {

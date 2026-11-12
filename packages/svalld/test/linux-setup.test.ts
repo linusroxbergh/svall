@@ -400,7 +400,7 @@ describe('setupLinux', () => {
       ['systemctl', '--user', 'restart', 'svall-svalld@private.service'],
       ['systemctl', '--user', 'enable', '--now', 'svall-svalld@private.service'],
     ]);
-    expect(done).toEqual([`systemd unit -> ${unit}`, 'systemctl --user restart svall-svalld@private.service']);
+    expect(done).toEqual([`systemd unit -> ${unit}`, "restarted Svall's background service"]);
   });
 
   it('keeps the files it wrote when the machine has no systemd, and says so', async () => {
