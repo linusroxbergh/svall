@@ -52,7 +52,7 @@ describe('the setup rows of the mirror', () => {
     const all = rows(report({ vars: { LINEAR_API_KEY: true } }), new Set(), { ...O, fleetFlag: '-p work ', overrides: '~/.svall-work/mirror-overrides' });
     expect(all.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'ok', detail: 'w1 has its own' });
     expect(all.find(byKey('var:LINEAR_API_KEY'))).toBeUndefined();
-    expect(all.find(byKey('claude:mcp:hdr'))).toMatchObject({ status: 'warn', detail: 'not copied', action: 'Tick to copy, or set them on w1 in ~/.svall-work/mirror-overrides' });
+    expect(all.find(byKey('claude:mcp:hdr'))).toMatchObject({ status: 'warn', detail: 'not copied', action: 'Tick to copy, or set it on w1 in ~/.svall-work/mirror-overrides' });
     expect(rows(report({ vars: { LINEAR_API_KEY: false } })).find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: 'Tick to copy, or set LINEAR_API_KEY on w1: svall worker env LINEAR_API_KEY' });
   });
 
@@ -98,7 +98,7 @@ describe('the setup rows of the mirror', () => {
     expect(all.find(byKey('maconly:claude:chrome'))).toMatchObject({ status: 'skip', detail: 'runs only on a Mac' });
     expect(all.find(byKey('oauth:claude:mcp:notion'))).toMatchObject({ status: 'warn', action: 'Start claude there, then /mcp and log in to notion', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118, detail: 'not logged in' });
     expect(rows(report({ oauth: { 'claude:mcp:notion': true } })).find(byKey('oauth:claude:mcp:notion'))).toMatchObject({ status: 'ok', detail: 'logged in' });
-    expect(all.filter(byKey('codex:config'))).toMatchObject([{ status: 'warn', action: 'Tick to copy, or set them on w1 in ~/.svall/mirror-overrides', tick: { item: 'codex:config', on: false } }]);
+    expect(all.filter(byKey('codex:config'))).toMatchObject([{ status: 'warn', action: 'Tick to copy, or set it on w1 in ~/.svall/mirror-overrides', tick: { item: 'codex:config', on: false } }]);
   });
 
   it('a server that runs xcrun is Mac-only, with no program row; a program ticked not needed is a skip row that stands aside', () => {
@@ -254,7 +254,7 @@ describe('the setup rows of the mirror', () => {
     const row = (await mirror.report(undefined, W, { name: 'w1', fleetFlag: '-p far ' })).find(byKey('claude:mcp:linear'));
     expect(row?.action).toBe('Tick to copy, or set LINEAR_API_KEY on w1: svall -p far worker env LINEAR_API_KEY');
     const settings = (await mirror.report(undefined, W, { name: 'w1', fleetFlag: '-p far ' })).find(byKey('claude:settings'));
-    expect(settings?.action).toBe('Tick to copy, or set them on w1 in ~/.svall-far/mirror-overrides');
+    expect(settings?.action).toBe('Tick to copy, or set it on w1 in ~/.svall-far/mirror-overrides');
   });
 
   it('Mirror.report reads no link as not reachable and one in mismatch as another release; a worker that does not answer is asked once, logged, and the rows come unchecked', async () => {

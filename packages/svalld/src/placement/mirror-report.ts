@@ -252,7 +252,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
     const vars = server ? [...new Set(fields.filter((f) => f.startsWith('env.')).flatMap((f) => reads(server, f)))] : [];
     return {
       key: item, status: 'warn', detail: report ? 'not copied' : o.unchecked, tick,
-      action: vars.length ? `Tick to copy, or set ${vars.join(', ')} on ${m}: ${vars.map((v) => `svall ${o.fleetFlag}worker env ${v}`).join(', ')}` : `Tick to copy, or set them on ${m} in ${o.overrides}`,
+      action: vars.length ? `Tick to copy, or set ${vars.join(', ')} on ${m}: ${vars.map((v) => `svall ${o.fleetFlag}worker env ${v}`).join(', ')}` : `Tick to copy, or set ${fields.length === 1 ? 'it' : 'them'} on ${m} in ${o.overrides}`,
       gap: { name, what: `keys not copied (${fields.filter((f) => !own(f)).join(', ')})` },
     };
   };
