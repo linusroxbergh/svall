@@ -16,7 +16,7 @@ import { Keybindings } from './Keybindings.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
 import { MobilePanel, MobileSwitch, PhoneAway, PhoneProblem, useMobileSwitch, usePhoneAway } from './PhonePanel.js';
 import { NO_PAGE, phonesHere } from './phoneText.js';
-import { homeName } from './placement.js';
+import { homeName, machineName, myMachine } from './placement.js';
 import { openFleetConfig } from './resources/docs.js';
 import { Said } from './Said.js';
 import { directoryName, NO_AGENTS } from './selectors.js';
@@ -337,12 +337,15 @@ function RobotPreferences() {
   </>;
 }
 
-// a pass's error starts with the agent's command, and what the agent said after it stays behind details: one for want of a
-// login says so with the agent's login on `where`, the scribe's machine; any other, that the pass did not finish
-const AGENT_RUN = /^(?:claude -p|codex exec|opencode run) (?:failed|exited \d+)(?::|$)/;
+// a pass's error starts with the command of the agent that failed, and what that agent said after it stays behind details: one
+// for want of a login says so with its login on `where`, the machine the pass ran on; any other, that the pass did not finish
+const AGENT_RUN = /^(claude -p|codex exec|opencode run) (?:failed|exited \d+)(?::|$)/;
+const RAN: Record<string, AgentKind> = { 'claude -p': 'claude', 'codex exec': 'codex', 'opencode run': 'opencode' };
 const NO_LOGIN = /not logged in|\/login|log in|logged out|authenticat/i;
-const passSaid = (message: string, agent: AgentKind, where: string): { line: string; fix?: string; run?: string; raw?: string } => {
-  if (!AGENT_RUN.test(message)) return splitRaw(message);
+const passSaid = (message: string, scribe: AgentKind, where: string): { line: string; fix?: string; run?: string; raw?: string } => {
+  const m = AGENT_RUN.exec(message);
+  if (!m) return splitRaw(message);
+  const agent = RAN[m[1]] ?? scribe;
   const raw = withoutTokens(message);
   if (NO_LOGIN.test(message)) return { line: `${AGENT_LABEL[agent]} is not logged in on ${where}`, fix: `Log in once: ${AGENT_LOGIN[agent]}`, run: AGENT_LOGIN[agent], raw };
   return { line: `${AGENT_LABEL[agent]} did not finish the scribe's last pass`, raw };
@@ -355,9 +358,13 @@ function Scribe() {
   const flip = () => setScribe(deps(), !on);
   const placing = useApp((s) => placingOn(s.fleet));
   const worktrees = useApp((s) => !s.fleet.worktreesOff);
-  // the scribe runs on the fleet's home
-  const home = useApp((s) => (s.via ? homeName(s.fleet, s.via) : undefined));
-  const failure = error && passSaid(error.message, scribeAgent, home ?? 'this Mac');
+  // the machine the failed pass ran on: the worker the daemon names, else the fleet's home; none for this Mac
+  const failedOn = useApp((s) => {
+    const at = s.fleet.scribeError?.machine;
+    if (at) return at === myMachine(s) ? undefined : machineName(s.fleet, at);
+    return s.via ? homeName(s.fleet, s.via) : undefined;
+  });
+  const failure = error && passSaid(error.message, scribeAgent, failedOn ?? 'this Mac');
   return (
     <>
       <Group name="Fleet">
@@ -390,7 +397,7 @@ function Scribe() {
               <span>last failure</span>
               <b data-testid="set-scribe-error-at">{when(error.at)}</b>
             </div>
-            <div className="set-said" data-testid="set-scribe-error" data-error><Said {...failure} on={home} settings /></div>
+            <div className="set-said" data-testid="set-scribe-error" data-error><Said {...failure} on={failedOn} settings /></div>
           </>
         )}
       </Group>

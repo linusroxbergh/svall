@@ -641,6 +641,30 @@ test('an Info says what a control is for in two sentences at most', async () => 
   expect(tipOf('phone')).toBe('Reachable only on your tailnet; needs Tailscale on this Mac and the phone. After switching it off, turn notifications on again on each phone.');
 });
 
+test('the scribe\'s failure names the machine its pass failed on and offers its terminal there, and the agent that failed', () => {
+  const W = 'cccccccc-0000-4000-8000-000000000000';
+  act(() => store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: 'bbbbbbbb-0000-4000-8000-000000000000' as never, name: 'studio', online: true }));
+  render(<SettingsCard />);
+  show('fleet');
+  const said = () => screen.getByTestId('set-scribe-error');
+  // a pass on the home, a far one, logs in there
+  act(() => store.getState().setFleet({ ...fleet(), scribeError: { message: 'claude -p failed: Not logged in', at: 1 } }));
+  expect(said().querySelector('.said > div > span')!.textContent).toBe('Claude Code is not logged in on studio');
+  expect(within(said()).getByRole('button', { name: 'Open terminal' })).toBeTruthy();
+  expect(within(said()).queryByTestId('said-copy')).toBeNull();
+  // one a worker made fails on that worker, by the agent named in the failed command, whatever the scribe runs now
+  act(() => store.getState().setFleet({ ...fleet(), scribeAgent: 'claude', machines: { [W]: { name: 'box', reachable: true, since: 1 } }, scribeError: { message: 'codex exec failed: Not logged in', at: 1, machine: W } } as never));
+  expect(said().querySelector('.said > div > span')!.textContent).toBe('Codex is not logged in on box');
+  expect(said().querySelector('.set-note')!.textContent).toBe('Log in once: codex login');
+  fireEvent.click(within(said()).getByRole('button', { name: 'Open terminal' }));
+  expect(store.getState().hostMachine).toBe('box');
+  expect(store.getState().hostTerminal).toMatchObject({ run: 'codex login' });
+  // and one this Mac made, as a worker, is this Mac's to copy
+  act(() => store.getState().setFleet({ ...fleet(), scribeError: { message: 'codex exec failed: Not logged in', at: 1, machine: 'aaaaaaaa-0000-4000-8000-000000000000' } } as never));
+  expect(said().querySelector('.said > div > span')!.textContent).toBe('Codex is not logged in on this Mac');
+  expect(within(said()).getByTestId('said-copy')).toBeTruthy();
+});
+
 test('a token in the scribe\'s failure is masked in its line, its fix and the words behind details', () => {
   render(<SettingsCard />);
   show('fleet');
@@ -676,7 +700,7 @@ test('a fleet name that will not do is said in a note under its row, and the las
   expect(screen.getByTestId('set-scribe-error').closest('.row')).toBeNull();
   expect(screen.getByTestId('set-scribe-error-at').textContent).toBe(new Date(1).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }));
   act(() => store.getState().setFleet({ ...fleet(), scribeError: { message: 'codex exec exited 1', at: 1 } }));
-  expect(screen.getByTestId('set-scribe-error').querySelector('.said > div > span')!.textContent).toBe("Claude Code did not finish the scribe's last pass");
+  expect(screen.getByTestId('set-scribe-error').querySelector('.said > div > span')!.textContent).toBe("Codex did not finish the scribe's last pass");
 });
 
 describe('the window', () => {

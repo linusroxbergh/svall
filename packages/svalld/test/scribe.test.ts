@@ -631,6 +631,19 @@ describe('Scribe.stop', () => {
   });
 });
 
+describe('a far pass that fails', () => {
+  it('names the worker it ran on with the failure, which a pass made here does not', async () => {
+    const W = '66666666-7777-8888-9999-aaaaaaaaaaaa' as never;
+    const w = world(() => { throw new Error('claude -p failed: Not logged in'); });
+    w.island('i1');
+    w.robot('c1', { machine: W });
+    const scribe = new Scribe({ store: w.store, log: silentLogger, now: () => T0, brief: (i, c) => renderBrief(i, c), run: async () => '{}', runsHere: (c) => c.machine === undefined,
+      far: () => Promise.reject(new Error('codex exec failed: Not logged in')) });
+    await scribe.sweep({ names: true });
+    expect(w.store.state.scribeError).toEqual({ message: 'codex exec failed: Not logged in', at: T0, machine: W });
+  });
+});
+
 describe('a far pass while the fleet moves', () => {
   it('that answers after the hold writes nothing, as the archive has been cut', async () => {
     const w = world(answer({}));

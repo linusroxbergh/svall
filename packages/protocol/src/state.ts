@@ -274,8 +274,9 @@ export const FleetState = z.object({
   placingOff: z.literal(true).optional(),
   // a fleet's passes place no robot until the user turns placing on or off
   placingAsk: z.literal(true).optional(),
-  // the last automatic or swept pass that failed, cleared by the next one that succeeds
-  scribeError: z.object({ message: z.string(), at: z.number() }).optional(),
+  // the last automatic or swept pass that failed, cleared by the next one that succeeds; `machine`: the worker a robot's pass
+  // ran on and failed on, none for the home's own
+  scribeError: z.object({ message: z.string(), at: z.number(), machine: MachineId.optional() }).optional(),
   // no robot is told to work in a worktree
   worktreesOff: z.literal(true).optional(),
   // an agent idle this many hours is ended and its robot left dormant, to be resumed on revive;
