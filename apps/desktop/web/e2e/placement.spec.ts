@@ -7,7 +7,7 @@ test.afterEach(async ({ svall }) => { await unplace(svall); });
 const fakeShell = (page: Page, svall: Svall) =>
   nativeShell(page, { port: svall.port, token: svall.token, info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false } });
 
-test('a placed robot names its machine on its card, row, panes and token, offers Move to this Mac, and a not-reachable terminal when the link is down', async ({ page, svall }) => {
+test('a placed robot names its machine on its card, row, panes and token, offers Move to this Mac, and a not-reachable terminal and shell when the link is down', async ({ page, svall }) => {
   const id = await seed(svall, false, (c) => { c.machine = VAULT; });
   await fakeShell(page, svall);
   await svall.open();
@@ -16,6 +16,7 @@ test('a placed robot names its machine on its card, row, panes and token, offers
   await expect(page.getByTestId(`sb-machine-${id}`)).toHaveText('on linus-vault');
   await page.getByTestId(`kc-${id}`).dblclick();
   await expect(page.getByTestId('terminal-unreachable')).toHaveText('linus-vault is not reachable');
+  await expect(page.getByTestId('away-check')).toHaveText('Check linus-vault');
   await expect(page.getByTestId('pane-left-machine')).toHaveText('Runs on linus-vault');
   expect((await sent(page)).some((m) => m.type === 'term.show' && m.id === id)).toBe(false);
 
@@ -32,13 +33,19 @@ test('a placed robot names its machine on its card, row, panes and token, offers
   expect(home.y < there.y && there.y < open.y).toBe(true);
   expect(home.width).toBeCloseTo(close.x + close.width - open.x, 0);
   await expect(card.getByTestId('side-cwd')).toHaveAttribute('data-tip', 'Copy linus-vault:/tmp');
-  await expect(card.getByTestId('side-finder')).toHaveText('Terminal there');
+  // the robot's terminal and a shell there open onto nothing while the machine is out of reach
+  await expect(card.getByTestId('side-finder')).toHaveText('Shell on linus-vault');
+  for (const t of ['side-finder', 'side-open']) {
+    await expect(card.getByTestId(t)).toBeDisabled();
+    await expect(card.getByTestId(t)).toHaveAttribute('data-tip', 'linus-vault is not reachable');
+  }
 
   // the machine terminal, in the robot's folder, once the registry names the way there
-  await card.getByTestId('side-finder').click();
+  await page.getByTestId('pane-left-terminal-there').click();
   await expect.poll(async () => (await sent(page)).some((m) => m.type === 'host.list')).toBe(true);
   await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux' }] });
-  await expect(page.getByTestId('host-terminal-note')).toContainText("cd '/tmp'");
+  await expect(page.getByTestId('host-machine')).toHaveText('Shell on linus-vault');
+  await expect(page.getByTestId('host-terminal-note')).toContainText('Press Return to open a shell on linus-vault in /tmp.');
   await expect.poll(async () => (await sent(page)).find((m) => m.type === 'term.show' && m.id === 'machine:linus-vault'))
     .toMatchObject({ machine: { ssh: 'linus@vault', type: "cd '/tmp'" } });
 
@@ -67,7 +74,8 @@ test('a placed robot\'s Files and Changes say its machine is not reachable while
   await page.getByTestId(`kc-${id}`).dblclick();
   for (const kind of ['files', 'changes']) {
     await page.getByTestId(`pane-left-${kind}`).click();
-    await expect(page.getByTestId('pane-elsewhere')).toHaveText('linus-vault is not reachable');
+    await expect(page.getByTestId('pane-elsewhere').locator('.away-says > span').first()).toHaveText('linus-vault is not reachable');
+    await expect(page.getByTestId('pane-elsewhere').getByTestId('away-check')).toHaveText('Check linus-vault');
   }
 });
 
@@ -106,7 +114,7 @@ test('mission control has no move button; a refusal shows one sentence and one b
   const sheet = page.getByTestId('move-sheet');
   await expect(sheet.getByTestId('move-title')).toHaveText('Move ada to linus-vault');
   // the daemon's own first check: no link to the machine
-  await expect(sheet.getByTestId('move-reason')).toHaveText('linus-vault is not reachable');
+  await expect(sheet.getByTestId('move-refusal').locator('.said > div > span').first()).toHaveText('linus-vault is not reachable');
   await expect(sheet.locator('.acts button')).toHaveCount(1);
   await expect(sheet.getByTestId('move-go')).toHaveCount(0);
 });
@@ -178,19 +186,19 @@ test('a move runs in its sheet, one line per step as it gets there, and a failur
   mark('prepare');
   fake.page!({ event: 'state.patch', data: { ops: [{ op: 'remove', path: `/robots/${id}/moving` }] } });
   fake.page!({ id: fake.moveTo, error: { code: 'not_reachable', message: 'linus-vault is not reachable', data: { phase: 'prepare', moveId: 'mv_0123456789' } } });
-  await expect(sheet.getByTestId('move-step-carry')).toHaveText('Carry failed: linus-vault is not reachable; ada is back on this Mac.');
+  await expect(sheet.getByTestId('move-step-carry').locator('.said > div > span').first()).toHaveText('Carry failed: linus-vault is not reachable; ada is back on this Mac.');
   await expect(sheet.getByTestId('move-step-carry')).toHaveAttribute('data-state', 'failed');
   await expect(sheet.getByTestId('move-step-land')).toHaveCount(0);
   await expect(sheet.locator('.acts button')).toHaveText(['Try again']);
-  await sheet.getByTestId('move-run-details').locator('summary').click();
-  await expect(sheet.getByTestId('move-run-details')).toContainText('move mv_0123456789');
+  await sheet.getByTestId('move-step-carry').locator('summary').click();
+  await expect(sheet.getByTestId('move-step-carry').locator('.modal-more-body')).toHaveText('move mv_0123456789');
 });
 
-test('a robot that lands on a machine says what of its agent setup will not work there, and its card lists each with its way on', async ({ page, svall }) => {
+test('a robot that lands on a machine says what of its agent setup is not there yet, and its card lists each with its way on', async ({ page, svall }) => {
   const rows: SetupRow[] = [
     {
       key: 'claude:mcp:linear', status: 'warn', detail: 'copied without its keys (env.LINEAR_API_KEY lin…90)', action: "copy linear's keys to linus-vault",
-      tick: { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: false, preview: ['env.LINEAR_API_KEY lin…90'] }, gap: { name: 'linear', what: 'keys not copied (env.LINEAR_API_KEY)' },
+      tick: { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: false, preview: ['env.LINEAR_API_KEY lin…90'], ticked: [] }, gap: { name: 'linear', what: 'keys not copied (env.LINEAR_API_KEY)' },
     },
     {
       key: 'oauth:claude:mcp:notion', status: 'warn', detail: 'then /mcp and sign in to notion', action: 'log in once on linus-vault', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118,
@@ -215,7 +223,7 @@ test('a robot that lands on a machine says what of its agent setup will not work
   await rewrite(svall, (s) => { delete s.robots[id].moving; s.robots[id].machine = VAULT; });
 
   const toast = page.getByTestId('toast');
-  await expect(toast).toContainText('ada is on linus-vault. 2 parts of its agent setup will not work there.', { timeout: 15_000 });
+  await expect(toast).toContainText('ada is on linus-vault. 2 parts of its agent setup are not there yet.', { timeout: 15_000 });
   expect(asked).toContainEqual({ machine: VAULT, robot: id });
   await toast.getByTestId('toast-action').click();
   const card = page.getByTestId('side-card');
@@ -223,7 +231,7 @@ test('a robot that lands on a machine says what of its agent setup will not work
   // folded until opened
   await expect(card.getByTestId('side-gap-claude:mcp:linear')).toHaveCount(0);
   await card.getByTestId('sec-fold-robot.machine').click();
-  await expect(card.getByTestId('side-gap-claude:mcp:linear')).toHaveText('linear keys not copied (env.LINEAR_API_KEY)Copy keys');
+  await expect(card.getByTestId('side-gap-claude:mcp:linear')).toHaveText("linear's LINEAR_API_KEY not copiedCopy key");
   await card.getByTestId('side-gap-terminal-oauth:claude:mcp:notion').click();
   await expect.poll(async () => (await sent(page)).some((m) => m.type === 'host.list')).toBe(true);
   await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux' }] });

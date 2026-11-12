@@ -50,6 +50,8 @@ export const plainStep = (text: string, names: MachineNames): string => withoutI
 export const onThisMac = (text: string): string => text.replace(/\bthis machine\b/g, 'this Mac').replace(/\bThis machine\b/g, 'This Mac');
 
 export const cdLine = (dir: string): string => `cd '${dir.replaceAll("'", "'\\''")}'`;
+/** The folder a `cd` line goes to, as `cdLine` quotes it; none for any other command. */
+export const cdDir = (run: string): string | undefined => /^cd '((?:[^']|'\\'')*)'$/.exec(run)?.[1].replaceAll("'\\''", "'");
 
 /** Whether this Mac has an ssh route to the machine `name`, as far as its list says: a list not read, or not readable, says nothing against one. */
 export const hasRoute = (s: Pick<AppState, 'machines' | 'machinesError'>, name: string): boolean =>

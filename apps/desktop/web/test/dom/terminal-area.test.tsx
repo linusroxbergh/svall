@@ -163,6 +163,8 @@ test('an unreachable robot shows the sentence and the last screen term.lastScree
   await act(async () => {});
   tall.mockRestore();
   expect(screen.getByTestId('terminal-unreachable').textContent).toBe('linus-vault is not reachable');
+  // when it shows again, and a check of the machine, over the last screen
+  expect(screen.getByTestId('terminal-unreachable').parentElement!.textContent).toBe('linus-vault is not reachableIts terminal and files show again when it answers.Check linus-vault');
   expect(screen.getByTestId('terminal-last-screen').textContent).toBe('$ make test\nok');
   expect(screen.getByTestId('terminal-last-screen').scrollTop).toBe(900);
   // a scroller the keyboard reaches, as WKWebView does not make one focusable

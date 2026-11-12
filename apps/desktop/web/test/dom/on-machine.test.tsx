@@ -11,7 +11,7 @@ const { OnMachine } = await import('../../src/OnMachine.js');
 const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
 const linear: SetupRow = {
   key: 'claude:mcp:linear', status: 'warn', detail: 'd', action: "copy linear's keys to vault",
-  tick: { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: false, preview: ['env.LINEAR_API_KEY lin…90'] }, gap: { name: 'linear', what: 'keys not copied (env.LINEAR_API_KEY)' },
+  tick: { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: false, preview: ['env.LINEAR_API_KEY lin…90'], ticked: [] }, gap: { name: 'linear', what: 'keys not copied (env.LINEAR_API_KEY)' },
 };
 const notion: SetupRow = {
   key: 'oauth:claude:mcp:notion', status: 'warn', detail: 'then /mcp and sign in to notion', action: 'log in once on vault', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118,
@@ -36,14 +36,15 @@ test('a placed robot\'s card lists what of its agent setup will not work on its 
   expect(screen.getByTestId('sec-fold-robot.machine').textContent).toBe('On vault');
   expect(shown()).toEqual([]);
   unfold();
-  expect(shown()).toEqual(['linear keys not copied (env.LINEAR_API_KEY)Copy keys', 'notion not logged inOpen terminal', 'chrome runs only on a Mac']);
-  expect(screen.getByTestId('side-gap-aside').textContent).toBe('chrome runs only on a Mac');
+  expect(shown()).toEqual(["linear's LINEAR_API_KEY not copiedCopy key", 'notion not logged inOpen terminal', 'chrome runs only on a Mac.']);
+  expect(screen.getByTestId('side-gap-claude:mcp:linear').querySelector('b')!.textContent).toBe("linear's LINEAR_API_KEY");
+  expect(screen.getByTestId('side-gap-aside').textContent).toBe('chrome runs only on a Mac.');
 
   rows = [notion, chrome];
   await act(async () => { fireEvent.click(screen.getByTestId('side-gap-copy-claude:mcp:linear')); });
   expect(call).toHaveBeenCalledWith('machines.consent', { machine: VAULT, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
   expect(call.mock.calls.filter(([m]) => m === 'machines.setup')).toHaveLength(2);
-  expect(shown()).toEqual(['notion not logged inOpen terminal', 'chrome runs only on a Mac']);
+  expect(shown()).toEqual(['notion not logged inOpen terminal', 'chrome runs only on a Mac.']);
 
   fireEvent.click(screen.getByTestId('side-gap-terminal-oauth:claude:mcp:notion'));
   expect(sent).toContainEqual({ type: 'host.list' });
@@ -52,7 +53,7 @@ test('a placed robot\'s card lists what of its agent setup will not work on its 
   rows = [chrome];
   await act(async () => store.getState().toggleHost(false));
   expect(call.mock.calls.filter(([m]) => m === 'machines.setup')).toHaveLength(3);
-  expect(shown()).toEqual(['chrome runs only on a Mac']);
+  expect(shown()).toEqual(['chrome runs only on a Mac.']);
 });
 
 test('a copy the machine did not take says why, and a robot whose agent setup all works there shows no section', async () => {
@@ -91,11 +92,11 @@ test('a program row offers Not needed, which ticks it; ticked, it joins the one 
   rows = [skip(false), npx, chrome];
   await act(async () => { render(<OnMachine id="c1" machine={VAULT} name="vault" />); });
   unfold();
-  expect(shown()).toEqual(['adlc not installed; ad needs itinstall adlc on vaultNot needed', 'npx not installed; ad needs itOpen terminalNot needed', 'chrome runs only on a Mac']);
+  expect(shown()).toEqual(['adlc not installedNot needed', 'npx not installedOpen terminalNot needed', 'chrome runs only on a Mac.']);
   rows = [skip(true), chrome];
   await act(async () => { fireEvent.click(screen.getByTestId('side-gap-skip-runtime:adlc')); });
   expect(call).toHaveBeenCalledWith('machines.consent', { machine: VAULT, item: 'runtime:adlc', fields: ['skip'], on: true });
-  expect(shown()).toEqual(['chrome runs only on a Mac, and adlc is not needed there']);
+  expect(shown()).toEqual(['chrome runs only on a Mac, and adlc is not needed there.']);
 });
 
 test('a variable row on the card takes its value in a field and sends it, or copies this Mac\'s, and the rows come back as the machine has them', async () => {
@@ -105,13 +106,14 @@ test('a variable row on the card takes its value in a field and sends it, or cop
   call.mockImplementation((method: string) => Promise.resolve(method === 'machines.setVar' ? { rows: [{ key: 'var:X', status: 'ok', detail: 'X is set on vault' }, linear, chrome] } : { rows }));
   await act(async () => { render(<OnMachine id="c1" machine={VAULT} name="vault" />); });
   unfold();
+  expect(screen.getByTestId('side-gap-var:X').firstElementChild!.textContent).toBe('X not set');
   expect(screen.queryByTestId('side-gap-terminal-var:X')).toBeNull();
   fireEvent.change(screen.getByTestId('side-gap-var-var:X-value'), { target: { value: 'v1' } });
   rows = [chrome];
   await act(async () => { fireEvent.click(screen.getByTestId('side-gap-var-var:X-set')); });
   expect(call).toHaveBeenCalledWith('machines.setVar', { machine: VAULT, name: 'X', value: 'v1' });
   expect(call.mock.calls.filter(([m]) => m === 'machines.setup')).toHaveLength(2);
-  expect(shown()).toEqual(['chrome runs only on a Mac']);
+  expect(shown()).toEqual(['chrome runs only on a Mac.']);
 
   rows = [x];
   call.mockImplementation((method: string) => (method === 'machines.setVar' ? Promise.reject(new Error('this Mac has no X')) : Promise.resolve({ rows })));

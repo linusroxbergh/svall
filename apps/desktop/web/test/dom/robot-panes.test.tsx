@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { MachineId } from '@svall/protocol';
 import { fleet } from '../fixtures.js';
-import { call, freshStore, store } from './harness.js';
+import { call, freshStore, retryHome, sent, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 vi.mock('../../src/TerminalArea.js', () => ({ TerminalArea: () => null }));
@@ -17,6 +17,8 @@ vi.mock('../../src/ide/FilesArea.js', async () => {
 const { RobotPanes } = await import('../../src/RobotPanes.js');
 
 const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+// what stands in a pane: its line, then what it says under it and its button
+const away = (el: Element) => [...el.querySelector('.away-says')!.children].map((e) => e.textContent);
 
 beforeEach(() => {
   freshStore();
@@ -36,8 +38,30 @@ test('a robot on a worker offers Files and Changes, and while its machine is unr
   act(() => store.getState().setPanes('c0', { left: 'files', right: 'changes' }));
   render(<RobotPanes id="c0" />);
   expect(screen.getByTestId('pane-left-files')).toBeTruthy();
-  expect(screen.getAllByTestId('pane-elsewhere').map((e) => e.textContent)).toEqual(['linus-vault is not reachable', 'linus-vault is not reachable']);
+  const said = ['linus-vault is not reachable', 'Its terminal and files show again when it answers.', 'Check linus-vault'];
+  expect(screen.getAllByTestId('pane-elsewhere').map(away)).toEqual([said, said]);
   expect(call.mock.calls.map(([m]) => m).filter((m) => /^(fs|repo)\./.test(m))).toEqual([]);
+  // the check is the card's: the Machines panel opens on a check of the machine
+  fireEvent.click(screen.getAllByTestId('away-check')[0]);
+  expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'doctor', args: { name: 'linus-vault' } });
+  expect([store.getState().hostOpen, store.getState().hostMachine]).toEqual([true, 'linus-vault']);
+});
+
+test('on this Mac\'s copy of the fleet, a far robot\'s Files say how old the copy is and try the home again', () => {
+  const MAC = '11111111-1111-4111-8111-111111111111' as MachineId;
+  const STUDIO = '22222222-2222-4222-8222-222222222222' as MachineId;
+  const at = new Date(2026, 10, 10, 9, 30).getTime();
+  act(() => {
+    store.getState().applyPatch([{ op: 'add', path: `/machines/${STUDIO}`, value: { name: 'studio', reachable: true, since: 0, snapshot: { version: 1, at } } }]);
+    store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio' });
+    store.getState().setHome({ name: 'studio', state: 'unreachable' } as never);
+    store.getState().setPanes('c0', { left: 'files' });
+  });
+  render(<RobotPanes id="c0" />);
+  const time = new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  expect(away(screen.getByTestId('pane-elsewhere'))).toEqual(['studio is not reachable', `Showing the fleet as of ${time}.`, 'Try again']);
+  fireEvent.click(screen.getByTestId('away-retry'));
+  expect(retryHome).toHaveBeenCalled();
 });
 
 test('while its machine runs a different build, Files and Changes say so as the terminal does', () => {
@@ -45,7 +69,7 @@ test('while its machine runs a different build, Files and Changes say so as the 
   act(() => store.getState().applyPatch([{ op: 'replace', path: `/machines/${VAULT}`, value: { name: 'linus-vault', reachable: false, since: 0, mismatch: true } }]));
   act(() => store.getState().setPanes('c0', { left: 'files', right: 'changes' }));
   render(<RobotPanes id="c0" />);
-  expect(screen.getAllByTestId('pane-elsewhere').map((e) => e.textContent)).toEqual(['linus-vault runs a different build; upgrade it under Machines', 'linus-vault runs a different build; upgrade it under Machines']);
+  expect(screen.getAllByTestId('pane-elsewhere').map((e) => away(e)[0])).toEqual(['linus-vault runs a different build; upgrade it under Machines', 'linus-vault runs a different build; upgrade it under Machines']);
 });
 
 test('a robot on a worker says under each pane\'s head where it runs, and one here says nothing', () => {
@@ -79,6 +103,7 @@ test('a robot elsewhere offers a terminal there from each pane\'s line, and one 
   act(() => { store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true }); store.getState().setPanes('c0', { left: 'terminal', right: 'files' }); });
   const { rerender } = render(<RobotPanes id="c0" />);
   expect(screen.getByTestId('pane-left-machine').textContent).toBe('Runs on studio');
+  expect(screen.getByTestId('pane-right-terminal-there').textContent).toBe('Shell on studio');
   fireEvent.click(screen.getByTestId('pane-right-terminal-there'));
   expect(store.getState().hostTerminal).toEqual({ run: "cd '/tmp'" });
   expect(store.getState().hostMachine).toBe('studio');

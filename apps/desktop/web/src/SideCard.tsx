@@ -6,13 +6,12 @@ import { copyText, openFolder } from './bridge.js';
 import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
 import { useApp, usePanelWidth, useTick } from './hooks.js';
-import { startHost } from './hostRun.js';
 import { Caret, Mac, Machine, Star } from './icons.js';
 import { MachineLine } from './indicators.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
 import { ago, hintText } from './map/tokenText.js';
-import { OnMachine, TerminalThere } from './OnMachine.js';
+import { OnMachine, TerminalThere, useCheck } from './OnMachine.js';
 import { buttonTry, fieldTry, useRefusal } from './frozen.js';
 import { answers, awayLine, frozenWhy, homeName, machineOf, robotMachine } from './placement.js';
 import { figureOf, figureUrl, stepFigure } from './portraits.js';
@@ -95,8 +94,9 @@ export function SideCard({ id }: { id: string }) {
   const cwd = placed ? `${placed}:${c.cwd}` : c.cwd;
   // one on a worker moves back from wherever on the map it stands
   const onHome = c.machine === undefined || c.machine === via?.home;
-  // and nothing moves while the page stands in for a home it cannot reach
-  const movable = (!onHome || fleet.islands[c.islandId]?.kind !== 'home') && !c.moving && (!via || via.online === true);
+  // and nothing moves while the page stands in for a home it cannot reach, whose check of the move cannot run
+  const checkable = !via || via.online === true;
+  const movable = (!onHome || fleet.islands[c.islandId]?.kind !== 'home') && !c.moving;
   const workers = Object.entries(fleet.machines ?? {}).filter(([, m]) => answers(m));
   const accent = `var(--${status})`;
   const pct = contextPctOf(c);
@@ -181,21 +181,24 @@ export function SideCard({ id }: { id: string }) {
         </Section>
       </div>
       <div className="acts">
-        {movable && (!onHome || workers.length > 0) && (
+        {movable && (!onHome || (checkable && workers.length > 0)) && (
           <div className="moves">
             {!onHome
-              ? <button className="btn sm move" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id, ...(via && { to: via.home }) })}>{via ? <Machine /> : <Mac />}<span>Move to {via ? homeName(fleet, via) : 'this Mac'}</span><Caret dir="right" /></button>
+              ? (
+                <button className="btn sm move" data-testid="side-move-home" disabled={!checkable} data-tip={checkable ? undefined : away ?? `${homeName(fleet, via!)} is not reachable`}
+                  onClick={() => app.store.getState().setMoveSheet({ id, ...(via && { to: via.home }) })}>{via ? <Machine /> : <Mac />}<span>Move to {via ? homeName(fleet, via) : 'this Mac'}</span><Caret dir="right" /></button>
+              )
               : workers.map(([m, w]) => (
                 <button key={m} className="btn sm move" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}>{m === via?.machine ? <Mac /> : <Machine />}<span>Move to {m === via?.machine ? 'this Mac' : w.name}</span><Caret dir="right" /></button>
               ))}
           </div>
         )}
-        {placed ? <TerminalThere name={placed} dir={c.cwd} testid="side-finder" /> : (
+        {placed ? <TerminalThere name={placed} dir={c.cwd} testid="side-finder" away={away} /> : (
           <button className="btn sm" data-testid="side-finder" data-tip={`Reveal ${c.cwd} in Finder`}
             onClick={() => openFolder(app.bridge, c.cwd, robotMachine(c, { via, shell }))}>Finder</button>
         )}
         <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} machine={c.machine} testid="side-resources" />
-        <button className="btn sm pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>
+        <button className="btn sm pri" data-testid="side-open" disabled={!!away} data-tip={away} onClick={() => app.store.getState().focus(id)}>Open terminal</button>
         <button className="btn sm dan" data-testid="side-close" data-tip="Deletes the robot and kills its terminal" {...buttonTry(refuse)}
           onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>
       </div>
@@ -236,9 +239,7 @@ function Held({ id, n, promptId, refuse }: { id: string; n: number; promptId: st
 
 // why the robot's machine is out of reach, and a check of it, whose release row offers the upgrade when it is the machine's to take
 function AwayLine({ name, id, line, running, readOnly }: { name: string; id?: string; line: string; running: boolean; readOnly?: string }) {
-  // a far home's machine goes by its id, as that home may name it as this Mac names another
-  const far = useApp((s) => !!id && !!s.machines?.find((m) => m.id === id)?.far);
-  const run = () => { app.store.getState().toggleHost(true, name); startHost('doctor', { name, ...(far && { id }) }); };
+  const run = useCheck(name, id);
   return (
     <div className="side-away" data-testid="side-away">
       <span>{line}{readOnly && <small data-testid="side-away-read-only">{readOnly}</small>}</span>

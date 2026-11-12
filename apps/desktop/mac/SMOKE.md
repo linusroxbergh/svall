@@ -54,7 +54,7 @@ Select the Claude robot and open its side card.
 2. A turn there:
    - Ask the agent for the code word: it remembers it. It asks nothing about trusting the folder.
    - Ask it to commit its changes: the commit lands on its branch on `studio`.
-   - **Terminal there** on the card opens a terminal in its folder: `hostname` names the Linux machine, `git log`
+   - **Shell on studio** on the card opens a terminal in its folder: `hostname` names the Linux machine, `git log`
      shows the new commit, and `.env` is not there.
    - Its panes offer no Files or Changes tab, and the card no Resources.
 3. Move the Codex and the OpenCode robots the same way: each remembers its code word on `studio`.

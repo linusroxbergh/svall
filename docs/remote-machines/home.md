@@ -35,7 +35,7 @@ A robot on this Mac keeps everything: Finder, a file in its own app, a folder in
 file of studio's on the Resources shelf, Finder cannot reach the path, and a path of the same name on this Mac would be another file. So:
 
 - **Finder**, **Show in Finder**, and opening a picture or PDF from a terminal are not offered. The card, the pane and the shelf say
-  "on studio", and **Terminal there** opens a terminal on that machine with a `cd` to the folder typed at the prompt. A file or folder in the
+  "on studio", and **Shell on studio** (on the shelf's foot, **Open terminal**) opens a terminal on that machine with a `cd` to the folder typed at the prompt. A file or folder in the
   robot's context does the same when you click it. A machine this Mac has no ssh to, such as another Mac, offers no terminal and says so.
 - **A dev server** the robot runs stays on its machine, as its card says. Forward the port by hand to open it in the app's browser.
 - **Fleet config** in Settings opens studio's `fleet.json` in the shelf's editor, written on studio, through a link if the file is one. A file
@@ -171,7 +171,7 @@ on. A `home.cwd` you set anywhere else is yours, and goes in as written.
 
 A Linux worker goes with the fleet, and its robots and tmux are not touched. Before anything moves, the machine that would take the fleet logs in to each from its own daemon, with its own key. It refuses
 the move if that login is refused, if the worker runs another release or if another machine there goes by its name, and if it cannot reach a worker this home is still linked to. The check
-names the fix for that machine. A worker that does not answer and is not linked does not stop the move: the sheet says "box does not answer; it joins studio when it does".
+names the fix for that machine. A worker that does not answer and is not linked does not stop the move: the sheet's row for it reads "box: not answering · joins studio when it does".
 
 Nothing changes on a worker until the move has gone through. The new home then checks that each answers as the machine and fleet it was, gives it a new token over ssh, restarts its daemon, and goes on until its link greets with that token. What the worker wrote while out of reach
 reaches the new home when it links. A worker that has not joined yet shows it on its row with the last reason, and its robots read as unknown. Most failures are tried again, less and less often, up to every five minutes. A refused login or host key, or a route that now reaches another machine or fleet,

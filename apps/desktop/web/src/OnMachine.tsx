@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
-import { aside, asideLine, notNeeded, toTick, type MachineId, type SetupRow } from '@svall/protocol';
+import { useEffect, useState, type ReactNode } from 'react';
+import { aside, asideLine, keyLabel, notNeeded, toTick, type MachineId, type SetupRow } from '@svall/protocol';
 import { app } from './boot.js';
 import { useApp } from './hooks.js';
 import { cdLine, hasRoute } from './host.js';
+import { startHost } from './hostRun.js';
 import { terminalOn } from './MoveSheet.js';
+import { machineOf } from './placement.js';
 import { Section } from './Section.js';
 import { VarField } from './VarField.js';
 
@@ -18,10 +20,63 @@ export function useRoute(name: string | undefined): boolean {
   return route;
 }
 
-/** A terminal on the machine for what only it can reach, with a `cd` to `dir` typed there; a machine this Mac has no ssh to, such as another Mac, offers none. */
-export function TerminalThere({ name, dir, className = 'btn sm', testid }: { name: string; dir: string; className?: string; testid: string }) {
+/**
+ * A shell on the machine for what only it can reach, with a `cd` to `dir` typed there; a machine this Mac has no ssh to, such
+ * as another Mac, offers none, and one out of reach, `away` saying why, offers it disabled.
+ */
+export function TerminalThere({ name, dir, className = 'btn sm', testid, label = `Shell on ${name}`, away }: {
+  name: string; dir: string; className?: string; testid: string; label?: string; away?: string;
+}) {
   if (!useRoute(name)) return null;
-  return <button className={className} data-testid={testid} data-tip={`A terminal on ${name} in ${dir}`} onClick={() => terminalOn(name, cdLine(dir))}>Terminal there</button>;
+  return (
+    <button className={className} data-testid={testid} disabled={!!away} data-tip={away ?? `A shell on ${name} in ${dir}`}
+      onClick={() => terminalOn(name, cdLine(dir))}>{label}</button>
+  );
+}
+
+/** A check of a robot's machine, which opens the Machines panel on it; a far home's machine goes by its id, as that home may name it as this Mac names another. */
+export function useCheck(name: string, id?: string): () => void {
+  const far = useApp((s) => !!id && !!s.machines?.find((m) => m.id === id)?.far);
+  return () => { app.store.getState().toggleHost(true, name); startHost('doctor', { name, ...(far && { id }) }); };
+}
+
+/**
+ * What stands in a far robot's pane while its machine does not answer: `line` says why, then when it shows again and a check
+ * of that machine; on this Mac's copy of the fleet, how old the copy is and a try at the home again.
+ */
+export function Away({ id, line, testid }: { id: string; line: string; testid?: string }) {
+  const machine = useApp((s) => s.fleet.robots[id]?.machine);
+  const name = useApp((s) => (Object.hasOwn(s.fleet.robots, id) ? machineOf(s.fleet, s.fleet.robots[id], s.via) : undefined));
+  const copy = useApp((s) => !!s.via && !s.via.online);
+  const at = useApp((s) => (s.via && !s.via.online ? s.fleet.machines?.[s.via.home]?.snapshot?.at : undefined));
+  const running = useApp((s) => !!s.host?.running);
+  const check = useCheck(name ?? '', machine);
+  return (
+    <div className="away-says">
+      <span data-testid={testid}>{line}</span>
+      {copy ? (
+        <>
+          {at !== undefined && <span className="modal-sub">Showing the fleet as of {new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.</span>}
+          <button className="btn sm" data-testid="away-retry" onClick={() => app.api().retryHome()}>Try again</button>
+        </>
+      ) : (
+        <>
+          <span className="modal-sub">Its terminal and files show again when it answers.</span>
+          {name && <button className="btn sm" data-testid="away-check" disabled={running} onClick={check}>Check {name}</button>}
+        </>
+      )}
+    </div>
+  );
+}
+
+// a row by what it is, in the window's words: a key to copy, a login, a variable or a program; any other in the machine's own
+function gapWords(r: SetupRow): ReactNode {
+  const name = r.gap!.name;
+  if (toTick(r) && !notNeeded(r)) return <><b>{keyLabel(r)}</b> not copied</>;
+  if (r.key.startsWith('oauth:') && r.status === 'warn') return <><b>{name}</b> not logged in</>;
+  if (r.key.startsWith('var:') && r.action) return <><b>{name}</b> not set</>;
+  if (r.key.startsWith('runtime:') && toTick(r)) return <><b>{name}</b> not installed</>;
+  return <><b>{name}</b> {r.gap!.what}{!r.run && r.action && <em>{r.action}</em>}</>;
 }
 
 /**
@@ -43,9 +98,9 @@ export function OnMachine({ id, machine, name }: { id: string; machine: MachineI
       <div className="rows">
         {rows.filter((r) => !aside(r)).map((r) => (
           <div key={r.key} className="side-gap" data-testid={`side-gap-${r.key}`}>
-            <span><b>{r.gap!.name}</b> {r.gap!.what}{(!toTick(r) || notNeeded(r)) && !r.run && r.action && <em>{r.action}</em>}</span>
+            <span>{gapWords(r)}</span>
             {toTick(r) && !notNeeded(r) ? (
-              <button className="btn sm" data-testid={`side-gap-copy-${r.key}`} onClick={() => void tick(r.tick!)}>Copy keys</button>
+              <button className="btn sm" data-testid={`side-gap-copy-${r.key}`} onClick={() => void tick(r.tick!)}>Copy key</button>
             ) : r.key.startsWith('var:') && r.action ? (
               <VarField machine={machine} name={name} varName={r.key.slice('var:'.length)} here={r.here} testid={`side-gap-var-${r.key}`}
                 take={() => () => void read()} failed={(m) => app.store.getState().showToast(m, 'error')} />
@@ -62,7 +117,7 @@ export function OnMachine({ id, machine, name }: { id: string; machine: MachineI
             )}
           </div>
         ))}
-        {apart && <div className="side-gap" data-testid="side-gap-aside"><span>{apart}</span></div>}
+        {apart && <div className="side-gap" data-testid="side-gap-aside"><span>{apart}.</span></div>}
       </div>
     </Section>
   );

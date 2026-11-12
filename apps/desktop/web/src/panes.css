@@ -36,4 +36,8 @@
 .revive.away { place-content: center; gap: var(--sp-xl); padding: var(--sp-3xl); background: var(--surface-1); }
 .revive.away:has(pre) { place-content: stretch; grid-template-rows: auto minmax(0, 1fr); }
 .revive.away pre { place-self: stretch; margin: 0; overflow: auto; font: var(--text-sm)/var(--lh) var(--mono); color: var(--ink-3); }
+/* a far robot's pane while its machine does not answer: why, when it shows again, and a check of the machine */
+.away-says { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2xs); text-align: center; color: var(--ink); font-size: var(--text-md); line-height: var(--lh); }
+.away-says > span:first-child { -webkit-user-select: text; user-select: text; }
+.away-says > .btn { margin-top: var(--sp-md); }
 .pon-there { flex: none; padding: 0; border: 0; background: none; color: var(--away); font: inherit; cursor: pointer; text-decoration: underline; }

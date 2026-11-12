@@ -4,6 +4,7 @@ import { openSecondTerminal, retryMove, reviveRobot, startFresh } from './action
 import { app, deps } from './boot.js';
 import { rectOf } from './bridge.js';
 import { useApp } from './hooks.js';
+import { Away } from './OnMachine.js';
 import { awayLine, destinationName } from './placement.js';
 import { isVeiled, resumeErrorOf } from './selectors.js';
 import { secondKey } from './terminals.js';
@@ -100,7 +101,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   if (unreachable) {
     return (
       <div className="revive away">
-        <span data-testid="terminal-unreachable">{unreachable}</span>
+        <Away id={id} line={unreachable} testid="terminal-unreachable" />
         {lastScreen && <pre ref={screenRef} tabIndex={0} aria-label="Last screen the worker sent" data-testid="terminal-last-screen">{lastScreen}</pre>}
       </div>
     );
