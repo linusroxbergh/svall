@@ -20,8 +20,11 @@
 .sec-body { flex: 1 1 auto; min-height: 0; overflow: hidden auto; display: flex; flex-direction: column; gap: var(--sp-sm); }
 /* a squeezed section's cut edge fades while more of it lies below */
 .sec-body[data-more="true"] { mask-image: linear-gradient(var(--ink) calc(100% - var(--sp-3xl)), transparent); -webkit-mask-image: linear-gradient(var(--ink) calc(100% - var(--sp-3xl)), transparent); }
-/* the rows end whole: the one the edge cuts goes, faded out across the gap above it */
-.sec-body[data-more="true"][data-whole] { mask-image: linear-gradient(var(--ink) calc(var(--whole) - var(--sp-xs)), transparent var(--whole)); -webkit-mask-image: linear-gradient(var(--ink) calc(var(--whole) - var(--sp-xs)), transparent var(--whole)); }
+/* the whole rows stay crisp and the one the edge cuts fades out under them, saying more lies below; one cut so near the edge
+   that little of it shows takes the foot's own fade */
+.sec-body[data-more="true"][data-whole="all"] { mask-image: none; -webkit-mask-image: none; }
+.sec-body[data-more="true"][data-whole="cut"] { mask-image: linear-gradient(var(--ink) min(var(--whole), calc(100% - var(--sp-3xl))), transparent);
+  -webkit-mask-image: linear-gradient(var(--ink) min(var(--whole), calc(100% - var(--sp-3xl))), transparent); }
 /* a section the user opens drops its contents in; one open as its card appears shows them at once */
 .sec-body[data-opened] { transition: opacity var(--dur) var(--ease-out), translate var(--dur) var(--ease-out); }
 @starting-style { .sec-body[data-opened] { opacity: 0; translate: 0 -4px; } }

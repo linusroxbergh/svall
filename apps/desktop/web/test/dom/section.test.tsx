@@ -23,14 +23,14 @@ function squeezed(bottoms: number[]) {
   return body;
 }
 
-test('a squeezed section ends on its last whole row, the one the edge cuts going', () => {
+test('a squeezed section keeps its whole rows crisp, its fade starting at the row the edge cuts', () => {
   const body = squeezed([40, 80, 120]);
-  expect([body.dataset.more, body.dataset.whole, body.style.getPropertyValue('--whole')]).toEqual(['true', 'true', '80px']);
+  expect([body.dataset.more, body.dataset.whole, body.style.getPropertyValue('--whole')]).toEqual(['true', 'cut', '80px']);
 });
 
 test('a squeezed section whose edge cuts only the space under a row\'s words shows them all, unfaded', () => {
   const body = squeezed([40, 80, 102]);
-  expect(body.style.getPropertyValue('--whole')).toBe('100px');
+  expect([body.dataset.whole, body.style.getPropertyValue('--whole')]).toEqual(['all', '']);
 });
 
 test('a section the edge cuts through its first row keeps the fade over its foot', () => {
