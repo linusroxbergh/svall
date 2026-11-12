@@ -67,10 +67,13 @@ test('a window on a far home starts a robot in one of the home\'s folders, its l
     await expect(page.getByTestId('new-robot-where')).toHaveText('folder on studio');
     // the list holds its place while it is read, so the buttons under it stay where they are
     await expect(page.getByTestId('new-robot-folders')).toHaveText('Reading studio\'s folders…');
-    const before = (await page.getByTestId('new-robot-create').boundingBox())!;
+    // measured once the dialog has risen into place
+    await page.locator('.modal.dialog').evaluate(async (e) => { await Promise.all(e.getAnimations().map((a) => a.finished)); });
+    const create = async () => (await page.getByTestId('new-robot-create').boundingBox())!.y;
+    const before = await create();
     read();
     await expect(picks(page)).toHaveCount(24);
-    expect((await page.getByTestId('new-robot-create').boundingBox())!.y).toBe(before.y);
+    expect(await create()).toBe(before);
     await expect(page.getByTestId('new-robot-folder')).toBeHidden();
     expect(local.calls.filter((c) => c.method === 'workspace.clones')).toEqual([]);
 
