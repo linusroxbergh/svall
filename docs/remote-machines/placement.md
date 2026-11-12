@@ -86,9 +86,9 @@ and its own button or action, the first with its details behind it; `svall robot
    and the terminals on it, but nothing else passes until it is upgraded, and its robots show unknown; two builds of
    one release that differ so say "linus-vault runs a different build; upgrade it under Machines". The home greets
    it again every 5 minutes and after `svall host upgrade`.
-2. **The robot's agent is installed and logged in there, at the same version or newer.** "claude is not installed on
-   linus-vault", "linus-vault runs claude 2.1.299, this Mac 2.1.300; update claude on linus-vault", "claude is not
-   logged in on linus-vault; log claude in there", each with the terminal button but the update, whose button
+2. **The robot's agent is installed and logged in there, at the same version or newer.** "Claude Code is not installed on
+   linus-vault", "linus-vault runs Claude Code 2.1.299, this Mac 2.1.300; update Claude Code on linus-vault", "Claude
+   Code is not logged in on linus-vault; log in to Claude Code there", each with the terminal button but the update, whose button
    **Update Claude Code** runs it there from the sheet and checks again. An OpenCode logged in on neither
    machine runs on a model that needs no login, and passes.
 3. **The robot stands in a Git worktree on a branch, or on a main checkout that the move converts.** On a main
@@ -202,9 +202,9 @@ recorded:
 - An agent working there, or a command running in its shell there, refuses as check 7 does on the way out: "kanban is
   working; interrupt it now", "A command is running; move anyway and it ends". Choosing it (`--interrupt-after`)
   interrupts what still runs there after that long, then rests it.
-- The robot's agent on the home refuses as check 2 does the worker's: "claude is not installed on this Mac; on this
-  Mac, run curl -fsSL https://claude.ai/install.sh | bash", "this Mac runs claude 2.1.299, linus-vault 2.1.300; on
-  this Mac, run claude update", "claude is not logged in on this Mac; on this Mac, run claude auth login". Run it in a
+- The robot's agent on the home refuses as check 2 does the worker's: "Claude Code is not installed on this Mac; on this
+  Mac, run curl -fsSL https://claude.ai/install.sh | bash", "This Mac runs Claude Code 2.1.299, linus-vault 2.1.300; on
+  this Mac, run claude update", "Claude Code is not logged in on this Mac; on this Mac, run claude auth login". Run it in a
   terminal here, then **Check again**.
 - A worker that sends no sheet of what comes back refuses: "linus-vault did not answer the move sheet in 30 s; try
   again", or on a release without one, "linus-vault runs a release without move.sheet; upgrade it under Machines".

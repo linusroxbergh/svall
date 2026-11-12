@@ -229,7 +229,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const { deps, called } = outDeps((line) => answer(line.includes('--stage') ? { status: 'pending', phase: 'staged' } : { status: 'pending', phase: 'rolledback', detail: 'its daemon did not answer' }));
     const out = await moveHomeOut('studio', deps);
     expect(out.result).toBe('actions');
-    expect(failed()).toMatchObject({ step: 'adopt', detail: 'studio did not take the fleet: studio tried to take over and went back as it was', action: 'svall fleet home abort, or svall fleet home retry', say: 'The move is not finished', raw: 'its daemon did not answer' });
+    expect(failed()).toMatchObject({ step: 'adopt', detail: 'studio tried to take over and went back as it was', action: 'svall fleet home abort, or svall fleet home retry', say: 'The move is not finished', raw: 'its daemon did not answer' });
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(false);
   });
 
@@ -370,7 +370,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
       deps.client = () => Promise.resolve({ ...client, call: (m: never, p: never) => { if ((m as string) === 'robot.moveTo') Object.assign(state.robots.crew, { machine: STUDIO, sentAhead: 'hm_abcdefghij' }); return client.call(m, p); }, close: () => {} } as unknown as Client);
       const out = await moveHomeOut('studio', deps);
       expect(out.actions).toContain('svall fleet home crew-back');
-      expect(events.find((e) => e.step === 'crew' && e.status === 'warn')).toMatchObject({ detail: expect.stringContaining('crew'), say: "Mission control's crew is still on studio" });
+      expect(events.find((e) => e.step === 'crew' && e.status === 'warn')).toMatchObject({ detail: "Mission control's crew stayed where the move sent it", say: "Mission control's crew is still on studio" });
     });
 
     it('crew-back moves each back to the home under an id it opened, and names any that cannot return', async () => {

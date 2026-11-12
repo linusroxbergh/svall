@@ -205,7 +205,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const older = depsOf(t, [c], { release: '0.16.0', far: [{ kind: 'claude', version: '0.1.0', adapter: 1, home: `${t.far}/.claude`, loggedIn: true }] });
     expect(await refusal(older)).toEqual({
       reason: 'linus-vault runs 0.16.0, this Mac 0.17.0', action: 'Upgrade it under Machines', details: [],
-      more: [{ reason: `linus-vault runs claude 0.1.0, this Mac ${CLAUDE}`, action: 'Update claude on linus-vault', run: 'claude update' }],
+      more: [{ reason: `linus-vault runs Claude Code 0.1.0, this Mac ${CLAUDE}`, action: 'Update Claude Code on linus-vault', run: 'claude update' }],
     });
     expect(older.asked.map((a) => a.method)).toEqual(['system.info']);
     const mute = depsOf(t, [c], { release: '0.16.0' });
@@ -322,11 +322,11 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const c = shellIn(t, { agent: claude() });
     const there = (o: Partial<AgentAdapter>): AgentAdapter[] => [{ kind: 'claude', version: CLAUDE, adapter: 1, home: `${t.far}/.claude`, loggedIn: true, hooks: true, ...o }];
     expect(await refusal(depsOf(t, [c], { far: [] })))
-      .toEqual({ reason: 'claude is not installed on linus-vault', action: 'Install claude on linus-vault', run: AGENTS.claude.installCommand, details: [] });
+      .toEqual({ reason: 'Claude Code is not installed on linus-vault', action: 'Install Claude Code on linus-vault', run: AGENTS.claude.installCommand, details: [] });
     expect(await refusal(depsOf(t, [c], { far: there({ version: '2.1.299' }) })))
-      .toEqual({ reason: 'linus-vault runs claude 2.1.299, this Mac 2.1.300', action: 'Update claude on linus-vault', run: 'claude update', details: [] });
+      .toEqual({ reason: 'linus-vault runs Claude Code 2.1.299, this Mac 2.1.300', action: 'Update Claude Code on linus-vault', run: 'claude update', details: [] });
     expect(await refusal(depsOf(t, [c], { far: there({ loggedIn: false }) })))
-      .toEqual({ reason: 'claude is not logged in on linus-vault', action: 'Log claude in there', run: 'claude auth login', details: [] });
+      .toEqual({ reason: 'Claude Code is not logged in on linus-vault', action: 'Log in to Claude Code there', run: 'claude auth login', details: [] });
     await sheet(depsOf(t, [c], { far: there({ version: '2.2.0' }) }));
     // a shell robot needs no agent there
     await sheet(depsOf(t, [shellIn(t)], { far: [] }));
@@ -337,7 +337,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const none = await agentProber({ run: () => Promise.reject(Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' })), read: () => Promise.resolve(undefined), env: {}, homedir: t.far })(true);
     const d = depsOf(t, [shellIn(t, { agent: claude() })], { far: agentAdapters(none) });
     d.store.state.machines![W].name = 'ada-mbp';
-    expect(await refusal(d)).toEqual({ reason: 'claude is not installed on ada-mbp', action: 'Install claude on ada-mbp', run: AGENTS.claude.installCommand, details: [] });
+    expect(await refusal(d)).toEqual({ reason: 'Claude Code is not installed on ada-mbp', action: 'Install Claude Code on ada-mbp', run: AGENTS.claude.installCommand, details: [] });
   });
 
   it('check 3: refuses two robots in one main checkout, a main checkout mid-merge and a detached HEAD; a worktree robot does not convert', async () => {

@@ -109,7 +109,7 @@ describe('a frozen home', () => {
   it('an enrol under way refuses the freeze, which thaws what it paused', async () => {
     const { freeze, log, paths } = setup();
     const enrolling = await enrolLock(paths.home);
-    await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toMatchObject({ code: 'busy', message: 'a worker is being enrolled; try again in a moment' });
+    await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toMatchObject({ code: 'busy', message: 'A worker is being enrolled; try again in a moment' });
     enrolling?.();
     expect(freeze.active).toBe(false);
     expect(log).toEqual(['pause', 'hold false', 'home.thaw', 'resume']);
@@ -937,7 +937,7 @@ describe('a frozen home', () => {
     it('opens none while another caller holds one open, as a window\'s Bring them back during a move driven from a terminal: the driver keeps its id', () => {
       const { freeze } = setup();
       freeze.open(ID, holder);
-      expect(() => freeze.open(OTHER, {})).toThrow(expect.objectContaining({ message: 'the fleet is already moving', data: { raw: ID } }));
+      expect(() => freeze.open(OTHER, {})).toThrow(expect.objectContaining({ message: 'The fleet is already moving', data: { raw: ID } }));
       expect(freeze.mayMoveCrew(ID, holder)).toBe(true);
       freeze.open(OTHER, holder);
       expect(freeze.mayMoveCrew(OTHER, holder)).toBe(true);
@@ -1014,6 +1014,7 @@ describe('the check', () => {
     const r = homeCheck(input());
     expect(r.ok).toBe(true);
     expect(r.sheet).toMatchObject({ here: 1, there: 1, mission: [] });
+    expect(r.sheet).not.toHaveProperty('carries');
   });
 
   it('refuses a second worker of either kind, by decision, naming how to bring it along', () => {

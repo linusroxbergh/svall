@@ -174,14 +174,14 @@ export function agentFailures(c: Robot, from: Agents, to: Agents): Failure[] {
   const kinds = new Set([c.agent?.kind, c.second?.agent?.kind].filter((k) => k !== undefined));
   const name = to.name;
   return [...kinds].flatMap((kind): Failure[] => {
-    const { bin, installCommand, updateCommand, loginHint } = AGENTS[kind];
+    const { label, installCommand, updateCommand, loginHint } = AGENTS[kind];
     const [here, there] = [from.agents.find((a) => a.kind === kind), to.agents.find((a) => a.kind === kind)];
-    if (!there?.version) return [{ reason: `${bin} is not installed on ${name}`, action: `Install ${bin} on ${name}`, run: installCommand }];
+    if (!there?.version) return [{ reason: `${label} is not installed on ${name}`, action: `Install ${label} on ${name}`, run: installCommand }];
     if (here?.version && compareVersions(there.version, here.version) === -1) {
-      return [{ reason: `${name} runs ${bin} ${there.version}, ${from.name} ${here.version}`, action: `Update ${bin} on ${name}`, run: updateCommand }];
+      return [{ reason: `${name} runs ${label} ${there.version}, ${from.name} ${here.version}`, action: `Update ${label} on ${name}`, run: updateCommand }];
     }
     // an OpenCode logged in on neither machine runs on a model that needs no login
-    if (!there.loggedIn && !(kind === 'opencode' && here?.loggedIn === false)) return [{ reason: `${bin} is not logged in on ${name}`, action: `Log ${bin} in there`, run: loginHint }];
+    if (!there.loggedIn && !(kind === 'opencode' && here?.loggedIn === false)) return [{ reason: `${label} is not logged in on ${name}`, action: `Log in to ${label} there`, run: loginHint }];
     return [];
   });
 }

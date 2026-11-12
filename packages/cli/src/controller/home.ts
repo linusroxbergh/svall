@@ -320,6 +320,8 @@ async function farAnswer(master: SshMaster, o: { svallBase: string; fleetHome: s
 
 // what the machine taking the fleet says of the move, as a sentence on `name`; a word for where it stands never shows bare
 const standing = (a: AdoptAnswer, name: string): string => (a.status === 'not-adopted' ? `${name} called the move off` : homeMoveStands(a.status === 'pending' ? a.phase : a.status, name).replace(/\.$/, ''));
+// a sentence that opens on this machine says This
+const opening = (s: string): string => s.replace(/^this /, 'This ');
 // what it said beside the phase, which goes to raw
 const farSaid = (a: AdoptAnswer): string | undefined => (a.status === 'pending' || a.status === 'not-adopted' ? a.detail : undefined);
 
@@ -392,7 +394,7 @@ async function offerCrew(run: Runner, home: Client, name: string): Promise<void>
   const away = crewAway(await home.call('state.get', {}));
   const names = away.map((r) => r.name).join(', ');
   const say = `Mission control's ${names} ${away.length === 1 ? 'is' : 'are'} still on ${name}`;
-  if (away.length) await run.step('crew', () => Promise.resolve({ value: undefined, status: 'warn' as const, detail: `mission control's ${names} stayed where the move sent them`, action: CREW_BACK, say }));
+  if (away.length) await run.step('crew', () => Promise.resolve({ value: undefined, status: 'warn' as const, detail: `Mission control's ${names} stayed where the move sent ${away.length === 1 ? 'it' : 'them'}`, action: CREW_BACK, say }));
 }
 
 /** `svall fleet home crew-back`: mission control's robots a move left away from the home go back to it through the move engine; each that cannot says why. */
@@ -485,7 +487,7 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
         const manifest: HomeManifest = { id, fleetId, from: d.me, to, toName: name, toHome: toHome as HomeManifest['toHome'], record: { ...here, svallBase: installPrefix(), dial: 'worker' }, phone, adoptKeySha256, ...(d.target.managed && { fromProfile: d.target.name }), workers: carried.filter((w) => w.id !== to) };
         const { bytes, sha256 } = await packFleet(paths, manifest);
         const a = await far(['fleet', 'adopt', id, '--stage', '--sha256', sha256], bytes.toString('base64'));
-        if (a.status !== 'pending' || a.phase !== 'staged') throw new StepError(`${name} did not stage the fleet's files: ${standing(a, name)}`, undefined, undefined, undefined, farSaid(a));
+        if (a.status !== 'pending' || a.phase !== 'staged') throw new StepError(standing(a, name), undefined, undefined, undefined, farSaid(a));
         return { value: undefined, detail: `the fleet's files are on ${name}`, raw: `${bytes.length} bytes checked and staged` };
       });
       homePoint('move.copied');
@@ -531,7 +533,7 @@ async function finishOut(run: Runner, d: MoveDeps, client: Client, paths: Paths,
     if (answer.status === 'adopted') return { value: answer.enrol, detail: `${o.name} runs the fleet` };
     // a start of this daemon took the outcome first, and has joined
     if (answer.status === 'done') return { value: undefined, detail: `${o.name} runs the fleet` };
-    throw new StepError(`${o.name} did not take the fleet: ${standing(answer, o.name)}`, 'svall fleet home abort, or svall fleet home retry', undefined, o.ends, farSaid(answer));
+    throw new StepError(standing(answer, o.name), 'svall fleet home abort, or svall fleet home retry', undefined, o.ends, farSaid(answer));
   });
   driverJournal(paths, id, 'join');
   await run.step('join', async () => {
@@ -640,7 +642,7 @@ export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutco
         const { sha256, archive } = packed.data;
         const bytes = Buffer.from(archive, 'base64');
         const a = await stageAdopt(adoption, id, sha256, bytes);
-        if (a.status !== 'pending' || a.phase !== 'staged') throw new StepError(`${thisMachine()} did not stage the fleet's files: ${standing(a, thisMachine())}`, undefined, undefined, undefined, farSaid(a));
+        if (a.status !== 'pending' || a.phase !== 'staged') throw new StepError(opening(standing(a, thisMachine())), undefined, undefined, undefined, farSaid(a));
         return { value: undefined, detail: `the fleet's files are on ${thisMachine()}`, raw: `${bytes.length} bytes checked and staged` };
       });
       const keySha256 = markKey(paths, id);
@@ -684,7 +686,7 @@ async function finishBack(run: Runner, d: MoveDeps, adoption: AdoptDeps, id: Hom
   await run.step('adopt', async () => {
     const a = await installAdopt(adoption, id, driverAdoptKey(paths, id), enrolmentFor(paths, d.me, { home: d.registry.localMachine(), ...(d.target.managed && { profile: d.target.name }) }));
     if (a.status === 'adopted' || a.status === 'done') return { value: undefined, detail: `${thisMachine()} runs the fleet` };
-    throw new StepError(`${thisMachine()} did not take the fleet: ${standing(a, thisMachine())}`, a.status === 'not-adopted' ? undefined : 'svall fleet home abort, or svall fleet home retry', undefined, a.status === 'not-adopted' ? undefined : o.ends, farSaid(a));
+    throw new StepError(opening(standing(a, thisMachine())), a.status === 'not-adopted' ? undefined : 'svall fleet home abort, or svall fleet home retry', undefined, a.status === 'not-adopted' ? undefined : o.ends, farSaid(a));
   });
   driverJournal(paths, id, 'join');
   await run.step('join', async () => {

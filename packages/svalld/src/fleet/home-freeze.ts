@@ -125,7 +125,7 @@ export class HomeFreeze {
   /** Opens a move for its driver, whose calls alone may move mission control's robots under its id. */
   open(id: HomeMoveId, holder: Holder): void {
     const held = this.moving?.id ?? (this.opened?.holder !== holder ? this.opened?.id : undefined);
-    if (held) throw new ApiError('busy', 'the fleet is already moving', { raw: held });
+    if (held) throw new ApiError('busy', 'The fleet is already moving', { raw: held });
     this.opened = { id, holder };
   }
 
@@ -142,7 +142,7 @@ export class HomeFreeze {
   }
 
   async freeze(id: HomeMoveId, to: MachineId, holder: Holder): Promise<Result<'fleet.freeze'>> {
-    if (this.moving) throw new ApiError('busy', 'the fleet is already moving', { raw: this.moving.id });
+    if (this.moving) throw new ApiError('busy', 'The fleet is already moving', { raw: this.moving.id });
     const held = { id, to, holder, served: false, ready: false };
     // from here new calls are refused, and a driver that leaves during any step below ends it by finding `moving` gone
     this.moving = held;
@@ -151,7 +151,7 @@ export class HomeFreeze {
     try {
       // from the pause, no person's add and no re-enrol issues a token here: an enrol under way refuses the freeze
       const unlock = await enrolLock(this.d.paths.home);
-      if (!unlock) throw new ApiError('busy', 'a worker is being enrolled; try again in a moment');
+      if (!unlock) throw new ApiError('busy', 'A worker is being enrolled; try again in a moment');
       // a driver that left while this waited has let the freeze go already
       if (this.moving === held) this.enrolling = unlock;
       else unlock();
@@ -159,13 +159,13 @@ export class HomeFreeze {
       const status = await this.d.phone.get();
       still();
       // a link that cannot be read must not be taken for off, as the next home would never serve it
-      if (status.error) throw new ApiError('busy', `the phone link cannot be read: ${status.error}`);
+      if (status.error) throw new ApiError('busy', `The phone link cannot be read: ${status.error}`);
       // a link this home still owes counts as on: the next home takes the debt, and no tick here serves past the cut. So does one
       // an earlier freeze turned off and could not turn back on, whose record stands
       const owed = phoneOwed(this.d.paths);
       const serving = status.serving || owed.length > 0 || fs.existsSync(this.d.paths.homeServed);
       held.served = serving;
-      if (!await this.drained(DRAIN_MS)) throw new ApiError('busy', 'a call this home took is still running; try again in a moment');
+      if (!await this.drained(DRAIN_MS)) throw new ApiError('busy', 'A call this home took is still running; try again in a moment');
       still();
       const robot = Object.values(this.d.store.state.robots).find((r) => r.moving);
       if (robot) throw new ApiError('busy', `${robot.name} is moving; wait for its move to finish`);
@@ -173,8 +173,8 @@ export class HomeFreeze {
       still();
       // the worker starts nothing new, and what it sent is in; from here its metadata stays in its outbox
       const caught = await this.d.links.barrier(to, DRAIN_MS);
-      if (caught === 'applying') throw new ApiError('busy', 'a change a worker sent is still being applied; try again in a moment');
-      if (!caught) throw new ApiError('busy', 'a worker is still catching up; try again in a moment');
+      if (caught === 'applying') throw new ApiError('busy', 'A change a worker sent is still being applied; try again in a moment');
+      if (!caught) throw new ApiError('busy', 'A worker is still catching up; try again in a moment');
       still();
       this.d.links.hold(true);
       // an event some worker's link is applying as the hold starts would be acked after the cut
@@ -187,7 +187,7 @@ export class HomeFreeze {
         for (const was of owed) servedPhone(this.d.paths, was);
         const off = await this.d.phone.set(false);
         still();
-        if (off.error) throw new ApiError('busy', `the phone link did not go off: ${off.error}`);
+        if (off.error) throw new ApiError('busy', `The phone link did not go off: ${off.error}`);
       }
       held.ready = true;
       return { phone: { serving, logins: status.logins } };
@@ -478,6 +478,7 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
     mission: robots.filter((r) => state.islands[r.islandId]?.kind === 'home' && r.islandId === HOME_ISLAND && (r.machine ?? from.machineId) !== to.machineId).map((r) => ({ id: r.id, name: r.name })),
     rewrites: (from.rewrites ?? []).map((r) => ({ ...r, ...(to.paths?.[r.to] === false && { lacks: true }) })).filter((r) => !r.kept || r.lacks),
     ...(waits.length && { waits }),
+    ...(others.length && { carries: true as const }),
   };
   if (!failed.length) return { ok: true, sheet };
   const [first, ...more] = failed;

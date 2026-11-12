@@ -740,9 +740,9 @@ describe.skipIf(!hasGit)('the move transaction', () => {
   });
 
   it.each<[string, Partial<AgentProbe>, { reason: string; action: string }]>([
-    ['is not installed', { version: undefined }, { reason: 'claude is not installed on this Mac', action: `On this Mac, run ${AGENTS.claude.installCommand}` }],
-    ["is older than the worker's", { version: '2.1.299' }, { reason: 'This Mac runs claude 2.1.299, w1 2.1.300', action: 'On this Mac, run claude update' }],
-    ['is not logged in', { loggedIn: false }, { reason: 'claude is not logged in on this Mac', action: 'On this Mac, run claude auth login' }],
+    ['is not installed', { version: undefined }, { reason: 'Claude Code is not installed on this Mac', action: `On this Mac, run ${AGENTS.claude.installCommand}` }],
+    ["is older than the worker's", { version: '2.1.299' }, { reason: 'This Mac runs Claude Code 2.1.299, w1 2.1.300', action: 'On this Mac, run claude update' }],
+    ['is not logged in', { loggedIn: false }, { reason: 'Claude Code is not logged in on this Mac', action: 'On this Mac, run claude auth login' }],
   ])("a return refuses, before anything moves, while this Mac's claude %s", async (_, mac, refusal) => {
     const w = open();
     const home = await w.start();

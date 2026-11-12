@@ -124,7 +124,8 @@ describe('the check of a move with another worker', () => {
   });
 
   it('a Linux worker the new home reaches passes, and goes with the fleet', () => {
-    expect(check({ reach: { [W]: { ok: true, ssh: 'ada@box' } } })).toMatchObject({ ok: true });
+    // the sheet says the move carries a worker, whose step it then counts from the start
+    expect(check({ reach: { [W]: { ok: true, ssh: 'ada@box' } } })).toMatchObject({ ok: true, sheet: { carries: true } });
   });
 
   it('a worker with no route for the new home, as a second Mac, stays refused', () => {

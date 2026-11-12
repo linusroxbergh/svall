@@ -89,6 +89,8 @@ export const HomeSheet = z.object({
   rewrites: z.array(HomeRewrite),
   // the workers that do not answer: each joins the new home when it does
   waits: z.array(z.object({ id: MachineId, name: z.string() })).optional(),
+  // the move carries workers besides the two machines, which it joins to the new home as its last step
+  carries: z.literal(true).optional(),
 });
 export type HomeSheet = z.infer<typeof HomeSheet>;
 
