@@ -506,6 +506,23 @@ test('a key row is named by its key, says how it stands, its box labelled copy; 
   expect(screen.getByTestId('host-outcome').textContent).toBe('trift is readyCheck againDone');
 });
 
+test('a file that travels whole says so in its name, and its box what the action would say, so it has no details to open', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', {
+      step: 'mirror:claude:plugin:acme', status: 'warn', detail: 'not copied', action: 'Tick to copy the whole file, keys included',
+      tick: { item: 'claude:plugin:acme', name: "acme's config", fields: ['env'], on: false, preview: ['env'] }, gap: { name: "acme's config", what: 'not copied; tick to copy it as it is' },
+    });
+    store.getState().hostDone('doctor', 0);
+  });
+  fireEvent.click(screen.getByTestId('host-setup-fold'));
+  expect(screen.getByTestId('host-step-mirror:claude:plugin:acme').querySelector('.host-name')!.textContent).toBe("acme's config, whole, keys included");
+  expect(screen.queryByTestId('host-details-mirror:claude:plugin:acme')).toBeNull();
+});
+
 test('a tick the worker did not take says why on its row, and the rows are read again as svalld kept them', async () => {
   call.mockImplementation(async (method: string) => {
     if (method === 'machines.consent') throw new ApiError('not_mirrored', `the change is saved, but machine ${MACHINE} did not take it: token=s3cr3t`);
