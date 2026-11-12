@@ -88,6 +88,9 @@ export class StepError extends Error {
   constructor(readonly detail: string, readonly action?: string, readonly run?: string, readonly say?: string, readonly raw?: string) { super(detail); }
 }
 
+/** A far daemon that answers, from another release than the one asked for. */
+class OtherRelease extends StepError {}
+
 type Outcome<T> = {
   value: T; status?: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here']; raw?: string;
 };
@@ -235,7 +238,7 @@ function toolsProbe(out: string, destination: string): Outcome<void> {
   }
   if (packages.length) {
     const apt = there(destination, `sudo apt install ${packages.join(' ')}`);
-    throw new StepError(`${missing.join(', ')} missing`, apt.action, apt.run);
+    throw new StepError(`${missing.join(', ')} missing`, apt.action, apt.run, `Install ${missing.join(' and ')} on ${destination}`);
   }
   throw new StepError(`${missing.join(', ')} missing`, onThere(destination, 'install Tailscale from https://tailscale.com/download/linux'));
 }
@@ -428,9 +431,10 @@ async function endToEnd(master: SshMaster, entry: MachineEntry, { release, anyPr
   const { client, info, forward } = await connectForwarded(master, entry, { ...(fleetHome ? { fleetHome } : { profile: PRIVATE }), anyProtocol });
   try {
     const running = (await client.call('system.info', {})).release;
-    if (release && running !== release) throw new Error(`${entry.record.name} answers from release ${running}, not ${release}`);
+    if (release && running !== release) throw new OtherRelease(`answers from ${running}, not ${release}`);
     return { value: undefined, detail: 'answers', raw: `${entry.record.name} answers on ${fleetHome ?? `its own ${PRIVATE} fleet`}` };
   } catch (err) {
+    if (err instanceof OtherRelease) throw err;
     throw new StepError('does not answer', undefined, undefined, undefined, redact((err as Error).message, [info.token]));
   } finally {
     client.close();
@@ -880,7 +884,7 @@ const failed = (name: string, err: unknown): Check => (err instanceof StepError
   : { name, status: 'fail', detail: 'could not be checked', raw: (err as Error).message });
 
 /** Whether a machine on `release` runs this Mac's, as a development build takes any release for its own. */
-export const sameRelease = (release: string, controller: HostDeps['controller']): boolean => controller.release === 'dev' || release === controller.release;
+export const sameRelease = (release: string, controller: Pick<HostDeps['controller'], 'release'>): boolean => controller.release === 'dev' || release === controller.release;
 
 /** Why the re-enrol owed the machine has not landed, once a try that ended after `since` says, or JOIN_MS passes; undefined once none is owed. */
 async function joinSettled(machine: MachineId, d: Pick<HostDeps, 'joining'>, since: number): Promise<string | undefined> {
@@ -1001,6 +1005,8 @@ const rollbackTo = (name: string, d: Pick<HostDeps, 'fleet'>): string => `${host
 const seeWhy = (name: string, d: Pick<HostDeps, 'fleet'>): string => `see why: ${hostCmd(d)} doctor ${name}`;
 // what an upgrade or rollback did that its probe fails, and why it says so, as one line a person reads
 const thrown = (err: unknown): string => (err instanceof StepError ? err.raw ?? err.detail : inFull(err));
+// a probe that found the daemon on another release says which; any other failure, that it does not answer, with why behind
+const unanswered = (err: unknown): { detail: string; raw?: string } => (err instanceof OtherRelease ? { detail: err.detail } : { detail: 'does not answer', raw: thrown(err) });
 
 /** The one master an upgrade or a rollback rides on, to the machine the registry names. */
 async function checkedMaster(d: HostDeps, entry: Registered): Promise<Outcome<SshMaster>> {
@@ -1056,7 +1062,7 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
           await endToEnd(master, entry, { release: companion.version, ...(fleetHome && { fleetHome }) });
           return { value: true, detail: 'answers' };
         } catch (err) {
-          return { value: false, status: 'warn' as const, detail: 'does not answer', action: seeWhy(name, d), raw: thrown(err) };
+          return { value: false, status: 'warn' as const, ...unanswered(err), action: seeWhy(name, d) };
         }
       });
       if (probed) {
@@ -1073,11 +1079,13 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
         const out = await remoteRollback(master, { svallBase: entry.record.svallBase, from: companion.version, ...(to !== undefined && { to }) }).catch((err: Error) => err);
         const now = await currentRelease(master, entry.record.svallBase);
         d.runs?.(now);
-        const runs = !replaced ? (now === before ? `back on ${now}` : `on ${now}; ${before} could not be put back`)
+        // only the release before, put back, is a rollback that did what it was for
+        const putBack = !replaced && now === before;
+        const runs = putBack ? `back on ${now}` : !replaced ? `on ${now}; ${before} could not be put back`
           : now === before ? `stays on ${now}: no earlier release is kept there` : `on ${now}, the newest release kept there`;
         const long = `ssh ${entry.record.ssh} and read the service's log; ${rollbackTo(name, d)}`;
         if (out instanceof Error) throw new StepError(runs, seeWhy(name, d), undefined, undefined, `${inFull(out)}\n${long}`);
-        return { value: undefined, status: 'warn' as const, detail: runs, action: seeWhy(name, d), raw: [out.trim(), long].filter(Boolean).join('\n') };
+        return { value: undefined, status: putBack ? 'ok' as const : 'warn' as const, detail: runs, action: seeWhy(name, d), raw: [out.trim(), long].filter(Boolean).join('\n') };
       });
     } finally {
       await master.close().catch(() => undefined);
@@ -1141,7 +1149,8 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
           // the release gone back to may speak an older protocol than this controller, and its system.info still names it
           await endToEnd(master, entry, { release: now, anyProtocol: true, ...(fleetHome && { fleetHome }) });
         } catch (err) {
-          throw new StepError('does not answer', seeWhy(name, d), undefined, undefined, `${thrown(err)}\n${long(now)}`);
+          const said = unanswered(err);
+          throw new StepError(said.detail, seeWhy(name, d), undefined, undefined, [said.raw, long(now)].filter(Boolean).join('\n'));
         }
         return { value: undefined, detail: 'answers' };
       });

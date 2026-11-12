@@ -131,11 +131,15 @@ const withList = (rows: Gapped[], name: string, there: There): string[] => {
  */
 export function tiered(checks: Check[], fleet: FleetAgents | undefined, flow = false): { lines: string[]; todo: number } {
   const rows = checks.filter((c) => !c.name.startsWith(MIRROR));
-  const by = (tier: string) => rows.filter((c) => tierOf({ step: c.name, status: c.status }, fleet, flow) === tier);
-  const [todo, notes, fine] = [by('todo'), by('note').length, by('fine').length];
+  // a step flow's rollback says what the machine runs now, so it is said in full whatever it found
+  const kept = (c: Check) => flow && c.name === 'rollback';
+  const tier = (c: Check) => tierOf({ step: c.name, status: c.status }, fleet, flow);
+  const todo = rows.filter((c) => tier(c) === 'todo');
+  const full = rows.filter((c) => tier(c) === 'todo' || kept(c));
+  const [notes, fine] = (['note', 'fine'] as const).map((t) => rows.filter((c) => tier(c) === t && !kept(c)).length);
   return {
     todo: todo.length,
-    lines: [...(todo.length ? checkLines(todo) : []), ...(notes ? [`${MARK.warn} ${plural(notes, 'note')}`] : []), ...(fine ? [`${MARK.ok} ${plural(fine, 'check')} fine`] : [])],
+    lines: [...(full.length ? checkLines(full) : []), ...(notes ? [`${MARK.warn} ${plural(notes, 'note')}`] : []), ...(fine ? [`${MARK.ok} ${plural(fine, 'check')} fine`] : [])],
   };
 }
 
@@ -258,9 +262,12 @@ function recordCheck(dir: string, id: MachineId, check: LastCheck): void {
 
 /** What an add, upgrade or rollback that left the machine on `release` keeps as its last check: its steps, and that
  *  release against this Mac's, counted as a doctor's are. */
-export const runCheck = (steps: Map<string, string>, release: string, controller: HostDeps['controller']): LastCheck => checkOf({
+export const runCheck = (steps: Map<string, string>, release: string, controller: Pick<HostDeps['controller'], 'release'>): LastCheck => checkOf({
   checks: [...[...steps].map(([name, status]) => ({ name, status })), { name: 'release', status: sameRelease(release, controller) ? 'ok' : 'fail' }], release,
 });
+
+/** What a join found of the home it joined, kept as its last check: the release it runs, against this Mac's. */
+export const recordJoined = (dir: string, home: MachineId, release: string): void => recordCheck(dir, home, runCheck(new Map(), release, { release: releaseVersion() }));
 
 /** Drops a machine's last check, as it leaves the registry; the file goes with the last one. */
 export function forgetCheck(dir: string, id: string): void {

@@ -517,6 +517,10 @@ describe('host list', () => {
       { name: registry.localMachine().name, id: registry.localId, platform: `${process.platform === 'linux' ? 'linux' : 'darwin'}-${process.arch}` },
       { name: 'trift', id: REMOTE, ssh: 'ada@trift', platform: 'linux-arm64', check },
     ]);
+    // a home a join found on the release this one runs says so, as a check of it would
+    const { recordJoined, lastChecks } = await import('../src/commands/host.js');
+    recordJoined(config, REMOTE, '1.2.4');
+    expect(machineRows(registry, lastChecks(config), undefined, '1.2.4')[1]).toMatchObject({ current: true, check: { release: '1.2.4', failed: 0 } });
     // a machine last checked on the release this one runs says so, and on any other does not
     expect(machineRows(registry, { [REMOTE]: check }, undefined, '1.2.3')[1]).toMatchObject({ current: true });
     expect(machineRows(registry, { [REMOTE]: check }, undefined, '1.2.4')[1]).not.toHaveProperty('current');

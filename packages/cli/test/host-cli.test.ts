@@ -162,8 +162,10 @@ describe('the last line a run prints', () => {
     // a run that stopped ends as the window's verdict on it: a machine an add listed has things to fix, any other run did not finish
     expect(outcomeText({ result: 'actions', actions: [], stopped: 'install' }, 'upgrade', 'trift', { ...work, steps: [failed] }).split('\n').at(-1)).toBe('Upgrade did not finish');
     // one whose new release did not answer, and that put the one before back, did not finish either
-    const rolled: StepEvent[] = [{ step: 'probe', status: 'warn', detail: 'does not answer', action: 'see why' }, { step: 'rollback', status: 'warn', detail: 'back on 1.2.2', action: 'see why' }];
-    expect(outcomeText({ result: 'actions', actions: ['see why'] }, 'upgrade', 'trift', { ...work, steps: rolled }).split('\n').at(-1)).toBe('Upgrade did not finish');
+    const rolled: StepEvent[] = [{ step: 'probe', status: 'warn', detail: 'answers from 1.2.2, not 1.2.3', action: 'see why' }, { step: 'rollback', status: 'ok', detail: 'back on 1.2.2', action: 'see why' }];
+    // its rollback, which did what it was for, still said in full: it says what the machine runs now
+    expect(outcomeText({ result: 'actions', actions: ['see why'] }, 'upgrade', 'trift', { ...work, steps: rolled }).split('\n'))
+      .toEqual(['! probe     answers from 1.2.2, not 1.2.3 -> see why', '✓ rollback  back on 1.2.2 -> see why', 'Upgrade did not finish']);
     const unknown: StepEvent = { step: 'machine', status: 'fail', detail: 'no machine trift in the registry' };
     expect(outcomeText({ result: 'actions', actions: [unknown.detail!], stopped: 'machine' }, 'upgrade', 'trift', { ...work, steps: [unknown] }).split('\n').at(-1)).toBe('Upgrade did not finish');
     const listed: StepEvent = { step: 'registry', status: 'ok', detail: 'listed' };

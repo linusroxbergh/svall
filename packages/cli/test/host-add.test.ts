@@ -365,7 +365,8 @@ esac
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     await d.close();
     expect(out.result).toBe('actions');
-    expect(step('probe').at(-1)).toMatchObject({ status: 'fail', detail: 'does not answer', raw: 'trift answers from release 1.2.2, not 1.2.3' });
+    // the row says which release answered, which is all there is to say
+    expect(step('probe').at(-1)).toEqual({ step: 'probe', status: 'fail', detail: 'answers from 1.2.2, not 1.2.3' });
     expect(step('registry')).toEqual([]);
     expect(registry.get('trift')).toBeUndefined();
   });

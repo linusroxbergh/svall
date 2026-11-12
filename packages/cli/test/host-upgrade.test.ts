@@ -356,7 +356,7 @@ esac
     expect(ssh.remoteCalls()).toContainEqual([`${far.base}/releases/1.2.3/bin/svall`, 'setup', '--rollback', '1.2.2']);
     // what the rollback said, whole, then the long way
     expect(step('rollback').at(-1)).toMatchObject({
-      status: 'warn', detail: 'back on 1.2.2', action: 'see why: svall host doctor trift',
+      status: 'ok', detail: 'back on 1.2.2', action: 'see why: svall host doctor trift',
       raw: expect.stringMatching(new RegExp(`^stopping the fleet units\ncurrent -> ${far.base}/releases/1\.2\.2\nssh .* read the service's log`)),
     });
   });
@@ -414,9 +414,11 @@ esac
     await far.close();
     expect(out.result).toBe('actions');
     // each row it leaves to fix says what to do
-    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: 'does not answer', action: 'see why: svall host doctor trift', raw: expect.stringContaining('1.2.2') });
+    // which release answered, and the rollback that put the one before back as done
+    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: 'answers from 1.2.2, not 1.2.3', action: 'see why: svall host doctor trift' });
+    expect(step('probe').at(-1)).not.toHaveProperty('raw');
     expect(far.now()).toBe('1.2.2');
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', detail: 'back on 1.2.2', action: 'see why: svall host doctor trift' });
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'ok', detail: 'back on 1.2.2', action: 'see why: svall host doctor trift' });
   });
 
   it('keeps what the far machine said when its new release does not answer', async () => {

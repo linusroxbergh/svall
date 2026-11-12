@@ -142,7 +142,10 @@ describe('svall fleet join', () => {
   });
 
   it('says what a fleet it takes loses all the same, and names the home by its address and release alone', async () => {
-    const out = await joinHome({ ssh: 'ada@studio' }, deps({}));
+    const runs = vi.fn();
+    const out = await joinHome({ ssh: 'ada@studio' }, deps({}, { runs }));
+    // the release the home runs, which this Mac keeps as what it last found there
+    expect(runs.mock.calls).toEqual([['1.0.0']]);
     expect(out.result).toBe('ready');
     expect(events.find((e) => e.step === 'fleet' && e.status === 'ok')?.detail).toBe("this fleet holds no robot, worker or note; its island names and board columns go with the home's first snapshot");
     expect(events.find((e) => e.step === 'home' && e.status === 'ok')).toEqual({ step: 'home', status: 'ok', detail: "ada@studio is the fleet's home, on release 1.0.0", raw: `machine ${HOME_ID}, fleet ${FLEET}` });
