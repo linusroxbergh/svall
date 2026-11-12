@@ -4,7 +4,8 @@ import { loadMobileStatus, serveFleet } from './actions.js';
 import { app, deps } from './boot.js';
 import { copyText } from './bridge.js';
 import { useApp } from './hooks.js';
-import { NO_PAGE, OFF, phonesHere, phoneProblem } from './phoneText.js';
+import { Copy } from './icons.js';
+import { NO_PAGE, OFF, phonesHere, phoneProblem, sayingPhone } from './phoneText.js';
 import { homeName } from './placement.js';
 import { Said } from './Said.js';
 
@@ -36,6 +37,7 @@ export function MobileSwitch({ testId, sw }: { testId: string; sw?: ReturnType<t
 export function PhoneProblem({ settings }: { settings?: boolean }) {
   const status = useApp((s) => s.mobile);
   const home = useApp((s) => s.via && homeName(s.fleet, s.via));
+  useEffect(sayingPhone, []);
   const problem = status && phoneProblem(status);
   if (!problem) return null;
   return <div data-testid="mobile-problem"><Said {...problem} on={home} settings={settings} /></div>;
@@ -62,8 +64,8 @@ export function MobilePanel({ compact = false }: { compact?: boolean | 'qr' }) {
   const link = status.serving && (
     <>
       {qr}
-      <button className="mob-url" data-testid="mobile-url" data-tip={redact ? 'Copy the link' : status.url} onClick={copy}>
-        {redact ? <><i className="mob-mask" /><i className="mob-mask" /></> : copied ? 'copied' : status.url}
+      <button className="mob-url" data-testid="mobile-url" data-tip={redact ? 'Copy the link' : `Copy ${status.url}`} onClick={copy}>
+        <span>{redact ? <><i className="mob-mask" /><i className="mob-mask" /></> : copied ? 'copied' : status.url}</span><Copy />
       </button>
     </>
   );
@@ -82,7 +84,7 @@ export function MobilePanel({ compact = false }: { compact?: boolean | 'qr' }) {
           <div className="use-note">
             {status.pageMissing && <><b data-testid="mobile-nopage">{NO_PAGE}</b>{' '}</>}
             {status.logins.length ? <>Only {redact ? <i className="mob-mask" /> : status.logins.join(', ')} can connect.</> : 'No login can connect yet.'}
-            {' '}Settings → Phone says how to add one.
+            {' '}Settings → Phone says how to add a login.
           </div>
           <ol className="mob-steps" data-testid="mobile-steps">
             <li>Scan the code with your phone's camera.</li>

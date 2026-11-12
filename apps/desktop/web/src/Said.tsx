@@ -2,29 +2,38 @@ import { Caret, Mark } from './icons.js';
 import { terminalOn } from './MoveSheet.js';
 import { useRoute } from './OnMachine.js';
 
+/** `fix` with the command `run` in it set as code, whole on its line. */
+export function Fix({ fix, run }: { fix: string; run?: string }) {
+  const at = run ? fix.indexOf(run) : -1;
+  if (at < 0) return <>{fix}</>;
+  return <>{fix.slice(0, at)}<code className="said-run">{run}</code>{fix.slice(at + run!.length)}</>;
+}
+
 /**
  * A problem, said once: its line, what to do under it, what a tool said behind details, and a terminal on `on` with
- * `run` typed when this Mac reaches it. `settings`: the fix as a note of the Settings window. `mark`: false inside a row
- * that carries its own.
+ * `run` typed when this Mac reaches it; a command the fix does not quote waits behind details when nothing types it.
+ * `settings`: the fix as a note of the Settings window. `mark`: false inside a row that carries its own.
  */
 export function Said({ line, fix, raw, run, on, settings, mark = 'fail' }: {
   line: string; fix?: string; raw?: string; run?: string; on?: string; settings?: boolean; mark?: 'fail' | 'warn' | false;
 }) {
   const route = useRoute(run ? on : undefined);
+  const terminal = !!run && !!on && route;
+  const more = [!terminal && run && !fix?.includes(run) ? run : undefined, raw].filter(Boolean).join('\n\n');
   return (
     <div className="said" data-mark={mark || undefined}>
       {mark && <span className="said-mark" aria-hidden><Mark status={mark} /></span>}
       <div>
         <span>{line}</span>
-        {fix && <span className={settings ? 'set-note' : 'modal-sub'}>{fix}</span>}
-        {raw && (
+        {fix && <span className={settings ? 'set-note' : 'modal-sub'}><Fix fix={fix} run={run} /></span>}
+        {more && (
           <details className="modal-more">
             <summary><Caret dir="right" />details</summary>
-            <div className="modal-more-body mono">{raw}</div>
+            <div className="modal-more-body mono">{more}</div>
           </details>
         )}
       </div>
-      {run && on && route && <button className="btn sm" onClick={() => terminalOn(on, run)}>Open terminal</button>}
+      {terminal && <button className="btn sm" onClick={() => terminalOn(on!, run!)}>Open terminal</button>}
     </div>
   );
 }

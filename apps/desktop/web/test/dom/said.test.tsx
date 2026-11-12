@@ -78,3 +78,11 @@ test('before the list is read a terminal is offered, and a machine the list does
   expect(terminal()).toBeNull();
   expect(sent).toContainEqual({ type: 'host.list' });
 });
+
+test('a command with no terminal to type it, and no fix that quotes it, waits behind details before what the tool said', () => {
+  const { container, rerender } = render(<Said line="Tailscale names no login for this Mac" fix="Set mobile.logins in fleet.json, then restart Svall's background service" run="svall restart" raw="no owner" />);
+  expect(container.querySelector('.modal-more-body')!.textContent).toBe('svall restart\n\nno owner');
+  rerender(<Said line="x" fix="Run once on this Mac: sudo tailscale up" run="sudo tailscale up" />);
+  expect(container.querySelector('details')).toBeNull();
+  expect(container.querySelector('.modal-sub code.said-run')!.textContent).toBe('sudo tailscale up');
+});

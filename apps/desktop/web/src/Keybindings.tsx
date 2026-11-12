@@ -9,6 +9,8 @@ import { ACTIONS, actionIds, chordFor, chordLabel, chordOf, chordsOf, holderOf, 
 type Ask = { id: ActionId; chord: Chord; from?: ActionId; ghostty?: string };
 
 const write = (bindings: Bindings) => app.store.getState().setSettings({ bindings });
+// a row's label in the window's lowercase voice; a name, as Svall in Quit Svall, keeps its capital
+const rowLabel = (label: string): string => label[0].toLowerCase() + label.slice(1);
 
 export function Keybindings() {
   const bindings = useApp((s) => s.settings.bindings);
@@ -79,7 +81,7 @@ export function Keybindings() {
         return (
           <div key={id}>
             <div className="row">
-              <span>{ACTIONS[id].label}</span>
+              <span>{rowLabel(ACTIONS[id].label)}</span>
               <b className="set-keys">
                 <button className="key-chord" data-testid={`key-${id}`} data-listening={capturing === id}
                   aria-label={capturing === id ? `Press a key for ${ACTIONS[id].label}` : `Change the key for ${ACTIONS[id].label}, now ${chordLabel(chord)}`}

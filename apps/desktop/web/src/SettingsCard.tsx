@@ -6,10 +6,11 @@ import { app, deps } from './boot.js';
 import { copyText, openConfig, openUrl, shim, type MachineRow } from './bridge.js';
 import { holdCutout } from './cutout.js';
 import { AS_TYPED } from './Field.js';
-import { useApp } from './hooks.js';
-import { plural, splitRaw } from './host.js';
+import { useApp, useMore } from './hooks.js';
+import { plural, splitRaw, withoutTokens } from './host.js';
+import { startHost } from './hostRun.js';
 import { MachineActions } from './HostSetup.js';
-import { Close, Minus, Plus } from './icons.js';
+import { Close, Copy, Minus, Plus } from './icons.js';
 import { Group, Info } from './Info.js';
 import { Keybindings } from './Keybindings.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
@@ -43,6 +44,9 @@ function Phone() {
   const sw = useMobileSwitch();
   const status = sw.status;
   const home = useApp((s) => s.via && homeName(s.fleet, s.via));
+  // a screenshot's grey bars stand over the link and the logins, as in the dock
+  const redact = useApp((s) => !!s.phoneRedact);
+  const mask = <i className="mob-mask" />;
   const [copied, setCopied] = useState(false);
   // a status not read yet reads as off, so the rows wait for the first answer
   const [asked, setAsked] = useState(false);
@@ -60,7 +64,7 @@ function Phone() {
   return (
     <Group name="Phone link">
       <div className="row">
-        <span>phone link<Info id="phone">Reachable only on your tailnet; needs <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openUrl(app.bridge, e.currentTarget.href); }}>Tailscale</a> on {home ?? 'this Mac'} and the phone. After switching it off, turn notifications on again on each phone.</Info></span>
+        <span>serve this fleet<Info id="phone">Reachable only on your tailnet; needs <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openUrl(app.bridge, e.currentTarget.href); }}>Tailscale</a> on {home ?? 'this Mac'} and the phone. After switching it off, turn notifications on again on each phone.</Info></span>
         <b>{status?.error ? <span data-testid="set-mobile-blocked">unavailable</span> : <MobileSwitch testId="set-mobile" sw={sw} />}</b>
       </div>
       {sw.busy && !status?.serving && <div className="set-note" data-testid="set-mobile-starting">Starting; the first time can take a few minutes.</div>}
@@ -68,18 +72,18 @@ function Phone() {
         <>
           <div className="row">
             <span>address</span>
-            <b><button className="btn ghost" data-testid="set-mobile-url" data-tip="Copy the link" onClick={copy}>{copied ? 'copied' : status.url}</button></b>
+            <b><button className="btn ghost set-copy" data-testid="set-mobile-url" data-tip="Copy the link" onClick={copy}><span>{redact ? mask : copied ? 'copied' : status.url}</span><Copy /></button></b>
           </div>
           <div className="row">
             <span>connected</span>
-            <b data-testid="set-mobile-here">{phonesHere(status.phones, 'nobody')}</b>
+            <b data-testid="set-mobile-here">{redact && status.phones.length ? mask : phonesHere(status.phones, true)}</b>
           </div>
         </>
       )}
       {status && (
         <div className="row">
           <span>who can connect<Info id="phone-logins">Tailscale logins that may open this fleet. To change them, list every login in mobile.logins in fleet.json, then restart Svall.</Info></span>
-          <b data-testid="set-mobile-logins">{status.logins.length ? status.logins.join(', ') : 'nobody yet'}</b>
+          <b data-testid="set-mobile-logins">{!status.logins.length ? 'nobody yet' : redact ? mask : status.logins.join(', ')}</b>
         </div>
       )}
       {status?.serving && (
@@ -188,8 +192,14 @@ function FleetName() {
 }
 
 const when = (at: number): string => new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const checked = (c: NonNullable<MachineRow['check']>): string =>
-  `checked ${when(c.at)} · ${c.failed ? `${plural(c.failed, 'check')} failed` : c.warned ? plural(c.warned, 'warning') : 'ready'}`;
+const found = (c: NonNullable<MachineRow['check']>): string | undefined => (c.failed ? `${plural(c.failed, 'check')} failed` : c.warned ? plural(c.warned, 'warning') : undefined);
+// a join's why says its fix after `; `; what ssh or the far svall said comes on the row, or after the sentence from a home that keeps it there
+const joinSaid = (text: string, raw?: string): { line: string; fix?: string; raw?: string } => {
+  const { line: said, raw: told } = splitRaw(text);
+  const at = said.indexOf('; ');
+  const fix = at < 0 ? '' : said.slice(at + 2);
+  return { line: at < 0 ? said : said.slice(0, at), ...(fix && { fix: fix[0].toUpperCase() + fix.slice(1) }), raw: raw ? withoutTokens(raw) : told };
+};
 const DOT = { ok: 'reachable', off: 'not reachable', upgrade: 'needs an upgrade' } as const;
 const ROLE_TIP = { home: 'Holds the fleet and starts new robots.', worker: 'Runs robots moved to it.' } as const;
 
@@ -202,6 +212,7 @@ function Machines() {
   const links = useApp((s) => s.fleet.machines);
   const home = useApp((s) => (s.via ? homeName(s.fleet, s.via) : 'this Mac'));
   const online = useApp((s) => s.status === 'online');
+  const running = useApp((s) => !!s.host?.running);
   const [fleetRows, setFleetRows] = useState<FleetMachine[]>();
   const [asks, setAsks] = useState(0);
   const [listFailed, setListFailed] = useState<string>();
@@ -225,11 +236,11 @@ function Machines() {
     ...fleetRows?.map((f) => {
       const r = registered.get(f.id);
       return { id: f.id, name: r?.name ?? f.name, role: f.role as string | undefined, dialsIn: f.dialsIn, robots: f.robots as number | undefined, ssh: r?.ssh, check: r?.check,
-        joining: f.joining, reachable: f.reachable as boolean | undefined, since: f.since, release: f.release ?? r?.check?.release };
+        joining: f.joining, joinRaw: f.raw, reachable: f.reachable as boolean | undefined, since: f.since, release: f.release ?? r?.check?.release };
     }) ?? [],
     // on a registry here and not yet a machine of this fleet
     ...machines?.filter((m) => m.ssh && !known.has(m.id)).map((m) => ({ id: m.id, name: m.name, role: undefined, dialsIn: undefined, robots: undefined, ssh: m.ssh, check: m.check,
-      joining: undefined, reachable: undefined, since: undefined, release: m.check?.release })) ?? [],
+      joining: undefined, joinRaw: undefined, reachable: undefined, since: undefined, release: m.check?.release })) ?? [],
   ];
   // a home on this Mac with no worker is what it always was
   const shown = !via && !rows.some((r) => r.role !== 'home') ? [] : rows;
@@ -248,11 +259,14 @@ function Machines() {
           const label = m.id === via?.machine || (m.role === 'home' && !via) ? 'this Mac' : m.name;
           const acts = !!m.ssh && (via ? m.role === 'home' || !!registered.get(m.id)?.far : m.role !== 'home');
           const mismatch = !!links?.[m.id as MachineId]?.mismatch;
-          // a machine not in this fleet has no link to say anything of
-          const dot = m.role === undefined ? undefined : mismatch ? 'upgrade' : m.reachable ? 'ok' : 'off';
+          // a machine not in this fleet, or not joined yet, has no link to say anything of
+          const dot = m.role === undefined || m.joining !== undefined ? undefined : mismatch ? 'upgrade' : m.reachable ? 'ok' : 'off';
           const robots = m.robots ? plural(m.robots, 'robot') : '';
           const meta = (m.dialsIn ? [`connects out to ${home}`, robots] : [m.ssh, robots, m.release && `release ${m.release}`]).filter(Boolean).join(' · ');
-          const joining = m.joining ? splitRaw(m.joining) : undefined;
+          const joining = m.joining ? joinSaid(m.joining, m.joinRaw) : undefined;
+          // what a check found waits in the Check sheet, which lists it by checking again; the home says nothing while all is well
+          const told = m.check && found(m.check);
+          const recheck = () => { app.store.getState().toggleHost(true, m.name); startHost('doctor', { name: m.name, ...(registered.get(m.id)?.far && { id: m.id }) }); };
           return (
             <div key={m.id} className="machine" data-testid={`machine-${m.name}`} data-role={m.role}>
               {dot ? <i className="machine-dot" data-state={dot} role="img" aria-label={DOT[dot]} /> : <i />}
@@ -265,7 +279,7 @@ function Machines() {
               {m.joining !== undefined ? (
                 <div className="machine-said" data-testid={`machine-joining-${m.name}`}>
                   <span>has not joined yet</span>
-                  {joining && <Said line={joining.line} raw={joining.raw} settings />}
+                  {joining && <Said {...joining} settings mark="warn" />}
                 </div>
               ) : dot === 'off' ? (
                 <div className="machine-said">
@@ -273,8 +287,15 @@ function Machines() {
                   {acts && m.role === 'worker' && <span className="set-note">Removed it by hand? Forget drops it from this list.</span>}
                 </div>
               ) : mismatch ? <div className="machine-said">needs an upgrade</div>
+                : m.check && (told || m.role !== 'home') ? (
+                  <div className="machine-said" data-testid={`machine-checked-${m.name}`}>
+                    <span>checked {when(m.check.at)} · {told && acts ? (
+                      <button className="machine-found" disabled={running} data-tip={running ? 'Another run on a machine is under way' : `Check ${m.name} again and list them`}
+                        onClick={recheck}>{told}</button>
+                    ) : told ?? 'ready'}</span>
+                  </div>
+                )
                 : m.role === 'home' ? null
-                : m.check ? <div className="machine-said">{checked(m.check)}</div>
                 : m.ssh ? <div className="machine-said">not checked yet</div> : null}
             </div>
           );
@@ -333,7 +354,7 @@ function Scribe() {
       </Group>
       <Group name="Scribe">
         <div className="row">
-          <span>scribe<Info id="scribe">Updates names, notes and links after an agent stops. Each pass is one headless {AGENT_LABEL[scribeAgent]} call.</Info></span>
+          <span>names and notes<Info id="scribe">Updates names, notes and links after an agent stops. Each pass is one headless {AGENT_LABEL[scribeAgent]} call.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={on} data-testid="set-scribe" onClick={flip}>{on ? 'on' : 'off'}</button></b>
         </div>
         <div className="row" data-testid="set-placing-row" data-dim={!on}>
@@ -383,8 +404,9 @@ function Notifications() {
   return (
     <Group name="Notifications">
       <div className="row">
-        <span>notifications<Info id="notify">macOS banners when a robot needs you or is done. Approve and Deny work from the banner.</Info></span>
-        <b><button className="set-switch" role="switch" aria-checked={shown} data-testid="set-notify" onClick={flip}>{shown ? 'on' : 'off'}</button></b>
+        <span>banners<Info id="notify">macOS banners when a robot needs you or is done. Approve and Deny work from the banner.</Info></span>
+        <b><button className="set-switch" role="switch" aria-checked={shown} aria-label="Notifications" data-testid="set-notify" disabled={permission === 'denied'}
+          data-tip={permission === 'denied' ? 'macOS has them off for Svall; turn them on in System Settings' : undefined} onClick={flip}>{shown ? 'on' : 'off'}</button></b>
       </div>
       {permission === 'denied' && (
         <div className="row" data-testid="set-notify-denied">
@@ -488,7 +510,7 @@ function Machine() {
             data-tip={shell ? undefined : APP_ONLY} onClick={() => openConfig(app.bridge, 'ghostty')}>Open</button></b>
         </div>
         <div className="row">
-          <span>Fleet config<Info id="fleet-config">Mission control, fleet defaults, scribe and phone logins.</Info></span>
+          <span>fleet config<Info id="fleet-config">Mission control, fleet defaults, scribe and phone logins.</Info></span>
           <b><button className="btn sm" data-testid="settings-fleet" aria-label="Open Fleet config" disabled={!shell || apart}
             data-tip={!shell ? APP_ONLY : via?.served ? `This window has no route to ${home}, where fleet.json is.` : apart ? `${home} is not reachable; its fleet.json is there.` : undefined}
             onClick={() => (via ? void openFleetConfig(deps()) : openConfig(app.bridge, 'fleet'))}>Open</button></b>
@@ -533,6 +555,15 @@ export function SettingsCard() {
   const shell = app.bridge.present;
   const box = useRef<HTMLDivElement>(null);
   const nav = useRef<HTMLElement>(null);
+  // the pane's cut edge fades while more of it lies below, its rows coming and going as they are read
+  const panel = useRef<HTMLDivElement>(null);
+  const rows = useRef<HTMLDivElement>(null);
+  const [more, readMore] = useMore(panel, 'y');
+  useEffect(() => {
+    const ro = new ResizeObserver(() => readMore());
+    if (rows.current) ro.observe(rows.current);
+    return () => ro.disconnect();
+  }, []);
   // the Machines panel covers it, and a terminal that panel shows must not give up the window's rect
   const covered = useApp((s) => s.hostOpen);
   useEffect(() => (box.current && !covered ? holdCutout(app.bridge, box.current) : undefined), [covered]);
@@ -582,8 +613,8 @@ export function SettingsCard() {
           </button>
         ))}
       </nav>
-      <div className="side" role="tabpanel" id="set-panel" aria-labelledby={`set-tab-${pane}`}>
-        <Shown />
+      <div ref={panel} className="side" role="tabpanel" id="set-panel" aria-labelledby={`set-tab-${pane}`} data-testid="settings-panel" data-more={more} onScroll={readMore}>
+        <div ref={rows}><Shown /></div>
       </div>
       <i className="set-grip" data-testid="settings-grip" role="separator" aria-label="Resize the settings" data-tip="Drag to resize, double-click to reset" {...grip}
         onDoubleClick={() => { setDrag(undefined); set({ settingsSize: undefined }); }} />

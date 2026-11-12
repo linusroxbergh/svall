@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CWD, emptyState, type MachineId } from '@svall/protocol';
 import { arrangeIslands, deleteIsland, moveRobotTo, setStar, starRobotAt, newRobotOn, newRobotTarget, newIsland, newIslandAround, newNamedRobot, openSecondTerminal, reviveRobot, saveRobot, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeRobot } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
+import { sayingPhone } from '../src/phoneText.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
 
@@ -523,22 +524,21 @@ describe('serveFleet', () => {
   });
 
   // a link that cannot be made resolves carrying its reason, so the success path has to toast too
-  it('toasts the reason when the status carries one', async () => {
+  it('toasts the reason when the status carries one, with what to do and the tool\'s words to copy', async () => {
     const store = createAppStore(undefined);
-    const api = { call: () => Promise.resolve(status({ serving: false, error: 'tailscale is not logged in' })) } as unknown as Api;
+    const api = { call: () => Promise.resolve(status({ serving: false, error: 'Tailscale on this Mac is signed out', fix: 'Sign in from the Tailscale app', raw: 'logged out' })) } as unknown as Api;
     await serveFleet({ api, store }, true);
-    expect(store.getState().toast).toEqual({ text: 'tailscale is not logged in', tone: 'error' });
+    expect(store.getState().toast).toEqual({ text: 'Tailscale on this Mac is signed out', fix: 'Sign in from the Tailscale app', run: undefined, raw: 'logged out', tone: 'error' });
     expect(store.getState().mobileOpen).toBe(false);
   });
 
-  it('leaves the reason to the phone panel when that is open, and keeps the panel', async () => {
+  it('leaves the reason to a pane that says it while one is open', async () => {
     const store = createAppStore(undefined);
-    store.getState().setMobile(status({ serving: false }));
-    store.getState().toggleMobile(true);
     const api = { call: () => Promise.resolve(status({ serving: false, error: 'tailscale is not logged in' })) } as unknown as Api;
-    await serveFleet({ api, store }, true);
+    const done = sayingPhone();
+    try { await serveFleet({ api, store }, true); } finally { done(); }
     expect(store.getState().toast).toBeUndefined();
-    expect(store.getState()).toMatchObject({ mobileOpen: true, mobile: { error: 'tailscale is not logged in' } });
+    expect(store.getState()).toMatchObject({ mobile: { error: 'tailscale is not logged in' } });
   });
 
   it('toasts a rejection as well', async () => {

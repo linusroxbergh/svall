@@ -88,17 +88,18 @@ test('sound and the two events are switched one by one', () => {
   expect(sent).not.toContainEqual({ type: 'notify.enable' });
 });
 
-test('turned off in System Settings, the switch still asks macOS and the card points there', () => {
+test('turned off in System Settings, the switch is off and says why, and the card\'s button goes there', () => {
   store.getState().setNotifyPermission('denied');
   render(<SettingsCard />);
   show('notifications');
   expect(screen.getByTestId('set-notify-denied')).toBeTruthy();
-  fireEvent.click(screen.getByTestId('set-notify'));
-  expect(sent).toContainEqual({ type: 'notify.enable' });
-  expect(store.getState().settings.notifications.on).toBe(true);
+  const sw = screen.getByTestId('set-notify') as HTMLButtonElement;
+  expect([sw.disabled, sw.dataset.tip]).toEqual([true, 'macOS has them off for Svall; turn them on in System Settings']);
   expect(checked('set-notify')).toBe('false');
   fireEvent.click(screen.getByTestId('set-notify-settings'));
   expect(sent).toContainEqual({ type: 'notify.settings' });
+  act(() => store.getState().setNotifyPermission('unknown'));
+  expect([sw.disabled, sw.hasAttribute('data-tip')]).toEqual([false, false]);
 });
 
 test('outside the app there is no shell to post banners or hold the Mac awake, so neither shows', () => {
@@ -376,6 +377,11 @@ test('a window on a far home adds a machine there, and acts on that home\'s work
     const joining = await screen.findByTestId('machine-joining-box');
     // a machine still owed its join says so first, though it is not reachable either
     expect([...joining.children].map((c) => c.textContent)).toEqual(['has not joined yet', 'No route to host']);
+    // and keeps, as on a Mac home, its address, its Check and a ⋯ that can forget it
+    expect(row.querySelector('.machine-meta')!.textContent).toBe('ada@box · 2 robots');
+    expect(row.querySelector('[data-testid="machine-doctor"]')).not.toBeNull();
+    // its ⋯ still open from above
+    expect(row.querySelector('[data-testid="machine-forget"]')).not.toBeNull();
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -526,7 +532,7 @@ test('each pane is groups of rows under their names, and an action is a row with
   expect(kickers()).toEqual(['Display', 'Map', 'Power', 'Config files']);
   expect([...document.querySelectorAll('.set-group')[1].querySelectorAll('.row > span')].map((r) => r.firstChild!.textContent))
     .toEqual(['arrange on its own', 'links on cards', 'robot motion', 'usage meter']);
-  for (const [id, label, info] of [['settings-ghostty', 'Ghostty config', 'Terminal font, colours and cursor.'], ['settings-fleet', 'Fleet config', 'Mission control, fleet defaults, scribe and phone logins.']]) {
+  for (const [id, label, info] of [['settings-ghostty', 'Ghostty config', 'Terminal font, colours and cursor.'], ['settings-fleet', 'fleet config', 'Mission control, fleet defaults, scribe and phone logins.']]) {
     const open = screen.getByTestId(id);
     expect([open.textContent, open.className, open.closest('.row')!.firstChild!.firstChild!.textContent]).toEqual(['Open', 'btn sm', label]);
     expect(open.closest('.row')!.querySelector('[role="tooltip"]')!.textContent).toBe(info);
@@ -554,6 +560,27 @@ test('each pane is groups of rows under their names, and an action is a row with
   show('updates');
   expect(kickers()).toEqual(['Updates']);
   expect(document.querySelector('.set-win .desc, .set-win .opens')).toBeNull();
+});
+
+test('Keyboard\'s rows read in the window\'s lowercase, a name keeping its capital', () => {
+  render(<SettingsCard />);
+  show('keyboard');
+  const labels = [...document.querySelectorAll('.set-group .row > span:first-child')].map((r) => r.textContent);
+  expect(labels.slice(0, 3)).toEqual(['new robot', 'mission control', 'arrange the fleet']);
+  expect(labels).toContain('quit Svall');
+});
+
+test('the pane\'s cut edge fades while more of it lies below, and not once it is scrolled to its end', () => {
+  render(<SettingsCard />);
+  const panel = screen.getByTestId('settings-panel');
+  const size = (top: number) => {
+    Object.defineProperties(panel, { scrollHeight: { value: 900, configurable: true }, clientHeight: { value: 500, configurable: true }, scrollTop: { value: top, configurable: true } });
+    fireEvent.scroll(panel);
+  };
+  size(0);
+  expect(panel.getAttribute('data-more')).toBe('true');
+  size(400);
+  expect(panel.getAttribute('data-more')).toBe('false');
 });
 
 test('an Info says what a control is for in two sentences at most', async () => {
@@ -649,7 +676,7 @@ describe('Phone', () => {
     show('phone');
     const url = await screen.findByTestId('set-mobile-url');
     expect(kickers()).toEqual(['Phone link']);
-    expect([...document.querySelectorAll('.set-group .row > span')].map((r) => r.firstChild!.textContent)).toEqual(['phone link', 'address', 'connected', 'who can connect']);
+    expect([...document.querySelectorAll('.set-group .row > span')].map((r) => r.firstChild!.textContent)).toEqual(['serve this fleet', 'address', 'connected', 'who can connect']);
     expect(screen.getByTestId('set-mobile-here').textContent).toBe('nobody');
     expect(screen.getByTestId('set-mobile-logins').textContent).toBe('ada@github');
     // the address shows once: the QR beside its note has no link of its own
@@ -662,6 +689,39 @@ describe('Phone', () => {
     expect(url.textContent).toBe('copied');
     act(() => { vi.advanceTimersByTime(1500); });
     expect(url.textContent).toBe('https://mac.ts.net:8443');
+    expect(url.querySelector('svg')).not.toBeNull();
+  });
+
+  test('a screenshot\'s redaction greys the address, who is connected and who can be, as in the dock', async () => {
+    answer({ ...SERVING, phones: [{ login: 'ada@github', since: Date.now() }] });
+    render(<SettingsCard />);
+    show('phone');
+    await screen.findByTestId('set-mobile-url');
+    act(() => store.getState().setPhoneRedact('data:image/png;base64,BB'));
+    for (const id of ['set-mobile-url', 'set-mobile-here', 'set-mobile-logins']) {
+      expect(screen.getByTestId(id).querySelector('.mob-mask'), id).not.toBeNull();
+      expect(screen.getByTestId(id).textContent, id).not.toContain('ada@github');
+      expect(screen.getByTestId(id).textContent, id).not.toContain('mac.ts.net');
+    }
+    expect(document.querySelector<HTMLImageElement>('.set-qr img')!.src).toBe('data:image/png;base64,BB');
+  });
+
+  test('a problem the pane says is not said again by a toast; one no pane says, as when the pane closed while it started, is, with its fix and Copy details', async () => {
+    const off = { serving: false, url: '', port: 0, logins: [], phones: [] };
+    const denied = { ...off, error: 'Tailscale on this Mac does not let Svall share this fleet', fix: 'Run once on this Mac: sudo tailscale set --operator=$USER', run: 'sudo tailscale set --operator=$USER', raw: 'Access denied' };
+    let started!: (m: unknown) => void;
+    answer(off, () => new Promise((r) => { started = r; }));
+    const { unmount } = render(<SettingsCard />);
+    show('phone');
+    fireEvent.click(await screen.findByTestId('set-mobile'));
+    await act(async () => { started(denied); });
+    expect(await screen.findByTestId('mobile-problem')).toBeTruthy();
+    expect(store.getState().toast).toBeUndefined();
+    act(() => store.getState().setMobile(off));
+    fireEvent.click(screen.getByTestId('set-mobile'));
+    unmount();
+    await act(async () => { started(denied); });
+    expect(store.getState().toast).toMatchObject({ text: denied.error, fix: denied.fix, run: denied.run, raw: denied.raw, tone: 'error' });
   });
 
   test('says nobody can connect yet with no login, and nothing of an address or a QR while off', async () => {
@@ -748,6 +808,36 @@ describe('Machines', () => {
     act(() => store.getState().setFleet({ ...store.getState().fleet, machines: { [W]: { name: 'vault', reachable: false, since, mismatch: true } } } as never));
     await waitFor(() => expect(dot('vault')!.getAttribute('aria-label')).toBe('needs an upgrade'));
     expect(said('vault')).toBe('needs an upgrade');
+  });
+
+  test('a worker not joined yet has no dot, and says why in the home\'s words with what to check, a warning, ssh\'s words behind details', async () => {
+    await open([
+      { id: HOME, name: 'mac', role: 'home', reachable: true, robots: 2 },
+      { id: W, name: 'atlas', role: 'worker', reachable: false, robots: 0, joining: 'atlas is not reachable from this Mac; check that it is on and on Tailscale', raw: 'ssh: connect to host atlas port 22: Operation timed out' },
+    ], [{ name: 'atlas', id: W, ssh: 'ada@atlas', platform: 'linux-x64' }]);
+    expect(dot('atlas')).toBeNull();
+    const joining = screen.getByTestId('machine-joining-atlas');
+    const said = joining.querySelector('.said')!;
+    expect(said.getAttribute('data-mark')).toBe('warn');
+    expect(said.querySelector('.said > div > span')!.textContent).toBe('atlas is not reachable from this Mac');
+    expect(said.querySelector('.set-note')!.textContent).toBe('Check that it is on and on Tailscale');
+    expect(said.querySelector('.modal-more-body')!.textContent).toBe('ssh: connect to host atlas port 22: Operation timed out');
+  });
+
+  test('what a check found opens the Check sheet, which checks again to list it; the home says its own once a check found something', async () => {
+    const at = Date.UTC(2026, 10, 10, 9, 30);
+    await open([
+      { id: HOME, name: 'studio', role: 'home', reachable: true, robots: 2 },
+      { id: W, name: 'box', role: 'worker', reachable: true, robots: 0 },
+    ], [{ name: 'studio', id: HOME, ssh: 'ada@studio', platform: 'linux-x64', check: { at, failed: 1, warned: 0 } },
+      { name: 'box', id: W, ssh: 'ada@box', platform: 'linux-x64', check: { at, failed: 0, warned: 2 } }]);
+    const when = new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    expect(said('box')).toBe(`checked ${when} · 2 warnings`);
+    expect(said('studio')).toBe(`checked ${when} · 1 check failed`);
+    sent.length = 0;
+    fireEvent.click(within(screen.getByTestId('machine-box')).getByRole('button', { name: '2 warnings' }));
+    expect(store.getState().hostMachine).toBe('box');
+    expect(sent).toContainEqual(expect.objectContaining({ type: 'host.start', op: 'doctor', args: { name: 'box' } }));
   });
 
   test('the registry\'s machines wait for the fleet\'s list, so no row shifts in or changes later', async () => {
@@ -1032,7 +1122,8 @@ test('the pane is four groups, and what a copy sends and a backup holds wait beh
     expect(document.getElementById('set-tip-setup-copy')!.textContent).toBe("Sends what changed on this Mac since the last copy; nothing is removed on studio except keys you switch off. The first copy replaces same-named files there and keeps the old ones in studio's backup folder.");
     expect(document.getElementById('set-tip-setup-backup')!.textContent).toContain('Put back what you want before you copy.');
     const folder = screen.getByTestId('setup-backup-show').closest('.row')!.firstChild as HTMLElement;
-    expect([folder.textContent, folder.getAttribute('data-tip')]).toEqual(['mirror-backup/2026-11-04', '/Users/ada/.svall/mirror-backup/2026-11-04']);
+    const day = new Date(2026, 10, 4).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    expect([folder.textContent, folder.getAttribute('data-tip')]).toEqual([`backup from ${day}`, '/Users/ada/.svall/mirror-backup/2026-11-04']);
     expect(document.querySelector('.set-win .desc, .set-win .opens')).toBeNull();
   } finally {
     call.mockImplementation(() => Promise.resolve({}));

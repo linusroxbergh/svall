@@ -3,6 +3,7 @@ import { ApiError, CONNECTION_LOST, type Api } from './api.js';
 import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { withoutSecond } from './panes.js';
+import { phoneProblem, phoneSaid } from './phoneText.js';
 import { myMachine, startsBeside } from './placement.js';
 import type { FieldRef } from './resources/model.js';
 import { robotsOf, islandCwd, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startCwd, startOf } from './selectors.js';
@@ -456,5 +457,10 @@ export const loadMobileStatus = (d: ActionDeps): Promise<void> =>
 // the open phone panel says that reason itself, where a toast would cover it
 export const serveFleet = (d: ActionDeps, enabled: boolean): Promise<void> =>
   d.api.call('mobile.set', { enabled })
-    .then((m) => { d.store.getState().setMobile(m); if (m.error && !d.store.getState().mobileOpen) d.store.getState().showToast(m.error); })
+    .then((m) => {
+      d.store.getState().setMobile(m);
+      const problem = m.error ? phoneProblem(m) : undefined;
+      // what no open pane says yet: the panel left while the link was starting
+      if (problem && !phoneSaid()) d.store.getState().showToast({ text: problem.line, fix: problem.fix, run: problem.run, raw: problem.raw });
+    })
     .catch(toast(d));

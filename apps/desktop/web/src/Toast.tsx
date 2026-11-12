@@ -5,6 +5,7 @@ import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
 import { splitRaw, withoutTokens } from './host.js';
 import { refocusSurface } from './keyboard.js';
+import { Fix } from './Said.js';
 import { theme } from './theme.js';
 
 const CORNERS = ['bottom-left', 'bottom-right', 'top-left', 'top-right'] as const;
@@ -62,12 +63,12 @@ export function Toast({ corner = 'bottom-left' }: { corner?: Corner }) {
     if (document.hasFocus() && (!at || at === document.body || ref.current?.contains(at))) refocusSurface(app);
   }, [live]);
   if (!toast) return null;
-  // an error shows its sentence; what a tool said, as the daemon sent it or after the sentence, is copied, not shown
+  // an error shows its sentence and what to do; what a tool said, as the daemon sent it or after the sentence, is copied, not shown
   const { line, raw } = toast.tone !== 'error' ? { line: toast.text, raw: undefined } : toast.raw ? { line: withoutTokens(toast.text), raw: withoutTokens(toast.raw) } : splitRaw(toast.text);
   return (
     <div ref={ref} className="toast" data-testid="toast" data-tone={toast.tone} data-corner={corner} data-leaving={!live || undefined}
       onPointerEnter={() => setOver(true)} onPointerLeave={() => setOver(false)} onPointerDown={() => { setOver(true); pressed.current = toast.tone === 'error'; }}>
-      <span className="toast-text" data-testid="toast-text">{line}</span>
+      <span className="toast-text" data-testid="toast-text">{line}{toast.fix && <span className="toast-fix" data-testid="toast-fix"><Fix fix={toast.fix} run={toast.run} /></span>}</span>
       {toast.action && <button className="toast-act" data-testid="toast-action" onClick={() => { pressed.current = false; app.store.getState().runToastAction(); }}>{toast.action.label}</button>}
       {raw && <button className="toast-act" data-testid="toast-copy" onClick={() => { copyText(app.bridge, raw); setCopied(true); }}>{copied ? 'Copied' : 'Copy details'}</button>}
       {(toast.dismiss || toast.tone === 'error') && <button className="toast-act toast-dismiss" data-testid="toast-dismiss" onClick={() => app.store.getState().clearToast()}>Dismiss</button>}

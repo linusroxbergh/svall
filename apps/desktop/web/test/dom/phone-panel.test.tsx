@@ -55,7 +55,7 @@ test('a problem in a sentence of its own is said as it is', async () => {
 test('serving, it says who can connect and the three steps to the Home Screen icon', async () => {
   await panel(SERVING);
   const body = screen.getByTestId('mobile-body');
-  expect(body.querySelector('.use-note')!.textContent).toBe('Only ada@example.com can connect. Settings → Phone says how to add one.');
+  expect(body.querySelector('.use-note')!.textContent).toBe('Only ada@example.com can connect. Settings → Phone says how to add a login.');
   expect([...screen.getByTestId('mobile-steps').querySelectorAll('li')].map((li) => li.textContent)).toEqual([
     'Scan the code with your phone\'s camera.',
     'Tap Share, then Add to Home Screen.Safari: the square with an arrow, at the bottom. Chrome: the same mark, right of the address bar.',
@@ -66,12 +66,27 @@ test('serving, it says who can connect and the three steps to the Home Screen ic
 
 test('serving with no login, it says none can connect yet', async () => {
   await panel({ ...SERVING, logins: [] });
-  expect(screen.getByTestId('mobile-body').querySelector('.use-note')!.textContent).toBe('No login can connect yet. Settings → Phone says how to add one.');
+  expect(screen.getByTestId('mobile-body').querySelector('.use-note')!.textContent).toBe('No login can connect yet. Settings → Phone says how to add a login.');
 });
 
-test('the address shows on one line, the whole of it on the pointer', async () => {
+test('the address is a button that copies, with a copy mark, the whole of it on the pointer', async () => {
   await panel(SERVING);
-  expect(screen.getByTestId('mobile-url').dataset.tip).toBe(SERVING.url);
+  expect(screen.getByTestId('mobile-url').dataset.tip).toBe(`Copy ${SERVING.url}`);
+  expect(screen.getByTestId('mobile-url').querySelector('svg')).not.toBeNull();
   act(() => store.getState().setPhoneRedact('data:image/png;base64,AAAA'));
   expect(screen.getByTestId('mobile-url').dataset.tip).toBe('Copy the link');
+});
+
+test('a phone on the page is said to be connected, and since when', async () => {
+  await panel({ ...SERVING, phones: [{ login: 'ada@example.com', since: new Date(2026, 10, 12, 11, 54).getTime() }] });
+  expect(screen.getByTestId('mobile-here').textContent).toBe('ada@example.com connected since 11:54');
+});
+
+test('on a Mac home, whose terminal this window cannot open, the fix sets its command as code, whole', async () => {
+  await panel({ ...OFF, error: 'Tailscale on this Mac does not let Svall share this fleet', fix: 'Run once on this Mac: sudo tailscale set --operator=$USER', run: 'sudo tailscale set --operator=$USER', raw: DENIED });
+  const fix = problem()!.querySelector('.modal-sub')!;
+  expect(fix.textContent).toBe('Run once on this Mac: sudo tailscale set --operator=$USER');
+  expect(fix.querySelector('code.said-run')!.textContent).toBe('sudo tailscale set --operator=$USER');
+  expect(screen.queryByRole('button', { name: 'Open terminal' })).toBeNull();
+  expect(problem()!.querySelector('.modal-more-body')!.textContent).toBe(DENIED);
 });

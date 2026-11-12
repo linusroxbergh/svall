@@ -300,13 +300,14 @@ describe('phone push', () => {
 describe('the phones on the page', () => {
   const at = (hh: number, mm: number) => new Date(2026, 8, 19, hh, mm).getTime();
 
-  it('names each login and the minute it arrived, and says so when there is none', () => {
+  it('names each login, that it is connected and the minute it arrived, and says so when there is none; a labelled row leaves the what to its label', () => {
     expect(phonesHere([])).toBe('nobody has this open');
     expect(phonesHere()).toBe('nobody has this open');
-    expect(phonesHere([], 'nobody')).toBe('nobody');
-    expect(phonesHere([{ login: 'me@example.com', since: at(14, 2) }])).toBe('me@example.com since 14:02');
+    expect(phonesHere([], true)).toBe('nobody');
+    expect(phonesHere([{ login: 'me@example.com', since: at(14, 2) }])).toBe('me@example.com connected since 14:02');
+    expect(phonesHere([{ login: 'me@example.com', since: at(14, 2) }], true)).toBe('me@example.com since 14:02');
     expect(phonesHere([{ login: 'me@example.com', since: at(9, 5) }, { login: 'you@example.com', since: at(14, 30) }]))
-      .toBe('me@example.com since 09:05 · you@example.com since 14:30');
+      .toBe('me@example.com connected since 09:05 · you@example.com connected since 14:30');
   });
 
   // an off forgets every phone's notifications, so the remedy that turns it off and on says so

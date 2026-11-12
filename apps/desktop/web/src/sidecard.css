@@ -167,6 +167,10 @@
 .set-nav button[aria-selected="true"] { color: var(--sand); }
 .set-nav i { width: var(--dot-sm); height: var(--dot-sm); border-radius: var(--r-pill); background: var(--sand); }
 .set-win .side { width: auto; padding: var(--sp-2xl) var(--sp-3xl); gap: 0; }
+.set-win .side[data-more="true"] { mask-image: linear-gradient(var(--ink) calc(100% - var(--sp-3xl)), transparent); -webkit-mask-image: linear-gradient(var(--ink) calc(100% - var(--sp-3xl)), transparent); }
+/* what a machine's last check found, which checks it again to list them */
+.machine-found { padding: 0; border-radius: 0; background: none; font: inherit; color: inherit; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.machine-found:hover:not(:disabled) { background: none; color: var(--ink); text-decoration-color: currentColor; }
 /* a pane is groups of rows, each named by its kicker, which is the only separator */
 .set-group + .set-group { margin-top: var(--sp-2xl); }
 .set-group > .kicker { gap: var(--sp-xs); margin-bottom: var(--sp-xs); }
@@ -177,9 +181,15 @@
 .set-win .rows { border-top: 0; padding-top: 0; }
 .set-win .row { box-sizing: border-box; min-height: calc(var(--ctl-md) + var(--sp-xs)); align-items: center; }
 .set-win .row.set-sub { padding-left: var(--sp-2xl); }
-.set-win .row small.mono { font-size: var(--text-xs); color: var(--ink-3); }
+.set-win .row small.mono { margin-left: var(--sp-xs); padding: 0 var(--sp-xs); border-radius: var(--r-xs); background: var(--fill-1); font-size: var(--text-xs); color: var(--ink-3); }
 .set-win .row .btn.ghost { padding-block: 0; }
-.set-win .row b.set-pair { display: flex; align-items: center; gap: var(--sp-lg); font-weight: var(--w-regular); color: var(--ink-2); }
+/* a value that copies: the value's own ink, a copy mark after it */
+.set-win .row .btn.set-copy { display: inline-flex; align-items: center; gap: var(--sp-sm); max-width: 100%; color: var(--ink); }
+.set-win .row .btn.set-copy > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-win .row .btn.set-copy > svg { flex: none; color: var(--ink-3); }
+.set-win .row .btn.set-copy:hover > svg { color: var(--ink); }
+.set-win .row .mob-mask { display: inline-block; width: 9em; margin: 0; vertical-align: middle; }
+.set-win .row b.set-pair { display: flex; align-items: center; gap: var(--sp-lg); }
 .set-fold { min-height: calc(var(--ctl-md) + var(--sp-xs)); font-size: var(--text-sm); color: var(--ink-3); }
 /* a problem in a pane; in a row beside a label its words sit at the right */
 .set-said { min-width: 0; }
@@ -192,8 +202,10 @@
 .side .opens:has(.set-info) { align-items: center; }
 .set-info > .ib { margin: calc(-1 * var(--sp-2xs)) 0 calc(-1 * var(--sp-2xs)) var(--sp-2xs); vertical-align: middle; }
 /* the tip is opened and placed by the script: it flips over its row when the panel's floor is too near */
-.set-tip { display: none; position: absolute; left: 0; right: 0; top: calc(100% + 5px); z-index: var(--z-popover); overflow: hidden auto; box-sizing: border-box;
-  padding: var(--sp-lg) var(--sp-lg); color: var(--ink-2); font-size: var(--text-sm); font-weight: var(--w-regular); line-height: var(--lh); text-align: left; text-transform: none; letter-spacing: normal; }
+.set-tip { display: none; position: absolute; left: 0; top: calc(100% + 5px); z-index: var(--z-popover); overflow: hidden auto; box-sizing: border-box; width: max-content; max-width: min(100%, 400px);
+  padding: var(--sp-lg) var(--sp-lg); color: var(--ink); font-size: var(--text-sm); font-weight: var(--w-regular); line-height: var(--lh); text-align: left; text-transform: none; letter-spacing: normal; }
+/* raised off the pane it covers, so the rows under it read as covered, not gone */
+.set-tip.popover { background: var(--panel-hi); backdrop-filter: blur(var(--blur-panel)); border-color: var(--line-strong); }
 .set-tip[data-open="true"] { display: block; }
 .set-tip[data-place="up"] { top: auto; bottom: calc(100% + 5px); }
 /* one line under the row or group it belongs to */
@@ -202,8 +214,12 @@
 .set-slider input { width: 132px; accent-color: var(--sand); }
 .set-slider .tnum, .set-zoom .tnum { min-width: 36px; text-align: right; }
 .set-zoom .tnum { text-align: center; }
-.set-switch { width: calc(var(--ctl-sm) * 2); height: var(--ctl-sm); padding: 0; border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
-.set-switch[aria-checked="true"] { background: var(--sand); color: var(--ink-sand); }
+.set-switch { display: inline-flex; align-items: center; justify-content: space-between; box-sizing: border-box; width: calc(var(--ctl-sm) * 2 + var(--sp-sm)); height: var(--ctl-sm);
+  padding: 0 var(--sp-sm) 0 var(--sp-xs); border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
+/* its knob sits at the side it is switched to, so it reads as a control rather than a state */
+.set-switch::before { content: ''; flex: none; width: calc(var(--ctl-sm) - 2 * var(--sp-xs)); height: calc(var(--ctl-sm) - 2 * var(--sp-xs)); border-radius: var(--r-xs); background: var(--fill-3); }
+.set-switch[aria-checked="true"] { flex-direction: row-reverse; padding: 0 var(--sp-xs) 0 var(--sp-sm); background: var(--sand); color: var(--ink-sand); }
+.set-switch[aria-checked="true"]::before { background: var(--ink-sand); opacity: .55; }
 .set-switch[aria-checked="true"]:hover { background: var(--sand-hi); }
 .row[data-dim="true"] { opacity: var(--disabled); }
 .row b.set-keys { display: flex; align-items: center; gap: var(--sp-xs); }

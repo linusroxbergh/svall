@@ -267,3 +267,13 @@ describe('the keys a press on an error toast takes from the terminal under it', 
     expect(focuses()).toEqual([]);
   });
 });
+
+test('a problem with a fix says the fix under its sentence, its command as code, and copies what the tool said', () => {
+  const { getByTestId } = render(<Toast />);
+  act(() => store.getState().showToast({ text: 'Tailscale on this Mac does not let Svall share this fleet', fix: 'Run once on this Mac: sudo tailscale set --operator=$USER', run: 'sudo tailscale set --operator=$USER', raw: 'Access denied' }));
+  expect(getByTestId('toast').getAttribute('data-tone')).toBe('error');
+  expect(getByTestId('toast-text').firstChild!.textContent).toBe('Tailscale on this Mac does not let Svall share this fleet');
+  expect(getByTestId('toast-fix').textContent).toBe('Run once on this Mac: sudo tailscale set --operator=$USER');
+  expect(getByTestId('toast-fix').querySelector('code')!.textContent).toBe('sudo tailscale set --operator=$USER');
+  expect(getByTestId('toast-copy').textContent).toBe('Copy details');
+});

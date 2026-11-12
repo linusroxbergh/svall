@@ -61,7 +61,7 @@ test('the phone panel says who is on the page, and hears them arrive and leave',
 
     const since = Date.now() - 3_600_000;
     fake.tell([{ login: 'me@example.com', since }]);
-    await expect(here).toHaveText(`me@example.com since ${hhmm(since)}`);
+    await expect(here).toHaveText(`me@example.com connected since ${hhmm(since)}`);
     await expect(here).toHaveAttribute('data-live', 'true');
 
     fake.tell([]);
@@ -122,7 +122,7 @@ test('a long address stays on one line, whole on the pointer, and the panel list
     await page.getByTestId('mobile-tab').click();
     const link = page.getByTestId('mobile-url');
     await expect(link).toHaveText(url);
-    await expect(link).toHaveAttribute('data-tip', url);
+    await expect(link).toHaveAttribute('data-tip', `Copy ${url}`);
     // one line of 10.5px text and its padding; a second line would add another 12px or more
     expect((await link.boundingBox())!.height).toBeLessThan(32);
     await expect(page.getByTestId('mobile-steps').locator('li')).toHaveCount(3);

@@ -97,6 +97,13 @@ export function SetupTicks({ rows, tick }: { rows: SetupRow[]; tick: (r: SetupRo
   return <div data-testid="setup-rows">{rows.map(row)}</div>;
 }
 
+// a backup folder is named for the day it was made, and numbered after the first that day; one named otherwise by its last two parts
+const backupLabel = (dir: string): string => {
+  const m = /\/(\d{4})-(\d{2})-(\d{2})(?:-(\d+))?\/?$/.exec(dir);
+  if (!m) return dir.split('/').filter(Boolean).slice(-2).join('/');
+  return `backup from ${new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}${m[4] ? ` (${m[4]})` : ''}`;
+};
+
 const copied = (home: string, r: Result<'machines.copySetupFrom'>): string => [
   `Copied to ${home}.`, r.backup && `Replaced files are in ${r.backup} on ${home}.`,
   r.replaced && `${home}'s own ${r.replaced.join(', ')} went to its backup folder.`,
@@ -181,7 +188,7 @@ export function AgentSetup() {
         <Group name="Replaced on this Mac" testid="setup-backup"
           info={<Info id="setup-backup">A push from {home} replaced same-named files here and kept the old ones in this folder. Put back what you want before you copy.</Info>}>
           <div className="row">
-            <span data-tip={backup}>{backup.split('/').filter(Boolean).slice(-2).join('/')}</span>
+            <span data-testid="setup-backup-label" data-tip={backup}>{backupLabel(backup)}</span>
             <b><button className="btn sm" data-testid="setup-backup-show" onClick={() => openFolder(app.bridge, backup, me)}>Show in Finder</button></b>
           </div>
           {replaced.length > 0 && <div className="set-note" data-testid="setup-replaced">Also in it: this Mac&apos;s own {replaced.join(', ')}.</div>}
