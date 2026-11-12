@@ -92,6 +92,10 @@ type Outcome<T> = {
   value: T; status?: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here']; raw?: string;
 };
 
+// an SshError that only says a command there exited goes behind the step's own words; one in Svall's words stays the step's
+const sshStepError = (err: SshError): StepError =>
+  / exited \d+$/.test(err.message) ? new StepError('did not finish', undefined, undefined, undefined, inFull(err)) : new StepError(err.message, undefined, undefined, undefined, err.raw);
+
 /** The step events a host command emits, the actions they leave the user with, and the mirror rows of what will not work there. */
 export class Runner {
   readonly actions: string[] = [];
@@ -111,8 +115,7 @@ export class Runner {
     try {
       r = await fn();
     } catch (err) {
-      // what ssh or a command there said is a tool's words, which go behind a sentence of the step's own
-      const e = err instanceof StepError ? err : err instanceof SshError ? new StepError('did not finish', undefined, undefined, undefined, inFull(err)) : new StepError((err as Error).message);
+      const e = err instanceof StepError ? err : err instanceof SshError ? sshStepError(err) : new StepError((err as Error).message);
       this.failed = step;
       this.todo(e.action ?? e.detail);
       this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}), ...(e.run ? { run: e.run } : {}), ...(e.say ? { say: e.say } : {}), ...(e.raw ? { raw: e.raw } : {}) });
@@ -996,7 +999,7 @@ const rollbackTo = (name: string, d: Pick<HostDeps, 'fleet'>): string => `${host
 // what a rollback that went wrong leaves a person: the check that says why, and the long way behind it
 const seeWhy = (name: string, d: Pick<HostDeps, 'fleet'>): string => `see why: ${hostCmd(d)} doctor ${name}`;
 // what an upgrade or rollback did that its probe fails, and why it says so, as one line a person reads
-const thrown = (err: unknown): string => (err instanceof StepError ? err.raw ?? err.detail : (err as Error).message);
+const thrown = (err: unknown): string => (err instanceof StepError ? err.raw ?? err.detail : inFull(err));
 
 /** The one master an upgrade or a rollback rides on, to the machine the registry names. */
 async function checkedMaster(d: HostDeps, entry: Registered): Promise<Outcome<SshMaster>> {

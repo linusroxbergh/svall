@@ -155,7 +155,7 @@ esac
     const out = await upgradeHost('trift', { release: archive }, deps({ registry: far.registry, verify: intruder.verify }));
     await far.close();
     expect(out.result).toBe('actions');
-    expect(step('install').at(-1)).toMatchObject({ status: 'fail', detail: 'did not finish', raw: expect.stringContaining(`not signed by a key ${far.base}/current/release/allowed_signers pins`) });
+    expect(step('install').at(-1)).toMatchObject({ status: 'fail', detail: `the uploaded release is not signed by a key ${far.base}/current/release/allowed_signers pins` });
     expect(fs.existsSync(ran)).toBe(false);
     expect(ssh.remoteCalls().some((w) => w.includes('setup'))).toBe(false);
     expect(far.now()).toBe('1.2.2');
@@ -186,7 +186,7 @@ esac
     const out = await upgradeHost('trift', { release: archive }, deps({ registry: far.registry, verify: intruder.verify }));
     await far.close();
     expect(out.result).toBe('actions');
-    expect(step('install').at(-1)).toMatchObject({ status: 'fail', detail: 'did not finish', raw: expect.stringContaining(`${far.base}/current/release/allowed_signers is missing`) });
+    expect(step('install').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`${far.base}/current/release/allowed_signers is missing`) });
     expect(fs.existsSync(ran)).toBe(false);
     expect(far.now()).toBe('1.2.2');
   });
@@ -211,7 +211,7 @@ esac
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive }, deps({ registry: MachineRegistry.load(config), verify: intruder.verify }));
     await far.close();
     expect(out.result).toBe('actions');
-    expect(step('install').at(-1)).toMatchObject({ status: 'fail', detail: 'did not finish', raw: expect.stringContaining(`not signed by a key ${far.base}/current/release/allowed_signers pins`) });
+    expect(step('install').at(-1)).toMatchObject({ status: 'fail', detail: `the uploaded release is not signed by a key ${far.base}/current/release/allowed_signers pins` });
     expect(fs.existsSync(ran)).toBe(false);
     expect(far.now()).toBe('1.2.2');
   });
@@ -411,6 +411,14 @@ esac
     expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: 'does not answer', raw: expect.stringContaining('1.2.2') });
     expect(far.now()).toBe('1.2.2');
     expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', detail: 'back on 1.2.2' });
+  });
+
+  it('keeps what the far machine said when its new release does not answer', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+    ssh.reply(['connection-info'], { stderr: 'no port file at /home/linus/.svall/port', code: 1 });
+    await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: 'does not answer', raw: expect.stringContaining('no port file at /home/linus/.svall/port') });
   });
 
   const unitDown = JSON.stringify({ checks: JSON.parse(DOCTOR).checks.map((c: { name: string }) => (c.name === 'systemd'

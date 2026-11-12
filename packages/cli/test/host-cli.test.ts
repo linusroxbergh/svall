@@ -347,10 +347,17 @@ describe('the last line a run prints', () => {
     expect(events.filter((e) => e.status !== 'start').map((e) => [e.step, e.raw])).toEqual([['space', 'df: 2097152'], ['install', 'svall setup exited 1: no space']]);
   });
 
-  it('a step that ssh or a command there stopped says so in words of its own, with what was said behind them', async () => {
+  it('a step that a command there stopped says so in words of its own, with what was said behind them', async () => {
     const events: StepEvent[] = [];
-    await flow((e) => events.push(e), (run) => run.step('upload', () => Promise.reject(new SshError('unreachable', 'the companion could not be written to /x: broken pipe'))));
-    expect(events.at(-1)).toEqual({ step: 'upload', status: 'fail', detail: 'did not finish', raw: 'the companion could not be written to /x: broken pipe' });
+    await flow((e) => events.push(e), (run) => run.step('install', () => Promise.reject(new SshError('other', 'svall setup exited 1', 'no space'))));
+    expect(events.at(-1)).toEqual({ step: 'install', status: 'fail', detail: 'did not finish', raw: 'svall setup exited 1: no space' });
+  });
+
+  it('a step that ssh stopped in Svall\'s own words keeps them, with what the tool said behind them', async () => {
+    const events: StepEvent[] = [];
+    const out = await flow((e) => events.push(e), (run) => run.step('probe', () => Promise.reject(new SshError('version', 'vault answered with protocol 45, not 46', 'svall connection-info said 45'))));
+    expect(events.at(-1)).toEqual({ step: 'probe', status: 'fail', detail: 'vault answered with protocol 45, not 46', raw: 'svall connection-info said 45' });
+    expect(out.actions).toEqual(['vault answered with protocol 45, not 46']);
   });
 
   it('stepLine prints [ ] before an unticked row and [x] before a ticked one', async () => {
