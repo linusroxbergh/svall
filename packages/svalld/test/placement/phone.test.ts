@@ -1,14 +1,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import WebSocket from 'ws';
 import type { MobileStatus, SetupRow } from '@svall/protocol';
 import { dispatch, type Ctx } from '../../src/api/methods.js';
+import { startApi } from '../../src/api/server.js';
 import { silentLogger } from '../../src/log.js';
+import { TailscaleDown } from '../../src/mobile.js';
+import { Phones } from '../../src/phones.js';
 import { clearConsent, readConsent, setConsent } from '../../src/placement/mirror-consent.js';
 import { PhoneFallbacks } from '../../src/placement/phone.js';
 import { PushStore } from '../../src/push/store.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
 import { WorkerPhone } from '../../src/worker/phone.js';
+import { stubFleets, stubLoad, stubMobile, stubSystemInfo, stubUsage } from '../helpers.js';
+import { farHome, macHome } from './mirror-homes.js';
 import { H, W, placed, stopWorlds, until, world } from './world.js';
 
 afterEach(stopWorlds);
@@ -24,6 +30,7 @@ const DENIED = {
   raw: 'sending serve config: Access denied: serve config denied',
 };
 const SIGNED_OUT = { error: 'Tailscale on w1 is signed out', fix: 'Sign in: sudo tailscale up', run: 'sudo tailscale up', raw: 'BackendState NeedsLogin' };
+type Refusal = Pick<MobileStatus, 'error' | 'fix' | 'run' | 'raw'>;
 
 /**
  * The home's phone link as tailscale shows it, and w1's own: it serves on its first on unless tailscale refuses it, and a
@@ -36,7 +43,8 @@ function phones(w: ReturnType<typeof world>) {
     me: H, file: w.home.paths.phoneFallbacks, consent: w.home.paths.mirrorConsent, store: w.home.store, links: w.home.links,
     mobile: { get: async () => mac.status, logins: () => ['me@example.com'] }, vapid: VAPID, push, log: silentLogger,
   });
-  const far = { serving: false, sets: [] as boolean[], refuse: undefined as Pick<MobileStatus, 'error' | 'fix' | 'run' | 'raw'> | undefined, lookFails: false };
+  // `refuse` as a function words its reason as the worker's own link does, while it answers
+  const far = { serving: false, sets: [] as boolean[], refuse: undefined as Refusal | (() => Refusal) | undefined, lookFails: false };
   const workerPhone = new WorkerPhone({
     file: w.worker.paths.phone, pass: 'far-pass', log: () => {},
     link: () => ({
@@ -44,7 +52,7 @@ function phones(w: ReturnType<typeof world>) {
       set: async (on) => {
         far.sets.push(on);
         far.serving = on && !far.refuse;
-        return status({ url: FAR, serving: far.serving, ...(on && far.refuse) });
+        return status({ url: FAR, serving: far.serving, ...(on && (typeof far.refuse === 'function' ? far.refuse() : far.refuse)) });
       },
       served: () => (far.serving ? FAR : undefined),
     }),
@@ -223,6 +231,52 @@ describe('a worker serving the phone', () => {
     await w.link();
     await p.fallbacks.sync(W);
     expect(p.fallbacks.fallbacks()).toEqual(listed);
+  });
+});
+
+describe('the setup rows a window asks of a far home over its socket', () => {
+  it('name the home as the window calls it and the window\'s own machine as this Mac, a worker\'s reason kept from before included', async () => {
+    const mac = macHome();
+    const worker = farHome();
+    const w = world({ mirror: { home: mac, worker } });
+    const p = phones(w);
+    await w.link();
+    // a command under the Mac's home that a project on w1 runs
+    const db = path.join(mac.homedir, '.local/bin/db-mcp');
+    fs.mkdirSync(path.join(worker.homedir, 'code/app'), { recursive: true });
+    const api = await startApi({
+      host: '127.0.0.1', port: 0, token: 'secret', pass: 'p4ss', store: w.home.store, fleet: {} as never, fleets: stubFleets, terminals: { closeAll() {}, viewerGone() {} } as never,
+      workspace: { unwatchAll() {} } as never, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger, push: p.push, vapidPublicKey: 'k', phones: new Phones(),
+      claude: { dir: path.join(w.home.paths.home, 'claude'), json: path.join(w.home.paths.home, 'claude.json') }, systemInfo: stubSystemInfo,
+      router: w.home.router, links: w.home.links, mirror: w.home.mirror, phone: p.fallbacks, fleetFlag: () => '',
+    });
+    const said = (hello: object) => new Promise<(string | undefined)[]>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${api.port}`);
+      ws.on('open', () => ws.send(JSON.stringify({ token: 'secret', ...hello })));
+      ws.on('message', (raw) => {
+        const m = JSON.parse(String(raw)) as { id?: number; result?: { rows: SetupRow[] } };
+        if (m.id === 0) ws.send(JSON.stringify({ id: 1, method: 'machines.setup', params: { machine: W } }));
+        if (m.id !== 1) return;
+        ws.close();
+        const of = (key: string) => m.result?.rows.find((r) => r.key === key);
+        resolve([of('phone')?.action, of(`runtime:${db}`)?.action, of(`runtime:${db}`)?.detail]);
+      });
+      ws.on('error', reject);
+    });
+    try {
+      expect(await said({ home: 'studio' }))
+        .toEqual(['On, w1 serves its robots to the phone while studio is off', "A path under studio's home folder is looked for under w1's", 'not on w1 · db runs it']);
+      // w1 says why it does not serve as its own link words it, which the home keeps while its own link is off
+      p.far.refuse = () => { const e = new TailscaleDown('missing'); return { error: e.message, ...e.said }; };
+      await p.tick(true);
+      p.mac.status = status({ serving: false });
+      const missing = '. Install it from tailscale.com/download and sign in';
+      expect(await said({ home: 'studio', me: W }))
+        .toEqual([`This Mac has no Tailscale${missing}`, "A path under studio's home folder is looked for under this Mac's", 'not on this Mac · db runs it']);
+      expect(await said({})).toEqual([`w1 has no Tailscale${missing}`, "A path under this Mac's home folder is looked for under w1's", 'not on w1 · db runs it']);
+    } finally {
+      await api.close();
+    }
   });
 });
 

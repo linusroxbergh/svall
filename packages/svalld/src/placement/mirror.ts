@@ -13,7 +13,7 @@ import { relocate } from './relocate.js';
 import type { WorkerLink } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Logger } from '../log.js';
-import { homeWord } from '../machine.js';
+import { homeWord, machineWord } from '../machine.js';
 import { fileSha } from './bundle.js';
 import { applyMirror, dropBlobs, type Manifest } from './mirror-apply.js';
 import { readPlugins, readServers, secretsOf } from './mirror-config.js';
@@ -96,7 +96,7 @@ export class Mirror {
   }
 
   /**
-   * The setup rows of the mirror to `machine`: what its next push carries, and what the worker holds and runs while linked.
+   * The setup rows of the mirror to `machine`, in the caller's names: what its next push carries, and what the worker holds and runs while linked.
    * `o.robot` narrows them to a robot's agents and folders, which lie under `home` on the worker.
    */
   async report(
@@ -117,10 +117,11 @@ export class Mirror {
     // a worker that did not answer the first is not asked again
     const report = facts && await ask('config.report', reportAsk(plan), ConfigReport);
     const stale = link?.mismatch() !== undefined;
-    const unchecked = stale ? `not checked: ${o.name} runs another release` : `not checked: ${o.name} is not reachable`;
+    const name = machineWord(machine, o.name);
+    const unchecked = stale ? `not checked: ${name} runs another release` : `not checked: ${name} is not reachable`;
     const r = o.robot;
     const shown = r ? forRobot(plan, { agents: r.agents, folders: r.folders.map((f) => (r.home ? relocate(f, { from: r.home, to: this.o.homedir }) : f)) }) : plan;
-    return setupRows(shown, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, stale, overrides: this.o.overridesThere?.(machine) ?? '~/.svall/mirror-overrides', here: this.hereHas(), apt: facts?.platform === 'linux', mac: facts?.platform === 'darwin' });
+    return setupRows(shown, report, { machine: name, fleetFlag: o.fleetFlag, unchecked, stale, overrides: this.o.overridesThere?.(machine) ?? '~/.svall/mirror-overrides', here: this.hereHas(), apt: facts?.platform === 'linux', mac: facts?.platform === 'darwin' });
   }
 
   /** Whether this Mac has a variable to copy to a worker: in the daemon's own environment, or the fleet's .env here. */

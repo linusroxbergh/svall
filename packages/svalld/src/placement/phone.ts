@@ -4,7 +4,7 @@ import { writeDurable } from '../durable.js';
 import { readJsonOrQuarantine } from '../jsonfile.js';
 import type { WorkerLink } from '../link/home.js';
 import type { Logger } from '../log.js';
-import { homeWord } from '../machine.js';
+import { homeWord, machineWord } from '../machine.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { Vapid } from '../push/vapid.js';
@@ -27,7 +27,7 @@ type Held = z.infer<typeof Held>;
  */
 export class PhoneFallbacks {
   private held: Held;
-  // why a worker last did not serve
+  // why a worker last did not serve, which names the worker by its id
   private failed = new Map<MachineId, PhoneAnswer>();
   // each worker's last sync, which its next one waits for
   private chains = new Map<MachineId, Promise<unknown>>();
@@ -93,9 +93,9 @@ export class PhoneFallbacks {
     return this.failed.has(machine) ? this.sync(machine) : Promise.resolve();
   }
 
-  /** The setup row of `machine`'s phone link, with the consent it toggles. */
+  /** The setup row of `machine`'s phone link, with the consent it toggles, in the caller's names. */
   row(machine: MachineId): SetupRow {
-    const name = this.name(machine);
+    const name = machineWord(machine, this.name(machine));
     const home = homeWord();
     const tick = { item: PHONE_ITEM, fields: [PHONE_FIELD], on: this.consented(machine), preview: [] };
     const held = this.held.workers[machine];
@@ -103,10 +103,11 @@ export class PhoneFallbacks {
     if (!tick.on) return { key: PHONE_ITEM, status: 'skip', detail: 'off', action: `On, ${name} serves its robots to the phone while ${home} is off`, tick };
     if (held) return { key: PHONE_ITEM, status: 'ok', detail: `on · ${held.url}`, tick };
     if (why === undefined) return { key: PHONE_ITEM, status: 'skip', detail: `on, waiting for ${home}'s phone link`, tick };
+    const named = (text?: string): string | undefined => text?.split(machine).join(name).replace(/^this /, 'This ');
     // no gap: the phone is no part of the agent setup that will not work there
     return {
       key: PHONE_ITEM, status: 'warn', detail: 'on, not serving', tick,
-      action: why.fix ? `${why.error}. ${why.fix}` : why.error, ...(why.run && { run: why.run }), ...(why.raw && { raw: why.raw }),
+      action: named(why.fix ? `${why.error}. ${why.fix}` : why.error), ...(why.run && { run: why.run }), ...(why.raw && { raw: why.raw }),
     };
   }
 
@@ -130,21 +131,21 @@ export class PhoneFallbacks {
     if (status.error || !status.serving || !linked) return;
     const set: PhoneSet = {
       on: true, logins: this.o.mobile.logins(), origin: new URL(status.url).origin, vapid: this.o.vapid, subscriptions: this.o.push.list(),
-      ...(this.o.contact && { contact: this.o.contact }),
+      ...(this.o.contact && { contact: this.o.contact }), word: machine,
     };
     let answer: PhoneAnswer;
     try {
       answer = PhoneAnswer.parse(await link.call('phone.set', set));
     } catch (e) {
       if (!(e instanceof ApiError && e.code === 'unknown_method')) throw e;
-      answer = { error: `${this.name(machine)} runs a release that cannot serve the phone`, fix: `Upgrade ${this.name(machine)}` };
+      answer = { error: `${machine} runs a release that cannot serve the phone`, fix: `Upgrade ${machine}` };
     }
     if (answer.url && answer.pass) {
       this.failed.delete(machine);
       this.keep(machine, { url: answer.url, pass: answer.pass });
       return;
     }
-    this.failed.set(machine, { ...answer, error: answer.error ?? `${this.name(machine)} did not say why it does not serve` });
+    this.failed.set(machine, { ...answer, error: answer.error ?? `${machine} did not say why it does not serve` });
     if (!answer.unseen) this.drop(machine);
   }
 
