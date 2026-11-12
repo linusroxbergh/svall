@@ -1880,7 +1880,7 @@ function workerFromHome(ids) {
   letIn(R);
   const add = sh(L, `svall --json host add box --ssh svall@${B} </dev/null`, { ok: false });
   const steps = carriedSteps(add);
-  check('it comes from remote\'s own release', /own release/.test(steps.find((e) => e.step === 'release' && e.status !== 'start')?.detail ?? ''), () => brief(steps.find((e) => e.step === 'release')));
+  check('it comes from remote\'s own release', / from remote's own release \(/.test(steps.find((e) => e.step === 'release' && e.status !== 'start')?.raw ?? ''), () => brief(steps.find((e) => e.step === 'release')));
   check('the add ran, each step on the way back to local', steps.some((e) => e.step === 'registry' && e.status === 'ok') && !steps.some((e) => e.status === 'fail'), () => `${add.code}: ${brief(steps.filter((e) => e.status === 'fail'))} ${add.stderr.slice(0, 400)}`);
   ids.box = JSON.parse(sh(B, 'svall version --json').stdout).machineId;
   const file = boxFile();
@@ -1891,7 +1891,7 @@ function workerFromHome(ids) {
   check('local lists it from remote', listed?.far === true && listed.ssh === `svall@${B}`, () => brief(listed));
   boxFollows('added', ids);
   const doctor = sh(L, 'svall --json host doctor box --steps </dev/null', { ok: false });
-  check('a check of it runs there', carriedSteps(doctor).some((e) => e.step === 'worker' && e.status === 'ok' && /runs this fleet's robots/.test(e.detail)), () => brief(carriedSteps(doctor).filter((e) => e.step === 'worker' || e.status === 'fail')));
+  check('a check of it runs there', carriedSteps(doctor).some((e) => e.step === 'worker' && e.status === 'ok' && e.detail === 'worker of this fleet'), () => brief(carriedSteps(doctor).filter((e) => e.step === 'worker' || e.status === 'fail')));
   // an archive a relay leaves where the far run removes it, as one the Mac carries for another architecture
   const carried = sh(R, 'echo "$HOME/.svall/cache/carried/copied.tar.gz"').stdout.trim();
   sh(R, `mkdir -p "$(dirname ${carried})" && cp /opt/it/svall-companion-*.tar.gz ${carried}`);
