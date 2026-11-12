@@ -159,11 +159,12 @@ export async function tailnetHere(d: Pick<HostDeps, 'tailnet'>, platform: NodeJS
   return { value: undefined, detail: 'connected' };
 }
 
-/** Why the ssh master to `name` did not open: a login it refused, a machine it did not reach, or one that did not answer in time; ssh's own words behind. */
+/** Why the ssh master to `name` did not open: a login it refused, ssh itself, a machine it did not reach, or one that did not answer in time; ssh's own words behind. */
 export function unreached(err: unknown, name: string, ssh: string, here: string, login = `run ssh ${ssh} once in a terminal and answer what it asks`): StepError {
   const { message, raw } = err as Error & { raw?: string };
   const said = raw ?? message;
   if (err instanceof SshError && (err.kind === 'auth' || err.kind === 'host_key')) return new StepError(`${here} cannot log in to ${name}`, login, undefined, undefined, said);
+  if (err instanceof SshError && err.kind === 'other') return new StepError(`ssh to ${name} did not open`, `run ssh ${ssh} in a terminal to see why`, undefined, undefined, said);
   const fix = 'check that it is on and on Tailscale';
   if (/\bwithin \d|did not open a control master/.test(message)) return new StepError(`${name} did not answer in 20 s`, fix, undefined, undefined, said);
   return new StepError(`${name} is not reachable from ${here}`, fix, undefined, undefined, said);
@@ -444,7 +445,7 @@ const TMUX_PROBE = 'sock="${TMPDIR:-/tmp}/svall-probe-$$"; tmux -S "$sock" new-s
 async function addProbe(master: SshMaster, entry: MachineEntry, o: { home: string; release: string; asHome?: boolean }, d: HostDeps): Promise<Outcome<void>> {
   await endToEnd(master, entry, { release: o.release });
   if (!o.asHome && !servesUs(await farHome(master, entry.record.svallBase, d, entry.id), d)) {
-    throw new StepError('answers, but not as a worker of this fleet', undefined, undefined, undefined, `${entry.record.name}'s fleet home there holds no worker.json naming it`);
+    throw new StepError('answers, but not as a worker of this fleet', 'add the machine again, which enrols it anew', undefined, undefined, `${entry.record.name}'s fleet home there holds no worker.json naming it`);
   }
   const r = await master.run(['env', shq(`PATH=${unitPathOf(o.home, entry.record.svallBase)}`), ...sh('svall-tmux', TMUX_PROBE)], { timeoutMs: PROBE_TIMEOUT });
   if (r.code !== 0) throw new StepError('tmux could not open a window there', undefined, undefined, undefined, `exit ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
@@ -1289,7 +1290,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
         await sharedWith(master, reached, d);
         const r = await master.run([shq(svallExe(entry.record.svallBase)), 'uninstall'], { timeoutMs: PROBE_TIMEOUT });
         if (r.code !== 0) {
-          throw new StepError('did not finish', `${onThere(ssh, 'svall uninstall')} and see what stops it; ${hostCmd(d)} remove ${name} --forget drops the route and leaves the machine as it is`,
+          throw new StepError('stopped with an error', `${onThere(ssh, 'svall uninstall')} and see what stops it; ${hostCmd(d)} remove ${name} --forget drops the route and leaves the machine as it is`,
             undefined, undefined, `svall uninstall exited ${r.code} on ${ssh}: ${r.stderr.trim().slice(0, 400) || 'no output'}`);
         }
         // its last line can name a command for that machine, such as the rm -rf of the fleets it kept

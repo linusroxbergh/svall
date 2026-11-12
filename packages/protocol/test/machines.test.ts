@@ -108,8 +108,8 @@ describe('tierOf', () => {
     expect(tierOf({ step: 'codex', status: 'warn' }, undefined)).toBe('todo');
   });
 
-  it('in a step flow every warning is to do but the join\'s offer to copy the agent setup', () => {
-    expect([tier('rollback', 'warn', true), tier('os', 'warn', true), tier('crew', 'warn', true), tier('seed', 'warn', true)]).toEqual(['todo', 'todo', 'todo', 'note']);
+  it('in a step flow every warning is to do but the join\'s offer to copy the agent setup and an Ubuntu that is not LTS', () => {
+    expect([tier('rollback', 'warn', true), tier('os', 'warn', true), tier('crew', 'warn', true), tier('seed', 'warn', true)]).toEqual(['todo', 'note', 'todo', 'note']);
     expect(tier('os', 'warn')).toBe('note');
   });
 

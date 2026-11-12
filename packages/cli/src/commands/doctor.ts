@@ -68,7 +68,7 @@ async function gh(d: DoctorDeps): Promise<Check> {
     return { name: 'gh', status: 'ok', detail: 'logged in' };
   } catch (e) {
     const run = !missing(e) ? 'gh auth login' : d.platform === 'linux' ? 'sudo apt install gh' : 'brew install gh';
-    return { name: 'gh', status: 'warn', detail: missing(e) ? 'not installed' : 'not logged in', action: `${run}; until then pull request links stay unresolved`, run };
+    return { name: 'gh', status: 'warn', detail: `${missing(e) ? 'not installed' : 'not logged in'}: pull request links stay unresolved`, action: run, run };
   }
 }
 
@@ -276,8 +276,9 @@ async function unitCheck(name: string, t: Target, d: DoctorDeps): Promise<Check>
   try {
     const s = await unitStatus(asRun(d), unit);
     const raw = `${unit}: ${s.load}, ${s.active} (${s.sub}), ${s.state}`;
-    if (s.load === 'not-found') return { name, status: 'fail', detail: 'not installed', action: unitFix(t), raw, ...(t.name === PRIVATE && { run: `${SHIM} setup` }) };
-    return { name, status: s.active === 'active' ? 'ok' : 'fail', detail: s.active === 'active' ? 'running' : 'not running', raw };
+    if (s.active === 'active') return { name, status: 'ok', detail: 'running', raw };
+    // setup writes the unit again and starts it
+    return { name, status: 'fail', detail: s.load === 'not-found' ? 'not installed' : 'not running', action: unitFix(t), raw, ...(t.name === PRIVATE && { run: `${SHIM} setup` }) };
   } catch (e) {
     return { name, status: 'fail', detail: 'could not be read', raw: (e as Error).message };
   }

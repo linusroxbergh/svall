@@ -208,7 +208,7 @@ describe('doctor', () => {
     const c = byName(r);
     expect(c.tmux).toMatchObject({ status: 'fail', detail: 'not installed', action: 'brew install tmux' });
     expect(c.agents).toMatchObject({ status: 'fail', detail: expect.stringContaining('no agent CLI (claude, codex or opencode) is on PATH') });
-    expect(c.gh).toMatchObject({ status: 'warn', detail: 'not logged in', action: 'gh auth login; until then pull request links stay unresolved', run: 'gh auth login' });
+    expect(c.gh).toMatchObject({ status: 'warn', detail: 'not logged in: pull request links stay unresolved', action: 'gh auth login', run: 'gh auth login' });
     expect(c.svalld).toMatchObject({ status: 'warn', detail: expect.stringMatching(/not running .*: it starts when Svall opens on this fleet$/) });
     expect(c['hook receiver']).toMatchObject({ status: 'skip', detail: "Svall's background service is not running" });
     expect(c.launchd).toMatchObject({ status: 'fail', detail: 'not loaded', action: 'svall setup' });
@@ -459,7 +459,11 @@ describe('doctor on Linux', () => {
     const c = byName(await doctor(priv, linux().deps));
     expect(c.gateway).toBeUndefined();
     const stopped = byName(await doctor(priv, linux({ [show]: 'LoadState=loaded\nActiveState=inactive\nSubState=dead\nUnitFileState=disabled\n' }).deps));
-    expect(stopped.systemd).toMatchObject({ status: 'fail', detail: 'not running', raw: `${unit}: loaded, inactive (dead), disabled` });
+    expect(stopped.systemd).toEqual({ name: 'systemd', status: 'fail', detail: 'not running', action: 'svall setup', raw: `${unit}: loaded, inactive (dead), disabled`, run: 'svall setup' });
+    const work = 'svall-svalld@work.service';
+    const named = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, linux({ [showOf(work)]: 'LoadState=loaded\nActiveState=failed\nSubState=failed\nUnitFileState=enabled\n' }).deps));
+    expect(named.systemd).toMatchObject({ status: 'fail', detail: 'not running', action: 'svall host upgrade <this machine> from the controller' });
+    expect(named.systemd).not.toHaveProperty('run');
   });
 
   it('asks systemd and loginctl instead of launchd', async () => {
@@ -528,7 +532,7 @@ describe('doctor on Linux', () => {
   it('names the apt package when tmux or gh is missing', async () => {
     const c = byName(await doctor(priv, linux({ 'tmux -V': undefined as never, 'gh auth status': undefined as never }).deps));
     expect(c.tmux).toMatchObject({ status: 'fail', detail: 'not installed', action: 'sudo apt install tmux', run: 'sudo apt install tmux' });
-    expect(c.gh).toMatchObject({ status: 'warn', detail: 'not installed', action: 'sudo apt install gh; until then pull request links stay unresolved', run: 'sudo apt install gh' });
+    expect(c.gh).toMatchObject({ status: 'warn', detail: 'not installed: pull request links stay unresolved', action: 'sudo apt install gh', run: 'sudo apt install gh' });
     const out = byName(await doctor(priv, linux({ 'gh auth status': Object.assign(new Error('not logged in'), { code: 1 }) }).deps));
     expect(out.gh).toMatchObject({ status: 'warn', run: 'gh auth login' });
   });

@@ -497,10 +497,10 @@ describe('host add', () => {
 
   it("the gh step reads the companion doctor's gh check: logged in, or gh auth login with the terminal and no thing to do", async () => {
     const said = (gh: Record<string, string>): string => JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'gh', ...gh }] });
-    const loggedOut = { status: 'warn', detail: 'not logged in', run: 'gh auth login' } as const;
+    const loggedOut = { status: 'warn', detail: 'not logged in: pull request links stay unresolved', run: 'gh auth login' } as const;
     for (const [gh, want] of [
       [{ status: 'ok', detail: 'logged in' }, { status: 'ok', detail: 'logged in' }],
-      [{ ...loggedOut, action: 'gh auth login; until then pull request links stay unresolved' }, loggedOut],
+      [{ ...loggedOut, action: 'gh auth login' }, loggedOut],
     ] as const) {
       ssh.clearReplies();
       events.length = 0;
@@ -526,12 +526,12 @@ describe('host add', () => {
     // a doctor that says the state alone puts the unit behind it
     events.length = 0;
     const said = JSON.stringify({ checks: JSON.parse(DOCTOR).checks.map((c: { name: string }) => (c.name === 'systemd'
-      ? { name: 'systemd', status: 'fail', detail: 'not running', raw: 'svall-svalld@private.service: loaded, inactive (dead), disabled' } : c)) });
+      ? { name: 'systemd', status: 'fail', detail: 'not running', action: 'svall setup', raw: 'svall-svalld@private.service: loaded, inactive (dead), disabled', run: 'svall setup' } : c)) });
     ssh.clearReplies();
     ssh.reply(['doctor', '--json'], { stdout: said, code: 1 });
     healthy();
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
-    expect(step('service').at(-1)).toMatchObject({ status: 'fail', detail: 'not running', raw: 'svall-svalld@private.service: loaded, inactive (dead), disabled' });
+    expect(step('service').at(-1)).toMatchObject({ status: 'fail', detail: 'not running', action: 'svall setup', run: 'svall setup', raw: 'svall-svalld@private.service: loaded, inactive (dead), disabled' });
     expect(out.result).toBe('actions');
   });
 });

@@ -353,7 +353,7 @@ describe('host remove', () => {
     const out = await removeHost('trift', {}, deps({ registry }));
     expect(out.result).toBe('actions');
     const failed = step('uninstall').at(-1);
-    expect(failed).toMatchObject({ status: 'fail', detail: 'did not finish', raw: 'svall uninstall exited 1 on trift.test: svall: tmux refused to stop the fleet' });
+    expect(failed).toMatchObject({ status: 'fail', detail: 'stopped with an error', raw: 'svall uninstall exited 1 on trift.test: svall: tmux refused to stop the fleet' });
     expect(failed?.action).toContain('ssh trift.test, then svall uninstall');
     expect(registry.get('trift')).toBeDefined();
   });

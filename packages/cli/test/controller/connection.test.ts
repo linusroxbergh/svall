@@ -314,7 +314,7 @@ describe('svall connection-info', () => {
     const said = (info: typeof localConnectionInfo, platform: NodeJS.Platform) => { try { info(home, platform); } catch (e) { return [(e as Error).message, (e as SshError).raw]; } return []; };
     expect(said(localConnectionInfo, 'darwin')).toEqual(["Svall's background service is not running; start it: svall setup", `no ${path.join(home, 'port')}`]);
     expect(said(localConnectionInfo, 'linux')).toEqual([
-      `Svall's background service is not running on ${homeWord()}; svall host doctor ${homeWord()} says why`, `no ${path.join(home, 'port')}; systemctl --user status svall-svalld@${path.basename(home)}.service`,
+      `Svall's background service is not running on ${homeWord()}; svall host doctor <this machine>, on the machine that added it, says why`, `no ${path.join(home, 'port')}; systemctl --user status svall-svalld@${path.basename(home)}.service`,
     ]);
     // pnpm svalld starts one only in a checkout
     vi.resetModules();

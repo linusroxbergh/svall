@@ -55,7 +55,7 @@ function notRunning(paths: ReturnType<typeof resolvePaths>, platform: NodeJS.Pla
   // on Linux the daemon is a systemd unit, which says why it is down
   const unit = platform === 'linux' ? `; systemctl --user status ${svalldUnitName(profileOf(paths.home))}` : '';
   const said = platform === 'linux'
-    ? ` on ${homeWord()}; svall host doctor ${homeWord()} says why`
+    ? ` on ${homeWord()}; svall host doctor <this machine>, on the machine that added it, says why`
     : `; start it: ${SHIM} setup${SHIM === 'svall-dev' ? ' or pnpm svalld' : ''}`;
   return new SshError('daemon_down', `Svall's background service is not running${said}`, `${raw}${unit}`);
 }

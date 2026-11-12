@@ -140,6 +140,7 @@ describe('host add', () => {
       await d.close();
       expect(out.result).toBe('actions');
       expect(step('probe').at(-1)).toMatchObject({ status: 'fail', detail: said, raw: expect.any(String) });
+      if (said.startsWith('answers')) expect(step('probe').at(-1)?.action).toBe('add the machine again, which enrols it anew');
       expect(registry.get('trift')).toBeUndefined();
     }
   });

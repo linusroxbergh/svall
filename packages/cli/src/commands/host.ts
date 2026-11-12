@@ -181,8 +181,9 @@ export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forge
   const setup = op === 'add' || op === 'upgrade';
   // an add's rows are the machine's checks; every other op's are a step flow's
   const { lines, todo } = tiered(ended(flags.steps ?? []), flags.fleet, op !== 'add');
-  // a machine left in the list by a run that stopped has things to fix, as its window says
-  const listed = op === 'upgrade' || (op === 'add' && (flags.steps ?? []).some((s) => s.step === 'registry' && s.status === 'ok'));
+  // a machine left in the list by a run that stopped has things to fix, as its window says; an upgrade of a name not listed has none
+  const steps = flags.steps ?? [];
+  const listed = op === 'upgrade' ? !steps.some((s) => s.step === 'machine' && s.status === 'fail') : op === 'add' && steps.some((s) => s.step === 'registry' && s.status === 'ok');
   const last = o.stopped ? (listed && todo ? verdict(name, todo) : `${TITLE[op]} did not finish`) : setup ? verdict(name, todo) : doneLine(op, name, flags);
   return [...lines, last, ...(setup ? setupLine((o.setup ?? []).map(asRow), name, flags.there!) : [])].join('\n');
 }

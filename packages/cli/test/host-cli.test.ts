@@ -71,6 +71,11 @@ describe('an ssh master that did not open', () => {
       .toEqual(['studio did not answer in 20 s', 'ssh did not open a control master to ada@studio within 20 s']);
     expect(said(new SshError('unreachable', 'ssh could not reach ada@studio', 'ssh: connect to host studio port 22: Connection refused')))
       .toEqual(['studio is not reachable from this Mac', 'ssh: connect to host studio port 22: Connection refused']);
+    const hostKey = unreached(new SshError('host_key', 'ssh could not reach ada@studio', 'Host key verification failed.'), 'studio', 'ada@studio', 'this Mac');
+    expect([hostKey.detail, hostKey.action, hostKey.raw]).toEqual(['this Mac cannot log in to studio', 'run ssh ada@studio once in a terminal and answer what it asks', 'Host key verification failed.']);
+    // ssh's own refusal, neither a login nor the network, is not sent to Tailscale
+    const other = unreached(new SshError('other', 'ssh could not reach ada@studio', 'Bad owner or permissions on /Users/ada/.ssh/config'), 'studio', 'ada@studio', 'this Mac');
+    expect([other.detail, other.action, other.raw]).toEqual(['ssh to studio did not open', 'run ssh ada@studio in a terminal to see why', 'Bad owner or permissions on /Users/ada/.ssh/config']);
   });
 });
 
@@ -156,6 +161,9 @@ describe('the last line a run prints', () => {
       .toEqual(['✗ install  did not finish', '  svall setup exited 1: no space', 'Add machine did not finish']);
     // a run that stopped ends as the window's verdict on it: a machine still listed has things to fix, else the run did not finish
     expect(outcomeText({ result: 'actions', actions: [], stopped: 'install' }, 'upgrade', 'trift', { ...work, steps: [failed] }).split('\n').at(-1)).toBe('trift has 1 thing to fix');
+    // an upgrade of a name the list does not hold left no machine with anything to fix
+    const unknown: StepEvent = { step: 'machine', status: 'fail', detail: 'no machine trift in the registry' };
+    expect(outcomeText({ result: 'actions', actions: [unknown.detail!], stopped: 'machine' }, 'upgrade', 'trift', { ...work, steps: [unknown] }).split('\n').at(-1)).toBe('Upgrade did not finish');
     const listed: StepEvent = { step: 'registry', status: 'ok', detail: 'listed' };
     expect(outcomeText({ result: 'actions', actions: [], stopped: 'install' }, 'add', 'trift', { ...work, steps: [listed, failed] }).split('\n').at(-1)).toBe('trift has 1 thing to fix');
     expect(outcomeText({ result: 'actions', actions: [], stopped: 'install' }, 'rollback', 'trift', { steps: [failed] }).split('\n').at(-1)).toBe('Roll back did not finish');
@@ -167,7 +175,7 @@ describe('the last line a run prints', () => {
 
   it('a run ends 1 while it stopped or a row needs a person, and 0 on notes alone', async () => {
     const { leftToDo } = await import('../src/commands/host.js');
-    const note: StepEvent = { step: 'gh', status: 'warn', detail: 'not logged in', action: 'gh auth login; until then pull request links stay unresolved' };
+    const note: StepEvent = { step: 'gh', status: 'warn', detail: 'not logged in: pull request links stay unresolved', action: 'gh auth login' };
     const todo: StepEvent = { step: 'linger', status: 'warn', detail: 'off: the fleet stops when you log out', action: 'x' };
     expect(leftToDo({ result: 'actions', actions: [note.action!] }, 'add', [note], undefined)).toBe(false);
     expect(leftToDo({ result: 'actions', actions: ['x'] }, 'add', [note, todo], undefined)).toBe(true);

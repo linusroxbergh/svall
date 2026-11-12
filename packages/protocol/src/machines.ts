@@ -118,16 +118,18 @@ export function agentsInUse(fleet: FleetAgents): Set<AgentKind> {
 // a warning on these needs a person, whatever the fleet runs
 const TODO_WARNS = new Set(['linger', 'release', 'worker', 'service', 'systemd', 'versions', 'hooks', 'codex hooks', 'opencode plugin']);
 
+// a warning in a step flow that needs no one: the join's offer to copy the agent setup, and an Ubuntu that is not LTS
+const FLOW_NOTES = new Set(['seed', 'os']);
+
 /**
- * A row's tier: a failure is to do, and so is a warning in a step flow (`flow`) but the join's offer to copy the agent setup,
- * on a check that needs a person, or on an agent the fleet runs (`fleet` unknown runs every one). A `mirror:` row is the
- * agent setup's, never a thing to do.
+ * A row's tier: a failure is to do, and so is a warning in a step flow (`flow`) but those of FLOW_NOTES, on a check that needs
+ * a person, or on an agent the fleet runs (`fleet` unknown runs every one). A `mirror:` row is the agent setup's, never a thing to do.
  */
 export function tierOf(row: { step: string; status: string }, fleet: FleetAgents | undefined, flow = false): Tier {
   if (row.status !== 'fail' && row.status !== 'warn') return 'fine';
   if (row.step.startsWith('mirror:')) return 'note';
   if (row.status === 'fail') return 'todo';
-  if (flow) return row.step === 'seed' ? 'note' : 'todo';
+  if (flow) return FLOW_NOTES.has(row.step) ? 'note' : 'todo';
   if (TODO_WARNS.has(row.step)) return 'todo';
   const agent = AgentKind.safeParse(row.step);
   return agent.success && (!fleet || agentsInUse(fleet).has(agent.data)) ? 'todo' : 'note';
