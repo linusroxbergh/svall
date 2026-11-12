@@ -40,13 +40,13 @@ describe('host doctor', () => {
   it('consentHost refuses an item no row names, a field its row does not list, and --field with off, which unticks every field; it takes listed fields as given', async () => {
     const consent = vi.fn(() => Promise.resolve([]));
     const d = deps({ registry: registered(), setupRows: () => Promise.resolve([unticked('claude:mcp:linear')]), consent });
-    await expect(consentHost('trift', { item: 'codex:mcp:nope', on: true }, d)).rejects.toThrow('no setting codex:mcp:nope on trift; svall host doctor trift lists them');
+    await expect(consentHost('trift', { item: 'codex:mcp:nope', on: true }, d)).rejects.toThrow('trift has no agent setup item codex:mcp:nope; svall host doctor trift --all lists them');
     await expect(consentHost('trift', { item: 'claude:mcp:linear', on: true, fields: ['env.X'] }, d))
-      .rejects.toThrow('claude:mcp:linear on trift has no field env.X; svall host doctor trift lists its fields');
+      .rejects.toThrow('claude:mcp:linear has no key env.X; svall host doctor trift --all lists its keys');
     const named = { ...d, fleet: { ...d.fleet, profile: 'work' } };
-    await expect(consentHost('trift', { item: 'codex:mcp:nope', on: true }, named)).rejects.toThrow('no setting codex:mcp:nope on trift; svall -p work host doctor trift lists them');
-    await expect(consentHost('trift', { item: 'claude:mcp:linear', on: true, fields: ['env.X'] }, named)).rejects.toThrow('svall -p work host doctor trift lists its fields');
-    await expect(consentHost('trift', { item: 'claude:mcp:linear', on: false, fields: ['env.LINEAR_API_KEY'] }, d)).rejects.toThrow('off unticks every field of the item; leave out --field');
+    await expect(consentHost('trift', { item: 'codex:mcp:nope', on: true }, named)).rejects.toThrow('trift has no agent setup item codex:mcp:nope; svall -p work host doctor trift --all lists them');
+    await expect(consentHost('trift', { item: 'claude:mcp:linear', on: true, fields: ['env.X'] }, named)).rejects.toThrow('svall -p work host doctor trift --all lists its keys');
+    await expect(consentHost('trift', { item: 'claude:mcp:linear', on: false, fields: ['env.LINEAR_API_KEY'] }, d)).rejects.toThrow('off takes every key of the item; drop --field');
     expect(consent).not.toHaveBeenCalled();
     await consentHost('trift', { item: 'claude:mcp:linear', on: true, fields: ['env.LINEAR_API_KEY'] }, d);
     expect(consent).toHaveBeenCalledWith(REMOTE, 'claude:mcp:linear', ['env.LINEAR_API_KEY'], true);
@@ -71,7 +71,7 @@ describe('host doctor', () => {
     ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
     const report = await doctorHost('trift', deps({ registry: registered(), setupRows: () => Promise.resolve([okRow('var:X')]) }));
     const ended = events.filter((e) => e.status !== 'start');
-    expect(ended.slice(0, 2)).toEqual([{ step: 'master', status: 'ok', detail: 'connected to trift.test' }, { step: 'doctor', status: 'ok', detail: 'answered' }]);
+    expect(ended.slice(0, 2)).toEqual([{ step: 'master', status: 'ok', detail: 'connected' }, { step: 'doctor', status: 'ok', detail: 'answered' }]);
     expect(ended.slice(2).map((e) => e.step)).toEqual(report.checks.map((c) => c.name));
     // each probe's start comes before what it found
     const at = (step: string, status?: string) => events.findIndex((e) => e.step === step && (status ? e.status === status : e.status !== 'start'));
@@ -94,10 +94,17 @@ describe('host doctor', () => {
     expect(order).toEqual(['refresh', 'rows']);
   });
 
-  it('a doctor that cannot reach the machine says so as the connection step', async () => {
-    await expect(doctorHost('trift', deps({ registry: registered(), openMaster: () => Promise.reject(new Error('Permission denied (publickey)')) })))
-      .rejects.toThrow('Permission denied (publickey)');
-    expect(events).toEqual([{ step: 'master', status: 'start' }, { step: 'master', status: 'fail', detail: 'Permission denied (publickey)' }]);
+  it('a doctor that cannot reach the machine says so as the connection step, in the words of a home with no one at its ssh, and reports that row alone', async () => {
+    const report = await doctorHost('trift', deps({ registry: registered(), openMaster: () => Promise.reject(new Error('linus@trift.test: Permission denied (publickey).')) }));
+    const master = {
+      name: 'master', status: 'fail', detail: 'this Mac cannot log in to trift.test', action: expect.stringContaining("ssh-copy-id 'trift.test'"), run: expect.stringContaining('ssh-keygen'),
+      raw: 'linus@trift.test: Permission denied (publickey).',
+    };
+    expect(report).toEqual({ machine: 'trift', checks: [master] });
+    const { name: _, ...step } = master;
+    expect(events).toEqual([{ step: 'master', status: 'start' }, { step: 'master', ...step }]);
+    const away = await doctorHost('trift', deps({ registry: registered(), openMaster: () => Promise.reject(new Error('ssh: connect to host trift.test port 22: No route to host')) }));
+    expect(away.checks[0]).toMatchObject({ detail: 'this Mac cannot reach trift.test', action: 'check Tailscale on both machines, then ssh trift.test from this Mac' });
   });
 
   it('fails a machine whose fleet there does not run as a worker, so the check ends ready only once robots can move there', async () => {
@@ -106,7 +113,7 @@ describe('host doctor', () => {
     ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
     expect((await doctorHost('trift', deps({ registry: registered() }))).checks.find((c) => c.name === 'worker')).toEqual({
-      name: 'worker', status: 'fail', detail: "does not run this fleet's robots yet: svall host upgrade trift sets it up",
+      name: 'worker', status: 'fail', detail: "does not run this fleet's robots yet", action: 'svall host upgrade trift sets it up',
     });
     ssh.clearReplies();
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
@@ -114,7 +121,7 @@ describe('host doctor', () => {
     ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }) });
     const named = await doctorHost('trift', deps({ registry: registered(), fleet: { home: fleet, profile: 'work' } }));
-    expect(named.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: "runs this fleet's robots" });
+    expect(named.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: 'worker of this fleet' });
     expect(ssh.remoteCalls().filter((w) => w.includes('version')).at(-1)).toEqual([SVALL, '-p', 'work', 'version', '--json']);
   });
 
@@ -141,7 +148,7 @@ describe('host doctor', () => {
         },
       }));
       expect(asked).toEqual([REMOTE, REMOTE]);
-      expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: "runs this fleet's robots" });
+      expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: 'worker of this fleet' });
     });
 
     it('reads one still owed once the wait is over as joining, with its reason and no upgrade', async () => {
@@ -150,7 +157,7 @@ describe('host doctor', () => {
       const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
       try {
         const report = await doctorHost('trift', deps({ registry: registered(), joining: () => { now += 10_000; return Promise.resolve({ why: 'No route to host' }); } }));
-        expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'warn', detail: 'has not joined this Mac yet: No route to host' });
+        expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'warn', detail: 'has not joined yet', raw: 'No route to host' });
       } finally { clock.mockRestore(); }
     });
 
@@ -163,16 +170,16 @@ describe('host doctor', () => {
         joining: () => Promise.resolve({ why: 'No route to host', tried: ++asks < 2 ? 1 : Date.now() }),
       }));
       expect(asks).toBe(2);
-      expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'warn', detail: 'has not joined this Mac yet: No route to host' });
+      expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'warn', detail: 'has not joined yet', raw: 'No route to host' });
     });
 
     it('reads a machine that serves this fleet, or one another fleet holds, as it is, whatever is owed it', async () => {
       const owed = () => Promise.resolve({ why: 'No route to host', tried: Date.now() });
       replies(SERVES);
-      expect((await doctorHost('trift', deps({ registry: registered(), joining: owed }))).checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: "runs this fleet's robots" });
+      expect((await doctorHost('trift', deps({ registry: registered(), joining: owed }))).checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: 'worker of this fleet' });
       replies({ homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET });
       expect((await doctorHost('trift', deps({ registry: registered(), joining: owed }))).checks.find((c) => c.name === 'worker')).toEqual({
-        name: 'worker', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action: 'on bea-mbp, run svall host remove trift',
+        name: 'worker', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from bea-mbp first', action: 'on bea-mbp, run svall host remove trift',
       });
     });
 
@@ -212,14 +219,14 @@ describe('host doctor', () => {
     fs.rmSync(resolvePaths(fleet).workerFile);
     answer({ role: 'home', fleetId: FLEET });
     const plain = await doctorHost('trift', deps({ registry: registered() }));
-    expect(plain.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'fail', detail: "does not run this fleet's robots yet: svall host upgrade trift sets it up" });
+    expect(plain.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'fail', detail: "does not run this fleet's robots yet", action: 'svall host upgrade trift sets it up' });
     expect(plain.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'ok' });
   });
 
   it("fails a machine whose fleet home serves another Mac as a worker, with that row's action", async () => {
     for (const [far, row] of [
-      [{ worker: { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET } }, { detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action: 'on bea-mbp, run svall host remove trift' }],
-      [{ worker: { ...SERVES, fleetId: OTHER_FLEET } }, { detail: "does not run this fleet's robots yet: svall host upgrade trift sets it up" }],
+      [{ worker: { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET } }, { detail: 'trift already serves bea-mbp as a worker; remove it from bea-mbp first', action: 'on bea-mbp, run svall host remove trift' }],
+      [{ worker: { ...SERVES, fleetId: OTHER_FLEET } }, { detail: "does not run this fleet's robots yet", action: 'svall host upgrade trift sets it up' }],
     ] as const) {
       ssh.clearReplies();
       ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
@@ -241,9 +248,7 @@ describe('host doctor', () => {
     ssh.reply([...env, 'codex', '--version'], { stdout: 'codex-cli 0.156.1\n' });
     const report = await doctorHost('trift', deps({ registry: registered() }));
     expect(report.checks.find((c) => c.name === 'versions')).toEqual({
-      name: 'versions', status: 'warn',
-      detail: 'claude 2.1.250 there, behind 2.1.278 on this Mac: a move there and back needs the same release on both; ssh trift.test, then claude update',
-      run: 'claude update',
+      name: 'versions', status: 'warn', detail: 'Claude Code 2.1.250 there, 2.1.278 on this Mac', action: 'ssh trift.test, then claude update', run: 'claude update',
     });
     // a check only reads
     expect(ssh.remoteCalls().filter((w) => w.includes('claude')).map((w) => w.slice(-1))).toEqual([['--version']]);
@@ -259,16 +264,16 @@ describe('host doctor', () => {
       const { name: _, ...row } = report.checks.find((c) => c.name === 'release')!;
       return row;
     };
-    expect(await release({})).toEqual({ status: 'ok', detail: '1.2.3, as on this Mac' });
-    expect(await release({ release: '1.2.2' })).toEqual({ status: 'fail', detail: '1.2.2 there; this Mac runs 1.2.3' });
-    expect(await release({ release: '1.2.4' })).toEqual({ status: 'fail', detail: "1.2.4 there, newer than this Mac's 1.2.3", action: 'update svall on this Mac' });
-    expect(await release({ protocol: PROTOCOL_VERSION - 1 })).toEqual({ status: 'fail', detail: "1.2.3 there, a build that cannot talk to this Mac's" });
+    expect(await release({})).toEqual({ status: 'ok', detail: '1.2.3, same as this Mac' });
+    expect(await release({ release: '1.2.2' })).toEqual({ status: 'fail', detail: '1.2.2 there, 1.2.3 on this Mac', action: 'svall host upgrade trift' });
+    expect(await release({ release: '1.2.4' })).toEqual({ status: 'fail', detail: '1.2.4 there, 1.2.3 on this Mac', action: 'update svall on this Mac' });
+    expect(await release({ protocol: PROTOCOL_VERSION - 1 })).toEqual({ status: 'fail', detail: "1.2.3 there, a build that cannot talk to this Mac's", action: 'svall host upgrade trift' });
     // a development build past the tag the machine runs is this Mac's to install there
-    expect(await release({}, '1.2.3-4-gabcdef0')).toEqual({ status: 'fail', detail: '1.2.3 there; this Mac runs 1.2.3-4-gabcdef0' });
+    expect(await release({}, '1.2.3-4-gabcdef0')).toEqual({ status: 'fail', detail: '1.2.3 there, 1.2.3-4-gabcdef0 on this Mac', action: 'svall host upgrade trift' });
   });
 
-  it('host doctor lists the rows as checks with action, tick and forward; the verdict counts each warn row with an action', async () => {
-    const { doctorVerdict } = await import('../src/commands/host.js');
+  it('host doctor lists the rows as checks with action, tick and forward, which its --all lists after the verdict', async () => {
+    const { doctorText } = await import('../src/commands/host.js');
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }) });
     ssh.reply(['svall-space'], { stdout: DF });
@@ -290,12 +295,12 @@ describe('host doctor', () => {
     ]);
     // after the checks the machine answers
     expect(report.checks.findIndex((c) => c.name.startsWith('mirror:'))).toBe(report.checks.length - 4);
-    expect(doctorVerdict(report.checks, 'trift', THERE)).toBe([
-      'trift is ready. 3 parts of your agent setup will not work there yet:',
+    expect(doctorText(report, 'trift', THERE, { all: true }).split('\n').slice(-4)).toEqual([
+      '3 parts of your agent setup are not on trift yet:',
       '  linear  keys not copied (env.LINEAR_API_KEY)  → svall host consent trift claude:mcp:linear on',
       '  github  keys not copied (env.GITHUB_API_KEY)  → svall host consent trift codex:mcp:github on',
       '  figma   log in once there; the row stays      → ssh -L 1455:localhost:1455 trift.test, then codex mcp login figma',
-    ].join('\n'));
+    ]);
   });
 
   it('a not-checked row names the doctor of the fleet the rows were asked of', async () => {
@@ -305,7 +310,7 @@ describe('host doctor', () => {
     ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
     const report = await doctorHost('trift', deps({ registry: registered(), fleet: { home: fleet, profile: 'work' }, setupRows: () => Promise.reject(new Error('svalld is not running')) }));
     expect(report.checks.at(-1)).toEqual({
-      name: 'mirror:unchecked', status: 'warn', detail: 'not checked: svalld is not running', action: 'svall -p work host doctor trift once Svall is open', gap: { name: 'agent setup', what: 'not checked' },
+      name: 'mirror:unchecked', status: 'warn', detail: 'not checked', raw: 'svalld is not running', action: 'svall -p work host doctor trift once Svall is open', gap: { name: 'agent setup', what: 'not checked' },
     });
   });
 
@@ -327,7 +332,7 @@ describe('host doctor', () => {
     // linger; the mirror's not-checked row, as this fleet's daemon is not running, is agent setup and no warning
     expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 0, warned: 1, release: '1.2.3' } });
     expect((JSON.parse(said.join('')) as HostReport).checks.at(-1)).toEqual({
-      name: 'mirror:unchecked', status: 'warn', detail: expect.stringMatching(/^not checked: svalld is not running/), action: 'svall host doctor trift once Svall is open',
+      name: 'mirror:unchecked', status: 'warn', detail: 'not checked', raw: expect.stringMatching(/^svalld is not running|^Svall's background service is not running/), action: 'svall host doctor trift once Svall is open',
       gap: { name: 'agent setup', what: 'not checked' },
     });
     expect(Date.now() - lastChecks(config)[REMOTE]!.at).toBeLessThan(60_000);
@@ -400,7 +405,11 @@ describe('host doctor', () => {
     registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
     registry.save();
     const { hostCommands, lastChecks } = await import('../src/commands/host.js');
-    await expect(hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => config).parseAsync(['doctor', 'trift'], { from: 'user' })).rejects.toThrow();
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => config).parseAsync(['doctor', 'trift'], { from: 'user' });
+      expect(process.exitCode).toBe(1);
+    } finally { out.mockRestore(); process.exitCode = 0; }
     expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 1, warned: 0 } });
   });
 
@@ -412,7 +421,7 @@ describe('host doctor', () => {
     ssh.reply(['svall-linger'], { stdout: 'Linger=no\n' });
     const report = await doctorHost('trift', deps({ registry: registered() }));
     const linger = report.checks.find((c) => c.name === 'linger');
-    expect(linger).toMatchObject({ status: 'warn', detail: 'off for linus: the fleet stops when you log out; ssh trift.test, then sudo loginctl enable-linger linus', run: 'sudo loginctl enable-linger linus' });
+    expect(linger).toMatchObject({ status: 'warn', detail: 'off: the fleet stops when you log out', action: 'ssh trift.test, then sudo loginctl enable-linger linus', run: 'sudo loginctl enable-linger linus' });
     // a check only reads
     expect(ssh.remoteCalls().some((c) => c.join(' ').includes('enable-linger'))).toBe(false);
   });
@@ -435,7 +444,7 @@ describe('host doctor', () => {
     ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
     ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
     const report = await doctorHost('trift', deps({ registry: registered() }));
-    expect(report.checks.find((c) => c.name === 'doctor')).toMatchObject({ status: 'fail', detail: expect.stringContaining('exited 9') });
+    expect(report.checks.find((c) => c.name === 'doctor')).toMatchObject({ status: 'fail', detail: 'Svall there did not answer', raw: expect.stringContaining('exited 9') });
   });
 
   it('checks the far account still has the home the registry records for it', async () => {
@@ -448,11 +457,10 @@ describe('host doctor', () => {
     };
     const home = async () => (await doctorHost('trift', deps({ registry: registered() }))).checks.find((c) => c.name === 'home');
     answer(HOME);
-    expect(await home()).toEqual({ name: 'home', status: 'ok', detail: `${HOME} for linus` });
+    expect(await home()).toEqual({ name: 'home', status: 'ok', detail: HOME });
     answer(ELSEWHERE);
     expect(await home()).toEqual({
-      name: 'home', status: 'fail',
-      detail: `${ELSEWHERE} is linus's home on trift, and the registry records ${HOME}; svall host remove trift, then svall host add again`,
+      name: 'home', status: 'fail', detail: `${ELSEWHERE} there, ${HOME} in the list of machines`, action: 'svall host remove trift, then svall host add again',
     });
   });
 
@@ -462,7 +470,7 @@ describe('host doctor', () => {
     ssh.reply(['svall-space'], { stdout: DF });
     ssh.reply(['svall-home'], { stdout: `${ELSEWHERE}\nlinus\n` });
     const report = await doctorHost('trift', deps({ registry: registered(ELSEWHERE) }));
-    expect(report.checks.find((c) => c.name === 'home')).toEqual({ name: 'home', status: 'ok', detail: `${ELSEWHERE} for linus` });
+    expect(report.checks.find((c) => c.name === 'home')).toEqual({ name: 'home', status: 'ok', detail: ELSEWHERE });
   });
 
   it('reports a release other than the controller\'s as a failure', async () => {
@@ -471,8 +479,7 @@ describe('host doctor', () => {
     ssh.reply(['svall-space'], { stdout: DF });
     ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
     const report = await doctorHost('trift', deps({ registry: registered() }));
-    expect(report.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'fail' });
-    expect(report.checks.find((c) => c.name === 'release')?.action).toBeUndefined();
+    expect(report.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'fail', action: 'svall host upgrade trift' });
   });
 
   it('says to update svall on this Mac when the machine runs a newer release', async () => {

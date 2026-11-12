@@ -6,7 +6,7 @@ import { MachineId, type SetupRow } from '@svall/protocol';
 import { shq } from '@svall/svalld/text';
 import { flow, removeHost, rowCheck, rowStep, StepError, type StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
-import { SshMaster } from '../src/controller/ssh.js';
+import { SshError, SshMaster } from '../src/controller/ssh.js';
 import { waitFor } from '../../svalld/test/helpers.js';
 import { BASE, DOCTOR, HOME, REMOTE, THERE, deps, fleet, okRow, ssh, ticked, unticked, useHostWorld, varRow, work } from './controller/host-world.js';
 
@@ -55,7 +55,8 @@ describe('a relayed run', () => {
     await new Promise((resolve) => { child.on('close', resolve); });
     child.stdin.destroy();
     expect(ssh.calls()[0].slice(0, 2)).toEqual(['-o', 'BatchMode=yes']);
-    expect(out).toContain('cannot log in to denied.test: linus@denied.test: Permission denied (publickey).');
+    const master = out.split('\n').filter(Boolean).map((l) => JSON.parse(l) as StepEvent).find((e) => e.step === 'ssh' && e.status === 'fail');
+    expect(master).toMatchObject({ detail: expect.stringMatching(/cannot log in to denied\.test$/), raw: expect.stringContaining('linus@denied.test: Permission denied (publickey).') });
   });
 });
 
@@ -95,54 +96,47 @@ describe('the last line a run prints', () => {
     expect(doneLine('remove', 'trift', { forget: true })).toBe('trift is forgotten');
   });
 
-  it('the outcome line reads ready when nothing is left to do, counts the things to fix otherwise, then lists what of the agent setup will not work there yet', async () => {
-    const { doctorVerdict, outcomeText } = await import('../src/commands/host.js');
-    const ready = 'trift is ready. Robots you move there keep working while this Mac sleeps.';
-    const linger = 'ssh trift, then loginctl enable-linger linus';
-    const login = 'ssh trift, then claude auth login';
-    const linear = { ...rowStep(unticked('claude:mcp:linear')) };
-    const listed = '  linear  keys not copied (env.LINEAR_API_KEY)  → svall -p work host consent trift claude:mcp:linear on';
+  it('a run ends on the rows that need a person in full, the notes and the fine rows a line each, then its verdict and the setup still to come', async () => {
+    const { outcomeText } = await import('../src/commands/host.js');
     const work = { there: { ssh: 'trift.test', svall: 'svall -p work' } };
-    expect(outcomeText({ result: 'ready', actions: [] }, 'add', 'trift')).toBe(ready);
-    expect(outcomeText({ result: 'ready', actions: [] }, 'upgrade', 'trift')).toBe(ready);
-    expect(outcomeText({ result: 'ready', actions: [], setup: [linear] }, 'upgrade', 'trift', work))
-      .toBe(`trift is ready. 1 part of your agent setup will not work there yet:\n${listed}`);
-    expect(outcomeText({ result: 'actions', actions: [linger] }, 'add', 'trift')).toBe(`trift has 1 thing to fix:\n  ${linger}`);
-    expect(outcomeText({ result: 'actions', actions: [linger, login] }, 'upgrade', 'trift')).toBe(`trift has 2 things to fix:\n  ${linger}\n  ${login}`);
-    expect(outcomeText({ result: 'actions', actions: [linger], setup: [linear] }, 'add', 'trift', work))
-      .toBe(`trift has 1 thing to fix:\n  ${linger}\n1 part of your agent setup will not work on trift yet:\n${listed}`);
-    // a list with nothing to do about any of it will not work there, not yet
-    const unread = rowStep({ key: 'unreadable:/Users/ada/x.json', status: 'warn', detail: 'd', gap: { name: 'x.json', what: 'not copied: this Mac cannot read it' } });
-    expect(outcomeText({ result: 'ready', actions: [], setup: [unread] }, 'add', 'trift', work))
-      .toBe('trift is ready. 1 part of your agent setup will not work there:\n  x.json  not copied: this Mac cannot read it');
-    // a server that runs only on a Mac stands aside: one line of its own, after the list or alone
+    const linger: StepEvent = { step: 'linger', status: 'warn', detail: 'off: the fleet stops when you log out', action: 'ssh trift, then sudo loginctl enable-linger linus' };
+    const tmux: StepEvent = { step: 'tmux', status: 'warn', detail: '3.4: Shift+Enter needs 3.5', raw: 'tmux 3.4, from /usr/bin/tmux' };
+    const steps: StepEvent[] = [{ step: 'ssh', status: 'start' }, { step: 'ssh', status: 'ok', detail: 'logs in' }, { step: 'os', status: 'ok', detail: 'Ubuntu 24.04 LTS, x86-64' }, linger, tmux];
+    const linear = { ...rowStep(unticked('claude:mcp:linear')) };
     const chrome = rowStep({ key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } });
-    expect(outcomeText({ result: 'ready', actions: [], setup: [chrome] }, 'add', 'trift', work)).toBe('trift is ready. chrome runs only on a Mac.');
-    expect(outcomeText({ result: 'actions', actions: [linger], setup: [chrome] }, 'add', 'trift', work))
-      .toBe(`trift has 1 thing to fix:\n  ${linger}\nchrome runs only on a Mac.`);
-    expect(outcomeText({ result: 'ready', actions: [], setup: [chrome, linear] }, 'add', 'trift', work).split('\n'))
-      .toEqual(['trift is ready. 1 part of your agent setup will not work there yet:', ...listed.split('\n'), '  chrome runs only on a Mac']);
-    expect(outcomeText({ result: 'actions', actions: [linger], stopped: 'install' }, 'add', 'trift'))
-      .toBe(`stopped at install; trift has 1 thing to fix:\n  ${linger}`);
-    expect(outcomeText({ result: 'actions', actions: [linger] }, 'rollback', 'trift')).toBe(`still to do:\n  ${linger}`);
+    expect(outcomeText({ result: 'actions', actions: [linger.action!], setup: [linear, chrome] }, 'add', 'trift', { ...work, steps }).split('\n')).toEqual([
+      '! linger  off: the fleet stops when you log out -> ssh trift, then sudo loginctl enable-linger linus',
+      '! 1 note',
+      '✓ 2 checks fine',
+      'trift has 1 thing to fix',
+      '1 part of your agent setup is not on trift yet: svall -p work host doctor trift --all lists them',
+    ]);
+    // a setup that only stands aside counts nothing
+    expect(outcomeText({ result: 'ready', actions: [], setup: [chrome] }, 'add', 'trift', { ...work, steps: steps.slice(0, 3) })).toBe('✓ 2 checks fine\ntrift is ready');
+    // an agent the fleet does not run is a note in an add, and every warning is to do in an upgrade
+    const codex: StepEvent = { step: 'codex', status: 'warn', detail: '0.156.1, not logged in', action: 'ssh trift, then codex login' };
+    const fleetRuns = { mainAgent: 'claude', robots: {} } as never;
+    expect(outcomeText({ result: 'actions', actions: [] }, 'add', 'trift', { ...work, steps: [codex], fleet: fleetRuns })).toBe('! 1 note\ntrift is ready');
+    expect(outcomeText({ result: 'actions', actions: [] }, 'upgrade', 'trift', { ...work, steps: [tmux], fleet: fleetRuns }).split('\n')).toEqual([
+      '! tmux  3.4: Shift+Enter needs 3.5', '  tmux 3.4, from /usr/bin/tmux', 'trift has 1 thing to fix',
+    ]);
+    const failed: StepEvent = { step: 'install', status: 'fail', detail: 'did not finish', raw: 'svall setup exited 1: no space' };
+    expect(outcomeText({ result: 'actions', actions: ['did not finish'], stopped: 'install' }, 'add', 'trift', { ...work, steps: [failed] }).split('\n'))
+      .toEqual(['✗ install  did not finish', '  svall setup exited 1: no space', 'Adding trift did not finish']);
     expect(outcomeText({ result: 'ready', actions: [] }, 'remove', 'trift', { forget: true })).toBe('trift is forgotten');
+    const keys: StepEvent = { step: 'keys', status: 'warn', detail: 'copied keys left in 1 file', action: 'ssh trift, then remove them by hand' };
+    expect(outcomeText({ result: 'actions', actions: [keys.action!] }, 'remove', 'trift', { steps: [keys] }).split('\n'))
+      .toEqual(['! keys  copied keys left in 1 file -> ssh trift, then remove them by hand', 'trift is removed']);
+  });
 
-    const ok = { name: 'release', status: 'ok' as const, detail: '1.2.3' };
-    const warn = { name: 'tmux', status: 'warn' as const, detail: '3.4' };
-    const fail = (name: string) => ({ name, status: 'fail' as const, detail: 'inactive' });
-    expect(doctorVerdict([ok, warn, warn], 'trift', THERE)).toBe(ready);
-    expect(doctorVerdict([ok, rowCheck({ key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } })], 'trift', THERE))
-      .toBe('trift is ready. chrome runs only on a Mac.');
-    expect(doctorVerdict([ok, warn, fail('systemd')], 'trift', THERE)).toBe('trift has 1 thing to fix: systemd');
-    expect(doctorVerdict([fail('systemd'), fail('release')], 'trift', THERE)).toBe('trift has 2 things to fix: systemd, release');
-    // a mirror row by its own line, though two servers' rows read alike; rows that only ask to check again are not listed
-    const again = (key: string) => rowCheck({ key, status: 'warn', action: 'check trift again', detail: 'not checked: trift is not reachable' });
-    expect(doctorVerdict([rowCheck(unticked('claude:mcp:github')), rowCheck(unticked('codex:mcp:github')), again('var:X'), again('var:Y'), fail('systemd')], 'trift', THERE)).toBe([
-      'trift has 1 thing to fix: systemd',
-      '2 parts of your agent setup will not work on trift yet:',
-      '  github  keys not copied (env.GITHUB_API_KEY)  → svall host consent trift claude:mcp:github on',
-      '  github  keys not copied (env.GITHUB_API_KEY)  → svall host consent trift codex:mcp:github on',
-    ].join('\n'));
+  it('a run ends 1 while it stopped or a row needs a person, and 0 on notes alone', async () => {
+    const { leftToDo } = await import('../src/commands/host.js');
+    const note: StepEvent = { step: 'gh', status: 'warn', detail: 'not logged in', action: 'gh auth login; until then pull request links stay unresolved' };
+    const todo: StepEvent = { step: 'linger', status: 'warn', detail: 'off: the fleet stops when you log out', action: 'x' };
+    expect(leftToDo({ result: 'actions', actions: [note.action!] }, 'add', [note], undefined)).toBe(false);
+    expect(leftToDo({ result: 'actions', actions: ['x'] }, 'add', [note, todo], undefined)).toBe(true);
+    expect(leftToDo({ result: 'actions', actions: [], stopped: 'ssh' }, 'add', [], undefined)).toBe(true);
+    expect(leftToDo({ result: 'actions', actions: [] }, 'upgrade', [note], undefined)).toBe(true);
   });
 
   it('lists each row of what will not work there by name, what it lacks and the one thing to do from this Mac\'s terminal', async () => {
@@ -247,21 +241,38 @@ describe('the last line a run prints', () => {
     expect(said.join('')).toBe('Run these on trift:\n  ssh trift.test, then sudo apt install nodejs npm\nsvall host doctor trift checks again once they are done.\n');
   });
 
-  it('host doctor lists the phone link\'s row among the checks whatever it says, and leaves the other setup rows to the verdict', async () => {
+  it('host doctor tiers its checks, the phone link\'s row among them, counts the setup still to come, and lists every row with --all', async () => {
     const { doctorText } = await import('../src/commands/host.js');
     const phone = (row: Partial<SetupRow>) => rowCheck({ key: 'phone', status: 'skip', detail: 'off', tick: { item: 'phone', fields: ['on'], on: false, preview: [] }, ...row });
     const release = { name: 'release', status: 'ok' as const, detail: '1.2.3' };
-    expect(doctorText({ machine: 'trift', checks: [release, rowCheck(okRow('var:X')), phone({})] }, 'trift', THERE).split('\n').slice(0, 3))
-      .toEqual(['machine trift', '✓ release  1.2.3', '– phone    [ ] off']);
+    const systemd = { name: 'systemd', status: 'fail' as const, detail: 'not running', raw: 'svall-svalld@private.service: loaded, inactive (dead), enabled' };
+    const tmux = { name: 'tmux', status: 'warn' as const, detail: '3.4: Shift+Enter needs 3.5' };
+    expect(doctorText({ machine: 'trift', checks: [release, rowCheck(okRow('var:X')), phone({})] }, 'trift', THERE)).toBe('machine trift\n✓ 2 checks fine\ntrift is ready');
     const refused = phone({
-      status: 'warn', detail: 'trift does not serve the phone: Access denied', action: 'sudo tailscale set --operator=$USER', gap: { name: 'phone', what: 'not served' },
+      status: 'warn', detail: 'on, not serving', action: 'sudo tailscale set --operator=$USER', gap: { name: 'phone', what: 'not served' },
       tick: { item: 'phone', fields: ['on'], on: true, preview: [] },
     });
-    expect(doctorText({ machine: 'trift', checks: [release, refused] }, 'trift', THERE).split('\n').slice(2)).toEqual([
-      '! phone    [x] trift does not serve the phone: Access denied -> sudo tailscale set --operator=$USER',
-      'trift is ready. 1 part of your agent setup will not work there yet:',
-      '  phone  not served  → sudo tailscale set --operator=$USER',
+    const linear = rowCheck(unticked('claude:mcp:linear'));
+    const checks = [release, systemd, tmux, refused, linear];
+    expect(doctorText({ machine: 'trift', checks }, 'trift', THERE).split('\n')).toEqual([
+      'machine trift',
+      '✗ systemd  not running',
+      '  svall-svalld@private.service: loaded, inactive (dead), enabled',
+      '! 2 notes',
+      '✓ 1 check fine',
+      'trift has 1 thing to fix',
+      '2 parts of your agent setup are not on trift yet: svall host doctor trift --all lists them',
     ]);
+    expect(doctorText({ machine: 'trift', checks }, 'trift', THERE, { all: true }).split('\n').filter((l) => !l.startsWith(' '))).toEqual([
+      'machine trift',
+      '✓ release  1.2.3',
+      '✗ systemd  not running',
+      '! tmux     3.4: Shift+Enter needs 3.5',
+      '! phone    [x] on, not serving -> sudo tailscale set --operator=$USER',
+      'trift has 1 thing to fix',
+      '2 parts of your agent setup are not on trift yet:',
+    ]);
+    expect(doctorText({ machine: 'trift', checks }, 'trift', THERE, { all: true })).toContain('  linear  keys not copied (env.LINEAR_API_KEY)  → svall host consent trift claude:mcp:linear on');
   });
 
   it('a run\'s lines leave the agent setup rows to the list at its end', async () => {
@@ -298,6 +309,12 @@ describe('the last line a run prints', () => {
       await run.step('install', () => Promise.reject(new StepError('did not finish', undefined, undefined, undefined, 'svall setup exited 1: no space')));
     });
     expect(events.filter((e) => e.status !== 'start').map((e) => [e.step, e.raw])).toEqual([['space', 'df: 2097152'], ['install', 'svall setup exited 1: no space']]);
+  });
+
+  it('a step that ssh or a command there stopped says so in words of its own, with what was said behind them', async () => {
+    const events: StepEvent[] = [];
+    await flow((e) => events.push(e), (run) => run.step('upload', () => Promise.reject(new SshError('unreachable', 'the companion could not be written to /x: broken pipe'))));
+    expect(events.at(-1)).toEqual({ step: 'upload', status: 'fail', detail: 'did not finish', raw: 'the companion could not be written to /x: broken pipe' });
   });
 
   it('stepLine prints [ ] before an unticked row and [x] before a ticked one', async () => {

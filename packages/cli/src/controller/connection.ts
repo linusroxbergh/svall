@@ -3,10 +3,10 @@ import path from 'node:path';
 import { PROTOCOL_VERSION, type FleetId } from '@svall/protocol';
 import { peekConfig, readFleetConfig } from '@svall/svalld/config';
 import { FleetMismatch, MachineMismatch, remoteConnectionInfo, type ConnectionInfo } from '@svall/svalld/link/connection-info';
-import { machineId, versionMachineId } from '@svall/svalld/machine';
+import { homeWord, machineId, versionMachineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { svalldUnitName } from '@svall/svalld/linux/setup';
-import { PRIVATE, profileOf } from '@svall/svalld/profile';
+import { PRIVATE, profileOf, SHIM } from '@svall/svalld/profile';
 import { workerProfile } from '@svall/svalld/placement/workers';
 import { svallExe, releaseVersion } from '@svall/svalld/release';
 import { shq } from '@svall/svalld/text';
@@ -47,19 +47,26 @@ const alive = (pid: number): boolean => {
   try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code !== 'ESRCH'; }
 };
 
+/**
+ * That this machine's daemon is not running, and what to do about it: start it here, or on a server, which no one sits at, the
+ * check the Mac runs on it; the files and the unit behind it in parentheses.
+ */
+function notRunning(paths: ReturnType<typeof resolvePaths>, platform: NodeJS.Platform, raw: string): SshError {
+  // on Linux the daemon is a systemd unit, which says why it is down
+  const unit = platform === 'linux' ? `; systemctl --user status ${svalldUnitName(profileOf(paths.home))}` : '';
+  const said = platform === 'linux'
+    ? ` on ${homeWord()}; svall host doctor ${homeWord()} says why`
+    : `; start it: ${SHIM} setup${SHIM === 'svall-dev' ? ' or pnpm svalld' : ''}`;
+  return new SshError('daemon_down', `Svall's background service is not running${said} (${raw}${unit})`);
+}
+
 /** What this machine's own daemon answers about the fleet it runs. */
 export function localConnectionInfo(fleetHome: string, platform: NodeJS.Platform = process.platform): ConnectionInfo {
   const paths = resolvePaths(fleetHome);
-  if (!fs.existsSync(paths.port) || !fs.existsSync(paths.token)) {
-    // on Linux the daemon is a systemd unit, which says why it is down
-    const how = platform === 'linux'
-      ? `\`systemctl --user status ${svalldUnitName(profileOf(paths.home))}\` there says why, as \`svall host doctor <machine>\` does from the Mac`
-      : 'Start it with `svall setup` or `pnpm svalld`';
-    throw new SshError('daemon_down', `svalld is not running (no ${paths.port}). ${how}.`);
-  }
+  if (!fs.existsSync(paths.port) || !fs.existsSync(paths.token)) throw notRunning(paths, platform, `no ${paths.port}`);
   // a daemon killed leaves its port file, and whoever holds that port by now must not be offered the token
   const pid = daemonPid(paths.home);
-  if (pid > 0 && !alive(pid)) throw new SshError('daemon_down', `svalld is not running: process ${pid} in ${paths.home}/version is gone`);
+  if (pid > 0 && !alive(pid)) throw notRunning(paths, platform, `process ${pid} in ${paths.home}/version is gone`);
   const config = peekConfig(paths);
   return {
     fleetId: config.id,

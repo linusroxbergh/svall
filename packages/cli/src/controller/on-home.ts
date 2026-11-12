@@ -71,14 +71,14 @@ const parsed = (line: string): { step?: unknown; status?: unknown; detail?: unkn
  * holds for a platform, and its release, which it copies to a home of that release that has none and runs again with.
  */
 export async function relay(home: FarHome, args: string[], o: { open(destination: string): Promise<Far>; line(line: string): void; carried?(platform: string): { archive: string; release: string } | undefined }): Promise<number> {
-  const stop = (detail: string, action?: string): number => {
-    o.line(JSON.stringify({ step: 'relay', status: 'fail', detail, ...(action && { action }) }));
+  const stop = (detail: string, action?: string, raw?: string): number => {
+    o.line(JSON.stringify({ step: 'relay', status: 'fail', detail, ...(action && { action }), ...(raw && { raw }) }));
     o.line(JSON.stringify({ result: 'actions', actions: [action ?? detail], stopped: 'relay' }));
     return 1;
   };
   const noSvall = (): number => stop(`${home.name} has no Svall at ${svallExe(home.svallBase)}`, `upgrade ${home.name} under Machines`);
   let master: Far;
-  try { master = await o.open(home.ssh); } catch (e) { return stop(`${home.name} did not answer: ${(e as Error).message}`, 'try again once it answers'); }
+  try { master = await o.open(home.ssh); } catch (e) { return stop(`${home.name} did not answer`, 'try again once it answers', (e as Error).message); }
   try {
     // the far run's words name the home as this machine does
     const svall = ['env', shq(`SVALL_HOME=${home.fleetHome}`), shq(`SVALL_HOME_WORD=${home.name}`), shq(svallExe(home.svallBase))];
@@ -88,7 +88,7 @@ export async function relay(home: FarHome, args: string[], o: { open(destination
     } catch (e) {
       if (e instanceof MachineMismatch || e instanceof FleetMismatch) return stop(e.message, `check where ${home.ssh} leads and which machine holds this fleet, then try again`);
       if (e instanceof SshError && e.kind === 'version') return noSvall();
-      return stop(`${home.name} did not answer: ${(e as Error).message}`, 'try again once it answers');
+      return stop(`${home.name} did not answer`, 'try again once it answers', (e as Error).message);
     }
     // the steps a first run ended as they stand, which a run again with the archive repeats
     const ended = new Set<string>();
@@ -144,7 +144,7 @@ export async function relay(home: FarHome, args: string[], o: { open(destination
         if (moved.code !== 0) throw new Error(moved.stderr.trim() || `mv exited ${moved.code}`);
       } catch (e) {
         await master.run(['rm', '-f', '--', shq(part)]).catch(() => undefined);
-        return stop(`${home.name} did not take the archive this CLI carries for ${platform}: ${(e as Error).message}`, 'try again once it answers');
+        return stop(`${home.name} did not take the archive this CLI carries for ${platform}`, 'try again once it answers', (e as Error).message);
       }
       o.line(JSON.stringify({ step: 'relay', status: 'ok', detail: `the archive this CLI carries for ${platform} is on ${home.name}` }));
       ran = await run(['--release', remote]);
@@ -152,7 +152,9 @@ export async function relay(home: FarHome, args: string[], o: { open(destination
     const { code, signal, stderr, said } = ran;
     if (code === 255 || code === null || signal) return stop(`the connection to ${home.name} went away; what it was doing may still finish there`, 'try again once it answers');
     if (code === 126 || code === 127) return noSvall();
-    if (code !== 0 && !said) return stop(`svall ${args.slice(0, 2).join(' ')} there exited ${code}: ${stderr.trim().replace(/^svall: /, '').slice(-400) || 'no output'}`);
+    if (code !== 0 && !said) {
+      return stop(`${home.name} did not finish ${args[1] === 'doctor' ? 'the check' : `svall ${args.slice(0, 2).join(' ')}`}`, undefined, `svall ${args.slice(0, 2).join(' ')} there exited ${code}: ${stderr.trim().replace(/^svall: /, '').slice(-400) || 'no output'}`);
+    }
     return code;
   } finally {
     await master.close().catch(() => undefined);

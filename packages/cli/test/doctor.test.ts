@@ -127,12 +127,12 @@ describe('doctor', () => {
     expect(r.checks.every((x) => x.status === 'ok' || x === c.codex || x === c.opencode || x === c['codex hooks'] || x === c['opencode plugin'])).toBe(true);
     expect(c.codex).toMatchObject({ status: 'skip', detail: 'not installed' });
     expect(c['codex hooks']).toMatchObject({ status: 'skip', detail: 'not installed' });
-    expect(c.tmux.detail).toBe('tmux 3.5a');
+    expect(c.tmux.detail).toBe('3.5a');
     expect(c.node.detail).toBe('v24.13.0');
-    expect(c.claude.detail).toBe('2.1.251 (Claude Code), signed in');
+    expect(c.claude.detail).toBe('2.1.251, logged in');
     expect(c.svalld.detail).toBe('running on port 47800');
-    expect(c['hook receiver']).toMatchObject({ status: 'ok', detail: 'answering at /u/.svall/hooks.sock' });
-    expect(c.launchd.detail).toMatch(/state = running/);
+    expect(c['hook receiver']).toMatchObject({ status: 'ok', detail: 'answers', raw: '/u/.svall/hooks.sock' });
+    expect(c.launchd).toMatchObject({ detail: 'running', raw: expect.stringMatching(/state = running/) });
     expect(c.rsync).toBeUndefined();
     expect(r.log.path).toBe('/u/.svall/svalld.log');
     expect(r.log.lines).toEqual(Array.from({ length: 20 }, (_, i) => `line ${i + 11}`));
@@ -206,12 +206,12 @@ describe('doctor', () => {
     });
     const r = await doctor(priv, f.deps);
     const c = byName(r);
-    expect(c.tmux).toMatchObject({ status: 'fail', detail: expect.stringMatching(/brew install tmux/) });
+    expect(c.tmux).toMatchObject({ status: 'fail', detail: 'not installed', action: 'brew install tmux' });
     expect(c.agents).toMatchObject({ status: 'fail', detail: expect.stringContaining('no agent CLI (claude, codex or opencode) is on PATH') });
-    expect(c.gh).toMatchObject({ status: 'warn', detail: expect.stringMatching(/gh auth login/) });
+    expect(c.gh).toMatchObject({ status: 'warn', detail: 'not logged in', action: 'gh auth login; until then pull request links stay unresolved', run: 'gh auth login' });
     expect(c.svalld).toMatchObject({ status: 'warn', detail: expect.stringMatching(/not running .*: it starts when Svall opens on this fleet$/) });
-    expect(c['hook receiver']).toMatchObject({ status: 'skip', detail: 'svalld is not running' });
-    expect(c.launchd).toMatchObject({ status: 'fail', detail: expect.stringMatching(/not loaded/) });
+    expect(c['hook receiver']).toMatchObject({ status: 'skip', detail: "Svall's background service is not running" });
+    expect(c.launchd).toMatchObject({ status: 'fail', detail: 'not loaded', action: 'svall setup' });
     expect(c.hooks).toMatchObject({ status: 'fail', detail: expect.stringMatching(/svall setup/) });
     expect(r.log.lines).toEqual([]);
   });
@@ -220,14 +220,14 @@ describe('doctor', () => {
     const r = await doctor(priv, fake({ commands: { 'tmux -V': 'tmux 3.4\n' }, up: false, node: 'v22.23.0' }).deps);
     const c = byName(r);
     expect(c.node).toMatchObject({ status: 'fail', detail: expect.stringMatching(/node 24/) });
-    expect(c.tmux).toMatchObject({ status: 'warn', detail: expect.stringMatching(/3\.5/) });
-    expect(c.svalld).toMatchObject({ status: 'fail', detail: expect.stringMatching(/47800.*ECONNREFUSED/) });
+    expect(c.tmux).toMatchObject({ status: 'warn', detail: '3.4: Shift+Enter needs 3.5', action: 'brew upgrade tmux' });
+    expect(c.svalld).toMatchObject({ status: 'fail', detail: 'port 47800 does not answer', raw: expect.stringMatching(/ECONNREFUSED/) });
   });
 
   it('names the process holding a port svalld does not answer on, or one config.json sets while svalld is down', async () => {
     const holder = 'p4242\ncnc\nf3\n';
     const stale = byName(await doctor(priv, fake({ up: false, commands: { 'lsof -nP -iTCP:47800 -sTCP:LISTEN -Fpc': holder } }).deps));
-    expect(stale.svalld).toMatchObject({ status: 'fail', detail: expect.stringMatching(/^port 47800 does not answer: .*; nc \(pid 4242\) holds it$/) });
+    expect(stale.svalld).toMatchObject({ status: 'fail', detail: 'port 47800 does not answer; nc (pid 4242) holds it' });
     const files = { '/u/.svall/port': undefined, '/u/.svall/config.json': '{"port":47801}' };
     const set = fake({ commands: { 'lsof -nP -iTCP@127.0.0.1:47801 -sTCP:LISTEN -Fpc': holder }, files });
     expect(byName(await doctor(priv, set.deps)).svalld).toEqual({ name: 'svalld', status: 'fail', detail: 'not running: nc (pid 4242) holds port 47801, which /u/.svall/config.json sets; stop it, or take port out of config.json' });
@@ -239,10 +239,12 @@ describe('doctor', () => {
   it('reports a missing hook receiver even when the API is answering, and how to restart that fleet', async () => {
     const c = byName(await doctor(priv, fake({ hookUp: false }).deps));
     expect(c.svalld.status).toBe('ok');
-    expect(c['hook receiver']).toMatchObject({ status: 'fail', detail: expect.stringMatching(/does not answer \(ENOENT\); restart it with `launchctl kickstart -k gui\/\$\(id -u\)\/io\.github\.linusroxbergh\.svall\.svalld`$/) });
+    expect(c['hook receiver']).toMatchObject({
+      status: 'fail', detail: 'does not answer', action: 'restart it with `launchctl kickstart -k gui/$(id -u)/io.github.linusroxbergh.svall.svalld`', raw: '/u/.svall/hooks.sock does not answer (ENOENT)',
+    });
     const work = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, fake({ hookUp: false, files: { '/u/.svall-work/port': '51000' } }).deps));
-    expect(work['hook receiver'].detail).toMatch(/io\.github\.linusroxbergh\.svall\.svalld\.work`$/);
-    expect(byName(await doctor(adhoc, fake({ hookUp: false, files: { '/tmp/svall-dev/port': '47900' } }).deps))['hook receiver'].detail).toMatch(/restart the svalld serving \/tmp\/svall-dev$/);
+    expect(work['hook receiver'].action).toMatch(/io\.github\.linusroxbergh\.svall\.svalld\.work`$/);
+    expect(byName(await doctor(adhoc, fake({ hookUp: false, files: { '/tmp/svall-dev/port': '47900' } }).deps))['hook receiver'].action).toMatch(/restart the svalld serving \/tmp\/svall-dev$/);
   });
 
   it('reads a fleet whose window is shut as at rest, not broken', async () => {
@@ -254,8 +256,8 @@ describe('doctor', () => {
     const r = await doctor(priv, f.deps);
     const c = byName(r);
     expect(c.svalld.status).toBe('warn');
-    expect(c['hook receiver']).toMatchObject({ status: 'skip', detail: 'svalld is not running' });
-    expect(c.launchd.status).toBe('ok');
+    expect(c['hook receiver']).toMatchObject({ status: 'skip', detail: "Svall's background service is not running" });
+    expect(c.launchd).toMatchObject({ status: 'ok', detail: 'loaded' });
     expect(r.checks.filter((x) => x.status === 'fail')).toEqual([]);
   });
 
@@ -282,14 +284,14 @@ describe('doctor', () => {
   it('warns when the node the daemon starts with is one version, or gone', async () => {
     const nvm = '/u/.nvm/versions/node/v22.12.0/bin';
     const pinned = byName(await doctor(priv, fake({ files: { [PLIST]: plist(nvm), [`${nvm}/node`]: '' } }).deps));
-    expect(pinned['daemon node']).toMatchObject({ status: 'warn', detail: expect.stringMatching(/one node version.*svall setup/) });
+    expect(pinned['daemon node']).toMatchObject({ status: 'warn', detail: expect.stringMatching(/one node version/), action: 'after changing node: svall setup', raw: nvm });
     for (const dir of ['/opt/homebrew/Cellar/node/22.1.0_1/bin', '/nix/store/0lj7x-nodejs-22.12.0/bin']) {
       expect(byName(await doctor(priv, fake({ files: { [PLIST]: plist(dir), [`${dir}/node`]: '' } }).deps))['daemon node'].status).toBe('warn');
     }
     const gone = byName(await doctor(priv, fake({ files: { [PLIST]: plist('/opt/homebrew/opt/node@22/bin') } }).deps));
-    expect(gone['daemon node']).toMatchObject({ status: 'warn', detail: expect.stringMatching(/node@22\/bin\/node is gone.*svall setup/) });
+    expect(gone['daemon node']).toMatchObject({ status: 'warn', detail: 'gone', action: 'svall setup', raw: '/opt/homebrew/opt/node@22/bin/node' });
     const work = fake({ files: { '/u/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.work.plist': plist('/gone') } });
-    expect(byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, work.deps))['daemon node'].detail).toMatch(/svall work$/);
+    expect(byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, work.deps))['daemon node'].action).toMatch(/svall work$/);
     expect(byName(await doctor(adhoc, fake().deps))['daemon node'].status).toBe('skip');
   });
 
@@ -297,7 +299,7 @@ describe('doctor', () => {
     const node = '/Applications/Svall.app/Contents/Helpers/node';
     const text = `<key>ProgramArguments</key><array><string>${node}</string><string>/Applications/Svall.app/Contents/Resources/runtime/svalld.mjs</string></array>`;
     expect(byName(await doctor(priv, fake({ files: { [PLIST]: text } }).deps))['daemon node'])
-      .toEqual({ name: 'daemon node', status: 'ok', detail: `${node} (the app's own)` });
+      .toEqual({ name: 'daemon node', status: 'ok', detail: "the app's own", raw: node });
   });
 
   it('fails a plist whose program is gone, and warns when its PATH lacks a claude or codex this shell finds', async () => {
@@ -307,18 +309,18 @@ describe('doctor', () => {
     const running = (pathEnv: string) => runs([TSX, '/old/R&amp;D/svall/packages/svalld/src/bin.ts'], pathEnv);
     const there = { '/old/R&D/svall/node_modules/.bin/tsx': '', '/old/R&D/svall/packages/svalld/src/bin.ts': '', '/opt/homebrew/opt/node/bin/node': '' };
     expect(byName(await doctor(priv, fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin'), ...there } }).deps))['daemon path'])
-      .toMatchObject({ status: 'ok', detail: 'its program is there, and it finds the agent CLIs as this shell does' });
+      .toMatchObject({ status: 'ok', detail: 'finds the agent CLIs' });
     const gone = byName(await doctor(priv, fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin') } }).deps));
-    expect(gone['daemon path']).toMatchObject({ status: 'fail', detail: '/old/R&D/svall/node_modules/.bin/tsx is gone, so launchd cannot start svalld: svall setup' });
+    expect(gone['daemon path']).toMatchObject({ status: 'fail', detail: 'its program is gone', action: 'svall setup', raw: '/old/R&D/svall/node_modules/.bin/tsx is gone, so launchd cannot start svalld' });
     const SVALLD = '/u/.local/share/svall/current/bin/svalld';
     const release = runs([SVALLD], '/u/.local/share/svall/current/node/bin:/usr/bin');
     expect(byName(await doctor(priv, fake({ files: { [PLIST]: release, [SVALLD]: '' } }).deps))['daemon path'].status).toBe('ok');
     expect(byName(await doctor(priv, fake({ files: { [PLIST]: release } }).deps))['daemon path'])
-      .toMatchObject({ status: 'fail', detail: `${SVALLD} is gone, so launchd cannot start svalld: svall setup` });
+      .toMatchObject({ status: 'fail', detail: 'its program is gone', raw: `${SVALLD} is gone, so launchd cannot start svalld` });
     const pnpm = { '/u/Library/pnpm/claude': '', '/u/Library/pnpm/codex': '' };
     const lacking = fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin'), ...there, ...pnpm }, pathEnv: '/u/Library/pnpm:/usr/bin' });
     expect(byName(await doctor(priv, lacking.deps))['daemon path'])
-      .toMatchObject({ status: 'warn', detail: `the PATH in ${PLIST} has no claude or codex, which this shell finds: svall setup` });
+      .toMatchObject({ status: 'warn', detail: 'does not find claude or codex', action: 'svall setup', raw: `the PATH in ${PLIST} has no claude or codex, which this shell finds` });
     const carried = fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin:/u/Library/pnpm'), ...there, ...pnpm }, pathEnv: '/u/Library/pnpm:/usr/bin' });
     expect(byName(await doctor(priv, carried.deps))['daemon path'].status).toBe('ok');
     expect(byName(await doctor(adhoc, fake().deps))['daemon path'].status).toBe('skip');
@@ -327,11 +329,11 @@ describe('doctor', () => {
   it('warns when the plist lacks where this shell keeps Claude and Codex files', async () => {
     const env = { CLAUDE_CONFIG_DIR: '/x/claude', CODEX_HOME: '/x/codex' };
     const lacking = byName(await doctor(priv, fake({ daemonEnv: env }).deps));
-    expect(lacking['daemon env']).toMatchObject({ status: 'warn', detail: expect.stringMatching(/lacks CLAUDE_CONFIG_DIR and CODEX_HOME.*: svall setup$/) });
+    expect(lacking['daemon env']).toMatchObject({ status: 'warn', detail: 'lacks CLAUDE_CONFIG_DIR and CODEX_HOME', action: 'svall setup' });
     const carried = `<dict>\n    <key>PATH</key><string>/opt/homebrew/opt/node/bin</string>\n    <key>CLAUDE_CONFIG_DIR</key><string>/x/claude</string>\n    <key>CODEX_HOME</key><string>/x/codex</string>\n</dict>`;
     expect(byName(await doctor(priv, fake({ daemonEnv: env, files: { [PLIST]: carried } }).deps))['daemon env'].status).toBe('ok');
     const work = fake({ daemonEnv: env, files: { '/u/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.work.plist': plist('/opt/homebrew/opt/node/bin') } });
-    expect(byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, work.deps))['daemon env'].detail).toMatch(/svall work$/);
+    expect(byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, work.deps))['daemon env'].action).toMatch(/svall work$/);
     expect(byName(await doctor(priv, fake().deps))['daemon env'].status).toBe('ok');
     expect(byName(await doctor(adhoc, fake({ daemonEnv: env }).deps))['daemon env'].status).toBe('skip');
   });
@@ -381,20 +383,20 @@ describe('doctor', () => {
   it('reads only the service\'s own state from launchd, not its triggers\'', async () => {
     const out = '\tstate = running\n\truns = 4\n\tlast exit code = 0\n\tevent triggers = {\n\t\tstate = active\n\t}\n\t\tstate = active\n';
     const c = byName(await doctor(priv, fake({ commands: { [`launchctl print gui/501/${LAUNCHD_LABEL}`]: out } }).deps));
-    expect(c.launchd.detail).toBe(`${LAUNCHD_LABEL}: state = running, runs = 4, last exit code = 0`);
+    expect(c.launchd).toMatchObject({ detail: 'running', raw: `${LAUNCHD_LABEL}: state = running, runs = 4, last exit code = 0` });
   });
 
   it('checks Claude Code against the plain floor where no robot moves', async () => {
     const c = byName(await doctor(priv, fake({ moves: false, commands: { 'claude --version': '2.1.250 (Claude Code)\n' } }).deps));
-    expect(c.claude).toEqual({ name: 'claude', status: 'ok', detail: '2.1.250 (Claude Code), signed in' });
+    expect(c.claude).toEqual({ name: 'claude', status: 'ok', detail: '2.1.250, logged in' });
   });
 
   it('asks launchd about the profile it was pointed at, and not at all for an ad-hoc home', async () => {
     const work = fake({ commands: { 'launchctl print gui/501/io.github.linusroxbergh.svall.svalld.work': '\tstate = running\n' } });
     expect(byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, work.deps)).launchd.status).toBe('ok');
-    expect(byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, fake().deps)).launchd.detail).toMatch(/not loaded: svall work$/);
+    expect(byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, fake().deps)).launchd).toMatchObject({ detail: 'not loaded', action: 'svall work' });
     const dev = fake();
-    expect(byName(await doctor(adhoc, dev.deps)).launchd).toMatchObject({ status: 'ok', detail: expect.stringMatching(/not managed/) });
+    expect(byName(await doctor(adhoc, dev.deps)).launchd).toMatchObject({ status: 'ok', detail: 'not managed' });
     expect(dev.calls.some((c) => c.startsWith('launchctl'))).toBe(false);
   });
 });
@@ -418,14 +420,16 @@ describe('doctor on Linux', () => {
     const env = { CLAUDE_CONFIG_DIR: '/x/claude home', CODEX_HOME: '/x/codex' };
     const file = `/u/.config/systemd/user/${unit}`;
     const lacking = byName(await doctor(priv, linux({}, { daemonEnv: env, files: { [file]: '[Service]\n' } }).deps));
-    expect(lacking['daemon env']).toMatchObject({ status: 'warn', detail: `${file} lacks CLAUDE_CONFIG_DIR and CODEX_HOME, which this account sets: svall setup`, run: 'svall setup' });
+    expect(lacking['daemon env']).toMatchObject({
+      status: 'warn', detail: 'lacks CLAUDE_CONFIG_DIR and CODEX_HOME', action: 'svall setup', raw: `${file} lacks CLAUDE_CONFIG_DIR and CODEX_HOME, which this account sets`, run: 'svall setup',
+    });
     const carried = `[Service]\n${unitEnv('CLAUDE_CONFIG_DIR', '/x/claude home')}\n${unitEnv('CODEX_HOME', '/x/codex')}\n`;
     expect(byName(await doctor(priv, linux({}, { daemonEnv: env, files: { [file]: carried } }).deps))['daemon env']).toMatchObject({ status: 'ok' });
     expect(byName(await doctor(priv, linux({}, { files: { [file]: '[Service]\n' } }).deps))['daemon env']).toMatchObject({ status: 'ok' });
     expect(byName(await doctor(adhoc, linux({}, { daemonEnv: env }).deps))['daemon env'].status).toBe('skip');
     // a named fleet's unit is the controller's to rewrite, so there is nothing to type on this machine
     const named = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, linux({}, { daemonEnv: env, files: { '/u/.config/systemd/user/svall-svalld@work.service': '[Service]\n' } }).deps));
-    expect(named['daemon env']).toMatchObject({ status: 'warn', detail: expect.stringMatching(/svall host upgrade <this machine> from the controller$/) });
+    expect(named['daemon env']).toMatchObject({ status: 'warn', action: 'svall host upgrade <this machine> from the controller' });
     expect(named['daemon env']).not.toHaveProperty('run');
   });
 
@@ -434,10 +438,10 @@ describe('doctor on Linux', () => {
     const agentPath = '/u/.local/share/svall/current/node/bin:/u/.local/share/svall/current/bin:/u/.nvm/versions/node/v24.1.0/bin:/u/.local/bin';
     const was = `[Service]\n${unitEnv('PATH', agentPath.replace('v24.1.0', 'v22.11.0'))}\n`;
     expect(byName(await doctor(priv, linux({}, { agentPath, files: { [file]: was } }).deps))['daemon path'])
-      .toMatchObject({ status: 'warn', detail: `the PATH in ${file} is not where this account's login shell finds the agent CLIs: svall setup`, run: 'svall setup' });
+      .toMatchObject({ status: 'warn', detail: 'does not find the agent CLIs', action: 'svall setup', raw: `the PATH in ${file} is not where this account's login shell finds the agent CLIs`, run: 'svall setup' });
     expect(byName(await doctor(priv, linux({}, { agentPath, files: { [file]: `[Service]\n${unitEnv('PATH', agentPath)}\n` } }).deps))['daemon path'].status).toBe('ok');
     const named = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, linux({}, { agentPath, files: { '/u/.config/systemd/user/svall-svalld@work.service': was } }).deps));
-    expect(named['daemon path']).toMatchObject({ status: 'warn', detail: expect.stringMatching(/svall host upgrade <this machine> from the controller$/) });
+    expect(named['daemon path']).toMatchObject({ status: 'warn', action: 'svall host upgrade <this machine> from the controller' });
     expect(named['daemon path']).not.toHaveProperty('run');
     expect(byName(await doctor(adhoc, linux({}, { agentPath }).deps))['daemon path'].status).toBe('skip');
   });
@@ -445,25 +449,25 @@ describe('doctor on Linux', () => {
   it('names OpenCode\'s config and data homes beside Claude\'s and Codex\'s', async () => {
     const file = `/u/.config/systemd/user/${unit}`;
     expect(byName(await doctor(priv, linux({}, { files: { [file]: '[Service]\n' } }).deps))['daemon env'])
-      .toMatchObject({ status: 'ok', detail: 'this account sets none of CLAUDE_CONFIG_DIR, CODEX_HOME, XDG_CONFIG_HOME or XDG_DATA_HOME' });
+      .toMatchObject({ status: 'ok', detail: 'none to carry', raw: 'this account sets none of CLAUDE_CONFIG_DIR, CODEX_HOME, XDG_CONFIG_HOME or XDG_DATA_HOME' });
     const env = { XDG_CONFIG_HOME: '/x/config', XDG_DATA_HOME: '/x/data' };
     expect(byName(await doctor(priv, linux({}, { daemonEnv: env, files: { [file]: '[Service]\n' } }).deps))['daemon env'])
-      .toMatchObject({ status: 'warn', detail: `${file} lacks XDG_CONFIG_HOME and XDG_DATA_HOME, which this account sets: svall setup` });
+      .toMatchObject({ status: 'warn', detail: 'lacks XDG_CONFIG_HOME and XDG_DATA_HOME', action: 'svall setup' });
   });
 
   it('checks the fleet\'s unit alone, as a companion runs no gateway', async () => {
     const c = byName(await doctor(priv, linux().deps));
     expect(c.gateway).toBeUndefined();
     const stopped = byName(await doctor(priv, linux({ [show]: 'LoadState=loaded\nActiveState=inactive\nSubState=dead\nUnitFileState=disabled\n' }).deps));
-    expect(stopped.systemd).toMatchObject({ status: 'fail', detail: expect.stringContaining('inactive') });
+    expect(stopped.systemd).toMatchObject({ status: 'fail', detail: 'not running', raw: `${unit}: loaded, inactive (dead), disabled` });
   });
 
   it('asks systemd and loginctl instead of launchd', async () => {
     const f = linux();
     const c = byName(await doctor(priv, f.deps));
     expect(c.launchd).toBeUndefined();
-    expect(c.systemd).toMatchObject({ status: 'ok', detail: expect.stringContaining(`${unit}: loaded, active (running), enabled`) });
-    expect(c.linger).toMatchObject({ status: 'ok', detail: expect.stringContaining('on for linus') });
+    expect(c.systemd).toMatchObject({ status: 'ok', detail: 'running', raw: `${unit}: loaded, active (running), enabled` });
+    expect(c.linger).toMatchObject({ status: 'ok', detail: 'on' });
     expect(f.calls.some((call) => call.startsWith('launchctl'))).toBe(false);
   });
 
@@ -474,17 +478,18 @@ describe('doctor on Linux', () => {
     });
     const c = byName(await doctor(priv, stopped.deps));
     expect(c.systemd.status).toBe('fail');
-    expect(c.linger).toMatchObject({ status: 'warn', detail: expect.stringContaining('run sudo loginctl enable-linger linus'), run: 'sudo loginctl enable-linger linus' });
+    expect(c.linger).toMatchObject({ status: 'warn', detail: 'off: the fleet stops when you log out', action: 'sudo loginctl enable-linger linus', run: 'sudo loginctl enable-linger linus' });
 
     const absent = byName(await doctor(priv, linux({ [show]: undefined as never }).deps));
-    expect(absent.systemd).toMatchObject({ status: 'fail', detail: expect.stringMatching(/no systemd user services/) });
+    expect(absent.systemd).toMatchObject({ status: 'fail', detail: 'could not be read', raw: expect.stringMatching(/no systemd user services/) });
 
     const missing = byName(await doctor(priv, linux({ [show]: 'LoadState=not-found\nActiveState=inactive\nSubState=dead\nUnitFileState=\n' }).deps));
-    expect(missing.systemd).toEqual({ name: 'systemd', status: 'fail', detail: `${unit} is not installed: svall setup`, run: 'svall setup' });
+    expect(missing.systemd).toEqual({ name: 'systemd', status: 'fail', detail: 'not installed', action: 'svall setup', raw: `${unit}: not-found, inactive (dead), `, run: 'svall setup' });
     // setup here rewrites only the units there are, so a named fleet's comes from the controller
     const work = 'svall-svalld@work.service';
     const unenrolled = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, linux({ [showOf(work)]: 'LoadState=not-found\nActiveState=inactive\nSubState=dead\nUnitFileState=\n' }).deps));
-    expect(unenrolled.systemd).toEqual({ name: 'systemd', status: 'fail', detail: `${work} is not installed: svall host upgrade <this machine> from the controller` });
+    expect(unenrolled.systemd).toMatchObject({ name: 'systemd', status: 'fail', detail: 'not installed', action: 'svall host upgrade <this machine> from the controller' });
+    expect(unenrolled.systemd).not.toHaveProperty('run');
   });
 
   it('warns when AppArmor keeps Codex\'s sandbox from starting, naming the bwrap profile that lets it', async () => {
@@ -522,8 +527,8 @@ describe('doctor on Linux', () => {
 
   it('names the apt package when tmux or gh is missing', async () => {
     const c = byName(await doctor(priv, linux({ 'tmux -V': undefined as never, 'gh auth status': undefined as never }).deps));
-    expect(c.tmux).toMatchObject({ status: 'fail', detail: 'not found on PATH: sudo apt install tmux', run: 'sudo apt install tmux' });
-    expect(c.gh).toMatchObject({ status: 'warn', detail: 'not found on PATH: sudo apt install gh (pull request links stay unresolved)', run: 'sudo apt install gh' });
+    expect(c.tmux).toMatchObject({ status: 'fail', detail: 'not installed', action: 'sudo apt install tmux', run: 'sudo apt install tmux' });
+    expect(c.gh).toMatchObject({ status: 'warn', detail: 'not installed', action: 'sudo apt install gh; until then pull request links stay unresolved', run: 'sudo apt install gh' });
     const out = byName(await doctor(priv, linux({ 'gh auth status': Object.assign(new Error('not logged in'), { code: 1 }) }).deps));
     expect(out.gh).toMatchObject({ status: 'warn', run: 'gh auth login' });
   });
@@ -544,8 +549,8 @@ describe('doctor on Linux', () => {
       },
     });
     const c = byName(await doctor(priv, f.deps));
-    expect(c.claude).toMatchObject({ status: 'ok', detail: '2.1.260 (Claude Code), signed in' });
-    expect(c.codex).toMatchObject({ status: 'ok', detail: 'codex-cli 0.156.1, signed in' });
+    expect(c.claude).toMatchObject({ status: 'ok', detail: '2.1.260, logged in' });
+    expect(c.codex).toMatchObject({ status: 'ok', detail: '0.156.1, logged in' });
   });
 
   it('looks for the agents on Linux where the unit it would install runs them', () => {
@@ -623,7 +628,7 @@ describe('svall doctor on Linux', () => {
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
     await doctorCommand(() => ({ name: 'private', home: path.join(home, '.svall'), managed: true }), () => true, 'linux').parseAsync([], { from: 'user' });
     const report = JSON.parse(out.join('')) as Report;
-    expect(byName(report).claude).toMatchObject({ status: 'ok', detail: '2.1.300 (Claude Code), signed in' });
+    expect(byName(report).claude).toMatchObject({ status: 'ok', detail: '2.1.300, logged in' });
     expect(byName(report).gh).toMatchObject({ status: 'ok', detail: 'logged in' });
     expect(report.daemonEnv).toEqual({ CLAUDE_CONFIG_DIR: claudeDir, XDG_CONFIG_HOME: configDir });
   });
@@ -642,7 +647,7 @@ describe('svall doctor on Linux', () => {
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
     await doctorCommand(() => ({ name: 'private', home: path.join(home, '.svall'), managed: true }), () => true, 'linux').parseAsync([], { from: 'user' });
     const report = JSON.parse(out.join('')) as Report;
-    expect(byName(report).claude).toMatchObject({ status: 'ok', detail: '2.1.300 (Claude Code), signed in' });
+    expect(byName(report).claude).toMatchObject({ status: 'ok', detail: '2.1.300, logged in' });
     const unit = svalldUnit({ runtime: ownRuntime(), homedir: home, prefix: DEFAULT_PREFIX, fleet: 'private', home: path.join(home, '.svall'), agentDirs: [nvm] });
     expect(report.daemonPath).toBe(/^Environment="PATH=(.*)"$/m.exec(unit.text)![1]);
   });
@@ -677,7 +682,7 @@ describe('preflight', () => {
 
   it('warns when the shim directory is not on PATH', async () => {
     const shims = (await preflight(fake({ pathEnv: '/usr/bin:/bin' }).deps)).find((c) => c.name === 'path');
-    expect(shims).toMatchObject({ status: 'warn', detail: expect.stringMatching(/\/u\/\.local\/bin is not on PATH/) });
+    expect(shims).toMatchObject({ status: 'warn', detail: 'svall is not on PATH in your shell', action: 'add /u/.local/bin to PATH in your shell profile' });
     expect(byName(await doctor(priv, fake({ pathEnv: '/usr/bin' }).deps)).path.status).toBe('warn');
   });
 });
@@ -700,12 +705,12 @@ describe('agent checks', () => {
     const onlyCodex = await agents({ commands: { 'claude --version': undefined as never, ...codexOk } });
     expect(onlyCodex).toEqual([
       { name: 'claude', status: 'skip', detail: 'not installed' },
-      { name: 'codex', status: 'ok', detail: 'codex-cli 0.156.1, signed in' },
+      { name: 'codex', status: 'ok', detail: '0.156.1, logged in' },
     ]);
     expect(requireReady(onlyCodex)).toEqual([]);
     // a --version that fails other than ENOENT is there but broken
     const broken = await agents({ commands: { 'claude --version': new Error('x'), ...codexOk } });
-    expect(broken.find((c) => c.name === 'claude')).toEqual({ name: 'claude', status: 'warn', detail: 'x' });
+    expect(broken.find((c) => c.name === 'claude')).toEqual({ name: 'claude', status: 'warn', detail: 'does not run', raw: 'x' });
   });
 
   it('fails when neither is installed', async () => {
@@ -723,30 +728,32 @@ describe('agent checks', () => {
 
   it('warns about an old codex and a missing login, never failing', async () => {
     const old = await agents({ commands: { 'codex --version': 'codex-cli 0.142.0-alpha.6\n', 'codex login status': loggedOut() } });
-    expect(old.find((c) => c.name === 'codex')).toEqual({ name: 'codex', status: 'warn', detail: 'codex-cli 0.142.0-alpha.6: Svall needs 0.156.0 or newer; update Codex; not signed in: codex login', run: 'codex login' });
+    expect(old.find((c) => c.name === 'codex')).toEqual({
+      name: 'codex', status: 'warn', detail: '0.142.0-alpha.6: needs 0.156.0 or newer, not logged in', action: 'update Codex, then codex login', run: 'codex login',
+    });
     const olderClaude = await agents({ commands: { 'claude --version': '2.1.250 (Claude Code)\n' } });
-    expect(olderClaude.find((c) => c.name === 'claude')?.detail).toBe('2.1.250 (Claude Code): Svall needs 2.1.251 or newer; update Claude Code');
+    expect(olderClaude.find((c) => c.name === 'claude')).toMatchObject({ detail: '2.1.250: needs 2.1.251 or newer', action: 'update Claude Code' });
     const out = await agents({ commands: { 'codex --version': 'codex-cli 0.156.1\n', 'codex login status': loggedOut() } });
-    expect(out.find((c) => c.name === 'codex')?.detail).toBe('codex-cli 0.156.1, not signed in: codex login');
+    expect(out.find((c) => c.name === 'codex')).toMatchObject({ detail: '0.156.1, not logged in', action: 'codex login' });
     const claude = await agents({ commands: { 'claude auth status --json': Object.assign(new Error('x'), { code: 1, stdout: '{"loggedIn":false}' }) } });
-    expect(claude.find((c) => c.name === 'claude')?.detail).toBe('2.1.251 (Claude Code), not signed in: claude auth login');
+    expect(claude.find((c) => c.name === 'claude')).toMatchObject({ detail: '2.1.251, not logged in', action: 'claude auth login' });
   });
 
   it('hands the fleet .env API keys to the login probe, which Codex does not count', async () => {
     const f = fake({ keys: { ANTHROPIC_API_KEY: 'k', OPENAI_API_KEY: 'o' }, commands: { 'codex --version': 'codex-cli 0.156.1\n', 'codex login status': loggedOut() } });
     const got = await preflight(f.deps);
     expect(f.envs['claude auth status --json']).toEqual({ ANTHROPIC_API_KEY: 'k', OPENAI_API_KEY: 'o' });
-    expect(got.find((c) => c.name === 'codex')?.detail).toBe('codex-cli 0.156.1, not signed in: codex login');
+    expect(got.find((c) => c.name === 'codex')?.detail).toBe('0.156.1, not logged in');
   });
 
   it('says so when a login probe hangs or is unknown', async () => {
     const got = await agents({ commands: { 'claude auth status --json': Object.assign(new Error('timed out'), { killed: true, code: null }) } });
-    expect(got.find((c) => c.name === 'claude')).toEqual({ name: 'claude', status: 'warn', detail: "2.1.251 (Claude Code); couldn't tell whether it is signed in" });
+    expect(got.find((c) => c.name === 'claude')).toEqual({ name: 'claude', status: 'warn', detail: '2.1.251, could not tell whether logged in' });
   });
 
   it('warns when the configured main agent is gone', async () => {
     const got = await agents({ commands: { 'claude --version': undefined as never, ...codexOk }, mainAgent: 'claude' });
-    expect(got.find((c) => c.name === 'claude')).toEqual({ name: 'claude', status: 'warn', detail: 'not installed, but it is the main agent: svall agent codex' });
+    expect(got.find((c) => c.name === 'claude')).toEqual({ name: 'claude', status: 'warn', detail: 'not installed, but it is the main agent', action: 'svall agent codex' });
   });
 });
 

@@ -91,7 +91,7 @@ describe('host remove', () => {
     issueToken(sibling, REMOTE);
     const refreshLinks = vi.fn(() => Promise.resolve());
     expect(await removeHost('ada-mac', {}, deps({ registry, refreshLinks }))).toMatchObject({ result: 'ready' });
-    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip', detail: 'ada-mac dials in, so nothing here reaches it: it keeps Svall until svall uninstall runs there' });
+    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip', detail: 'not reached from here; run svall uninstall on ada-mac to remove Svall' });
     expect(ssh.calls()).toEqual([]);
     expect(registry.get('ada-mac')).toBeUndefined();
     expect(MachineRegistry.load(path.join(work, 'config')).get('ada-mac')).toBeUndefined();
@@ -220,7 +220,7 @@ describe('host remove', () => {
   it('names the machine on the line the far uninstall ends with, whose rm -rf is for that machine', async () => {
     ssh.reply(['uninstall'], { stdout: `removed ${BASE}/current\nkept ${HOME}/.svall; rm -rf '${HOME}/.svall' deletes them\n` });
     await removeHost('trift', {}, deps({ registry: registered('trift.test') }));
-    expect(step('uninstall').at(-1)).toMatchObject({ status: 'ok', detail: `on trift.test: kept ${HOME}/.svall; rm -rf '${HOME}/.svall' deletes them` });
+    expect(step('uninstall').at(-1)).toMatchObject({ status: 'ok', detail: 'Svall removed', raw: `kept ${HOME}/.svall; rm -rf '${HOME}/.svall' deletes them` });
   });
 
   it('shows what the far uninstall did with the keys the mirror copied there, and ends with what is left to do where it could not take one back or one changed there since', async () => {
@@ -235,13 +235,13 @@ describe('host remove', () => {
     const registry = registered('trift.test');
     const out = await removeHost('trift', {}, deps({ registry }));
     expect(events.filter((e) => e.status !== 'start').at(-1)).toMatchObject({
-      step: 'keys', status: 'warn', action: 'ssh trift.test, then take the keys the mirror copied out of the files named here, or delete those files',
+      step: 'keys', status: 'warn', detail: 'copied keys left in 2 files', action: 'ssh trift.test, then remove them by hand',
     });
-    expect(step('keys').at(-1)!.detail!.split('; ')).toEqual([
+    expect(step('keys').at(-1)!.raw!.split('\n')).toEqual([
       `took 1 key the mirror copied out of ${HOME}/.claude/settings.json`, `could not take the mirror's keys back from ${claudeJson}: ${claudeJson} cannot be parsed`,
       `left ${mcp}, which holds keys the mirror copied and changed there since`,
     ]);
-    expect(out).toMatchObject({ result: 'actions', actions: ['ssh trift.test, then take the keys the mirror copied out of the files named here, or delete those files'] });
+    expect(out).toMatchObject({ result: 'actions', actions: ['ssh trift.test, then remove them by hand'] });
     expect(registry.get('trift')).toBeUndefined();
   });
 
@@ -249,7 +249,7 @@ describe('host remove', () => {
     ssh.reply(['uninstall'], { stdout: `took 1 key the mirror copied out of ${HOME}/.claude.json\nremoved ${HOME}/.svall/phone.json, the phone keys its home copied\nremoved ${BASE}/current\n` });
     expect(await removeHost('trift', {}, deps({ registry: registered('trift.test') }))).toEqual({ result: 'ready', actions: [] });
     expect(step('keys').at(-1)).toMatchObject({
-      status: 'ok', detail: `took 1 key the mirror copied out of ${HOME}/.claude.json; removed ${HOME}/.svall/phone.json, the phone keys its home copied`,
+      status: 'ok', detail: 'copied keys removed from 2 files', raw: `took 1 key the mirror copied out of ${HOME}/.claude.json\nremoved ${HOME}/.svall/phone.json, the phone keys its home copied`,
     });
   });
 
@@ -259,7 +259,7 @@ describe('host remove', () => {
     const registry = registered('trift.test');
     const out = await removeHost('trift', {}, deps({ registry }));
     expect(out.result).toBe('actions');
-    expect(step('uninstall').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`trift.test now reaches machine ${OTHER_MAC}, not trift (${REMOTE})`) });
+    expect(step('uninstall').at(-1)).toMatchObject({ status: 'fail', detail: 'trift.test now reaches another machine than trift', raw: expect.stringContaining(`trift.test now reaches machine ${OTHER_MAC}, not trift (${REMOTE})`) });
     expect(ssh.remoteCalls().some((w) => w.includes('uninstall'))).toBe(false);
     expect(registry.get('trift')).toBeDefined();
   });
@@ -295,29 +295,30 @@ describe('host remove', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: far, svallBase: base }, REMOTE);
     ssh.execute({});
-    const action = 'svall host remove trift --forget drops the route and leaves the machine untouched; once no other Mac uses it, ssh trift.test, then svall uninstall';
-    const refused = async (detail: unknown) => {
+    const action = 'forget it here with svall host remove trift --forget, or uninstall there once nothing else uses it: ssh trift.test, then svall uninstall';
+    const unread = 'cannot tell whether trift runs another fleet; uninstalling stops every fleet there';
+    const refused = async (detail: string, raw?: unknown) => {
       events.length = 0;
       expect(await removeHost('trift', {}, deps({ registry }))).toEqual({ result: 'actions', stopped: 'uninstall', actions: [action] });
-      expect(step('uninstall').at(-1)).toMatchObject({ status: 'fail', detail, action });
+      expect(step('uninstall').at(-1)).toMatchObject({ status: 'fail', detail, action, ...(raw !== undefined && { raw }) });
       expect(ssh.remoteCalls().some((w) => w.includes('uninstall'))).toBe(false);
       expect(registry.get('trift')).toBeDefined();
     };
 
-    await refused('trift also serves bea-mbp as a worker: svall uninstall there would stop that fleet too');
+    await refused('trift also runs robots for bea-mbp; uninstalling stops them too');
     for (const text of [`{"homeMachineId": "${OTHER_MAC}", "tok`, 'null', '{"homeName": "bea-mbp"}']) {
       fs.writeFileSync(path.join(far, '.svall-work', 'worker.json'), text);
-      await refused(`${far}/.svall-work/worker.json cannot be read, so whether trift serves another Mac is not known, and svall uninstall there stops every fleet on it`);
+      await refused(unread, `${far}/.svall-work/worker.json cannot be read`);
     }
     fs.rmSync(path.join(far, '.svall-work', 'worker.json'));
     fs.mkdirSync(path.join(far, '.svall-work', 'worker.json'));
-    await refused(expect.stringMatching(/^the worker\.json files there exited 1: .*, so whether trift serves another Mac is not known, and svall uninstall there stops every fleet on it$/));
+    await refused(unread, expect.stringMatching(/^the worker\.json files there exited 1: /));
 
     fs.rmSync(path.join(far, '.svall-work'), { recursive: true });
     // the private fleet there serves another Mac, and this Mac's fleet is a named one
     serving('.svall', { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET });
     serving('.svall-work', SERVES);
-    await refused('trift also serves bea-mbp as a worker: svall uninstall there would stop that fleet too');
+    await refused('trift also runs robots for bea-mbp; uninstalling stops them too');
 
     serving('.svall', SERVES);
     expect(await removeHost('trift', {}, deps({ registry }))).toEqual({ result: 'ready', actions: [] });
@@ -330,7 +331,7 @@ describe('host remove', () => {
     const out = await removeHost('trift', {}, deps({ registry }));
     expect(out.result).toBe('actions');
     expect(registry.get('trift')).toBeDefined();
-    expect(step('uninstall').at(-1)?.action).toContain('--forget');
+    expect(step('uninstall').at(-1)).toMatchObject({ detail: 'trift is not reachable', action: 'svall host remove trift --forget drops it from the list and leaves it as it is', raw: expect.stringContaining('refused.test') });
   });
 
   it('forgets a machine it could reach without touching it', async () => {
@@ -341,7 +342,7 @@ describe('host remove', () => {
     expect(ssh.calls()).toEqual([]);
     // a forget that went through leaves nothing to do, so it ends ready and exits 0
     expect(out).toEqual({ result: 'ready', actions: [] });
-    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip', detail: expect.stringContaining('trift.test') });
+    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip', detail: 'left as it is; Svall stays on trift' });
   });
 
   it('reports a far uninstall that failed for itself with its exit and what it said, not as a machine out of reach', async () => {
@@ -350,7 +351,7 @@ describe('host remove', () => {
     const out = await removeHost('trift', {}, deps({ registry }));
     expect(out.result).toBe('actions');
     const failed = step('uninstall').at(-1);
-    expect(failed).toMatchObject({ status: 'fail', detail: 'svall uninstall exited 1 on trift.test: svall: tmux refused to stop the fleet' });
+    expect(failed).toMatchObject({ status: 'fail', detail: 'did not finish', raw: 'svall uninstall exited 1 on trift.test: svall: tmux refused to stop the fleet' });
     expect(failed?.action).toContain('ssh trift.test, then svall uninstall');
     expect(registry.get('trift')).toBeDefined();
   });
@@ -382,6 +383,6 @@ describe('host remove', () => {
     const out = await removeHost('trift', { forget: true }, deps({ registry }));
     expect(registry.get('trift')).toBeUndefined();
     expect(out.result).toBe('ready');
-    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip', detail: expect.stringContaining('refused.test') });
+    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip', detail: 'left as it is; Svall stays on trift' });
   });
 });

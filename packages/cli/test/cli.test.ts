@@ -147,13 +147,13 @@ describe('svall argument parsing', () => {
       expect(warnings).toContain('! hooks  missing or out of date: run svall setup');
       expect(warnings).toContain('! shims  missing or out of date: run svall setup');
       expect(warnings).toContain('! launchd plist  missing or out of date: run svall setup');
-      expect(warnings).toContain('! codex  codex-cli 0.156.1, not signed in: codex login');
+      expect(warnings).toContain('! codex  0.156.1, not logged in -> codex login');
       expect(fs.readFileSync(settings, 'utf8')).toBe(old);
 
       const plain = await run({ PATH, FORCE_COLOR: '0' }, 'setup', '--check');
       expect(plain.code).toBe(0);
       expect(plain.stdout).toContain('◇  Agents');
-      expect(plain.stdout).toMatch(/codex +codex-cli 0\.156\.1, not signed in/);
+      expect(plain.stdout).toMatch(/codex +0\.156\.1, not logged in -> codex login/);
       expect(plain.stdout).not.toContain('ready for svall setup');
     } finally {
       fs.rmSync(path.dirname(settings), { recursive: true });

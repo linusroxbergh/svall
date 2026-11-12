@@ -5,7 +5,7 @@ describe('renderGroups', () => {
   it('draws one column of groups, names padded to the widest', () => {
     const out = renderGroups([
       { title: 'Tools', checks: [{ name: 'tmux', status: 'ok', detail: 'tmux 3.5a' }, { name: 'path', status: 'warn', detail: 'not on PATH' }] },
-      { title: 'Agents', checks: [{ name: 'claude', status: 'skip', detail: 'not installed' }, { name: 'codex', status: 'ok', detail: 'codex-cli 0.156.1, signed in' }] },
+      { title: 'Agents', checks: [{ name: 'claude', status: 'skip', detail: 'not installed' }, { name: 'codex', status: 'ok', detail: '0.156.1, logged in' }] },
       { title: 'Empty', checks: [] },
     ], false);
     expect(out).toBe([
@@ -15,8 +15,22 @@ describe('renderGroups', () => {
       '│',
       '◇  Agents',
       '│  – claude  not installed',
-      '│  ✓ codex   codex-cli 0.156.1, signed in',
+      '│  ✓ codex   0.156.1, logged in',
     ].join('\n'));
+  });
+  it('gives a check its action after its state, and what a tool said under one that failed or warned', () => {
+    const out = renderGroups([{ title: 'Fleet', checks: [
+      { name: 'systemd', status: 'fail', detail: 'not running', raw: 'svall-svalld@private.service: loaded, inactive (dead), enabled' },
+      { name: 'linger', status: 'warn', detail: 'off: the fleet stops when you log out', action: 'sudo loginctl enable-linger ada' },
+      { name: 'config', status: 'ok', detail: 'defaults', raw: 'there is no fleet.json' },
+    ] }], false);
+    expect(out.split('\n')).toEqual([
+      '◇  Fleet',
+      '│  ✗ systemd  not running',
+      '│     svall-svalld@private.service: loaded, inactive (dead), enabled',
+      '│  ! linger   off: the fleet stops when you log out -> sudo loginctl enable-linger ada',
+      '│  ✓ config   defaults',
+    ]);
   });
   it('colours only the marks and the gutter', () => {
     const out = renderGroups([{ title: 'T', checks: [{ name: 'x', status: 'fail', detail: 'run svall setup' }] }], true);

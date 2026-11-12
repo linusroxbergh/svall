@@ -292,19 +292,25 @@ for s in .svall/tmux.sock .svall-*/tmux.sock; do
 done
 exit 0`;
 
+/** Why going back is refused, and the files and numbers behind it. */
+export type Refused = { reason: string; raw: string };
+
 /** The first fleet's tmux server in the far `home` that release `to` could not reach; undefined when it can reach every one. */
-async function strandedTmux(master: SshMaster, o: { svallBase: string; home: string; from: string; to: string }): Promise<string | undefined> {
+async function strandedTmux(master: SshMaster, o: { svallBase: string; home: string; from: string; to: string }): Promise<Refused | undefined> {
   const out = await remote(master, ['sh', '-c', shq(STRANDED_TMUX), 'svall-tmux-servers', shq(o.svallBase), shq(o.to), shq(o.from), shq(o.home)],
     `the fleets' tmux servers in ${o.home}`, TAR_TIMEOUT);
   const [sock, served, theirs] = out.split('\n')[0].split('\t');
-  return sock ? `${sock} is served by ${served}, and release ${o.to} carries no tmux and would run the machine's (${theirs}), which cannot reach it` : undefined;
+  return sock ? {
+    reason: `cannot go back to ${o.to}: its robots' terminals run on a tmux that release lacks`,
+    raw: `${sock} is served by ${served}, and release ${o.to} carries no tmux and would run the machine's (${theirs}), which cannot reach it`,
+  } : undefined;
 }
 
 /**
  * Why going back to `to` (else the newest other release kept) would leave a far fleet's svalld refusing to start or cut
  * off from its tmux server; a release that does not say which state schema it reads is held to the oldest any has read.
  */
-export async function rollbackRefusal(master: SshMaster, o: { svallBase: string; home: string; from: string; to?: string }): Promise<string | undefined> {
+export async function rollbackRefusal(master: SshMaster, o: { svallBase: string; home: string; from: string; to?: string }): Promise<Refused | undefined> {
   const states = await stateVersions(master, o.home);
   const to = o.to ?? await newestOther(master, o.svallBase, o.from);
   if (to === undefined) return undefined;
@@ -313,10 +319,11 @@ export async function rollbackRefusal(master: SshMaster, o: { svallBase: string;
   if (!states.length) return undefined;
   const newest = states.reduce((a, b) => (b.version > a.version ? b : a));
   const reads = await stateSchemaOf(master, o.svallBase, to);
+  const newer = { reason: `cannot go back to ${to}: the fleet's state is newer than that release reads` };
   if (reads !== undefined) {
-    return newest.version > reads ? `${newest.file} is at state schema ${newest.version}, and release ${to} reads ${reads}: its svalld would refuse to start after going back` : undefined;
+    return newest.version > reads ? { ...newer, raw: `${newest.file} is at state schema ${newest.version}, and release ${to} reads ${reads}: its svalld would refuse to start after going back` } : undefined;
   }
   return newest.version > OLDEST_STATE_SCHEMA_VERSION
-    ? `release ${to} does not say which state schema it reads, and ${newest.file} is at state schema ${newest.version}, newer than the oldest a release has read (${OLDEST_STATE_SCHEMA_VERSION}): its svalld could refuse to start after going back`
+    ? { ...newer, raw: `release ${to} does not say which state schema it reads, and ${newest.file} is at state schema ${newest.version}, newer than the oldest a release has read (${OLDEST_STATE_SCHEMA_VERSION}): its svalld could refuse to start after going back` }
     : undefined;
 }

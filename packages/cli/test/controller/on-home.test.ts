@@ -141,12 +141,14 @@ describe('a host command on a fleet whose home is far', () => {
     const out: string[] = [];
     const code = await relay(home, ['host', 'doctor', 'box'], { open: () => Promise.reject(new Error('no route')), line: (l) => out.push(l) });
     expect(code).toBe(1);
-    expect(JSON.parse(out[0])).toMatchObject({ step: 'relay', status: 'fail', detail: 'studio did not answer: no route' });
+    expect(JSON.parse(out[0])).toMatchObject({ step: 'relay', status: 'fail', detail: 'studio did not answer', raw: 'no route' });
   });
 
-  it('a far command that says nothing of itself is failed with what it wrote to stderr, and a home with no svall says so', async () => {
+  it('a far command that says nothing of itself is failed in words of its own, with what it wrote to stderr behind them, and a home with no svall says so', async () => {
     const said = await run(far([], { code: 1, stderr: "error: unknown option '--relayed'" }));
-    expect(said.parsed[0]).toMatchObject({ step: 'relay', status: 'fail', detail: "svall host add there exited 1: error: unknown option '--relayed'" });
+    expect(said.parsed[0]).toMatchObject({ step: 'relay', status: 'fail', detail: 'studio did not finish svall host add', raw: "svall host add there exited 1: error: unknown option '--relayed'" });
+    const check = await run(far([], { code: 1, stderr: 'svall: no' }), ['host', 'doctor', 'box']);
+    expect(check.parsed[0]).toMatchObject({ detail: 'studio did not finish the check', raw: 'svall host doctor there exited 1: no' });
     const none = await run(far([], { code: 127 }));
     expect(none.parsed[0]).toMatchObject({ step: 'relay', status: 'fail', detail: 'studio has no Svall at /home/ada/.local/share/svall/current/bin/svall' });
   });
@@ -243,7 +245,7 @@ describe('a host command on a fleet whose home is far', () => {
   it('a far death past a step that went well says why, by stderr\'s end', async () => {
     const r = await run(far(['{"step":"ssh","status":"ok"}'], { code: 1, stderr: 'svall: unknown option --relayed\n' }));
     expect(r.code).toBe(1);
-    expect(r.parsed.at(-2)).toMatchObject({ step: 'relay', status: 'fail', detail: expect.stringContaining('unknown option --relayed') });
+    expect(r.parsed.at(-2)).toMatchObject({ step: 'relay', status: 'fail', raw: expect.stringContaining('unknown option --relayed') });
   });
 
   it.each([
@@ -386,7 +388,7 @@ describe('a host command on a fleet whose home is far', () => {
       const part = uploaded(f)!.argv.at(-1)!;
       expect(part).toMatch(/\.part'$/);
       expect(f.wrote.at(-1)?.argv).toEqual(['rm', '-f', '--', part]);
-      expect(JSON.parse(out.at(-2)!)).toMatchObject({ step: 'relay', status: 'fail', detail: expect.stringContaining('studio did not take the archive this CLI carries for linux-arm64: '), action: 'try again once it answers' });
+      expect(JSON.parse(out.at(-2)!)).toMatchObject({ step: 'relay', status: 'fail', detail: 'studio did not take the archive this CLI carries for linux-arm64', action: 'try again once it answers', raw: expect.any(String) });
     });
 
     it('a home on another release than this CLI\'s copies nothing, and the relay names both releases and how to bring them to one', async () => {

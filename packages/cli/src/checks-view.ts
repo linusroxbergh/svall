@@ -35,6 +35,10 @@ export const useColor = (): boolean =>
 /** Text a terminal shows dim, as what a tool said under the sentence it backs. */
 export const dim = (text: string): string => (useColor() ? styleText('dim', text, { validateStream: false }) : text);
 
+/** What a tool said of a check that failed or warned, two spaces in under its line, and nothing of one that did not. */
+export const rawLines = (c: { status: string; raw?: string }, paint: (text: string) => string = dim): string =>
+  (c.raw && (c.status === 'fail' || c.status === 'warn') ? `\n${paint(c.raw.replace(/^/gm, '  '))}` : '');
+
 export function renderGroups(groups: { title: string; checks: Check[] }[], color: boolean): string {
   const paint = (style: Parameters<typeof styleText>[0], text: string) => (color ? styleText(style, text, { validateStream: false }) : text);
   const shown = groups.filter((g) => g.checks.length);
@@ -42,6 +46,6 @@ export function renderGroups(groups: { title: string; checks: Check[] }[], color
   const bar = paint('dim', '│');
   return shown.map((g) => [
     `${paint('cyan', '◇')}  ${g.title}`,
-    ...g.checks.map((c) => `${bar}  ${paint(COLOR[c.status], MARK[c.status])} ${c.name.padEnd(width)}  ${c.detail}`),
+    ...g.checks.map((c) => `${bar}  ${paint(COLOR[c.status], MARK[c.status])} ${c.name.padEnd(width)}  ${[c.detail, c.action].filter(Boolean).join(' -> ')}${rawLines(c, (t) => paint('dim', t.replace(/^/gm, `${bar}   `)))}`),
   ].join('\n')).join(`\n${bar}\n`);
 }

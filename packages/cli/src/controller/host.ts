@@ -1,11 +1,12 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { FleetConfig, MachineId, MachineRecord, migrateState, ON_THIS_MAC, WorkerFile, type AgentKind, type FleetState, type SetupRow } from '@svall/protocol';
+import { AGENT_LABEL, agentsInUse, FleetConfig, MachineId, MachineRecord, migrateState, ON_THIS_MAC, WorkerFile, type AgentKind, type FleetState, type SetupRow } from '@svall/protocol';
 import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@svall/svalld/agents';
 import { readFleetConfig } from '@svall/svalld/config';
 import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld/linux/setup';
 import { homeWord } from '@svall/svalld/machine';
+import { TailscaleStopped } from '@svall/svalld/mobile';
 import { isFleetName, isProfileName, PRIVATE, profileHome, profileOf } from '@svall/svalld/profile';
 import { readMarker } from '@svall/svalld/fleet/home-move';
 import { enrolLock, hostLock } from '@svall/svalld/kernel-lock';
@@ -110,7 +111,8 @@ export class Runner {
     try {
       r = await fn();
     } catch (err) {
-      const e = err instanceof StepError ? err : new StepError((err as Error).message);
+      // what ssh or a command there said is a tool's words, which go behind a sentence of the step's own
+      const e = err instanceof StepError ? err : err instanceof SshError ? new StepError('did not finish', undefined, undefined, undefined, err.message) : new StepError((err as Error).message);
       this.failed = step;
       this.todo(e.action ?? e.detail);
       this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}), ...(e.run ? { run: e.run } : {}), ...(e.say ? { say: e.say } : {}), ...(e.raw ? { raw: e.raw } : {}) });
@@ -138,10 +140,29 @@ export class Runner {
 }
 
 /** This machine's Tailscale, which a fleet on a server needs on both machines. */
-export async function tailnetHere(d: Pick<HostDeps, 'tailnet'>): Promise<Outcome<void>> {
-  await d.tailnet().catch((e: Error) => { throw new StepError(`a fleet on a server needs Tailscale on both machines, and this machine says: ${e.message}`, 'install Tailscale from https://tailscale.com/download and sign in'); });
+export async function tailnetHere(d: Pick<HostDeps, 'tailnet'>, platform: NodeJS.Platform = process.platform): Promise<Outcome<void>> {
+  await d.tailnet().catch((e: Error) => {
+    const [here, mac] = [homeWord(), platform === 'darwin'];
+    if (e instanceof TailscaleStopped) {
+      throw new StepError(`Tailscale is not running on ${here}`, mac ? 'open the Tailscale app' : 'start it: sudo systemctl start tailscaled', mac ? undefined : 'sudo systemctl start tailscaled', undefined, e.message);
+    }
+    if (/not connected|signed out/i.test(e.message)) {
+      throw new StepError(`Tailscale on ${here} is signed out`, mac ? 'sign in from the Tailscale app' : 'sign in: sudo tailscale up', mac ? undefined : 'sudo tailscale up', undefined, e.message);
+    }
+    throw new StepError(`${here} has no Tailscale`, 'install it from https://tailscale.com/download and sign in', undefined, undefined, e.message);
+  });
   return { value: undefined, detail: 'connected' };
 }
+
+/** Why the ssh master to `name` did not open: a login it refused, a machine it did not reach, or one that did not answer in time; ssh's own words behind. */
+export function unreached(err: unknown, name: string, ssh: string, here: string, login = `run ssh ${ssh} once in a terminal and answer what it asks`): StepError {
+  const said = (err as Error).message;
+  if (err instanceof SshError && (err.kind === 'auth' || err.kind === 'host_key')) return new StepError(`${here} cannot log in to ${name}`, login, undefined, undefined, said);
+  const fix = 'check that it is on and on Tailscale';
+  if (/\bwithin \d|did not open a control master/.test(said)) return new StepError(`${name} did not answer in 20 s`, fix, undefined, undefined, said);
+  return new StepError(`${name} is not reachable from ${here}`, fix, undefined, undefined, said);
+}
+
 
 /** Runs a flow to its end or to its first blocker, and reports what the user is left holding. */
 export async function flow(emit: (e: StepEvent) => void, fn: (run: Runner) => Promise<void>): Promise<HostOutcome> {
@@ -162,10 +183,12 @@ const WHICH = 'for c in "$@"; do if command -v "$c" >/dev/null 2>&1; then echo "
 const TOOLS = ['tailscale', 'git', 'systemctl', 'loginctl'];
 const APT: Record<string, string> = { git: 'git' };
 const ARCHES: Record<string, string> = { aarch64: 'arm64', arm64: 'arm64', x86_64: 'x64', amd64: 'x64' };
+// an architecture as a person names it
+const ARCH_WORD: Record<string, string> = { arm64: 'arm64', x64: 'x86-64' };
 
-async function probe(master: SshMaster, argv: string[], what: string): Promise<string> {
+async function probe(master: SshMaster, argv: string[], what: string, failed = 'could not be checked'): Promise<string> {
   const r = await master.run(argv, { timeoutMs: PROBE_TIMEOUT });
-  if (r.code !== 0) throw new StepError(`${what} exited ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
+  if (r.code !== 0) throw new StepError(failed, undefined, undefined, undefined, `${what} exited ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
   return r.stdout;
 }
 
@@ -186,10 +209,9 @@ async function osProbe(master: SshMaster): Promise<Outcome<{ arch: string }>> {
   if (id !== 'ubuntu') throw new StepError(`${field(osRelease, 'NAME') || id || 'this machine'} is not Ubuntu; the companion supports the Ubuntu LTS releases`);
   // the companion's tmux is built against 22.04's glibc
   if (!(Number(versionId.split('.')[0]) >= 22)) throw new StepError(`Ubuntu ${versionId} is older than 22.04, the oldest release the companion runs on`);
-  const release = `Ubuntu ${versionId} ${arch}`;
   return isLts(versionId)
-    ? { value: { arch }, detail: `${release} (LTS)` }
-    : { value: { arch }, status: 'warn', detail: `${release} is not an LTS release; the companion is tested on the LTS releases` };
+    ? { value: { arch }, detail: `Ubuntu ${versionId} LTS, ${ARCH_WORD[arch]}` }
+    : { value: { arch }, status: 'warn', detail: `Ubuntu ${versionId}, ${ARCH_WORD[arch]}: not an LTS release` };
 }
 
 // nothing here is ever run: an action names the machine to run it on, and the user runs it
@@ -199,7 +221,7 @@ const there = (destination: string, command: string): { action: string; run: str
 function toolsProbe(out: string, destination: string): Outcome<void> {
   const found = new Map(out.split('\n').filter(Boolean).map((l) => l.trim().split(/\s+/) as [string, string]));
   const missing = TOOLS.filter((t) => found.get(t) !== 'yes');
-  if (!missing.length) return { value: undefined, detail: TOOLS.join(', ') };
+  if (!missing.length) return { value: undefined, detail: 'all there' };
   const packages = missing.filter((t) => APT[t]).map((t) => APT[t]);
   if (missing.some((t) => t === 'systemctl' || t === 'loginctl')) {
     throw new StepError(`${missing.join(', ')} missing: this machine has no systemd user services, which the companion needs`);
@@ -214,11 +236,10 @@ function toolsProbe(out: string, destination: string): Outcome<void> {
 function spaceProbe(df: string): Outcome<number> {
   const row = df.trim().split('\n').at(-1)?.trim().split(/\s+/) ?? [];
   const free = Number(row[3]);
-  if (!Number.isFinite(free)) throw new StepError(`df did not report the free space on the remote home: ${df.trim().slice(0, 120)}`);
-  const gib = (free / (1024 * 1024)).toFixed(1);
-  return free < FREE_FLOOR_KB
-    ? { value: free, status: 'warn', detail: `${gib} GiB free on the remote home; a release and the robots moved there want more room` }
-    : { value: free, detail: `${gib} GiB free on the remote home` };
+  if (!Number.isFinite(free)) throw new StepError('could not be read', undefined, undefined, undefined, df.trim().slice(0, 120));
+  const gb = (free * 1024) / 1e9;
+  const said = `${gb < 10 ? gb.toFixed(1) : Math.round(gb)} GB free`;
+  return free < FREE_FLOOR_KB ? { value: free, status: 'warn', detail: `${said}: low` } : { value: free, detail: said };
 }
 
 const LINGER = 'loginctl show-user "$USER" -p Linger';
@@ -226,14 +247,9 @@ const LINGER = 'loginctl show-user "$USER" -p Linger';
 const SELF_LINGER = `l=$(${LINGER}) || exit; echo "$l"; [ "$l" = Linger=yes ] && exit; loginctl enable-linger "$USER" >/dev/null 2>&1; ${LINGER}; exit 0`;
 
 function lingerProbe(out: string, user: string, destination: string): Outcome<boolean> {
-  const said = out.trim().split('\n');
-  const tried = said.length > 1;
-  return said.at(-1) === 'Linger=yes'
-    ? { value: true, detail: `${tried ? 'turned on' : 'on'} for ${user}: the fleet keeps running after you log out` }
-    : {
-      value: false, status: 'warn', detail: `off for ${user}${tried ? ', and the system refused to turn it on' : ''}: the fleet stops when you log out`,
-      ...there(destination, `sudo loginctl enable-linger ${user}`),
-    };
+  return out.trim().split('\n').at(-1) === 'Linger=yes'
+    ? { value: true, detail: 'on' }
+    : { value: false, status: 'warn', detail: 'off: the fleet stops when you log out', ...there(destination, `sudo loginctl enable-linger ${user}`) };
 }
 
 export async function homeProbe(master: SshMaster): Promise<{ home: string; user: string }> {
@@ -248,7 +264,7 @@ export async function remoteJson<T>(master: SshMaster, svallBase: string, argv: 
   try {
     return JSON.parse(r.stdout) as T;
   } catch {
-    throw new StepError(r.code === 0
+    throw new StepError('Svall there did not answer', undefined, undefined, undefined, r.code === 0
       ? `${what} did not answer JSON: ${r.stdout.trim().slice(0, 200)}`
       : `${what} exited ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
   }
@@ -264,11 +280,11 @@ type RemoteVersion = {
 function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<RemoteDoctor> {
   const named = (name: string) => report.checks.find((c) => c.name === name);
   const unit = named('systemd');
-  if (!unit) throw new StepError("the companion's doctor reported no systemd check");
-  if (unit.status === 'fail') throw new StepError(unit.detail);
+  if (!unit) throw new StepError('Svall there reported no service check');
+  if (unit.status === 'fail') throw new StepError(unit.detail, unit.action, unit.run, undefined, unit.raw);
   const linger = named('linger');
-  const command = linger?.status === 'warn' ? /(?:sudo )?loginctl enable-linger \S+/.exec(linger.detail)?.[0] : undefined;
-  return { value: report, detail: unit.detail, ...(command ? { status: 'warn' as const, ...there(destination, command) } : {}) };
+  const command = linger?.status === 'warn' ? linger.run ?? /(?:sudo )?loginctl enable-linger \S+/.exec(linger.detail)?.[0] : undefined;
+  return { value: report, detail: unit.detail, ...(unit.raw && { raw: unit.raw }), ...(command ? { status: 'warn' as const, ...there(destination, command) } : {}) };
 }
 
 /** The PATH the companion's units run with, less the agents' folders setup adds there, which its doctor reports as daemonPath. */
@@ -282,36 +298,27 @@ async function tmuxCheck(master: SshMaster, o: { destination: string; home: stri
   const [where, version] = r.stdout.trim().split('\n');
   if (r.code === 3) {
     const apt = there(o.destination, 'sudo apt install tmux');
-    throw new StepError('tmux missing: this release carries none, and the machine has none', apt.action, apt.run);
+    throw new StepError('not installed', apt.action, apt.run, undefined, 'this release carries no tmux, and the machine has none');
   }
-  if (r.code !== 0) throw new StepError(`${where || 'tmux'} -V exited ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
-  const whose = where.startsWith(`${o.svallBase}/`) ? "Svall's own" : `from ${where}`;
-  return tmuxTooOld(version)
-    ? { value: undefined, status: 'warn', detail: `${version} ${whose}: Shift+Enter needs tmux 3.5 or newer; Ubuntu 24.04 ships 3.4` }
-    : { value: undefined, detail: `${version}, ${whose}` };
+  if (r.code !== 0) throw new StepError('does not run', undefined, undefined, undefined, `${where || 'tmux'} -V exited ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
+  const raw = `${version}, ${where.startsWith(`${o.svallBase}/`) ? "Svall's own" : `from ${where}`}`;
+  const v = version.replace(/^tmux /, '');
+  return tmuxTooOld(version) ? { value: undefined, status: 'warn', detail: `${v}: Shift+Enter needs 3.5`, raw } : { value: undefined, detail: v, raw };
 }
 
 // the companion doctor's checks of each agent's Svall hooks and of Codex's sandbox, whose details end with what to do there
 const AGENT_CHECKS: Record<AgentKind, string[]> = { claude: ['hooks'], codex: ['codex hooks', 'codex sandbox'], opencode: ['opencode plugin'] };
 
-/** The agents the fleets on this Mac run: their robots', mission control's and the scribe's; none known while a fleet's state cannot be read. */
-function fleetAgents(homedir: string): Set<AgentKind> | undefined {
-  const homes = fleetHomes(homedir);
-  if (!homes.length) return undefined;
-  const kinds = new Set<AgentKind>();
-  for (const home of homes) {
-    let state: FleetState;
-    try { state = migrateState(JSON.parse(fs.readFileSync(resolvePaths(home).state, 'utf8'))).state; } catch { return undefined; }
-    for (const c of Object.values(state.robots)) for (const k of [c.agent?.kind, c.second?.agent?.kind]) if (k) kinds.add(k);
-    for (const k of [state.mainAgent, state.scribeOff ? undefined : state.scribeAgent]) if (k) kinds.add(k);
-  }
-  return kinds;
+/** The fleet at `home` as its state.json holds it; none while that cannot be read. */
+export function fleetOf(home: string): FleetState | undefined {
+  try { return migrateState(JSON.parse(fs.readFileSync(resolvePaths(home).state, 'utf8'))).state; } catch { return undefined; }
 }
 
-// a check's detail says what is wrong, then what to do there after its last ': '; one without says only what to do
-const fixOf = (detail: string): { wrong?: string; fix: string } => {
-  const at = detail.lastIndexOf(': ');
-  return at < 0 ? { fix: detail } : { wrong: detail.slice(0, at), fix: detail.slice(at + 2) };
+// a check's detail says what is wrong, then what to do there after its last ': ', unless it carries its action apart
+const fixOf = (c: Pick<Check, 'detail' | 'action'>): { wrong?: string; fix: string } => {
+  if (c.action) return { wrong: c.detail, fix: c.action };
+  const at = c.detail.lastIndexOf(': ');
+  return at < 0 ? { fix: c.detail } : { wrong: c.detail.slice(0, at), fix: c.detail.slice(at + 2) };
 };
 
 type AgentCall = (bin: string, args: string[]) => ReturnType<SshMaster['run']>;
@@ -329,10 +336,11 @@ function agentCall(master: SshMaster, o: { home: string; svallBase: string; repo
  * Checks each agent CLI as the companion's units run it, with the companion doctor's checks of it: each finding is
  * something to do, never something that stops setup. Hands back each version Svall's floor takes.
  */
-async function agentChecks(master: SshMaster, o: { destination: string; home: string; svallBase: string; report: RemoteDoctor; homedir: string }, run: Runner): Promise<FarVersions> {
+async function agentChecks(master: SshMaster, o: { destination: string; home: string; svallBase: string; report: RemoteDoctor; fleet: string }, run: Runner): Promise<FarVersions> {
   const call = agentCall(master, o);
   const versions: FarVersions = {};
-  const used = fleetAgents(o.homedir);
+  const fleet = fleetOf(o.fleet);
+  const used = fleet && agentsInUse(fleet);
   const todo = (detail: string, how: string, command?: string): Outcome<void> =>
     ({ value: undefined, status: 'warn', detail, action: onThere(o.destination, how), ...(command && { run: command }) });
   for (const kind of Object.keys(AGENT_CHECKS) as AgentKind[]) {
@@ -341,21 +349,24 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
       const v = await call(a.bin, ['--version']);
       // env exits 127 for a program it finds nowhere on that PATH; setup writes Svall's hooks only for the agents it finds
       if (v.code === 127) {
-        if (used && !used.has(kind)) return { value: undefined, status: 'skip', detail: `${kind} is not installed on this machine, and no fleet on ${homeWord()} runs it` };
-        return todo(`${kind} is not installed on this machine`, `install ${a.label}, then svall setup`, a.installCommand);
+        if (used && !used.has(kind)) return { value: undefined, status: 'skip', detail: 'not installed' };
+        return todo('not installed', `install ${a.label}, then svall setup`, a.installCommand);
       }
       const version = v.stdout.trim().split('\n')[0];
-      if (v.code !== 0) return todo(`${a.bin} --version exited ${v.code}: ${v.stderr.trim().slice(0, 200) || 'no output'}`, `run ${a.bin} --version there and see what it answers`);
-      if (!versionOk(a, version)) return todo(`${version}: Svall needs ${a.minVersion!.join('.')} or newer`, a.updateCommand, a.updateCommand);
+      if (v.code !== 0) {
+        return { ...todo('does not run', `run ${a.bin} --version there and see what it answers`), raw: `${a.bin} --version exited ${v.code}: ${v.stderr.trim().slice(0, 200) || 'no output'}` };
+      }
+      const shown = versionOf(version) ?? version;
+      if (!versionOk(a, version)) return todo(`${shown}: needs ${a.minVersion!.join('.')} or newer`, a.updateCommand, a.updateCommand);
       versions[kind] = version;
       const login = await call(a.bin, a.loginArgs);
       if (login.code === 0 && a.loggedIn(login.stdout)) {
         const checks = o.report.checks.filter((c) => AGENT_CHECKS[kind].includes(c.name) && (c.status === 'warn' || c.status === 'fail'));
-        if (!checks.length) return { value: undefined, detail: `${version}, logged in` };
-        const said = checks.map((c) => { const { wrong } = fixOf(c.detail); return `the ${c.name} check there ${wrong ? `says ${wrong}` : c.status === 'fail' ? 'fails' : 'warns'}`; });
-        return todo(`${version}, logged in; ${said.join('; ')}`, checks.map((c) => fixOf(c.detail).fix).join('; and '), checks.find((c) => c.run)?.run);
+        if (!checks.length) return { value: undefined, detail: `${shown}, logged in` };
+        const said = checks.map((c) => { const { wrong } = fixOf(c); return `the ${c.name} check there ${wrong ? `says ${wrong}` : c.status === 'fail' ? 'fails' : 'warns'}`; });
+        return todo(`${shown}, logged in; ${said.join('; ')}`, checks.map((c) => fixOf(c).fix).join('; and '), checks.find((c) => c.run)?.run);
       }
-      return todo(`${version}, not logged in`, kind === 'codex' ? `${a.loginHint}, and trust the hooks once with /hooks` : a.loginHint, a.loginHint);
+      return todo(`${shown}, not logged in`, kind === 'codex' ? `${a.loginHint}, and trust the hooks once with /hooks` : a.loginHint, a.loginHint);
     });
   }
   // the companion's doctor runs gh with the daemon's PATH and config home; gh is advice, never a thing left before a move
@@ -381,19 +392,19 @@ async function farVersions(call: AgentCall): Promise<FarVersions> {
  * is at least the source's, so there and back needs the same. The side behind is named with its update.
  */
 function versionsOutcome(far: FarVersions, mine: { kind: AgentKind; version?: string }[] | Error, destination: string): Outcome<void> {
-  if (mine instanceof Error) return { value: undefined, status: 'skip', detail: `not compared: ${mine.message}` };
+  if (mine instanceof Error) return { value: undefined, status: 'skip', detail: 'not compared', raw: mine.message };
   const both = AGENT_KINDS.flatMap((kind) => {
     const [there, here] = [versionOf(far[kind] ?? ''), mine.find((m) => m.kind === kind)?.version];
     return there && here ? [{ kind, there, here, order: compareVersions(there, here) ?? 0 }] : [];
   });
   if (!both.length) return { value: undefined, status: 'skip', detail: 'no agent CLI to compare' };
   const apart = both.filter((b) => b.order !== 0);
-  if (!apart.length) return { value: undefined, detail: `${both.map((b) => `${b.kind} ${b.there}`).join(', ')}, as on ${homeWord()}` };
+  if (!apart.length) return { value: undefined, detail: `${both.map((b) => `${AGENT_LABEL[b.kind]} ${b.there}`).join(', ')}, same as ${homeWord()}` };
   const updates = (order: number) => apart.filter((b) => b.order === order).map((b) => AGENTS[b.kind].updateCommand);
   const [there, here] = [updates(-1), updates(1)];
   return {
     value: undefined, status: 'warn',
-    detail: `${apart.map((b) => `${b.kind} ${b.there} there, ${b.order < 0 ? 'behind' : 'ahead of'} ${b.here} on ${homeWord()}`).join('; ')}: a move there and back needs the same release on both`,
+    detail: apart.map((b) => `${AGENT_LABEL[b.kind]} ${b.there} there, ${b.here} on ${homeWord()}`).join('; '),
     action: [...(there.length ? [onThere(destination, there.join(', then '))] : []), ...(here.length ? [`${homeWord() === 'this Mac' ? ON_THIS_MAC : `on ${homeWord()}, run `}${here.join(', then ')}`] : [])].join('; '),
     ...(there.length > 0 && { run: there.join(' && ') }),
   };
@@ -408,9 +419,9 @@ async function endToEnd(master: SshMaster, entry: MachineEntry, { release, anyPr
   try {
     const running = (await client.call('system.info', {})).release;
     if (release && running !== release) throw new Error(`${entry.record.name} answers from release ${running}, not ${release}`);
-    return { value: undefined, detail: `${entry.record.name} answers on ${fleetHome ?? `its own ${PRIVATE} fleet`}` };
+    return { value: undefined, detail: 'answers', raw: `${entry.record.name} answers on ${fleetHome ?? `its own ${PRIVATE} fleet`}` };
   } catch (err) {
-    throw new StepError(redact((err as Error).message, [info.token]));
+    throw new StepError('does not answer', undefined, undefined, undefined, redact((err as Error).message, [info.token]));
   } finally {
     client.close();
     await forward.cancel().catch(() => undefined);
@@ -424,11 +435,11 @@ const TMUX_PROBE = 'sock="${TMPDIR:-/tmp}/svall-probe-$$"; tmux -S "$sock" new-s
 async function addProbe(master: SshMaster, entry: MachineEntry, o: { home: string; release: string; asHome?: boolean }, d: HostDeps): Promise<Outcome<void>> {
   await endToEnd(master, entry, { release: o.release });
   if (!o.asHome && !servesUs(await farHome(master, entry.record.svallBase, d, entry.id), d)) {
-    throw new StepError(`${entry.record.name} does not serve this fleet as a worker: its fleet home there holds no worker.json naming it`);
+    throw new StepError('answers, but not as a worker of this fleet', undefined, undefined, undefined, `${entry.record.name}'s fleet home there holds no worker.json naming it`);
   }
   const r = await master.run(['env', shq(`PATH=${unitPathOf(o.home, entry.record.svallBase)}`), ...sh('svall-tmux', TMUX_PROBE)], { timeoutMs: PROBE_TIMEOUT });
-  if (r.code !== 0) throw new StepError(`tmux could not open a window there (exit ${r.code}): ${r.stderr.trim().slice(0, 200) || 'no output'}`);
-  return { value: undefined, detail: `${entry.record.name} answers on its own ${PRIVATE} fleet, ${o.asHome ? 'as its home' : 'serves this fleet as a worker'}, and tmux opens and closes a window there` };
+  if (r.code !== 0) throw new StepError('tmux could not open a window there', undefined, undefined, undefined, `exit ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
+  return { value: undefined, detail: 'answers', raw: `${entry.record.name} answers on its own ${PRIVATE} fleet, ${o.asHome ? 'as its home' : 'serves this fleet as a worker'}, and tmux opens and closes a window there` };
 }
 
 /** This fleet's profile on `machine`, as its link dials it: the one its worker there was enrolled or moved under, else its own; none for the private one. */
@@ -444,7 +455,7 @@ function servedHome(machine: string, d: HostDeps): WorkerFile | undefined {
   const paths = resolvePaths(d.fleet.home);
   if (!isWorker(paths)) return undefined;
   let served: WorkerFile;
-  try { served = readWorkerFile(paths); } catch (e) { throw new StepError(`this fleet may serve ${machine} as its home: ${(e as Error).message}`, `fix ${paths.workerFile}`); }
+  try { served = readWorkerFile(paths); } catch (e) { throw new StepError(`${paths.workerFile} cannot be read`, `fix ${paths.workerFile}`, undefined, undefined, (e as Error).message); }
   return served.homeMachineId === machine ? served : undefined;
 }
 
@@ -492,7 +503,7 @@ function notTheHome(d: HostDeps): StepError | undefined {
   try {
     if (isWorker(paths)) home = readWorkerFile(paths).homeName;
     else leaving = readMarker(paths)?.toName;
-  } catch (e) { return new StepError(`this machine cannot tell whether it holds this fleet: ${(e as Error).message}`, isWorker(paths) ? `fix ${paths.workerFile}` : `fix the marker a move left in ${paths.home}`); }
+  } catch (e) { return new StepError(`${homeWord()} cannot tell whether it holds this fleet`, isWorker(paths) ? `fix ${paths.workerFile}` : `fix the marker a move left in ${paths.home}`, undefined, undefined, (e as Error).message); }
   if (leaving) return new StepError(`this home is leaving for ${leaving}, and takes or removes no worker until the move ends`, `finish the move with ${svallAt(d.fleet.home, d, 'fleet home retry')}, or call it off with ${svallAt(d.fleet.home, d, 'fleet home abort')}`);
   return home === undefined ? undefined : new StepError(`this fleet's home is ${home}, and only it takes or removes a worker`, `run it on ${home}`);
 }
@@ -528,7 +539,7 @@ function notOurs(v: RemoteVersion, name: string, d: HostDeps): StepError | undef
   if (elsewhere) return elsewhere;
   if (ours || v.worker.homeMachineId === d.machineId()) return undefined;
   const home = v.worker.homeName || v.worker.homeMachineId;
-  return new StepError(`${name} already serves ${home} as a worker; remove it from that Mac first`, `on ${home}, run svall host remove ${name}`);
+  return new StepError(`${name} already serves ${home} as a worker; remove it from ${home} first`, `on ${home}, run svall host remove ${name}`);
 }
 
 // a development build's release ends in git describe's count of commits past its tag, which semver ranks below the tag
@@ -561,7 +572,7 @@ async function mayInstall(master: SshMaster, o: { name: string; ssh: string; sva
     const listed = d.registry.get(far.machineId) ? '' : `svall${p} host add ${o.name} --ssh ${o.ssh} lists it again, then `;
     throw new StepError(`${o.name} serves ${home} as a worker, so it cannot be a home`, servesUs(far, d) ? `${listed}svall${p} fleet home set ${o.name} makes it this fleet's home` : `remove ${o.name} from the fleet it serves on ${home} first`);
   }
-  if (o.adding && !o.asHome && servedHome(far.machineId, d)) throw new StepError(`${o.name} is this fleet's home, so it cannot be added as its worker`, `${hostCmd(d)} upgrade ${o.name} takes it to this Mac's release`);
+  if (o.adding && !o.asHome && servedHome(far.machineId, d)) throw new StepError(`${o.name} is this fleet's home, so it cannot be added as its worker`, `${hostCmd(d)} upgrade ${o.name} takes it to ${homeWord()}'s release`);
   if (newerRelease(far.release, o.version)) {
     throw new StepError(`${o.name} runs release ${far.release}, newer than ${o.version}, the one ${homeWord()} would install`, `update svall on ${homeWord()}`);
   }
@@ -575,7 +586,7 @@ async function claimUnits(master: SshMaster, o: { name: string; machine: Machine
   const refused = notOurs(far, o.name, d);
   if (refused) throw refused;
   if (!units.includes('gateway')) return { far, units, off: '' };
-  await probe(master, sh('svall-gateway-off', GATEWAY_OFF, path.posix.join(unitDir, GATEWAY_UNIT)), `systemctl --user disable --now ${GATEWAY_UNIT}`);
+  await probe(master, sh('svall-gateway-off', GATEWAY_OFF, path.posix.join(unitDir, GATEWAY_UNIT)), `systemctl --user disable --now ${GATEWAY_UNIT}`, 'the old gateway service there did not stop');
   return { far, units, off: `; ${GATEWAY_UNIT} is stopped and removed` };
 }
 
@@ -594,9 +605,9 @@ async function enrol(master: SshMaster, o: { name: string; machine: MachineId; s
     const token = issueToken(paths, o.machine);
     r = await master.run(enrollArgv({ svallBase: o.svallBase, profile: profileOn(o.machine, d), home: d.machineId(), homeName: home, fleetId, homePlatform }), { input: token, timeoutMs: ENROL_TIMEOUT });
   } finally { unlock(); }
-  if (r.code !== 0) throw new StepError(`svall worker enroll exited ${r.code ?? `on ${r.signal}`}: ${r.stderr.trim().replace(/^svall: /, '').slice(0, 400) || 'no output'}`);
+  if (r.code !== 0) throw new StepError('did not join this fleet', undefined, undefined, undefined, `svall worker enroll exited ${r.code ?? `on ${r.signal}`}: ${r.stderr.trim().replace(/^svall: /, '').slice(0, 400) || 'no output'}`);
   const last = r.stdout.trim().split('\n').at(-1);
-  return { value: undefined, detail: `${o.name} serves this fleet as a worker of ${homeWord()}${last ? `; ${last}` : ''}${o.off}` };
+  return { value: undefined, detail: 'joined this fleet', raw: `${o.name} serves this fleet as a worker of ${homeWord()}${last ? `; ${last}` : ''}${o.off}` };
 }
 
 const signedWord = (signed?: boolean): string => (signed ? 'signed' : 'unsigned');
@@ -618,7 +629,7 @@ async function companionFor(o: AddOptions, d: HostDeps, arch: string): Promise<O
   }
   const companion = await inspectCompanion(archive, { verify: d.verify });
   requireCompatible(companion, { ...d.controller, arch, allowUnsigned });
-  return { value: { ...companion, allowUnsigned }, detail: `${companion.version} for ${companion.platform} from ${from} (${signedWord(companion.signed)})` };
+  return { value: { ...companion, allowUnsigned }, detail: companion.version, raw: `${companion.version} for ${companion.platform} from ${from} (${signedWord(companion.signed)})` };
 }
 
 // each run's own upload and staging there, which no other run's cleanup can take
@@ -636,7 +647,7 @@ const LEFTOVERS = `[ -d "$1" ] || exit 0; find "$1" -mindepth 1 -maxdepth 1 -mmi
 async function upload(master: SshMaster, archive: string, remote: { archive: string }): Promise<Outcome<void>> {
   await master.run(sh('svall-sweep', LEFTOVERS, path.posix.dirname(remote.archive)), { timeoutMs: PROBE_TIMEOUT }).catch(() => undefined);
   await uploadArchive(master, { archive, remote: remote.archive });
-  return { value: undefined, detail: `${path.basename(archive)} -> ${remote.archive}` };
+  return { value: undefined, detail: 'done', raw: `${path.basename(archive)} -> ${remote.archive}` };
 }
 
 /** The one machine record this name may carry, and the ssh destination it is already reached at. */
@@ -646,7 +657,7 @@ function claimName(registry: MachineRegistry, o: AddOptions): Outcome<Registered
   const reserved = reservedName(o.name);
   if (reserved) throw new StepError(reserved);
   const destination = MachineRecord.shape.ssh.unwrap().safeParse(o.ssh);
-  if (!destination.success) throw new StepError(`${o.ssh} is not an ssh destination: ${destination.error.issues[0].message}`);
+  if (!destination.success) throw new StepError(`${o.ssh} is not an ssh destination`, undefined, undefined, undefined, destination.error.issues[0].message);
   const held = registry.get(o.name);
   if (held?.record.dial === 'worker') throw new StepError(`${o.name} is a worker that dials in; remove it first or add this one under another name`);
   if (held && !held.record.ssh) throw new StepError(`${o.name} is ${homeWord()}'s name; add the machine under another name`);
@@ -659,8 +670,9 @@ function claimName(registry: MachineRegistry, o: AddOptions): Outcome<Registered
 /** What a home with no one at its ssh says of a machine it cannot log in to; the fix is that home's own key, as no key leaves the Mac. */
 function noLogin(ssh: string, said: string): StepError {
   const here = homeWord();
-  if (!['auth', 'host_key'].includes(classifySsh(said))) return new StepError(`${here} cannot reach ${ssh}${said ? `: ${said}` : ''}`, `check Tailscale on both machines, then ssh ${ssh} from ${here}`);
-  return new StepError(`${here} cannot log in to ${ssh}${said ? `: ${said}` : ''}`, noLoginFix(here, ssh), keyLine(ssh));
+  const raw = said || undefined;
+  if (!['auth', 'host_key'].includes(classifySsh(said))) return new StepError(`${here} cannot reach ${ssh}`, `check Tailscale on both machines, then ssh ${ssh} from ${here}`, undefined, undefined, raw);
+  return new StepError(`${here} cannot log in to ${ssh}`, noLoginFix(here, ssh), keyLine(ssh), undefined, raw);
 }
 
 // one add, upgrade, rollback or remove of a machine at a time, held to the run's end; the kernel lets it go with the process however it ends
@@ -698,10 +710,10 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       batch = said.batch === true;
       if (code !== 0) {
         if (batch) throw noLogin(o.ssh, stderr);
-        throw new StepError(`ssh ${o.ssh} exited ${code}${stderr ? `: ${stderr}` : ''}`,
-          `run ssh ${o.ssh} once in Terminal and answer its host key and login there, then add the machine again`);
+        throw new StepError(['auth', 'host_key'].includes(classifySsh(stderr)) ? `${homeWord()} cannot log in to ${o.ssh}` : `${o.ssh} is not reachable from ${homeWord()}`,
+          `run ssh ${o.ssh} once in Terminal and answer its host key and login there, then add the machine again`, undefined, undefined, `ssh ${o.ssh} exited ${code}${stderr ? `: ${stderr}` : ''}`);
       }
-      return { value: undefined, detail: `${o.ssh} accepted an interactive login` };
+      return { value: undefined, detail: 'logs in' };
     });
 
     const master = await run.step('master', async () => {
@@ -710,14 +722,13 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         opened = await d.openMaster(o.ssh);
       } catch (err) {
         if (batch && err instanceof SshError) throw noLogin(o.ssh, err.message);
-        if (err instanceof SshError && err.kind === 'auth') {
-          throw new StepError(`ssh refused the login to ${o.ssh}: every step from here logs in without a password or passphrase prompt`,
-            `install a key there with ssh-copy-id ${o.ssh}, keep its passphrase in the keychain with ssh-add --apple-use-keychain and add UseKeychain yes and AddKeysToAgent yes to ~/.ssh/config so ssh still finds it after a restart, then add the machine again`);
-        }
-        throw new StepError((err as Error).message, `ssh ${o.ssh} and see what it answers`);
+        // the login above asked its questions; every step from here logs in without a prompt
+        const keychain = process.platform === 'darwin'
+          ? ', keep its passphrase in the keychain with ssh-add --apple-use-keychain and add UseKeychain yes and AddKeysToAgent yes to ~/.ssh/config so ssh still finds it after a restart' : '';
+        throw unreached(err, o.name, o.ssh, homeWord(), `install a key there with ssh-copy-id ${o.ssh}${keychain}, then add the machine again`);
       }
       if (held) await sameMachine(opened, held, d).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
-      return { value: opened, detail: `connected to ${o.ssh}` };
+      return { value: opened, detail: 'connected' };
     });
 
     try {
@@ -734,7 +745,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         if (tooLong) {
           throw new StepError(tooLong.message, `use an account on ${o.ssh} whose home path is at most ${Buffer.byteLength(remote.home) - tooLong.over} bytes`);
         }
-        return { value: remote, detail: `${remote.home} for ${remote.user}` };
+        return { value: remote, detail: remote.home };
       });
 
       await run.step('tools', async () => toolsProbe(await probe(master, sh('svall-tools', WHICH, ...TOOLS), 'command -v'), o.ssh));
@@ -754,7 +765,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
           staging: remote.staging, archive: remote.archive, version: companion.version,
           allowUnsigned: !companion.signed && companion.allowUnsigned, installed: remote.svallBase,
         });
-        return { value: undefined, detail: out.trim().split('\n').at(-1) ?? `release ${companion.version} installed` };
+        return { value: undefined, detail: `${companion.version} installed`, raw: out.trim().split('\n').at(-1) };
       });
       await run.step('tmux', () => tmuxCheck(master, { destination: o.ssh, home, svallBase: remote.svallBase }));
 
@@ -765,8 +776,8 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         if (!id.success) throw new StepError('svall version --json did not report a machine id');
         // a machine with no svall to ask at the master step answers only once it is installed
         if (held && id.data !== held.id) {
-          throw new StepError(`${o.ssh} now reaches machine ${id.data}, not ${o.name} (${held.id})`,
-            `point ${o.ssh} back at ${o.name}, or ${hostCmd(d)} remove ${o.name} --forget and add it again`);
+          throw new StepError(`${o.ssh} now reaches another machine than ${o.name}`,
+            `point ${o.ssh} back at ${o.name}, or ${hostCmd(d)} remove ${o.name} --forget and add it again`, undefined, undefined, `machine ${id.data}, not ${held.id}`);
         }
         const listed = listedAs(d, id.data, o);
         if (listed) throw listed;
@@ -776,7 +787,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
             `ssh ${o.ssh} and read the daemon log; ${o.name} runs release ${v.release}, the one its setup went back to; then ${held ? `${hostCmd(d)} upgrade ${o.name}, or ` : ''}add the machine again`);
         }
         if (v.protocol !== d.controller.protocol) throw new StepError(`the release installed on ${o.name} cannot talk to ${homeWord()}'s`);
-        return { value: id.data, detail: `${o.name} runs release ${v.release}` };
+        return { value: id.data, detail: v.release };
       });
       if (!o.asHome) {
         await run.step('enrol', async () => {
@@ -785,7 +796,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         });
       }
 
-      const versions = await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase, report, homedir: d.homedir }, run);
+      const versions = await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase, report, fleet: d.fleet.home }, run);
       await run.step('versions', async () => versionsOutcome(versions, await d.localAgents().catch((err: Error) => err), o.ssh));
 
       const record: MachineRecord = { name: o.name, ssh: o.ssh, platform: 'linux', arch, home, svallBase: remote.svallBase };
@@ -794,7 +805,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         if (held) d.registry.remove(held.id);
         const entry = d.registry.add(record, machine);
         d.registry.save();
-        return Promise.resolve({ value: entry, detail: `${o.name} is in ${homeWord()}'s list of machines` });
+        return Promise.resolve({ value: entry, detail: 'listed' });
       });
       // a home's agent setup is its own, and this fleet joins it next
       if (!o.asHome) await setupSteps(run, machine, o.name, d);
@@ -833,7 +844,7 @@ type Registered = MachineEntry & { record: MachineRecord & { ssh: string } };
 async function sameMachine(master: SshMaster, entry: Registered, d: Pick<HostDeps, 'fleet'>): Promise<void> {
   await identify(master, entry).catch((err: unknown) => {
     if (!(err instanceof MachineMismatch)) throw err;
-    throw new StepError(err.message, `point ${entry.record.ssh} back at ${entry.record.name}, or ${hostCmd(d)} remove ${entry.record.name} --forget`);
+    throw new StepError(`${entry.record.ssh} now reaches another machine than ${entry.record.name}`, `point ${entry.record.ssh} back at ${entry.record.name}, or ${hostCmd(d)} remove ${entry.record.name} --forget`, undefined, undefined, err.message);
   });
 }
 
@@ -853,7 +864,10 @@ const removable = (name: string, d: HostDeps): Outcome<MachineEntry> => {
   return entry?.record.dial === 'worker' ? { value: entry, detail: `${name} dials in` } : machineOutcome(d.registry, name);
 };
 
-const failed = (name: string, err: unknown): Check => ({ name, status: 'fail', detail: (err as Error).message });
+// a step's own words for what stopped a check, or that it could not be made, with what was said behind
+const failed = (name: string, err: unknown): Check => (err instanceof StepError
+  ? { name, status: 'fail', detail: err.detail, ...(err.action && { action: err.action }), ...(err.run && { run: err.run }), ...(err.raw && { raw: err.raw }) }
+  : { name, status: 'fail', detail: 'could not be checked', raw: (err as Error).message });
 
 /** Whether a machine on `release` runs this Mac's, as a development build takes any release for its own. */
 export const sameRelease = (release: string, controller: HostDeps['controller']): boolean => controller.release === 'dev' || release === controller.release;
@@ -878,8 +892,16 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
   const checks: Check[] = [];
   const found = (...cs: Check[]) => { checks.push(...cs); for (const { name: step, ...c } of cs) d.emit({ step, ...c }); };
   start('master');
-  const master = await d.openMaster(entry.record.ssh).catch((err: Error) => { d.emit({ step: 'master', status: 'fail', detail: err.message }); throw err; });
-  d.emit({ step: 'master', status: 'ok', detail: `connected to ${entry.record.ssh}` });
+  let master: SshMaster;
+  try {
+    master = await d.openMaster(entry.record.ssh);
+  } catch (err) {
+    // a report all the same, so a run relayed for a Mac ends on this row rather than on its exit
+    const e = noLogin(entry.record.ssh, (err as Error).message);
+    found({ name: 'master', status: 'fail', detail: e.detail, ...(e.action && { action: e.action }), ...(e.run && { run: e.run }), ...(e.raw && { raw: e.raw }) });
+    return { machine: entry.record.name, checks };
+  }
+  d.emit({ step: 'master', status: 'ok', detail: 'connected' });
   let release: string | undefined;
   // the fleet's home takes none of this fleet's agent setup
   let home = false;
@@ -905,18 +927,17 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
       const newer = !same && newerRelease(v.release, d.controller.release);
       found({
         name: 'release', status: same && talks ? 'ok' : 'fail',
-        detail: same && talks ? `${v.release}, as on ${homeWord()}`
-          : newer ? `${v.release} there, newer than ${homeWord()}'s ${d.controller.release}`
-            : same ? `${v.release} there, a build that cannot talk to ${homeWord()}'s` : `${v.release} there; ${homeWord()} runs ${d.controller.release}`,
-        ...(newer && { action: `update svall on ${homeWord()}` }),
+        detail: same && talks ? `${v.release}, same as ${homeWord()}`
+          : same ? `${v.release} there, a build that cannot talk to ${homeWord()}'s` : `${v.release} there, ${d.controller.release} on ${homeWord()}`,
+        ...(!(same && talks) && { action: newer ? `update svall on ${homeWord()}` : `${hostCmd(d)} upgrade ${entry.record.name}` }),
       });
       const refused = notOurs(v, entry.record.name, d);
       home = homeOfUs(v, d);
       found(home ? { name: 'worker', status: 'ok', detail: 'home of this fleet' }
         : refused ? { name: 'worker', status: 'fail', detail: refused.detail, action: refused.action }
-          : servesUs(v, d) ? { name: 'worker', status: 'ok', detail: "runs this fleet's robots" }
-            : joining !== undefined ? { name: 'worker', status: 'warn', detail: `has not joined ${homeWord()} yet${joining ? `: ${joining}` : ''}` }
-              : { name: 'worker', status: 'fail', detail: `does not run this fleet's robots yet: ${hostCmd(d)} upgrade ${entry.record.name} sets it up` });
+          : servesUs(v, d) ? { name: 'worker', status: 'ok', detail: 'worker of this fleet' }
+            : joining !== undefined ? { name: 'worker', status: 'warn', detail: 'has not joined yet', ...(joining && { raw: joining }) }
+              : { name: 'worker', status: 'fail', detail: "does not run this fleet's robots yet", action: `${hostCmd(d)} upgrade ${entry.record.name} sets it up` });
     } catch (err) { found(failed('release', err)); }
     start('versions');
     try {
@@ -932,8 +953,8 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     try {
       far = await homeProbe(master);
       const n = entry.record.name;
-      found(far.home !== entry.record.home ? { name: 'home', status: 'fail', detail: `${far.home} is ${far.user}'s home on ${n}, and the registry records ${entry.record.home}; ${hostCmd(d)} remove ${n}, then ${hostCmd(d)} add again` }
-        : { name: 'home', status: 'ok', detail: `${far.home} for ${far.user}` });
+      found(far.home !== entry.record.home ? { name: 'home', status: 'fail', detail: `${far.home} there, ${entry.record.home} in the list of machines`, action: `${hostCmd(d)} remove ${n}, then ${hostCmd(d)} add again` }
+        : { name: 'home', status: 'ok', detail: far.home });
     } catch (err) { found(failed('home', err)); }
     if (far && !checks.some((c) => c.name === 'linger')) {
       start('linger');
@@ -958,22 +979,24 @@ export const rowCheck = ({ key, ...row }: SetupRow): Check => ({ name: `mirror:$
 
 /** The one row a command makes of a daemon it could not ask for the rows; its action asks that fleet's daemon again. */
 const notChecked = (e: Error, name: string, d: HostDeps): SetupRow => ({
-  key: 'unchecked', status: 'warn', detail: `not checked: ${e.message}`, action: `${svallAt(d.fleet.home, d, `host doctor ${name}`)} once Svall is open`,
+  key: 'unchecked', status: 'warn', detail: 'not checked', raw: e.message, action: `${svallAt(d.fleet.home, d, `host doctor ${name}`)} once Svall is open`,
   gap: { name: 'agent setup', what: 'not checked' },
 });
 
-const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string; run?: string } =>
-  ({ status: (o.status ?? 'ok') as Check['status'], detail: [o.detail, o.action].filter(Boolean).join('; '), ...(o.run && { run: o.run }) });
+const pick = (o: Outcome<unknown>): Omit<Check, 'name'> =>
+  ({ status: (o.status ?? 'ok') as Check['status'], detail: o.detail ?? '', ...(o.action && { action: o.action }), ...(o.run && { run: o.run }), ...(o.raw && { raw: o.raw }) });
 
 const rollbackTo = (name: string, d: Pick<HostDeps, 'fleet'>): string => `${hostCmd(d)} upgrade ${name} --rollback <release> puts back a release kept there`;
+// what a rollback that went wrong leaves a person: the check that says why, and the long way behind it
+const seeWhy = (name: string, d: Pick<HostDeps, 'fleet'>): string => `see why: ${hostCmd(d)} doctor ${name}`;
+// what an upgrade or rollback did that its probe fails, and why it says so, as one line a person reads
+const thrown = (err: unknown): string => (err instanceof StepError ? err.raw ?? err.detail : (err as Error).message);
 
 /** The one master an upgrade or a rollback rides on, to the machine the registry names. */
 async function checkedMaster(d: HostDeps, entry: Registered): Promise<Outcome<SshMaster>> {
-  const opened = await d.openMaster(entry.record.ssh).catch((err: unknown) => {
-    throw new StepError((err as Error).message, `ssh ${entry.record.ssh} once in Terminal and see what it answers, then run this again`);
-  });
+  const opened = await d.openMaster(entry.record.ssh).catch((err: unknown) => { throw unreached(err, entry.record.name, entry.record.ssh, homeWord()); });
   await sameMachine(opened, entry, d).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
-  return { value: opened, detail: `connected to ${entry.record.ssh}` };
+  return { value: opened, detail: 'connected' };
 }
 
 // $1 units folder, $2 gateway unit, $3 fleet unit: which units are there, and whether the fleet's runs as a worker
@@ -1013,7 +1036,7 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
           staging: remote.staging, archive: remote.archive, version: companion.version,
           allowUnsigned: !companion.signed && companion.allowUnsigned, installed: entry.record.svallBase,
         });
-        return { value: was, detail: out.trim().split('\n').at(-1) ?? `release ${companion.version} installed` };
+        return { value: was, detail: `${companion.version} installed`, raw: out.trim().split('\n').at(-1) };
       });
 
       const probed = await run.step('probe', async () => {
@@ -1021,9 +1044,9 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
           const { env } = farFleet(entry.id, d);
           serviceOutcome(await remoteJson<RemoteDoctor>(master, entry.record.svallBase, ['doctor', '--json'], 'svall doctor --json', env), entry.record.ssh);
           await endToEnd(master, entry, { release: companion.version, ...(fleetHome && { fleetHome }) });
-          return { value: true, detail: `${entry.record.name} answers on release ${companion.version}` };
+          return { value: true, detail: 'answers' };
         } catch (err) {
-          return { value: false, status: 'warn' as const, detail: (err as Error).message };
+          return { value: false, status: 'warn' as const, detail: 'does not answer', raw: thrown(err) };
         }
       });
       if (probed) {
@@ -1040,11 +1063,11 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
         const out = await remoteRollback(master, { svallBase: entry.record.svallBase, from: companion.version, ...(to !== undefined && { to }) }).catch((err: Error) => err);
         const now = await currentRelease(master, entry.record.svallBase);
         d.runs?.(now);
-        const runs = !replaced ? `${name} runs release ${now}${now === before ? ', the one it ran before' : `, not ${before}, the one it ran before`}`
-          : `${name} ran a release named ${before} before, which this install replaced; ${now === before ? 'no other release is kept there, so it runs the new one' : `it runs release ${now}, the newest one kept there`}`;
-        const action = `ssh ${entry.record.ssh} and read the daemon log; ${runs}`;
-        if (out instanceof Error) throw new StepError(out.message, `${action}; ${rollbackTo(name, d)}`);
-        return { value: undefined, status: 'warn' as const, detail: out.trim().split('\n').at(-1) ?? `current -> ${now}`, action };
+        const runs = !replaced ? (now === before ? `back on ${now}` : `on ${now}; ${before} could not be put back`)
+          : now === before ? `stays on ${now}: no earlier release is kept there` : `on ${now}, the newest release kept there`;
+        const long = `ssh ${entry.record.ssh} and read the service's log; ${rollbackTo(name, d)}`;
+        if (out instanceof Error) throw new StepError(`did not finish; ${runs}`, seeWhy(name, d), undefined, undefined, `${out.message}\n${long}`);
+        return { value: undefined, status: 'warn' as const, detail: runs, action: seeWhy(name, d), raw: [out.trim().split('\n').at(-1), long].filter(Boolean).join('\n') };
       });
     } finally {
       await master.close().catch(() => undefined);
@@ -1086,19 +1109,20 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
     const fleetHome = dialedHome(entry.id, d);
     const master = await run.step('master', () => checkedMaster(d, entry));
     const base = entry.record.svallBase;
-    const runs = (now: string): string => `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${now}; ${rollbackTo(name, d)}`;
+    const long = (now: string): string => `ssh ${entry.record.ssh} and read the service's log; ${name} runs release ${now}; ${rollbackTo(name, d)}`;
     try {
       const now = await run.step('rollback', async () => {
         const from = await currentRelease(master, base);
         const refused = await rollbackRefusal(master, { svallBase: base, home: entry.record.home, from, ...(o.to !== undefined && { to: o.to }) });
-        if (refused) throw new StepError(`${refused}; ${name} stays on release ${from}`);
+        if (refused) throw new StepError(`${refused.reason}; stays on ${from}`, undefined, undefined, undefined, refused.raw);
         const out = await remoteRollback(master, { svallBase: base, from, ...(o.to !== undefined && { to: o.to }) })
           .catch(async (err: Error) => {
             const now = await currentRelease(master, base);
             d.runs?.(now);
-            throw new StepError(err.message, runs(now));
+            throw new StepError(`did not finish; on ${now}`, seeWhy(name, d), undefined, undefined, `${err.message}\n${long(now)}`);
           });
-        return { value: await currentRelease(master, base), detail: out.trim().split('\n').join('; ') };
+        const now = await currentRelease(master, base);
+        return { value: now, detail: `back on ${now}`, raw: out.trim() };
       });
       d.runs?.(now);
       await run.step('probe', async () => {
@@ -1107,9 +1131,9 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
           // the release gone back to may speak an older protocol than this controller, and its system.info still names it
           await endToEnd(master, entry, { release: now, anyProtocol: true, ...(fleetHome && { fleetHome }) });
         } catch (err) {
-          throw new StepError((err as Error).message, runs(now));
+          throw new StepError('does not answer', seeWhy(name, d), undefined, undefined, `${thrown(err)}\n${long(now)}`);
         }
-        return { value: undefined, detail: `${name} answers on release ${now}` };
+        return { value: undefined, detail: 'answers' };
       });
     } finally {
       await master.close().catch(() => undefined);
@@ -1172,11 +1196,11 @@ function placedOn(entry: MachineEntry, d: HostDeps): void {
  */
 export async function consentHost(name: string, o: { item: string; on: boolean; fields?: string[] }, d: HostDeps): Promise<SetupRow[]> {
   const entry = need(d.registry, name);
-  if (o.fields && !o.on) throw new StepError('off unticks every field of the item; leave out --field');
+  if (o.fields && !o.on) throw new StepError('off takes every key of the item; drop --field');
   const listed = (await d.setupRows(entry.id, 0)).find((r) => r.tick?.item === o.item)?.tick?.fields;
-  if (!listed) throw new StepError(`no setting ${o.item} on ${name}; ${hostCmd(d)} doctor ${name} lists them`);
+  if (!listed) throw new StepError(`${name} has no agent setup item ${o.item}; ${hostCmd(d)} doctor ${name} --all lists them`);
   const unknown = (o.fields ?? []).filter((f) => !listed.includes(f));
-  if (unknown.length) throw new StepError(`${o.item} on ${name} has no field ${unknown.join(', ')}; ${hostCmd(d)} doctor ${name} lists its fields`);
+  if (unknown.length) throw new StepError(`${o.item} has no key ${unknown.join(', ')}; ${hostCmd(d)} doctor ${name} --all lists its keys`);
   return d.consent(entry.id, o.item, o.fields ?? listed, o.on);
 }
 
@@ -1197,9 +1221,9 @@ const ServedBy = WorkerFile.pick({ homeMachineId: true, homeName: true, fleetId:
 /** Refuses the far uninstall, which stops every fleet there, while a fleet home there serves another Mac or one cannot be read. */
 async function sharedWith(master: SshMaster, entry: Registered, d: HostDeps): Promise<void> {
   const { name, ssh, home } = entry.record;
-  const forget = `${hostCmd(d)} remove ${name} --forget drops the route and leaves the machine untouched; once no other Mac uses it, ${onThere(ssh, 'svall uninstall')}`;
-  const unread = (why: string) => new StepError(`${why}, so whether ${name} serves another Mac is not known, and svall uninstall there stops every fleet on it`, forget);
-  const out = await probe(master, sh('svall-workers', WORKERS, home), 'the worker.json files there').catch((err: Error) => { throw unread(err.message); });
+  const forget = `forget it here with ${hostCmd(d)} remove ${name} --forget, or uninstall there once nothing else uses it: ${onThere(ssh, 'svall uninstall')}`;
+  const unread = (why: string) => new StepError(`cannot tell whether ${name} runs another fleet; uninstalling stops every fleet there`, forget, undefined, undefined, why);
+  const out = await probe(master, sh('svall-workers', WORKERS, home), 'the worker.json files there').catch((err: unknown) => { throw unread(thrown(err)); });
   const others = new Set<string>();
   const here = fleetHere(d);
   const elsewhere = notTheHome(d);
@@ -1212,7 +1236,7 @@ async function sharedWith(master: SshMaster, entry: Registered, d: HostDeps): Pr
     if (worker.homeMachineId !== d.machineId() && worker.fleetId !== here) others.add(worker.homeName || worker.homeMachineId);
   }
   if (others.size) {
-    throw new StepError(`${name} also serves ${[...others].join(' and ')} as a worker: svall uninstall there would stop ${others.size === 1 ? 'that fleet' : 'those fleets'} too`, forget);
+    throw new StepError(`${name} also runs robots for ${[...others].join(' and ')}; uninstalling stops them too`, forget);
   }
 }
 
@@ -1246,8 +1270,8 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
     const { ssh } = entry.record;
     // never --purge from here: the fleets and their tmux servers are the far machine's to delete
     const uninstalled = await run.step('uninstall', async () => {
-      if (!ssh) return { value: undefined, status: 'skip' as const, detail: `${name} dials in, so nothing here reaches it: it keeps Svall until svall uninstall runs there` };
-      if (o.forget) return { value: undefined, status: 'skip' as const, detail: `${name} is left untouched: ${ssh} keeps Svall until svall uninstall runs there` };
+      if (!ssh) return { value: undefined, status: 'skip' as const, detail: `not reached from here; run svall uninstall on ${name} to remove Svall` };
+      if (o.forget) return { value: undefined, status: 'skip' as const, detail: `left as it is; Svall stays on ${name}` };
       let master: SshMaster | undefined;
       try {
         master = await d.openMaster(ssh);
@@ -1256,16 +1280,15 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
         await sharedWith(master, reached, d);
         const r = await master.run([shq(svallExe(entry.record.svallBase)), 'uninstall'], { timeoutMs: PROBE_TIMEOUT });
         if (r.code !== 0) {
-          throw new StepError(`svall uninstall exited ${r.code} on ${ssh}: ${r.stderr.trim().slice(0, 400) || 'no output'}`,
-            `${onThere(ssh, 'svall uninstall')} and see what stops it; ${hostCmd(d)} remove ${name} --forget drops the route and leaves the machine as it is`);
+          throw new StepError('did not finish', `${onThere(ssh, 'svall uninstall')} and see what stops it; ${hostCmd(d)} remove ${name} --forget drops the route and leaves the machine as it is`,
+            undefined, undefined, `svall uninstall exited ${r.code} on ${ssh}: ${r.stderr.trim().slice(0, 400) || 'no output'}`);
         }
         // its last line can name a command for that machine, such as the rm -rf of the fleets it kept
         const lines = r.stdout.trim().split('\n');
-        return { value: lines.filter((l) => TAKE_BACK.test(l)), detail: `on ${ssh}: ${lines.at(-1) || 'svall uninstall'}` };
+        return { value: lines.filter((l) => TAKE_BACK.test(l)), detail: 'Svall removed', ...(lines.at(-1) && { raw: lines.at(-1) }) };
       } catch (err) {
         if (err instanceof StepError) throw err;
-        throw new StepError(`${ssh} could not be reached: ${(err as Error).message}`,
-          `${hostCmd(d)} remove ${name} --forget drops the route and leaves the machine untouched`);
+        throw new StepError(`${name} is not reachable`, `${hostCmd(d)} remove ${name} --forget drops it from the list and leaves it as it is`, undefined, undefined, (err as Error).message);
       } finally {
         await master?.close().catch(() => undefined);
       }
@@ -1285,13 +1308,14 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
       d.registry.remove(entry.id);
       d.registry.save();
       if (!ssh) await d.refreshLinks();
-      return ({ value: undefined, detail: uninstalled ? `${name} is no longer in the registry` : `${name} is forgotten; the machine was left untouched` });
+      return ({ value: undefined, detail: uninstalled ? 'no longer listed' : 'forgotten; left as it is' });
     });
     if (!uninstalled?.length) return;
-    const left = uninstalled.some((l) => KEYS_LEFT.test(l));
+    const left = uninstalled.filter((l) => KEYS_LEFT.test(l)).length;
+    const files = (n: number) => `${n} ${n === 1 ? 'file' : 'files'}`;
     await run.step('keys', () => Promise.resolve({
-      value: undefined, detail: uninstalled.join('; '),
-      ...(left && { status: 'warn' as const, action: onThere(ssh!, 'take the keys the mirror copied out of the files named here, or delete those files') }),
+      value: undefined, raw: uninstalled.join('\n'),
+      ...(left ? { status: 'warn' as const, detail: `copied keys left in ${files(left)}`, action: onThere(ssh!, 'remove them by hand') } : { detail: `copied keys removed from ${files(uninstalled.length)}` }),
     }));
   }).finally(() => { unlock?.(); lock.free(); });
 }

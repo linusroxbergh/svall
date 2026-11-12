@@ -21,7 +21,7 @@ import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile'
 import { ownRuntime } from '@svall/svalld/runtime';
 import { readOrUndefined } from '@svall/svalld/settings-file';
 import { shimsCurrent } from '@svall/svalld/setup';
-import { MARK, grouped, renderGroups, tickMark, useColor, type Check } from '../checks-view.js';
+import { MARK, grouped, rawLines, renderGroups, tickMark, useColor, type Check } from '../checks-view.js';
 import { Client, restartHint } from '../client.js';
 import { askCodexTrust, type HookTrust } from '@svall/svalld/codex/trust';
 import { printResult } from '../format.js';
@@ -67,10 +67,8 @@ async function gh(d: DoctorDeps): Promise<Check> {
     await d.run('gh', ['auth', 'status'], { path: d.agentPath });
     return { name: 'gh', status: 'ok', detail: 'logged in' };
   } catch (e) {
-    const install = d.platform === 'linux' ? 'sudo apt install gh' : 'brew install gh';
-    const run = missing(e) ? install : 'gh auth login';
-    const why = missing(e) ? `not found on PATH: ${install}` : 'not logged in: gh auth login';
-    return { name: 'gh', status: 'warn', detail: `${why} (pull request links stay unresolved)`, run };
+    const run = !missing(e) ? 'gh auth login' : d.platform === 'linux' ? 'sudo apt install gh' : 'brew install gh';
+    return { name: 'gh', status: 'warn', detail: missing(e) ? 'not installed' : 'not logged in', action: `${run}; until then pull request links stay unresolved`, run };
   }
 }
 
@@ -84,7 +82,7 @@ function config(t: Target, d: DoctorDeps): Check {
     ? [[p.legacyConfig, Config]]
     : [[p.fleetConfig, FleetConfig], [p.nodeConfig, NodeConfig]];
   const found = files.flatMap(([file, schema]) => { const text = d.read(file); return text === undefined ? [] : [{ file, text, schema }]; });
-  if (!found.length) return { name: 'config', status: 'ok', detail: `the defaults, as there is no ${p.fleetConfig}` };
+  if (!found.length) return { name: 'config', status: 'ok', detail: 'defaults', raw: `there is no ${p.fleetConfig}` };
   try {
     for (const f of found) parseConfig(f.text, f.file, f.schema);
     if (configStray(p, (file) => d.exists(file))) {
@@ -166,27 +164,27 @@ async function svalld(t: Target, d: DoctorDeps): Promise<Check> {
     return { name: 'svalld', status: 'ok', detail: `running on port ${port}` };
   } catch (e) {
     const by = await heldBy(d, Number(port));
-    return { name: 'svalld', status: 'fail', detail: `port ${port} does not answer: ${(e as Error).message}${by ? `; ${by} holds it` : ''}` };
+    return { name: 'svalld', status: 'fail', detail: `port ${port} does not answer${by ? `; ${by} holds it` : ''}`, raw: (e as Error).message };
   }
 }
 
 async function hookReceiver(t: Target, d: DoctorDeps): Promise<Check> {
   const paths = resolvePaths(t.home);
   // the daemon listens only while Svall is open on the fleet, as the svalld check says
-  if (!d.read(paths.port)?.trim()) return { name: 'hook receiver', status: 'skip', detail: 'svalld is not running' };
+  if (!d.read(paths.port)?.trim()) return { name: 'hook receiver', status: 'skip', detail: "Svall's background service is not running" };
   const path = paths.hooksSock;
   try {
     await d.connectHook(path);
-    return { name: 'hook receiver', status: 'ok', detail: `answering at ${path}` };
+    return { name: 'hook receiver', status: 'ok', detail: 'answers', raw: path };
   } catch (e) {
     // node adds " - Local (undefined:undefined)" to a socket's error message, so the code stands for it
     const why = (e as NodeJS.ErrnoException).code ?? (e as Error).message;
-    return { name: 'hook receiver', status: 'fail', detail: `${path} does not answer (${why}); ${restartHint(t)}` };
+    return { name: 'hook receiver', status: 'fail', detail: 'does not answer', action: restartHint(t), raw: `${path} does not answer (${why})` };
   }
 }
 
 async function launchd(t: Target, d: DoctorDeps): Promise<Check> {
-  if (!t.managed) return { name: 'launchd', status: 'ok', detail: `not managed: ${t.home} is not a profile home` };
+  if (!t.managed) return { name: 'launchd', status: 'ok', detail: 'not managed', raw: `${t.home} is not a profile home` };
   const label = profileLabel(t.name);
   try {
     const out = await d.run('launchctl', ['print', `gui/${d.uid}/${label}`]);
@@ -194,9 +192,10 @@ async function launchd(t: Target, d: DoctorDeps): Promise<Check> {
     const fields = out.split('\n').filter((l) => /^\t(state|last exit code|runs) =/.test(l)).map((l) => l.trim());
     // a job at rest is the fleet with its window shut; only one that last exited in failure is wrong
     const failed = !fields.includes('state = running') && fields.some((f) => /^last exit code = [1-9]/.test(f));
-    return { name: 'launchd', status: failed ? 'fail' : 'ok', detail: `${label}: ${fields.join(', ') || 'loaded'}` };
+    const raw = `${label}: ${fields.join(', ') || 'loaded'}`;
+    return failed ? { name: 'launchd', status: 'fail', detail: 'stopped with an error', raw } : { name: 'launchd', status: 'ok', detail: fields.includes('state = running') ? 'running' : 'loaded', raw };
   } catch {
-    return { name: 'launchd', status: 'fail', detail: `${label} is not loaded: ${SHIM} ${t.name === PRIVATE ? 'setup' : t.name}` };
+    return { name: 'launchd', status: 'fail', detail: 'not loaded', action: `${SHIM} ${t.name === PRIVATE ? 'setup' : t.name}`, raw: label };
   }
 }
 
@@ -212,13 +211,13 @@ function daemonNode(t: Target, d: DoctorDeps): Check {
   const { plist, fix } = plistOf(t, d);
   const run = plistRun(d.read(plist) ?? '');
   const program = run.program[0];
-  if (program?.endsWith('/Contents/Helpers/node')) return { name: 'daemon node', status: 'ok', detail: `${program} (the app's own)` };
+  if (program?.endsWith('/Contents/Helpers/node')) return { name: 'daemon node', status: 'ok', detail: "the app's own", raw: program };
   const dir = run.path[0];
   if (!dir) return { name: 'daemon node', status: 'skip', detail: `no PATH in ${plist}` };
-  if (!d.exists(path.join(dir, 'node'))) return { name: 'daemon node', status: 'warn', detail: `${dir}/node is gone: ${fix}` };
+  if (!d.exists(path.join(dir, 'node'))) return { name: 'daemon node', status: 'warn', detail: 'gone', action: fix, raw: `${dir}/node` };
   return /^\/nix\/store\/|\/Cellar\/|\/v?\d+\.\d+\.\d+[^/]*\//.test(`${dir}/`)
-    ? { name: 'daemon node', status: 'warn', detail: `${dir} belongs to one node version, and svalld will not start once that version is removed; after changing node: ${fix}` }
-    : { name: 'daemon node', status: 'ok', detail: `${dir}/node` };
+    ? { name: 'daemon node', status: 'warn', detail: 'one node version, which the service stops with once it is removed', action: `after changing node: ${fix}`, raw: dir }
+    : { name: 'daemon node', status: 'ok', detail: 'found', raw: `${dir}/node` };
 }
 
 // launchd runs the plist's program with only the plist's PATH, and logs nothing to svalld.log when it cannot:
@@ -230,12 +229,12 @@ function daemonPath(t: Target, d: DoctorDeps): Check {
   if (text === undefined) return { name: 'daemon path', status: 'skip', detail: `no ${plist}` };
   const run = plistRun(text);
   const missing = run.program.find((p) => !d.exists(p));
-  if (missing) return { name: 'daemon path', status: 'fail', detail: `${missing} is gone, so launchd cannot start svalld: ${fix}` };
+  if (missing) return { name: 'daemon path', status: 'fail', detail: 'its program is gone', action: fix, raw: `${missing} is gone, so launchd cannot start svalld` };
   const finds = (dirs: string[], bin: string) => dirs.some((dir) => d.exists(path.join(dir, bin)));
   const lacks = AGENT_KINDS.map((k) => AGENTS[k].bin).filter((bin) => finds(d.pathEnv.split(':'), bin) && !finds(run.path, bin));
   return lacks.length
-    ? { name: 'daemon path', status: 'warn', detail: `the PATH in ${plist} has no ${lacks.join(' or ')}, which this shell finds: ${fix}` }
-    : { name: 'daemon path', status: 'ok', detail: 'its program is there, and it finds the agent CLIs as this shell does' };
+    ? { name: 'daemon path', status: 'warn', detail: `does not find ${lacks.join(' or ')}`, action: fix, raw: `the PATH in ${plist} has no ${lacks.join(' or ')}, which this shell finds` }
+    : { name: 'daemon path', status: 'ok', detail: 'finds the agent CLIs' };
 }
 
 // a named fleet's unit is the controller's to write, so there is nothing to type on this machine
@@ -247,15 +246,15 @@ function daemonEnv(t: Target, d: DoctorDeps): Check {
   const keys = Object.keys(d.daemonEnv);
   const linux = d.platform === 'linux';
   if (!keys.length) {
-    return { name: 'daemon env', status: 'ok', detail: 'this account sets none of CLAUDE_CONFIG_DIR, CODEX_HOME, XDG_CONFIG_HOME or XDG_DATA_HOME' };
+    return { name: 'daemon env', status: 'ok', detail: 'none to carry', raw: 'this account sets none of CLAUDE_CONFIG_DIR, CODEX_HOME, XDG_CONFIG_HOME or XDG_DATA_HOME' };
   }
   const { plist: file, fix } = linux ? { plist: path.join(d.unitDir, svalldUnitName(t.name)), fix: unitFix(t) } : plistOf(t, d);
   const text = d.read(file);
   if (text === undefined) return { name: 'daemon env', status: 'skip', detail: `no ${file}` };
   const lacks = keys.filter((k) => !text.includes((linux ? unitEnv : plistEnv)(k, d.daemonEnv[k])));
   return lacks.length
-    ? { name: 'daemon env', status: 'warn', detail: `${file} lacks ${lacks.join(' and ')}, which this account sets: ${fix}`, ...(linux && t.name === PRIVATE && { run: `${SHIM} setup` }) }
-    : { name: 'daemon env', status: 'ok', detail: `same ${keys.join(' and ')} as this account` };
+    ? { name: 'daemon env', status: 'warn', detail: `lacks ${lacks.join(' and ')}`, action: fix, raw: `${file} lacks ${lacks.join(' and ')}, which this account sets`, ...(linux && t.name === PRIVATE && { run: `${SHIM} setup` }) }
+    : { name: 'daemon env', status: 'ok', detail: 'same as this account', raw: keys.join(' and ') };
 }
 
 // the unit's PATH holds the agents' folders setup found through the login shell, which an agent moved since leaves stale
@@ -265,8 +264,8 @@ function unitDaemonPath(t: Target, d: DoctorDeps): Check {
   const text = d.read(file);
   if (text === undefined) return { name: 'daemon path', status: 'skip', detail: `no ${file}` };
   return text.includes(unitEnv('PATH', d.agentPath ?? ''))
-    ? { name: 'daemon path', status: 'ok', detail: 'it finds the agent CLIs where this account\'s login shell does' }
-    : { name: 'daemon path', status: 'warn', detail: `the PATH in ${file} is not where this account's login shell finds the agent CLIs: ${unitFix(t)}`, ...(t.name === PRIVATE && { run: `${SHIM} setup` }) };
+    ? { name: 'daemon path', status: 'ok', detail: 'finds the agent CLIs' }
+    : { name: 'daemon path', status: 'warn', detail: 'does not find the agent CLIs', action: unitFix(t), raw: `the PATH in ${file} is not where this account's login shell finds the agent CLIs`, ...(t.name === PRIVATE && { run: `${SHIM} setup` }) };
 }
 
 // the wrappers take stdout and stderr; doctor's runner reports a failure by throwing
@@ -276,16 +275,16 @@ async function unitCheck(name: string, t: Target, d: DoctorDeps): Promise<Check>
   const unit = svalldUnitName(t.name);
   try {
     const s = await unitStatus(asRun(d), unit);
-    const detail = `${unit}: ${s.load}, ${s.active} (${s.sub}), ${s.state}`;
-    if (s.load === 'not-found') return { name, status: 'fail', detail: `${unit} is not installed: ${unitFix(t)}`, ...(t.name === PRIVATE && { run: `${SHIM} setup` }) };
-    return { name, status: s.active === 'active' ? 'ok' : 'fail', detail };
+    const raw = `${unit}: ${s.load}, ${s.active} (${s.sub}), ${s.state}`;
+    if (s.load === 'not-found') return { name, status: 'fail', detail: 'not installed', action: unitFix(t), raw, ...(t.name === PRIVATE && { run: `${SHIM} setup` }) };
+    return { name, status: s.active === 'active' ? 'ok' : 'fail', detail: s.active === 'active' ? 'running' : 'not running', raw };
   } catch (e) {
-    return { name, status: 'fail', detail: (e as Error).message };
+    return { name, status: 'fail', detail: 'could not be read', raw: (e as Error).message };
   }
 }
 
 function systemd(t: Target, d: DoctorDeps): Promise<Check> {
-  if (!t.managed) return Promise.resolve({ name: 'systemd', status: 'ok', detail: `not managed: ${t.home} is not a profile home` });
+  if (!t.managed) return Promise.resolve({ name: 'systemd', status: 'ok', detail: 'not managed', raw: `${t.home} is not a profile home` });
   return unitCheck('systemd', t, d);
 }
 
@@ -293,10 +292,10 @@ async function linger(d: DoctorDeps): Promise<Check> {
   try {
     const l = await lingerState(asRun(d), d.user);
     return l.linger
-      ? { name: 'linger', status: 'ok', detail: `on for ${l.user}: the fleet keeps running after you log out` }
-      : { name: 'linger', status: 'warn', detail: `off for ${l.user}: the fleet stops when you log out; run ${l.action}`, run: l.action };
+      ? { name: 'linger', status: 'ok', detail: 'on' }
+      : { name: 'linger', status: 'warn', detail: 'off: the fleet stops when you log out', action: l.action, run: l.action };
   } catch (e) {
-    return { name: 'linger', status: 'warn', detail: (e as Error).message };
+    return { name: 'linger', status: 'warn', detail: 'could not be read', raw: (e as Error).message };
   }
 }
 
@@ -416,10 +415,10 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
   };
 }
 
-/** One padded line per check, for a report too short to group. */
+/** One padded line per check, for a report too short to group, and what a tool said under one that failed or warned. */
 export function checkLines(checks: Check[]): string[] {
   const width = Math.max(...checks.map((c) => c.name.length));
-  return checks.map((c) => `${MARK[c.status]} ${c.name.padEnd(width)}  ${tickMark(c.tick)}${[c.detail, c.action].filter(Boolean).join(' -> ')}`);
+  return checks.map((c) => `${MARK[c.status]} ${c.name.padEnd(width)}  ${tickMark(c.tick)}${[c.detail, c.action].filter(Boolean).join(' -> ')}${rawLines(c)}`);
 }
 
 /** What `svall doctor` prints when it is not asked for JSON. */

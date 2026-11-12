@@ -6,7 +6,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { FleetId, MachineId, PROTOCOL_VERSION } from '@svall/protocol';
-import { machineId } from '@svall/svalld/machine';
+import { homeWord, machineId } from '@svall/svalld/machine';
 import { connectionInfoCommand } from '../../src/commands/connection.js';
 import { connectFor, connectRemote, FleetMismatch, localConnectionInfo, MachineMismatch, remoteConnectionInfo, withReconnect } from '../../src/controller/connection.js';
 import { MachineRegistry, type MachineEntry } from '../../src/controller/registry.js';
@@ -307,15 +307,20 @@ describe('svall connection-info', () => {
   });
 
   it('refuses when svalld is not running', async () => {
-    await expect(run(true)).rejects.toThrow(/svalld is not running/);
+    await expect(run(true)).rejects.toThrow(/^Svall's background service is not running/);
   });
 
-  it('names the way to start svalld on the platform it runs on', () => {
-    const said = (platform: NodeJS.Platform) => { try { localConnectionInfo(home, platform); } catch (e) { return (e as Error).message; } return ''; };
-    expect(said('darwin')).toContain('`svall setup`');
-    expect(said('linux')).toContain(`systemctl --user status svall-svalld@${path.basename(home)}.service`);
-    expect(said('linux')).toContain('`svall host doctor <machine>` does from the Mac');
-    expect(said('linux')).not.toMatch(/svall setup|pnpm svalld/);
+  it('names the way to start svalld on the platform it runs on, and the files and unit behind it last', async () => {
+    const said = (info: typeof localConnectionInfo, platform: NodeJS.Platform) => { try { info(home, platform); } catch (e) { return (e as Error).message; } return ''; };
+    expect(said(localConnectionInfo, 'darwin')).toBe(`Svall's background service is not running; start it: svall setup (no ${path.join(home, 'port')})`);
+    expect(said(localConnectionInfo, 'linux')).toBe(`Svall's background service is not running on ${homeWord()}; svall host doctor ${homeWord()} says why (no ${path.join(home, 'port')}; systemctl --user status svall-svalld@${path.basename(home)}.service)`);
+    // pnpm svalld starts one only in a checkout
+    vi.resetModules();
+    vi.stubEnv('SVALL_VARIANT', 'dev');
+    try {
+      const dev = (await import('../../src/controller/connection.js')).localConnectionInfo;
+      expect(said(dev, 'darwin')).toBe(`Svall's background service is not running; start it: svall-dev setup or pnpm svalld (no ${path.join(home, 'port')})`);
+    } finally { vi.unstubAllEnvs(); }
   });
 
   it('reads a fleet still on config.json, and leaves splitting it to the daemon', async () => {
