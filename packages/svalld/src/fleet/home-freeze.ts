@@ -187,7 +187,7 @@ export class HomeFreeze {
         for (const was of owed) servedPhone(this.d.paths, was);
         const off = await this.d.phone.set(false);
         still();
-        if (off.error) throw new ApiError('busy', `The phone link did not go off: ${off.error}`);
+        if (off.error) throw new ApiError('busy', `The phone link did not turn off, which the pause needs: ${off.error}`);
       }
       held.ready = true;
       return { phone: { serving, logins: status.logins } };

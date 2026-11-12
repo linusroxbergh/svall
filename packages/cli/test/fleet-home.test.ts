@@ -370,7 +370,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
       deps.client = () => Promise.resolve({ ...client, call: (m: never, p: never) => { if ((m as string) === 'robot.moveTo') Object.assign(state.robots.crew, { machine: STUDIO, sentAhead: 'hm_abcdefghij' }); return client.call(m, p); }, close: () => {} } as unknown as Client);
       const out = await moveHomeOut('studio', deps);
       expect(out.actions).toContain('svall fleet home crew-back');
-      expect(events.find((e) => e.step === 'crew' && e.status === 'warn')).toMatchObject({ detail: "Mission control's crew stayed where the move sent it", say: "Mission control's crew is still on studio" });
+      expect(events.find((e) => e.step === 'crew' && e.status === 'warn')).toMatchObject({ detail: "Mission control's robot crew stayed where the move sent it", say: "Mission control's robot crew is still on studio" });
     });
 
     it('crew-back moves each back to the home under an id it opened, and names any that cannot return', async () => {

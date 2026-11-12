@@ -800,7 +800,7 @@ describe('a frozen home', () => {
         offFails = false;
         return Promise.resolve(phoneAt(false, [], error));
       };
-      await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toThrow(/did not go off/);
+      await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toThrow(/did not turn off, which the pause needs/);
       expect(fs.existsSync(paths.homeServed)).toBe(true);
       expect((await freeze.freeze(OTHER, STUDIO, holder)).phone.serving).toBe(true);
       await freeze.thaw(OTHER);
@@ -882,7 +882,7 @@ describe('a frozen home', () => {
 
     it('a link that will not go off freezes nothing, and comes back as it served', async () => {
       const { freeze, log } = setup({ serving: true, set: (on) => (on ? phoneAt(true) : phoneAt(true, [], 'serve is stuck')) });
-      await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toThrow(/did not go off: serve is stuck/);
+      await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toThrow(/did not turn off, which the pause needs: serve is stuck/);
       expect(freeze.active).toBe(false);
       expect(log.at(-1)).toBe('phone true');
     });

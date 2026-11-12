@@ -394,8 +394,8 @@ async function moveMission(run: Runner, c: Client, paths: Paths, id: HomeMoveId,
 async function offerCrew(run: Runner, home: Client, name: string): Promise<void> {
   const away = crewAway(await home.call('state.get', {}));
   const names = away.map((r) => r.name).join(', ');
-  const say = `Mission control's ${names} ${away.length === 1 ? 'is' : 'are'} still on ${name}`;
-  if (away.length) await run.step('crew', () => Promise.resolve({ value: undefined, status: 'warn' as const, detail: `Mission control's ${names} stayed where the move sent ${away.length === 1 ? 'it' : 'them'}`, action: CREW_BACK, say }));
+  const say = `Mission control's ${away.length === 1 ? `robot ${names} is` : `robots ${names} are`} still on ${name}`;
+  if (away.length) await run.step('crew', () => Promise.resolve({ value: undefined, status: 'warn' as const, detail: `Mission control's ${away.length === 1 ? `robot ${names}` : `robots ${names}`} stayed where the move sent ${away.length === 1 ? 'it' : 'them'}`, action: CREW_BACK, say }));
 }
 
 /** `svall fleet home crew-back`: mission control's robots a move left away from the home go back to it through the move engine; each that cannot says why. */
