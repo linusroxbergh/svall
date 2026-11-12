@@ -13,7 +13,7 @@ import type { CliRun } from '../sessions/types.js';
 import type { HomeLinks, WorkerHello } from '../link/home.js';
 import { must, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
-import { homeWord, machineWord } from '../machine.js';
+import { homeWord, inOwnNames, machineWord } from '../machine.js';
 import { expandHome, type Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import { shq } from '../text.js';
@@ -158,7 +158,8 @@ export class Placement {
         d.robots[robotId].moving = { id, to, phase: 'rest' };
         if (o.homeMove && !back) d.robots[robotId].sentAhead = o.homeMove;
       });
-      await (back ? this.back(j) : this.out(j));
+      // what a committed move writes in the robot's note and its journal is read by every viewer, so not in the caller's names
+      await inOwnNames(() => (back ? this.back(j) : this.out(j)));
     }).then(() => id);
   }
 
@@ -166,7 +167,7 @@ export class Placement {
   async retry(moveId: string): Promise<void> {
     const j = this.status(moveId);
     if (BEFORE_COMMIT.has(j.phase) || j.phase === 'done' || j.phase === 'aborted') throw new Invalid(`move ${moveId} is ${j.phase}; there is nothing to retry`);
-    await this.run(j.robotId, () => this.finish(j));
+    await this.run(j.robotId, () => inOwnNames(() => this.finish(j)));
   }
 
   /**
@@ -187,11 +188,11 @@ export class Placement {
       const busy = this.running.get(j.robotId);
       if (busy) { await busy; continue; }
       const why = new Error(j.error ?? "Svall's background service stopped during the move");
-      await this.run(j.robotId, async () => {
+      await this.run(j.robotId, () => inOwnNames(async () => {
         if (!BEFORE_COMMIT.has(j.phase)) return this.finish(j);
         if (j.to === this.d.me) return this.abortBack(j, why);
         return this.abortOut(j, why);
-      }).catch((e: Error) => this.d.log.error(`move ${j.id}: ${e.message}`));
+      })).catch((e: Error) => this.d.log.error(`move ${j.id}: ${e.message}`));
     }
   }
 

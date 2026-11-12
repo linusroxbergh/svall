@@ -152,6 +152,9 @@ export async function inCallerNames<T>(names: CallerNames, call: () => Promise<T
   try { return await caller.run(held, call); } finally { held.home = undefined; held.me = undefined; }
 }
 
+/** Runs `fn` in this machine's own names, for words a store, a note or a journal keeps for every reader. */
+export const inOwnNames = <T>(fn: () => T): T => caller.run({}, fn);
+
 /** What a daemon on the fleet's home calls its own machine in a sentence a person reads: what the caller calls it, else
  *  "this Mac" on a Mac, else its name. SVALL_HOME_WORD overrides the last two. */
 export function homeWord(platform: NodeJS.Platform = process.platform): string {

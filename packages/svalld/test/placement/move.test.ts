@@ -906,7 +906,8 @@ describe.skipIf(!hasGit)('the move transaction', () => {
       throw new Error('the disk is full');
     });
 
-    const failed = await home.placement.start('c_1', W).catch((e: Error & { data: { moveId: string } }) => e);
+    // asked by a window on w1 itself, whose own machine is this Mac to it alone
+    const failed = await inCallerNames({ me: W }, () => home.placement.start('c_1', W)).catch((e: Error & { data: { moveId: string } }) => e);
 
     expect(failed).toMatchObject({ message: 'the disk is full' });
     expect(fs.readFileSync(b, 'utf8')).toBe(`${coming}saved on w1\n`);
