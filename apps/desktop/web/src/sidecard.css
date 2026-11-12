@@ -211,6 +211,7 @@
 .set-tip[data-place="up"] { top: auto; bottom: calc(100% + 5px); }
 /* one line under the row or group it belongs to */
 .set-note { color: var(--ink-3); font-size: var(--text-sm); line-height: var(--lh); }
+.set-note code { font-family: var(--mono); font-size: var(--text-xs); -webkit-user-select: text; user-select: text; }
 .side .row b.set-slider, .side .row b.set-zoom { display: flex; align-items: center; gap: var(--sp-lg); }
 .set-slider input { width: 132px; accent-color: var(--sand); }
 .set-slider .tnum, .set-zoom .tnum { min-width: 36px; text-align: right; }
