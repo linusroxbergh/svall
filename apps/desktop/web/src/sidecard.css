@@ -115,6 +115,8 @@
 .side .pills { margin-top: 0; }
 .side .sec .rows { border-top: 0; padding-top: 0; }
 .side .row { padding: var(--sp-xs) 0; align-items: center; }
+/* a robot's details read label and value on one line, a value that wraps going on under its first */
+.side [data-section="robot.details"] .row:not(:has(> .meter)) { align-items: baseline; }
 .side .row b.mono { font-size: var(--text-xs); }
 .side .row .meter { flex: 1; margin: 0; }
 .side .row .meter > b { color: var(--ink); font-weight: var(--w-medium); }
