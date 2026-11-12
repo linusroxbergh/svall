@@ -562,7 +562,7 @@ function NotAdded({ row, terminal: opener }: { row: HostStep; terminal?: Termina
         <div>
           {stepLabel(row.step)}
           <div className="move-blocker">
-            <Said line={line} fix={row.detail ? row.action : undefined} raw={[raw, row.raw].filter(Boolean).join('\n') || undefined} />
+            <Said line={line} fix={row.detail ? row.action : undefined} raw={[raw, row.raw].filter(Boolean).join('\n') || undefined} mark={false} />
             {row.run && terminal && <button className="btn sm" data-testid={`host-terminal-${row.step}`} onClick={() => terminal(row.run!, row.forward, row.step)}>Open terminal</button>}
           </div>
         </div>

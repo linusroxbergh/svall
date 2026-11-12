@@ -40,6 +40,10 @@
 .said > div { flex: 1; display: flex; flex-direction: column; gap: var(--sp-2xs); min-width: 0; color: var(--ink); font-size: var(--text-md); line-height: var(--lh); overflow-wrap: anywhere; }
 .said > div { -webkit-user-select: text; user-select: text; }
 .said > .btn { flex: none; }
+.said[data-mark] { align-items: flex-start; }
+.said[data-mark] > .btn { align-self: center; }
+.said-mark { flex: none; display: grid; place-items: center; width: 1em; height: 1lh; margin-inline-end: calc(var(--sp-sm) - var(--sp-md)); color: var(--danger); font-size: var(--text-md); line-height: var(--lh); }
+.said[data-mark="warn"] > .said-mark { color: var(--working); }
 /* New Robot on a home elsewhere: that machine's folders, at one height while they are read, and a field for any other path there */
 .new-folder { display: flex; flex-direction: column; gap: var(--sp-xs); min-width: 0; }
 .new-folder-list { display: flex; flex-direction: column; height: 132px; overflow: hidden auto; }

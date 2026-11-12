@@ -130,7 +130,7 @@ export function HomeSheet() {
     return (
       <li key={step} data-state={now} data-testid={`home-step-${step}`}>
         <span className="move-mark" aria-hidden>{now === 'doing' ? <span className="move-spin" /> : <Mark status={({ done: 'ok', failed: 'fail', warned: 'warn', todo: 'todo' } as const)[now]} />}</span>
-        <div>{words}{told && <div data-testid={now === 'failed' ? 'home-failed' : undefined}><Said {...told} /></div>}</div>
+        <div>{words}{told && <div data-testid={now === 'failed' ? 'home-failed' : undefined}><Said {...told} mark={false} /></div>}</div>
       </li>
     );
   };
@@ -158,7 +158,7 @@ export function HomeSheet() {
           return (
             <div key={b.reason} className="move-blocker" data-testid="home-refusal">
               <span className="move-mark" aria-hidden><Mark status="warn" /></span>
-              <Said line={line} fix={onThisMac(b.action)} raw={tail || undefined} run={b.run} on={name} />
+              <Said line={line} fix={onThisMac(b.action)} raw={tail || undefined} run={b.run} on={name} mark={false} />
               {!back && fleetHome && TOO_BIG.test(b.reason) && (
                 <button className="btn sm" data-testid="home-show-files" onClick={() => openFolder(app.bridge, fleetHome, undefined)}>Show in Finder</button>
               )}
@@ -172,7 +172,7 @@ export function HomeSheet() {
             <div key={b.reason} className="move-blocker" data-testid="home-crew-refusal">
               <span className="move-mark" aria-hidden><Mark status="warn" /></span>
               {/* a robot at work is answered by its button, whose words say what to do */}
-              <Said line={line} fix={answerable ? undefined : b.action} raw={raw} run={b.run} on={back ? undefined : name} />
+              <Said line={line} fix={answerable ? undefined : b.action} raw={raw} run={b.run} on={back ? undefined : name} mark={false} />
               {answerable && <button className="btn sm" data-testid="home-crew-action" onClick={() => setInterrupt(answerable)}>{b.action[0].toUpperCase()}{b.action.slice(1)}</button>}
             </div>
           );

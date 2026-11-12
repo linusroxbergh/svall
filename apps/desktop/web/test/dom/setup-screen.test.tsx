@@ -136,7 +136,7 @@ test('running setup communicates progress and locks configuration', () => {
 });
 
 test('a check or a setup that fails says the CLI\'s sentence, and what a tool said waits behind details', () => {
-  const said = () => { const alert = screen.getByRole('alert'); return [alert.querySelector('.said span')!.textContent, alert.querySelector('details')?.textContent]; };
+  const said = () => { const alert = screen.getByRole('alert'); return [alert.querySelector('.said > div > span')!.textContent, alert.querySelector('details')?.textContent]; };
   window.webkit = { messageHandlers: { svall: { postMessage() {} } } };
   const { unmount } = render(<Setup />);
   act(() => window.__svall!.receive(JSON.stringify({ type: 'setup.result', step: 'plan', ok: false, json: 'svall: the login shell did not answer\n  zsh: command not found: brew\n' })));
@@ -326,7 +326,7 @@ describe('the first run forks three ways', () => {
     receive({ type: 'host.done', op: 'join', code: 1 });
     expect(replaced).not.toHaveBeenCalled();
     const failed = screen.getByTestId('fork-steps').querySelector('li[data-status="fail"]')!;
-    expect(failed.querySelector('.said span')!.textContent).toBe('this Mac cannot log in to ada@studio');
+    expect(failed.querySelector('.said > div > span')!.textContent).toBe('this Mac cannot log in to ada@studio');
     expect(failed.querySelector('.modal-sub')!.textContent).toBe('run ssh ada@studio once from this Mac');
     expect(failed.querySelector('details')!.textContent).toContain('Permission denied');
     expect(screen.getByTestId('fork-go').textContent).toBe('Try again');
@@ -565,7 +565,7 @@ describe('the first run forks three ways', () => {
     fireEvent.click(screen.getByTestId('fork-go'));
     receive({ type: 'setup.result', step: 'run', ok: false, json: 'svall: hooks could not be written: Command failed: chmod 600 /u/.claude' });
     const row = () => screen.getByTestId('fork-steps').querySelector('li[data-step="setup"]')!;
-    expect(row().querySelector('.said span')!.textContent).toBe('svall: hooks could not be written');
+    expect(row().querySelector('.said > div > span')!.textContent).toBe('svall: hooks could not be written');
     expect(row().textContent).toMatch(/^Svall on this Mac/);
     expect(row().querySelector('details')!.textContent).toContain('chmod 600');
     expect(screen.queryByRole('alert')).toBeNull();

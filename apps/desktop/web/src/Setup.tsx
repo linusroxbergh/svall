@@ -403,7 +403,7 @@ function FarStep({ row }: { row: FarRow }) {
   return (
     <li data-state={STATE[row.status]} data-step={row.step} data-status={row.status}>
       <span className="move-mark" aria-hidden><Mark status={row.status} /></span>
-      <div>{labelOf(row)}{told && <Said {...told} />}</div>
+      <div>{labelOf(row)}{told && <Said {...told} mark={false} />}</div>
     </li>
   );
 }

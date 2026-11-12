@@ -206,7 +206,7 @@ test('a resume or a move that failed says its sentence, and what the tool said w
   f.robots.c1.resumeError = 'the session did not come back: Command failed: tmux respawn-pane -t %3\nno server running';
   act(() => store.getState().setFleet(f));
   const { unmount } = render(<TerminalArea id="c1" />);
-  const said = (testid: string) => { const el = screen.getByTestId(testid); return [el.querySelector('.said span')!.textContent, el.querySelector('details')?.textContent]; };
+  const said = (testid: string) => { const el = screen.getByTestId(testid); return [el.querySelector('.said > div > span')!.textContent, el.querySelector('details')?.textContent]; };
   expect(said('resume-error')).toEqual(['the session did not come back', 'detailsCommand failed: tmux respawn-pane -t %3\nno server running']);
   unmount();
   placed(true, { moving: { id: 'mv_0123456789', to: VAULT, phase: 'activate', error: 'claude did not start there\n  tmux: no server running on /tmp/s' } });

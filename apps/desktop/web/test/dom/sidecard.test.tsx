@@ -90,7 +90,7 @@ test('a resume that failed says its sentence in the row, and what the tool said 
   store.getState().setFleet({ ...f, robots: { ...f.robots, c0: { ...dormant, resumeError: 'codex did not resume: Command failed: tmux respawn-pane\nno server running' } } });
   render(<Side />);
   const row = screen.getByTestId('side-resume-error');
-  expect(row.querySelector('.said span')!.textContent).toBe('codex did not resume');
+  expect(row.querySelector('.said > div > span')!.textContent).toBe('codex did not resume');
   expect(row.querySelector('details')!.textContent).toBe('detailsCommand failed: tmux respawn-pane\nno server running');
 });
 

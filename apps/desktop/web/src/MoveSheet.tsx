@@ -350,7 +350,7 @@ function Progress({ stand: st, words, robot, where, here, setup, close, show, ag
         return (
           <li key={s} data-state={now} data-testid={`move-step-${s}`}>
             <span className="move-mark" aria-hidden>{now === 'doing' ? <span className="move-spin" /> : <Mark status={({ done: 'ok', failed: 'fail', todo: 'todo' } as const)[now]} />}</span>
-            {now === 'failed' ? <div><Said line={sentence ?? ''} raw={details.join('\n') || undefined} /></div> : <span>{words[s][now]}</span>}
+            {now === 'failed' ? <div><Said line={sentence ?? ''} raw={details.join('\n') || undefined} mark={false} /></div> : <span>{words[s][now]}</span>}
           </li>
         );
       })}

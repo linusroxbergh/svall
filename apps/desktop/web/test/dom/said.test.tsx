@@ -30,6 +30,16 @@ test('a problem with nothing more to it is its line alone', () => {
   expect(container.querySelector('details')).toBeNull();
 });
 
+test('a problem carries a failure mark at its left, a warning its own, and none inside a row that has one', () => {
+  const { container, rerender } = render(<Said line="studio is not reachable" />);
+  expect(container.querySelector('.said > .said-mark + div')!.textContent).toBe('studio is not reachable');
+  expect(container.querySelector('.said')!.getAttribute('data-mark')).toBe('fail');
+  rerender(<Said line="studio is not reachable" mark="warn" />);
+  expect(container.querySelector('.said')!.getAttribute('data-mark')).toBe('warn');
+  rerender(<Said line="studio is not reachable" mark={false} />);
+  expect(container.querySelector('.said-mark')).toBeNull();
+});
+
 test('in Settings, what to do is a note of the window', () => {
   const { container } = render(<Said line="The scribe stopped" fix="Check the scribe model" settings />);
   expect(container.querySelector('.set-note')!.textContent).toBe('Check the scribe model');
