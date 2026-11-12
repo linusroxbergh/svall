@@ -144,10 +144,12 @@ test('with no folder there is nothing to create until one is typed, and the list
   expect(screen.getByTestId('new-robot-none').textContent).toBe('No clone or robot folder on studio yet.');
   expect(screen.queryByTestId('new-robot-other')).toBeNull();
   expect(screen.getByTestId('new-robot-create').hasAttribute('disabled')).toBe(true);
+  expect(screen.getByTestId('new-robot-create').dataset.tip).toBe('Choose a folder on studio');
   fireEvent.keyDown(folder(), { key: 'Enter' });
   await act(async () => {});
   expect(creates()).toEqual([]);
   fireEvent.change(folder(), { target: { value: '/srv/app' } });
+  expect(screen.getByTestId('new-robot-create').dataset.tip).toBeUndefined();
   fireEvent.keyDown(folder(), { key: 'Enter' });
   await act(async () => {});
   expect(creates().map((p) => p.cwd)).toEqual(['/srv/app']);

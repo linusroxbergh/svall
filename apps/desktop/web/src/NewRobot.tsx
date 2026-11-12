@@ -126,7 +126,7 @@ export function NewRobot() {
           </>
         )}
         <div className="acts">
-          <button className="btn pri" data-testid="new-robot-create" disabled={busy || (!!via && !folder)} onClick={() => void create()}>Create</button>
+          <button className="btn pri" data-testid="new-robot-create" disabled={busy || (!!via && !folder)} data-tip={via && !folder ? `Choose a folder on ${where}` : undefined} onClick={() => void create()}>Create</button>
           <button className="btn" onClick={close}>Cancel</button>
         </div>
       </div>
