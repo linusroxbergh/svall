@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { app } from './boot.js';
 import { commitFocused } from './Field.js';
 import { useApp, useMore } from './hooks.js';
@@ -20,11 +20,34 @@ function room(sec: HTMLElement): number {
   return sec.offsetHeight + Math.max(0, secs.clientHeight - used) + give;
 }
 
-/** A section's contents, which scroll inside it under a fade while more of them lie below. */
+// how far a squeezed section's rows show whole: to the top of the first row whose words its edge cuts, when a whole one stands
+// above it, or all of it when the edge cuts no words
+function wholeTo(el: HTMLElement): number | undefined {
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 1) return undefined;
+  const box = el.getBoundingClientRect();
+  const rows = [...el.children].flatMap((c) => (c.classList.contains('rows') ? [...c.children] : [c]));
+  const cut = rows.find((r) => r.getBoundingClientRect().bottom - parseFloat(getComputedStyle(r).paddingBottom || '0') > box.bottom + 0.5);
+  if (!cut) return box.height;
+  const at = cut.getBoundingClientRect().top - box.top;
+  return at > 0 ? at : undefined;
+}
+
+/** A section's contents, which scroll inside it under a fade while more of them lie below, ending on a whole row. */
 function Body({ opened, children }: { opened?: true; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [more, read] = useMore(ref, 'y');
-  return <div ref={ref} className="sec-body" data-opened={opened} data-more={more} onScroll={read}>{children}</div>;
+  const [whole, setWhole] = useState<number>();
+  const measure = () => { if (ref.current) setWhole(wholeTo(ref.current)); };
+  useLayoutEffect(measure);
+  useLayoutEffect(() => {
+    const ro = new ResizeObserver(measure);
+    if (ref.current) ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className="sec-body" data-opened={opened} data-more={more} data-whole={whole !== undefined || undefined}
+      style={whole !== undefined ? { '--whole': `${whole}px` } as CSSProperties : undefined} onScroll={() => { read(); measure(); }}>{children}</div>
+  );
 }
 
 /**
