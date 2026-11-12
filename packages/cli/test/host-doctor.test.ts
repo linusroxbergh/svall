@@ -7,6 +7,7 @@ import { resolvePaths } from '@svall/svalld/paths';
 import { joiningOf } from '../src/commands/host.js';
 import { consentHost, doctorHost, rowStep, type HostReport, type StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
+import { SshError } from '../src/controller/ssh.js';
 import {
   BASE, DF, DOCTOR, ELSEWHERE, FLEET, HOME, OTHER_FLEET, OTHER_MAC, REMOTE, SERVES, SVALL, THERE, UNIT_PATH, deps, doctorJson, events, fleet, okRow, ssh, ticked, unticked,
   useHostWorld, work,
@@ -95,7 +96,8 @@ describe('host doctor', () => {
   });
 
   it('a doctor that cannot reach the machine says so as the connection step, in the words of a home with no one at its ssh, and reports that row alone', async () => {
-    const report = await doctorHost('trift', deps({ registry: registered(), openMaster: () => Promise.reject(new Error('linus@trift.test: Permission denied (publickey).')) }));
+    const refused = new SshError('auth', 'ssh could not reach trift.test; run ssh trift.test once in a terminal, then try again', 'linus@trift.test: Permission denied (publickey).');
+    const report = await doctorHost('trift', deps({ registry: registered(), openMaster: () => Promise.reject(refused) }));
     const master = {
       name: 'master', status: 'fail', detail: 'this Mac cannot log in to trift.test', action: expect.stringContaining("ssh-copy-id 'trift.test'"), run: expect.stringContaining('ssh-keygen'),
       raw: 'linus@trift.test: Permission denied (publickey).',

@@ -9,7 +9,7 @@ import { resolvePaths } from '@svall/svalld/paths';
 import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
 import { hostLock } from '@svall/svalld/kernel-lock';
 import { addHost, removeHost, rollbackHost, StepError, tailnetHere, upgradeHost } from '../src/controller/host.js';
-import { TailscaleStopped } from '@svall/svalld/mobile';
+import { TailscaleDown } from '@svall/svalld/mobile';
 import { wantedCompanion } from '../src/controller/install.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { companionArchive, ephemeralSigner } from './controller/archive.js';
@@ -214,10 +214,10 @@ describe('host add', () => {
     expect(asked).toEqual([]);
     // one stopped or signed out says so, with what starts or signs it in on the machine's platform
     const said = async (e: Error, platform: NodeJS.Platform) => tailnetHere({ tailnet: () => Promise.reject(e) }, platform).catch((err: StepError) => ({ detail: err.detail, action: err.action, run: err.run }));
-    expect(await said(new TailscaleStopped('Command failed: tailscale status --json'), 'darwin')).toEqual({ detail: 'Tailscale is not running on this Mac', action: 'open the Tailscale app', run: undefined });
-    expect(await said(new TailscaleStopped('Command failed'), 'linux')).toMatchObject({ action: 'start it: sudo systemctl start tailscaled', run: 'sudo systemctl start tailscaled' });
-    expect(await said(new Error('tailscale is not connected (NeedsLogin); sign in and try again'), 'darwin')).toEqual({ detail: 'Tailscale on this Mac is signed out', action: 'sign in from the Tailscale app', run: undefined });
-    expect(await said(new Error('tailscale is not connected (NeedsLogin)'), 'linux')).toMatchObject({ action: 'sign in: sudo tailscale up', run: 'sudo tailscale up' });
+    expect(await said(new TailscaleDown('stopped', 'Command failed: tailscale status --json'), 'darwin')).toEqual({ detail: 'Tailscale is not running on this Mac', action: 'open the Tailscale app', run: undefined });
+    expect(await said(new TailscaleDown('stopped', 'Command failed'), 'linux')).toMatchObject({ action: 'start it: sudo systemctl start tailscaled', run: 'sudo systemctl start tailscaled' });
+    expect(await said(new TailscaleDown('signedOut', 'BackendState NeedsLogin'), 'darwin')).toEqual({ detail: 'Tailscale on this Mac is signed out', action: 'sign in from the Tailscale app', run: undefined });
+    expect(await said(new TailscaleDown('signedOut', 'BackendState NeedsLogin'), 'linux')).toMatchObject({ action: 'sign in: sudo tailscale up', run: 'sudo tailscale up' });
     events.length = 0;
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, { ...off, interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'no route' }) });
     expect(step('tailscale')).toEqual([]);

@@ -6,7 +6,7 @@ import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@sva
 import { readFleetConfig } from '@svall/svalld/config';
 import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld/linux/setup';
 import { homeWord } from '@svall/svalld/machine';
-import { TailscaleStopped } from '@svall/svalld/mobile';
+import { LinkProblem, TailscaleDown } from '@svall/svalld/mobile';
 import { isFleetName, isProfileName, PRIVATE, profileHome, profileOf } from '@svall/svalld/profile';
 import { readMarker } from '@svall/svalld/fleet/home-move';
 import { enrolLock, hostLock } from '@svall/svalld/kernel-lock';
@@ -27,7 +27,7 @@ import {
 } from './install.js';
 import { redact } from './process.js';
 import { MachineRegistry, reservedName, type MachineEntry } from './registry.js';
-import { classifySsh, SshError, type SshMaster } from './ssh.js';
+import { classifySsh, inFull, SshError, type SshMaster } from './ssh.js';
 
 const PROBE_TIMEOUT = 30_000;
 // the enrolment there waits on systemd to restart the fleet's daemon and on that daemon to answer
@@ -112,7 +112,7 @@ export class Runner {
       r = await fn();
     } catch (err) {
       // what ssh or a command there said is a tool's words, which go behind a sentence of the step's own
-      const e = err instanceof StepError ? err : err instanceof SshError ? new StepError('did not finish', undefined, undefined, undefined, err.message) : new StepError((err as Error).message);
+      const e = err instanceof StepError ? err : err instanceof SshError ? new StepError('did not finish', undefined, undefined, undefined, inFull(err)) : new StepError((err as Error).message);
       this.failed = step;
       this.todo(e.action ?? e.detail);
       this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}), ...(e.run ? { run: e.run } : {}), ...(e.say ? { say: e.say } : {}), ...(e.raw ? { raw: e.raw } : {}) });
@@ -143,23 +143,26 @@ export class Runner {
 export async function tailnetHere(d: Pick<HostDeps, 'tailnet'>, platform: NodeJS.Platform = process.platform): Promise<Outcome<void>> {
   await d.tailnet().catch((e: Error) => {
     const [here, mac] = [homeWord(), platform === 'darwin'];
-    if (e instanceof TailscaleStopped) {
-      throw new StepError(`Tailscale is not running on ${here}`, mac ? 'open the Tailscale app' : 'start it: sudo systemctl start tailscaled', mac ? undefined : 'sudo systemctl start tailscaled', undefined, e.message);
+    const raw = e instanceof LinkProblem ? e.said.raw : e.message;
+    const state = e instanceof TailscaleDown ? e.state : 'missing';
+    if (state === 'stopped') {
+      throw new StepError(`Tailscale is not running on ${here}`, mac ? 'open the Tailscale app' : 'start it: sudo systemctl start tailscaled', mac ? undefined : 'sudo systemctl start tailscaled', undefined, raw);
     }
-    if (/not connected|signed out/i.test(e.message)) {
-      throw new StepError(`Tailscale on ${here} is signed out`, mac ? 'sign in from the Tailscale app' : 'sign in: sudo tailscale up', mac ? undefined : 'sudo tailscale up', undefined, e.message);
+    if (state === 'signedOut') {
+      throw new StepError(`Tailscale on ${here} is signed out`, mac ? 'sign in from the Tailscale app' : 'sign in: sudo tailscale up', mac ? undefined : 'sudo tailscale up', undefined, raw);
     }
-    throw new StepError(`${here} has no Tailscale`, 'install it from https://tailscale.com/download and sign in', undefined, undefined, e.message);
+    throw new StepError(`${here} has no Tailscale`, 'install it from https://tailscale.com/download and sign in', undefined, undefined, raw);
   });
   return { value: undefined, detail: 'connected' };
 }
 
 /** Why the ssh master to `name` did not open: a login it refused, a machine it did not reach, or one that did not answer in time; ssh's own words behind. */
 export function unreached(err: unknown, name: string, ssh: string, here: string, login = `run ssh ${ssh} once in a terminal and answer what it asks`): StepError {
-  const said = (err as Error).message;
+  const { message, raw } = err as Error & { raw?: string };
+  const said = raw ?? message;
   if (err instanceof SshError && (err.kind === 'auth' || err.kind === 'host_key')) return new StepError(`${here} cannot log in to ${name}`, login, undefined, undefined, said);
   const fix = 'check that it is on and on Tailscale';
-  if (/\bwithin \d|did not open a control master/.test(said)) return new StepError(`${name} did not answer in 20 s`, fix, undefined, undefined, said);
+  if (/\bwithin \d|did not open a control master/.test(message)) return new StepError(`${name} did not answer in 20 s`, fix, undefined, undefined, said);
   return new StepError(`${name} is not reachable from ${here}`, fix, undefined, undefined, said);
 }
 
@@ -721,7 +724,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       try {
         opened = await d.openMaster(o.ssh);
       } catch (err) {
-        if (batch && err instanceof SshError) throw noLogin(o.ssh, err.message);
+        if (batch && err instanceof SshError) throw noLogin(o.ssh, err.raw ?? err.message);
         // the login above asked its questions; every step from here logs in without a prompt
         const keychain = process.platform === 'darwin'
           ? ', keep its passphrase in the keychain with ssh-add --apple-use-keychain and add UseKeychain yes and AddKeysToAgent yes to ~/.ssh/config so ssh still finds it after a restart' : '';
@@ -897,7 +900,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     master = await d.openMaster(entry.record.ssh);
   } catch (err) {
     // a report all the same, so a run relayed for a Mac ends on this row rather than on its exit
-    const e = noLogin(entry.record.ssh, (err as Error).message);
+    const e = noLogin(entry.record.ssh, (err as SshError).raw ?? (err as Error).message);
     found({ name: 'master', status: 'fail', detail: e.detail, ...(e.action && { action: e.action }), ...(e.run && { run: e.run }), ...(e.raw && { raw: e.raw }) });
     return { machine: entry.record.name, checks };
   }
@@ -1288,7 +1291,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
         return { value: lines.filter((l) => TAKE_BACK.test(l)), detail: 'Svall removed', ...(lines.at(-1) && { raw: lines.at(-1) }) };
       } catch (err) {
         if (err instanceof StepError) throw err;
-        throw new StepError(`${name} is not reachable`, `${hostCmd(d)} remove ${name} --forget drops it from the list and leaves it as it is`, undefined, undefined, (err as Error).message);
+        throw new StepError(`${name} is not reachable`, `${hostCmd(d)} remove ${name} --forget drops it from the list and leaves it as it is`, undefined, undefined, inFull(err));
       } finally {
         await master?.close().catch(() => undefined);
       }

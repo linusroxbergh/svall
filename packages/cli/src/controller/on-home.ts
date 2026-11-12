@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { farFleet, FleetMismatch, MachineMismatch } from '@svall/svalld/link/connection-info';
-import { SshError } from '@svall/svalld/link/ssh';
+import { inFull, SshError } from '@svall/svalld/link/ssh';
 import { resolvePaths, fleetHomeOfSocket } from '@svall/svalld/paths';
 import { svallExe } from '@svall/svalld/release';
 import { isWorker, readWorkerFile } from '@svall/svalld/worker/mode';
@@ -78,7 +78,7 @@ export async function relay(home: FarHome, args: string[], o: { open(destination
   };
   const noSvall = (): number => stop(`${home.name} has no Svall at ${svallExe(home.svallBase)}`, `upgrade ${home.name} under Machines`);
   let master: Far;
-  try { master = await o.open(home.ssh); } catch (e) { return stop(`${home.name} did not answer`, 'try again once it answers', (e as Error).message); }
+  try { master = await o.open(home.ssh); } catch (e) { return stop(`${home.name} did not answer`, 'try again once it answers', inFull(e)); }
   try {
     // the far run's words name the home as this machine does
     const svall = ['env', shq(`SVALL_HOME=${home.fleetHome}`), shq(`SVALL_HOME_WORD=${home.name}`), shq(svallExe(home.svallBase))];
@@ -88,7 +88,7 @@ export async function relay(home: FarHome, args: string[], o: { open(destination
     } catch (e) {
       if (e instanceof MachineMismatch || e instanceof FleetMismatch) return stop(e.message, `check where ${home.ssh} leads and which machine holds this fleet, then try again`);
       if (e instanceof SshError && e.kind === 'version') return noSvall();
-      return stop(`${home.name} did not answer`, 'try again once it answers', (e as Error).message);
+      return stop(`${home.name} did not answer`, 'try again once it answers', inFull(e));
     }
     // the steps a first run ended as they stand, which a run again with the archive repeats
     const ended = new Set<string>();
@@ -144,7 +144,7 @@ export async function relay(home: FarHome, args: string[], o: { open(destination
         if (moved.code !== 0) throw new Error(moved.stderr.trim() || `mv exited ${moved.code}`);
       } catch (e) {
         await master.run(['rm', '-f', '--', shq(part)]).catch(() => undefined);
-        return stop(`${home.name} did not take the archive this CLI carries for ${platform}`, 'try again once it answers', (e as Error).message);
+        return stop(`${home.name} did not take the archive this CLI carries for ${platform}`, 'try again once it answers', inFull(e));
       }
       o.line(JSON.stringify({ step: 'relay', status: 'ok', detail: `the archive this CLI carries for ${platform} is on ${home.name}` }));
       ran = await run(['--release', remote]);

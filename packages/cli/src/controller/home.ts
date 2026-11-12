@@ -27,7 +27,7 @@ import { workerProfile } from '@svall/svalld/placement/workers';
 import { farProfile, type Target } from '../target.js';
 import { flow, homeProbe, remoteJson, remotePaths, StepError, tailnetHere, unreached, type HostDeps, type HostOutcome, type Runner } from './host.js';
 import type { MachineEntry, MachineRegistry } from './registry.js';
-import { classifySsh, SshError, type SshMaster } from './ssh.js';
+import { classifySsh, inFull, SshError, type SshMaster } from './ssh.js';
 
 const execFileP = promisify(execFile);
 const ANSWER_MS = 60_000;
@@ -130,12 +130,12 @@ async function identifyHome(master: SshMaster, o: JoinOptions, d: Pick<JoinDeps,
   const { tailscale } = await remoteJson<HomeFacts>(master, svallBase, [...farFlags(o), '--json', 'fleet', 'facts'], 'svall fleet facts');
   if (!tailscale?.host) {
     const said = tailscale?.error ?? 'no name on the tailnet';
-    if (tailscale?.stopped) throw new StepError(`Tailscale is not running on ${o.ssh}`, `start it: ssh ${o.ssh}, then sudo systemctl start tailscaled`, 'sudo systemctl start tailscaled', undefined, said);
+    if (tailscale?.state === 'stopped') throw new StepError(`Tailscale is not running on ${o.ssh}`, `start it: ssh ${o.ssh}, then sudo systemctl start tailscaled`, 'sudo systemctl start tailscaled', undefined, said);
     throw new StepError(`${o.ssh} is not on the tailnet`, `ssh ${o.ssh}, then install Tailscale from https://tailscale.com/download/linux and sign in with sudo tailscale up`, undefined, undefined, said);
   }
   const info = await remoteConnectionInfo(master, { id: far.machineId, record: { name: o.ssh, svallBase } }, { ...(o.homeProfile && { profile: o.homeProfile }) }).catch((e: Error) => {
-    if (e instanceof SshError && e.kind === 'daemon_down') throw new StepError(`Svall's background service is not running on ${o.ssh}`, `start it there: ssh ${o.ssh}, then svall setup`, undefined, undefined, e.message);
-    throw new StepError(e.message);
+    if (e instanceof SshError && e.kind === 'daemon_down') throw new StepError(`Svall's background service is not running on ${o.ssh}`, `start it there: ssh ${o.ssh}, then svall setup`, undefined, undefined, inFull(e));
+    throw new StepError(e.message, undefined, undefined, undefined, e instanceof SshError ? e.raw : undefined);
   });
   return { svallBase, id: far.machineId, fleetId: info.fleetId, release: far.release };
 }

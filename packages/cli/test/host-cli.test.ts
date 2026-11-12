@@ -60,6 +60,20 @@ describe('a relayed run', () => {
   });
 });
 
+describe('an ssh master that did not open', () => {
+  it('reads by its kind and its sentence, ssh\'s own words behind it as raw', async () => {
+    const { unreached } = await import('../src/controller/host.js');
+    const { SshError } = await import('../src/controller/ssh.js');
+    const said = (e: Error) => { const s = unreached(e, 'studio', 'ada@studio', 'this Mac'); return [s.detail, s.raw]; };
+    expect(said(new SshError('auth', 'ssh could not reach ada@studio; run ssh ada@studio once in a terminal, then try again', 'Permission denied (publickey).')))
+      .toEqual(['this Mac cannot log in to studio', 'Permission denied (publickey).']);
+    expect(said(new SshError('unreachable', 'ssh did not open a control master to ada@studio within 20 s')))
+      .toEqual(['studio did not answer in 20 s', 'ssh did not open a control master to ada@studio within 20 s']);
+    expect(said(new SshError('unreachable', 'ssh could not reach ada@studio', 'ssh: connect to host studio port 22: Connection refused')))
+      .toEqual(['studio is not reachable from this Mac', 'ssh: connect to host studio port 22: Connection refused']);
+  });
+});
+
 describe('a command that fails', () => {
   it('says why in a sentence, with what ssh said on a line of its own under it', async () => {
     const config = path.join(work, 'config');
