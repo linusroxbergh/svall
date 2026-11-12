@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Result, SetupRow } from '@svall/protocol';
 import { app, deps } from './boot.js';
 import { dialogKeys, useApp } from './hooks.js';
-import { keyLabel, keyMask, splitRaw } from './host.js';
+import { keyLabel, keyMask } from './host.js';
 import { Info } from './Info.js';
 import { homeName } from './placement.js';
 import { reloadResources } from './resources/load.js';
@@ -20,11 +20,12 @@ export function SeedSheet() {
   const [rows, setRows] = useState<SetupRow[]>();
   const [pending, setPending] = useState(0);
   const busy = useApp((s) => s.seedCopying === true);
-  const [failed, setFailed] = useState<string>();
-  const shut = useRef<HTMLButtonElement>(null);
+  // what did not go through, in the sheet's words, and what the daemon said behind details; a copy that failed is tried again
+  const [failed, setFailed] = useState<{ line: string; raw: string; copy?: true }>();
+  const copyRef = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const show = (r: Result<'home.setup'>) => { setRows(r.rows); setFailed(undefined); };
-  const fail = (e: Error) => setFailed(e.message);
+  const fail = (line: string, copy?: true) => (e: Error) => setFailed({ line, raw: e.message, ...(copy && { copy }) });
   useEffect(() => {
     if (!follows || !fleetHome || seedAnswered(fleetHome)) return;
     let left = false;
@@ -32,18 +33,24 @@ export function SeedSheet() {
     void Promise.all([here.call('machines.holdsSetup', {}), app.api().call('machines.holdsSetup', {})]).then(([mine, there]) => {
       if (left || !mine.holds || there.holds) return;
       app.store.getState().setSeedAsk(true);
-      here.call('home.setup', {}).then(show, fail);
+      here.call('home.setup', {}).then(show, fail("This Mac's keys could not be read"));
     }, () => {});
     return () => { left = true; };
   }, [follows, fleetHome]);
-  // the focus stays in the sheet, whose Esc answers as Not now
-  useEffect(() => { if (open && !panel.current?.contains(document.activeElement)) (shut.current ?? panel.current)?.focus(); });
+  // the focus stays in the sheet, on Copy once it can go, whose Esc answers as Cancel
+  useEffect(() => {
+    if (!open) return;
+    const at = document.activeElement;
+    const copy = copyRef.current && !copyRef.current.disabled ? copyRef.current : undefined;
+    if (!panel.current?.contains(at) || (at as HTMLButtonElement).disabled) (copy ?? panel.current)?.focus();
+    else if (at === panel.current) copy?.focus();
+  });
   if (!open) return null;
   const close = () => { app.store.getState().answerSeed(); };
   const shutUnlessCopying = () => { if (!busy) close(); };
   const tick = (r: SetupRow, fields: string[], on: boolean) => {
     setPending((n) => n + 1);
-    (app.api().local ?? app.api()).call('home.setupConsent', { item: r.tick!.item, fields, on }).then(show, fail).finally(() => setPending((n) => n - 1));
+    (app.api().local ?? app.api()).call('home.setupConsent', { item: r.tick!.item, fields, on }).then(show, fail('Your tick was not saved')).finally(() => setPending((n) => n - 1));
   };
   const copy = () => {
     const { setSeedCopying } = app.store.getState();
@@ -51,7 +58,7 @@ export function SeedSheet() {
     setFailed(undefined);
     app.api().call('machines.copySetupFrom', { machine: me!, seed: true }).then(
       () => { close(); app.store.getState().showToast(`Copied your agent setup to ${home}.`, 'ok'); void reloadResources(deps()); },
-      fail,
+      fail(`Your agent setup did not reach ${home}`, true),
     ).finally(() => setSeedCopying(false));
   };
   // a key row's box, one for each key of a server that sends several, and one for what travels whole
@@ -71,7 +78,7 @@ export function SeedSheet() {
   return (
     <div className="modal-back" data-testid="seed-sheet">
       <div className="modal sheet dialog" ref={panel} tabIndex={-1} role="dialog" aria-label={`Copy your agent setup to ${home}`} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(shutUnlessCopying)}>
-        <div className="kicker"><span data-testid="seed-title">Copy your agent setup to {home}?</span>{!busy && <CloseX ref={shut} onClose={close} testid="seed-close" />}</div>
+        <div className="kicker"><span data-testid="seed-title">Copy your agent setup to {home}?</span>{!busy && <CloseX onClose={close} testid="seed-close" />}</div>
         <div className="host-note" data-testid="seed-says">{home} has no agent setup yet. Agents there start from this Mac's, or from nothing.</div>
         <div className="rows">
           <div className="row">
@@ -82,17 +89,19 @@ export function SeedSheet() {
         {rows === undefined && !failed && <span className="move-state"><span className="move-mark"><span className="move-spin" /></span>Reading this Mac's keys…</span>}
         {!!rows?.length && (
           <>
-            <div className="kicker">Keys<Info id="seed-keys">A key stays on this Mac unless you tick it.</Info></div>
+            <div className="kicker"><span>Keys<Info id="seed-keys">A key stays on this Mac unless you tick it.</Info></span></div>
             {rows.flatMap(keys)}
           </>
         )}
-        {failed && <div role="alert" data-testid="seed-failed"><Said {...splitRaw(failed)} /></div>}
+        {failed && <div role="alert" data-testid="seed-failed"><Said line={failed.line} raw={failed.raw} /></div>}
         <div className="acts">
-          <button className="btn pri" data-testid="seed-copy" disabled={busy || rows === undefined || pending > 0}
-            data-tip={busy ? undefined : rows === undefined ? (failed ? "This Mac's keys could not be read" : "Waits for this Mac's keys") : pending > 0 ? 'Waits for your ticks to save' : undefined} onClick={copy}>{busy ? 'Copying…' : `Copy to ${home}`}</button>
-          <button className="btn" data-testid="seed-no" disabled={busy} onClick={close}>Not now</button>
+          <button ref={copyRef} className="btn pri" data-testid="seed-copy" disabled={busy || rows === undefined || pending > 0}
+            data-tip={busy ? undefined : rows === undefined ? (failed ? "This Mac's keys could not be read" : "Waits for this Mac's keys") : pending > 0 ? 'Waits for your ticks to save' : undefined} onClick={copy}>
+            {busy ? 'Copying…' : failed?.copy ? 'Try again' : `Copy to ${home}`}
+          </button>
+          <button className="btn" data-testid="seed-no" disabled={busy} onClick={close}>{failed ? 'Close' : 'Cancel'}</button>
         </div>
-        <span className="modal-sub">Later: Settings → Agent setup.</span>
+        <span className="modal-sub">Later, in Settings → Agent setup.</span>
       </div>
     </div>
   );

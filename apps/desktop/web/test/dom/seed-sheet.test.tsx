@@ -89,7 +89,7 @@ describe('the first copy of an agent setup onto a far home', () => {
     expect(picks.map((l) => (l.querySelector('input') as HTMLInputElement).checked)).toEqual([false, false, true, true]);
     fireEvent.click(screen.getByTestId('setup-tick-codex:mcp:gh#env.GH_TOKEN'));
     await waitFor(() => expect(here).toHaveBeenCalledWith('home.setupConsent', { item: 'codex:mcp:gh', fields: ['env.GH_TOKEN'], on: true }));
-    expect(screen.getByTestId('seed-sheet').textContent).toContain('Later: Settings → Agent setup.');
+    expect(screen.getByTestId('seed-sheet').textContent).toContain('Later, in Settings → Agent setup.');
   });
 
   it('asks nothing of a home that holds one, or a Mac with none, or a window with no way to the home', async () => {
@@ -122,7 +122,15 @@ describe('the first copy of an agent setup onto a far home', () => {
     expect(there).not.toHaveBeenCalled();
   });
 
-  it('Not now copies nothing and is not asked again in this fleet', async () => {
+  it('once the keys are read the focus is on Copy, beside Cancel', async () => {
+    following();
+    render(<SeedSheet />);
+    await waitFor(() => expect(screen.getByTestId('seed-copy').hasAttribute('disabled')).toBe(false));
+    expect(document.activeElement).toBe(screen.getByTestId('seed-copy'));
+    expect([screen.getByTestId('seed-copy').textContent, screen.getByTestId('seed-no').textContent]).toEqual(['Copy to studio', 'Cancel']);
+  });
+
+  it('Cancel copies nothing and is not asked again in this fleet', async () => {
     following();
     const { unmount } = render(<SeedSheet />);
     fireEvent.click(await screen.findByTestId('seed-no'));
@@ -232,9 +240,11 @@ describe('the first copy of an agent setup onto a far home', () => {
     await waitFor(() => expect(screen.getByTestId('seed-copy').hasAttribute('disabled')).toBe(false));
     fireEvent.click(screen.getByTestId('seed-copy'));
     const failed = await screen.findByTestId('seed-failed');
-    expect(failed.querySelector('.said > div > span')!.textContent).toBe('studio could not take it');
-    expect(failed.querySelector('details .modal-more-body')!.textContent).toBe('Command failed: tar -x\nno space left');
+    expect(failed.querySelector('.said > div > span')!.textContent).toBe('Your agent setup did not reach studio');
+    expect(failed.querySelector('details .modal-more-body')!.textContent).toBe('studio could not take it: Command failed: tar -x\nno space left');
     expect(screen.getByTestId('seed-sheet')).toBeTruthy();
     expect(store.getState().toast).toBeUndefined();
+    // a copy that failed is tried again or closed
+    expect([screen.getByTestId('seed-copy').textContent, screen.getByTestId('seed-no').textContent]).toEqual(['Try again', 'Close']);
   });
 });
