@@ -1,4 +1,4 @@
-import { aside, asideLine, MachineRecord, wayOn, type SetupRow } from '@svall/protocol';
+import { aside, MachineRecord, tierOf, type FleetAgents, type SetupRow, type Tier } from '@svall/protocol';
 import type { HostArgs, HostOp, HostStep, MachineRow } from './bridge.js';
 import type { AppState } from './store/index.js';
 
@@ -70,38 +70,38 @@ const plainRow = (event: HostStep, names: MachineNames): HostStep => ({
   ...(event.raw ? { raw: withoutTokens(event.raw) } : {}),
 });
 
-/** The phases the setup page shows, in its order, and the steps `svall host …` and a machine's own doctor emit inside each. */
+/** The sections the fine checks are listed under, in the sheet's order, and the steps `svall host …` and a machine's own doctor emit inside each; `on`, named for the machine. */
 const PHASES = [
-  { phase: 'connect', label: 'Reaching it', steps: ['name', 'machine', 'ssh', 'master'] },
-  { phase: 'prerequisites', label: 'What it needs', steps: ['os', 'home', 'tools', 'space', 'linger', 'git'] },
+  { phase: 'connect', label: 'Connection', steps: ['name', 'machine', 'ssh', 'master'] },
+  { phase: 'prerequisites', label: 'System', steps: ['os', 'home', 'tools', 'space', 'linger', 'git'] },
   {
-    phase: 'svall', label: 'Svall there', steps: [
-      'release', 'relay', 'upload', 'install', 'tmux', 'uninstall', 'keys', 'service', 'identity', 'enrol', 'systemd', 'worker',
+    phase: 'svall', label: 'Svall', on: true, steps: [
+      'release', 'relay', 'upload', 'install', 'tmux', 'uninstall', 'keys', 'service', 'identity', 'enrol', 'systemd', 'launchd', 'launchd plist', 'worker',
       'daemon env', 'daemon node', 'daemon path', 'svalld', 'node', 'path', 'hooks', 'codex hooks', 'codex sandbox', 'opencode plugin', 'hook receiver',
       'config', 'machine id', 'doctor', 'svall',
     ],
   },
-  { phase: 'agents', label: 'Agents there', steps: ['claude', 'codex', 'opencode', 'gh', 'versions', 'agents'] },
+  { phase: 'agents', label: 'Agents', on: true, steps: ['claude', 'codex', 'opencode', 'gh', 'versions', 'agents'] },
   // the mirror's report, each row a `mirror:<key>` step
   { phase: 'mirror', label: 'Your agent setup', steps: [] },
   // an upgrade puts the release before back when its probe fails; an add writes the registry after its final probe
-  { phase: 'probe', label: 'Trying it out', steps: ['probe', 'rollback', 'registry'] },
+  { phase: 'probe', label: 'Final check', steps: ['probe', 'rollback', 'registry'] },
 ] as const;
 
 export type Phase = (typeof PHASES)[number]['phase'] | 'other';
 export type PhaseRows = { phase: Phase; label: string; rows: HostStep[] };
 
 // the checks a machine's own doctor adds that no phase names
-const OTHER = { phase: 'other' as const, label: 'Checks' };
+const OTHER = { phase: 'other' as const, label: 'Other checks' };
 
 const MIRROR = 'mirror:';
 const phaseOf = (step: string): Phase => (step.startsWith(MIRROR) ? 'mirror' : PHASES.find((p) => (p.steps as readonly string[]).includes(step))?.phase ?? 'other');
 
-/** Each phase once, in the page's order with the unknown checks last, its steps in the order they arrived. */
-export function groupSteps(steps: HostStep[]): PhaseRows[] {
-  return [...PHASES, OTHER].flatMap(({ phase, label }) => {
-    const rows = steps.filter((s) => phaseOf(s.step) === phase);
-    return rows.length ? [{ phase, label, rows }] : [];
+/** Each phase once, in the sheet's order with the unknown checks last, its steps in the order they arrived; `machine` names the sections about it. */
+export function groupSteps(steps: HostStep[], machine: string): PhaseRows[] {
+  return [...PHASES, OTHER].flatMap((p) => {
+    const rows = steps.filter((s) => phaseOf(s.step) === p.phase);
+    return rows.length ? [{ phase: p.phase, label: 'on' in p ? `${p.label} on ${machine}` : p.label, rows }] : [];
   });
 }
 
@@ -138,14 +138,15 @@ export function replaceRows(run: HostRun, rows: HostStep[], names: MachineNames 
 export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (s.action ? [s.action] : []));
 
 const STEP_LABEL: Record<string, string> = {
-  name: 'Name', machine: 'Machine', relay: 'The home', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
-  space: 'Free space', linger: 'Runs after logout', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
-  service: 'Services', identity: 'Installed release', enrol: 'Worker', seed: 'Your agent setup', claude: 'Claude Code',
-  codex: 'Codex', opencode: 'OpenCode', versions: 'Agent versions', probe: 'Final check', rollback: 'Rollback', registry: 'Machine list',
-  systemd: 'Fleet service', worker: 'Worker', 'daemon env': 'Service environment', svalld: 'Fleet daemon', node: 'Node', path: 'PATH',
+  name: 'Name', machine: 'Machine', relay: 'The home', ssh: 'Login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
+  space: 'Free space', linger: 'Keeps running', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
+  service: 'Services', identity: 'Release there', enrol: 'Worker', seed: 'Your agent setup', claude: 'Claude Code',
+  codex: 'Codex', opencode: 'OpenCode', versions: 'Agent versions', probe: 'Final check', rollback: 'Rollback', registry: 'Listed here',
+  systemd: 'Background service', launchd: 'Background service', 'launchd plist': 'Service file', worker: 'Worker', 'daemon env': 'Service environment',
+  'daemon path': 'Service path', 'daemon node': "Service's Node", svalld: 'Background service', node: 'Node', path: 'PATH',
   gh: 'GitHub CLI', git: 'Git', hooks: 'Agent hooks', 'codex hooks': 'Codex hooks', 'codex sandbox': 'Codex sandbox', 'opencode plugin': 'OpenCode plugin',
-  'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: "Machine's own checks", svall: 'Svall', keys: 'Copied keys',
-  mark: 'Mark the move', crew: 'Mission control',
+  'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: 'Checks there', svall: 'Svall', keys: 'Keys',
+  mark: 'Hand over', crew: 'Mission control',
   fleet: 'This fleet', tailscale: 'Tailscale', snapshot: 'First copy of the fleet', join: 'This Mac joins', adopt: 'Takes over', pause: 'Pause',
   copy: 'Copy the fleet', mission: 'Mission control', phone: 'Phone link', workers: 'Other workers', abort: 'Call off', check: 'Check',
 };
@@ -156,7 +157,7 @@ const AGENT_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex', 
 const MIRROR_LABEL: [RegExp, (...m: string[]) => string][] = [
   [/^claude:plugin:(.+?):mcp:(.+?)(?:@\/.*)?$/, (plugin, name) => `${name} (plugin ${plugin.split('@')[0]})`],
   [/^(\w+):mcp:(.+?)(?:@\/.*)?$/, (agent, name) => `${AGENT_LABEL[agent] ?? agent} MCP ${name}`],
-  [/^oauth:.*?:mcp:(.+?)(?:@\/.*)?$/, (name) => `${name} login`],
+  [/^oauth:.*?:mcp:(.+?)(?:@\/.*)?$/, (name) => name],
   [/^edited:.*?:mcp:(.+?)(?:@\/.*)?$/, (name) => `${name} as it stands`],
   [/^(?:var|runtime|unreadable):(.+)$/, (name) => name],
   [/^maconly:\w+:(.+)$/, (name) => name],
@@ -164,64 +165,61 @@ const MIRROR_LABEL: [RegExp, (...m: string[]) => string][] = [
   [/^claude:agent:(.+)$/, (file) => `subagent ${file}`],
   [/^claude:marketplace:(.+)$/, (market) => `marketplace ${market}`],
 ];
-const MIRROR_NAME: Record<string, string> = {
-  'claude:settings': 'settings.json', 'codex:config': 'Codex config.toml', 'opencode:config': 'OpenCode config', unchecked: 'Not checked', phone: 'Phone while this Mac is off',
+const MIRROR_NAME: Record<string, (home: string) => string> = {
+  'claude:settings': () => 'settings.json', 'codex:config': () => 'Codex config.toml', 'opencode:config': () => 'OpenCode config', unchecked: () => 'Not checked',
+  phone: (home) => `Phone while ${home} is off`,
 };
 
-function mirrorLabel(key: string): string {
+function mirrorLabel(key: string, home: string): string {
   for (const [pattern, label] of MIRROR_LABEL) {
     const m = pattern.exec(key);
     if (m) return label(...m.slice(1));
   }
-  return MIRROR_NAME[key] ?? key;
+  return MIRROR_NAME[key]?.(home) ?? key;
 }
 
-/** What a step is called in the panel; one it does not know, as a check the machine's doctor added, by its own name. */
-export const stepLabel = (step: string): string => (step.startsWith(MIRROR) ? mirrorLabel(step.slice(MIRROR.length)) : STEP_LABEL[step] ?? step);
+/** What a step is called in the sheet; one it does not know, as a check the machine's doctor added, by its own name. `home`: the window's name for the fleet's home. */
+export const stepLabel = (step: string, home = 'this Mac'): string => (step.startsWith(MIRROR) ? mirrorLabel(step.slice(MIRROR.length), home) : STEP_LABEL[step] ?? step);
 
-/** What a step said, without the machine the panel already names when the sentence starts with it. */
-export const stepSaid = (row: HostStep, machine: string): string | undefined =>
-  (row.detail?.startsWith(`${machine} `) ? row.detail.slice(machine.length + 1) : row.detail);
+/** How a step stands, without the machine the sheet already names when the sentence starts with it, and what a tool said after it. */
+export function stepSaid(row: HostStep, machine: string): { line?: string; raw?: string } {
+  const whole = row.detail?.startsWith(`${machine} `) ? row.detail.slice(machine.length + 1) : row.detail;
+  return whole ? splitRaw(whole) : {};
+}
 
 export const OP_TITLE: Record<HostOp, string> = {
   add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove', home: 'Move the home', 'home-retry': 'Finish the move', 'home-abort': 'Call off the move', 'home-crew': 'Bring mission control back', join: 'Join',
 };
 
-/** `note`: the agent setup, which never holds a robot back; `done`: nothing is left to fix; `next`: the one step the panel offers;
- * `setup`: the parts of the agent setup that will not work there yet. */
-export type RunOutcome = { text: string; note?: string; done?: true; next?: 'rollback'; setup?: number };
+/** A run under way, as the sheet's foot says it: `Checking studio…`. */
+export const runningLine = ({ op, args }: Pick<HostRun, 'op' | 'args'>): string => {
+  const doing: Partial<Record<HostOp, string>> = { add: 'Adding', doctor: 'Checking', upgrade: 'Upgrading', rollback: 'Rolling back', remove: args.forget ? 'Forgetting' : 'Removing' };
+  return doing[op] ? `${doing[op]} ${args.name}…` : `${OP_TITLE[op]}: running…`;
+};
+
+/** `done`: the run did what it was for and left nothing to fix; `next`: the one step the sheet offers; `raw`: what the line rests on, behind details. */
+export type RunOutcome = { text: string; raw?: string; done?: true; next?: 'rollback' };
 
 export const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
-// what a step leaves to fix, as the CLI counts things: its action, or the failed step that names none; the agent setup is
-// never a thing to fix
-const thingsLeft = (run: HostRun): number =>
-  new Set(run.steps.filter((s) => !s.step.startsWith(MIRROR) && (s.action || s.status === 'fail')).map((s) => s.action ?? s.step)).size;
-// a check there that warns with its fix in its sentence, as the machine's own doctor words one
-const warnings = (run: HostRun): number => run.steps.filter((s) => !s.step.startsWith(MIRROR) && s.status === 'warn' && !s.action).length;
+/** Where a row of `op` stands for a person: to do, a note, or fine; an add's and a check's rows are the machine's checks, every other op's a step flow's. */
+export const stepTier = (s: HostStep, op: HostOp, fleet: FleetAgents | undefined): Tier => tierOf(s, fleet, op !== 'add' && op !== 'doctor');
 
-export function outcomeOf(run: HostRun): RunOutcome {
+/** Whether an add put the machine in the registry: it went through, or its last step listed it. */
+export const addedBy = (run: HostRun): boolean => run.code === 0 || run.steps.some((s) => s.step === 'registry' && s.status === 'ok');
+
+/** The run's verdict in one line; `fleet`, the agents its rows are tiered by. */
+export function outcomeOf(run: HostRun, fleet?: FleetAgents): RunOutcome {
   const name = run.args.name;
-  const left = thingsLeft(run);
-  // the mirror rows of what will not work on the machine, yet while one has a way on; the ones that stand aside after them, by name alone when none
-  const named = run.steps.filter((s) => s.step.startsWith(MIRROR) && s.gap);
-  const gaps = named.filter((s) => !asideStep(s));
-  const apart = asideLine(named.filter(asideStep).map(stepToRow), !gaps.length);
-  const setup = gaps.length;
-  const note = setup ? `Optional: ${plural(setup, 'part')} of your agent setup will not work there${gaps.some(wayOn) ? ' yet' : ''}${apart ? `, and ${apart}` : ''}. `
-    + 'None of it stops a move there; set it up under Your agent setup when you need it.' : apart ? `${apart}.` : undefined;
-  const noted = note ? { note } : {};
+  const todo = run.steps.filter((s) => stepTier(s, run.op, fleet) === 'todo').length;
   // an upgrade puts the release before back on its own; only a rollback that failed leaves one to ask for
   const rollback = run.op === 'upgrade' && run.steps.some((s) => s.step === 'rollback' && s.status === 'fail') ? { next: 'rollback' as const } : {};
-  if (run.op === 'add' || run.op === 'doctor' || run.op === 'upgrade') {
-    if (left) return { text: `${name} has ${plural(left, 'thing')} to fix.`, ...noted, ...rollback, ...(setup > 0 && { setup }) };
-    const warned = warnings(run);
-    const ready = `${name} is ready${warned ? `, with ${plural(warned, 'warning')}` : ''}.`;
-    if (run.code === 0) return { text: `${ready} Robots you move there keep working while this Mac sleeps.`, ...noted, done: true, ...(setup > 0 && { setup }) };
+  if ((run.op === 'add' && addedBy(run)) || run.op === 'doctor' || run.op === 'upgrade') {
+    if (todo) return { text: `${name} has ${plural(todo, 'thing')} to fix`, ...rollback };
+    if (run.code === 0) return { text: `${name} is ready`, done: true };
   }
-  const failed = run.steps.find((s) => s.status === 'fail');
-  if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}` };
-  if (run.code !== 0) return { text: `${OP_TITLE[run.op]} ended with exit ${run.code}` };
+  if (run.steps.some((s) => s.status === 'fail')) return { text: `${OP_TITLE[run.op]} did not finish` };
+  if (run.code !== 0) return { text: `${OP_TITLE[run.op]} ended without saying why`, raw: `exit ${run.code}` };
   const done: Partial<Record<HostOp, string>> = { rollback: `${name} is rolled back`, remove: `${name} is ${run.args.forget ? 'forgotten' : 'removed'}` };
   return { text: done[run.op] ?? `${OP_TITLE[run.op]}: done`, done: true };
 }

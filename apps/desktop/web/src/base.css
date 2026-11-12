@@ -103,7 +103,7 @@ button.setup-row > svg { color: var(--ink-3); }
 .banner-sub { color: var(--ink-2); }
 .banner .btn.sm { flex: none; }
 /* the words of what went wrong can be selected and copied */
-.toast[data-tone="error"] .toast-text, .banner > span, .connect > div, .fb-error, .fleet-error, .host-failed, .host-term-failed,
+.toast[data-tone="error"] .toast-text, .banner > span, .connect > div, .fb-error, .fleet-error, .host-failed,
 .host-step[data-status="fail"] .host-said, .host-verdict, .host-note, .move-steps > li[data-state="failed"] > span:last-child,
 .revive > span, .machine-said, .key-ask > span, .tree-err, .ide-empty, .modal-note, .baddr-err, [data-error="true"] { -webkit-user-select: text; user-select: text; }
 /* surfaces: glass over the map; solid for a dialog and, a step lower, a popover (a menu, tip or utility panel) */

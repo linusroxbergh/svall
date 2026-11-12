@@ -3,6 +3,7 @@ import { app } from './boot.js';
 import { rectOf } from './bridge.js';
 import { cdDir, loginForward } from './host.js';
 import { Caret } from './icons.js';
+import { Said } from './Said.js';
 
 // a command longer than this is called the command, and read whole behind details
 const SHORT = 48;
@@ -21,6 +22,8 @@ export function MachineTerminal({ name, on = name, ssh, run, asked, forward: por
   const id = `machine:${name}`;
   const forward = run ? loginForward(run, port) : undefined;
   const dir = asked === undefined ? undefined : cdDir(asked);
+  // the shell puts the terminal's last line, ssh's own words, after a colon
+  const cut = failed?.indexOf(': ') ?? -1;
 
   useEffect(() => {
     const el = ref.current;
@@ -70,14 +73,10 @@ export function MachineTerminal({ name, on = name, ssh, run, asked, forward: por
         )}
       </div>
       {failed && (
-        <div className="host-note" data-testid="host-terminal-failed">
-          <span className="host-term-failed">
-            {failed}
-            {forward && /forwarding/.test(failed) && ` Port ${forward} on this Mac is taken${forward === 1455 ? ', as by a Codex login running here; close that' : '; close what uses it'}, then try again.`}
-          </span>
-          <div className="acts">
-            <button className="btn" data-testid="host-terminal-again" onClick={() => { setFailed(undefined); setAttempt((a) => a + 1); }}>Try again</button>
-          </div>
+        <div className="move-blocker" data-testid="host-terminal-failed">
+          <Said line={cut > 0 ? failed.slice(0, cut) : failed} raw={cut > 0 ? failed.slice(cut + 2) : undefined}
+            fix={forward && /forwarding/.test(failed) ? `Port ${forward} on this Mac is taken${forward === 1455 ? ', as by a Codex login running here; close that' : '; close what uses it'}, then try again.` : undefined} />
+          <button className="btn sm" data-testid="host-terminal-again" onClick={() => { setFailed(undefined); setAttempt((a) => a + 1); }}>Try again</button>
         </div>
       )}
       <div ref={ref} className="host-term-surface" data-testid="host-terminal-surface" />

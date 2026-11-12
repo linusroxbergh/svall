@@ -2,8 +2,9 @@ import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import {
   applyStep, beginRun, endRun, groupSteps, loginForward, machineName, outcomeOf, overHome,
-  plainStep, replaceRows, rowToStep, runActions, splitRaw, sshDestination, stepLabel, stepSaid, withoutTokens,
+  plainStep, replaceRows, rowToStep, runActions, runningLine, splitRaw, sshDestination, stepLabel, stepSaid, withoutTokens,
 } from '../src/host.js';
+import { fleet } from './fixtures.js';
 import type { HostStep } from '../src/bridge.js';
 
 const step = (s: string, status: 'start' | 'ok' | 'warn' | 'fail' | 'skip', extra: Omit<HostStep, 'step' | 'status'> = {}) =>
@@ -107,47 +108,33 @@ describe('host run', () => {
 describe('the end of a run', () => {
   const ended = (op: 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove', code: number, steps: ReturnType<typeof step>[], args = {}) =>
     endRun(steps.reduce((run, s) => applyStep(run, s), beginRun(op, { name: 'box', ...args })), code);
-  const ready = 'box is ready. Robots you move there keep working while this Mac sleeps.';
 
-  it('the outcome line reads ready when nothing is left to fix and counts the things to fix otherwise, with the agent setup in an optional note', () => {
-    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), step('enrol', 'ok')]))).toEqual({ text: ready, done: true });
-    // a warning that names nothing to do here leaves the machine ready, and says so
-    expect(outcomeOf(ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')])))
-      .toEqual({ text: 'box is ready, with 1 warning. Robots you move there keep working while this Mac sleeps.', done: true });
-    expect(outcomeOf(ended('doctor', 0, [step('tmux', 'warn', { detail: '3.4' }), step('opencode', 'warn', { detail: 'not signed in: opencode auth login', run: 'opencode auth login' }), step('codex', 'skip'), step('release', 'ok')])))
-      .toEqual({ text: 'box is ready, with 2 warnings. Robots you move there keep working while this Mac sleeps.', done: true });
-    // each step's action is one thing, and so is each failed step that names none
-    expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('registry', 'ok')]))).toEqual({ text: 'box has 1 thing to fix.' });
-    expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('install', 'fail', { detail: 'svall setup exited 1' })])))
-      .toEqual({ text: 'box has 2 things to fix.' });
-    const blocked = ended('doctor', 1, [step('tmux', 'warn'), step('release', 'fail', { detail: '0.4.0, protocol 3' }), step('systemd', 'fail', { detail: 'inactive' })]);
-    expect(outcomeOf(blocked)).toEqual({ text: 'box has 2 things to fix.' });
-    // the agent setup is nothing to fix: a row naming a gap is a part that will not work there, though two read alike, and one that only asks to check again is none
-    const still = ' None of it stops a move there; set it up under Your agent setup when you need it.';
-    const again = (key: string) => step(`mirror:${key}`, 'warn', { action: 'check box again', detail: 'not checked: box is not reachable' });
-    const gap = (key: string, name: string) => step(`mirror:${key}`, 'warn', { action: `copy ${name}'s keys to box`, gap: { name, what: 'keys not copied (env.KEY)' } });
-    const mirrored = ended('doctor', 0, [step('ssh', 'ok'), again('claude:mcp:linear'), again('var:X'), gap('claude:mcp:github', 'github'), gap('codex:mcp:github', 'github')]);
-    expect(outcomeOf(ended('doctor', 0, [step('tmux', 'warn'), gap('claude:mcp:linear', 'linear')])))
-      .toMatchObject({ text: 'box is ready, with 1 warning. Robots you move there keep working while this Mac sleeps.', note: `Optional: 1 part of your agent setup will not work there yet.${still}` });
-    expect(outcomeOf(mirrored)).toEqual({ text: ready, note: `Optional: 2 parts of your agent setup will not work there yet.${still}`, done: true, setup: 2 });
-    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), gap('claude:mcp:linear', 'linear')])))
-      .toEqual({ text: ready, note: `Optional: 1 part of your agent setup will not work there yet.${still}`, done: true, setup: 1 });
-    expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('registry', 'ok'), gap('claude:mcp:linear', 'linear')])))
-      .toEqual({ text: 'box has 1 thing to fix.', note: `Optional: 1 part of your agent setup will not work there yet.${still}`, setup: 1 });
-    // a part with nothing to do about it, as a file this Mac cannot read, will not work there, not yet
-    const unread = step('mirror:unreadable:/Users/ada/.claude.json', 'warn', { gap: { name: '.claude.json', what: 'not copied: this Mac cannot read it' } });
-    expect(outcomeOf(ended('doctor', 0, [step('ssh', 'ok'), unread])))
-      .toEqual({ text: ready, note: `Optional: 1 part of your agent setup will not work there.${still}`, done: true, setup: 1 });
-    // a server that runs only on a Mac, or a program ticked as not needed there, stands aside: counted after the parts, named when alone
-    const macOnly = step('mirror:maconly:claude:chrome', 'skip', { gap: { name: 'chrome', what: 'runs only on a Mac' } });
-    const skipped = step('mirror:runtime:adlc', 'skip', { tick: { item: 'runtime:adlc', fields: ['skip'], on: true, preview: [] }, gap: { name: 'adlc', what: 'not needed there, you ticked' } });
-    expect(outcomeOf(ended('doctor', 0, [step('ssh', 'ok'), macOnly, skipped]))).toEqual({ text: ready, note: 'chrome runs only on a Mac, and adlc is not needed there.', done: true });
-    expect(outcomeOf(ended('doctor', 0, [macOnly, gap('claude:mcp:linear', 'linear')])).note)
-      .toBe(`Optional: 1 part of your agent setup will not work there yet, and 1 runs only on a Mac.${still}`);
-    expect(outcomeOf(ended('doctor', 1, [step('systemd', 'fail'), macOnly]))).toEqual({ text: 'box has 1 thing to fix.', note: 'chrome runs only on a Mac.' });
-    // one stopped part way said nothing it left to do
-    expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]))).toEqual({ text: 'Add machine ended with exit 143' });
-    expect(outcomeOf(ended('add', 1, [step('registry', 'ok'), step('probe', 'fail')]))).toEqual({ text: 'box has 1 thing to fix.' });
+  it('reads ready when no row needs the person, and counts the rows that do otherwise, in one line', () => {
+    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), step('enrol', 'ok')]))).toEqual({ text: 'box is ready', done: true });
+    // a check's warning that needs no one is a note, and leaves the machine ready
+    expect(outcomeOf(ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')]))).toEqual({ text: 'box is ready', done: true });
+    expect(outcomeOf(ended('doctor', 0, [step('tmux', 'warn'), step('gh', 'warn'), step('codex', 'skip'), step('release', 'ok')]))).toEqual({ text: 'box is ready', done: true });
+    // a failure and a warning that needs the person are each a thing to fix
+    expect(outcomeOf(ended('add', 1, [step('linger', 'warn', { action: 'enable linger' }), step('registry', 'ok')]))).toEqual({ text: 'box has 1 thing to fix' });
+    expect(outcomeOf(ended('doctor', 1, [step('tmux', 'warn'), step('release', 'fail'), step('systemd', 'fail')]))).toEqual({ text: 'box has 2 things to fix' });
+    // in a step flow every warning is
+    expect(outcomeOf(ended('upgrade', 1, [step('probe', 'warn'), step('tmux', 'warn')]))).toEqual({ text: 'box has 2 things to fix' });
+    // the agent setup is never a thing to fix
+    const gap = step('mirror:claude:mcp:linear', 'warn', { action: "copy linear's keys to box", gap: { name: 'linear', what: 'keys not copied (env.KEY)' } });
+    expect(outcomeOf(ended('doctor', 0, [step('ssh', 'ok'), gap]))).toEqual({ text: 'box is ready', done: true });
+  });
+
+  it('counts an agent the fleet does not run as a note, and one it runs as a thing to fix', () => {
+    const run = ended('doctor', 0, [step('opencode', 'warn', { detail: 'not installed' }), step('claude', 'warn', { detail: '2.1.3, not logged in' })]);
+    expect(outcomeOf(run).text).toBe('box has 2 things to fix');
+    expect(outcomeOf(run, { ...fleet(), mainAgent: 'claude', scribeAgent: 'claude' }).text).toBe('box has 1 thing to fix');
+  });
+
+  it('says an add that did not go through did not finish, or ended without saying why with its exit behind details', () => {
+    expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('probe', 'fail', { detail: 'does not answer' })]))).toEqual({ text: 'Add machine did not finish' });
+    expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]))).toEqual({ text: 'Add machine ended without saying why', raw: 'exit 143' });
+    // listed, it is the machine's
+    expect(outcomeOf(ended('add', 1, [step('registry', 'ok'), step('linger', 'warn')]))).toEqual({ text: 'box has 1 thing to fix' });
   });
 
   it('offers Roll back only when the rollback after a failed upgrade failed too', () => {
@@ -158,27 +145,34 @@ describe('the end of a run', () => {
     expect(outcomeOf(ended('upgrade', 1, [step('probe', 'warn'), step('rollback', 'warn', { action: 'read the log' })])).next).toBeUndefined();
   });
 
-  it('says what a removal and a rollback did, or where it stopped', () => {
+  it('says what a removal and a rollback did, or that it did not finish without repeating its row', () => {
     expect(outcomeOf(ended('remove', 0, [step('registry', 'ok')]))).toEqual({ text: 'box is removed', done: true });
     expect(outcomeOf(ended('remove', 0, [step('uninstall', 'skip')], { forget: true }))).toEqual({ text: 'box is forgotten', done: true });
     expect(outcomeOf(ended('rollback', 0, [step('probe', 'ok')]))).toEqual({ text: 'box is rolled back', done: true });
-    expect(outcomeOf(ended('remove', 1, [step('uninstall', 'fail', { detail: 'svall uninstall exited 1' })]))).toEqual({ text: 'Remove stopped at Uninstall: svall uninstall exited 1' });
-    expect(outcomeOf(ended('remove', 1, []))).toEqual({ text: 'Remove ended with exit 1' });
+    expect(outcomeOf(ended('remove', 1, [step('uninstall', 'fail', { detail: 'did not finish' })]))).toEqual({ text: 'Remove did not finish' });
+    expect(outcomeOf(ended('remove', 1, []))).toEqual({ text: 'Remove ended without saying why', raw: 'exit 1' });
+  });
+
+  it('says a run under way by what it does to the machine', () => {
+    expect(['add', 'doctor', 'upgrade', 'rollback', 'remove'].map((op) => runningLine({ op: op as 'add', args: { name: 'box' } })))
+      .toEqual(['Adding box…', 'Checking box…', 'Upgrading box…', 'Rolling back box…', 'Removing box…']);
+    expect(runningLine({ op: 'remove', args: { name: 'box', forget: true } })).toBe('Forgetting box…');
   });
 });
 
 describe('a step by name', () => {
   it('reads as plain words, and a step it does not know as itself', () => {
-    expect(['master', 'identity', 'enrol', 'registry', 'keys'].map(stepLabel))
-      .toEqual(['Connection', 'Installed release', 'Worker', 'Machine list', 'Copied keys']);
-    // the checks a machine's own doctor reports
-    expect(['systemd', 'daemon env', 'gh', 'path', 'codex sandbox', 'opencode plugin', 'linger', 'doctor'].map(stepLabel))
-      .toEqual(['Fleet service', 'Service environment', 'GitHub CLI', 'PATH', 'Codex sandbox', 'OpenCode plugin', 'Runs after logout', "Machine's own checks"]);
+    expect(['ssh', 'master', 'identity', 'enrol', 'registry', 'keys', 'mark'].map((s) => stepLabel(s)))
+      .toEqual(['Login', 'Connection', 'Release there', 'Worker', 'Listed here', 'Keys', 'Hand over']);
+    // the checks a machine's own doctor reports, its service by no unit or label
+    expect(['systemd', 'launchd', 'svalld', 'daemon env', 'daemon path', 'daemon node', 'gh', 'path', 'codex sandbox', 'opencode plugin', 'linger', 'doctor'].map((s) => stepLabel(s)))
+      .toEqual(['Background service', 'Background service', 'Background service', 'Service environment', 'Service path', "Service's Node", 'GitHub CLI', 'PATH', 'Codex sandbox',
+        'OpenCode plugin', 'Keeps running', 'Checks there']);
     expect(stepLabel('weather')).toBe('weather');
   });
 
   it('names the steps of a join and a home move', () => {
-    expect(['fleet', 'tailscale', 'snapshot', 'seed', 'join', 'adopt', 'pause', 'copy', 'mission', 'phone', 'workers', 'abort', 'check'].map(stepLabel)).toEqual([
+    expect(['fleet', 'tailscale', 'snapshot', 'seed', 'join', 'adopt', 'pause', 'copy', 'mission', 'phone', 'workers', 'abort', 'check'].map((s) => stepLabel(s))).toEqual([
       'This fleet', 'Tailscale', 'First copy of the fleet', 'Your agent setup', 'This Mac joins', 'Takes over', 'Pause', 'Copy the fleet', 'Mission control',
       'Phone link', 'Other workers', 'Call off', 'Check',
     ]);
@@ -191,51 +185,52 @@ describe('a step by name', () => {
       'mirror:oauth:claude:plugin:acme:mcp:db', 'mirror:runtime:npx', 'mirror:maconly:claude:chrome', 'mirror:claude:settings', 'mirror:codex:config',
       'mirror:opencode:config', 'mirror:claude:plugin:acme@market', 'mirror:unreadable:/Users/ada/.codex/config.toml', 'mirror:unchecked',
       'mirror:claude:agent:team/db.md', 'mirror:claude:marketplace:market',
-    ].map(stepLabel)).toEqual([
-      'Codex MCP github', 'OpenCode MCP sentry', 'db (plugin acme)', 'notion login', 'db login', 'npx', 'chrome', 'settings.json', 'Codex config.toml',
+    ].map((s) => stepLabel(s))).toEqual([
+      'Codex MCP github', 'OpenCode MCP sentry', 'db (plugin acme)', 'notion', 'db', 'npx', 'chrome', 'settings.json', 'Codex config.toml',
       'OpenCode config', 'plugin acme@market', '/Users/ada/.codex/config.toml', 'Not checked', 'subagent team/db.md', 'marketplace market',
     ]);
+    // the phone's row names the home by the window's name for it
+    expect([stepLabel('mirror:phone'), stepLabel('mirror:phone', 'studio')]).toEqual(['Phone while this Mac is off', 'Phone while studio is off']);
   });
 
-  it('leaves out the machine the panel already names where a step starts with it', () => {
-    expect(stepSaid({ step: 'identity', status: 'ok', detail: 'studio runs release 0.5.0' }, 'studio')).toBe('runs release 0.5.0');
-    expect(stepSaid({ step: 'enrol', status: 'ok', detail: "studio's fleet home serves this fleet" }, 'studio')).toBe("studio's fleet home serves this fleet");
-    expect(stepSaid({ step: 'ssh', status: 'ok', detail: 'studios answered' }, 'studio')).toBe('studios answered');
-    expect(stepSaid({ step: 'ssh', status: 'ok' }, 'studio')).toBeUndefined();
+  it('leaves out the machine the sheet already names where a step starts with it', () => {
+    expect(stepSaid({ step: 'identity', status: 'ok', detail: 'studio runs release 0.5.0' }, 'studio')).toEqual({ line: 'runs release 0.5.0' });
+    expect(stepSaid({ step: 'enrol', status: 'ok', detail: "studio's fleet home serves this fleet" }, 'studio')).toEqual({ line: "studio's fleet home serves this fleet" });
+    expect(stepSaid({ step: 'ssh', status: 'ok', detail: 'studios answered' }, 'studio')).toEqual({ line: 'studios answered' });
+    expect(stepSaid({ step: 'ssh', status: 'ok' }, 'studio')).toEqual({});
+  });
+
+  it('says how a step stands, a tool\'s words cut off behind it', () => {
+    expect(stepSaid({ step: 'relay', status: 'fail', detail: 'relay  svall host doctor there exited 1: ssh: connect to host' }, 'studio'))
+      .toEqual({ line: 'relay  svall host doctor there', raw: 'exited 1: ssh: connect to host' });
   });
 });
 
 describe('the attended checklist', () => {
-  it('names the phase each step belongs to, in the order the steps arrived', () => {
+  it('names the section each step belongs to, in the order the steps arrived, the sections about the machine by its name', () => {
     const steps = [step('ssh', 'ok'), step('master', 'ok'), step('tools', 'ok'), step('release', 'ok'), step('tmux', 'ok'),
                    step('claude', 'warn'), step('codex', 'ok'), step('opencode', 'ok'), step('versions', 'warn'), step('probe', 'ok')];
-    expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
-      ['Reaching it', ['ssh', 'master']],
-      ['What it needs', ['tools']],
-      ['Svall there', ['release', 'tmux']],
-      ['Agents there', ['claude', 'codex', 'opencode', 'versions']],
-      ['Trying it out', ['probe']],
+    expect(groupSteps(steps, 'studio').map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
+      ['Connection', ['ssh', 'master']],
+      ['System', ['tools']],
+      ['Svall on studio', ['release', 'tmux']],
+      ['Agents on studio', ['claude', 'codex', 'opencode', 'versions']],
+      ['Final check', ['probe']],
     ]);
   });
 
-  it('groups steps under the six labels in the spec\'s order, mirror rows by prefix, and registry under Trying it out', () => {
+  it('groups steps under the sections in the sheet\'s order, mirror rows by prefix, the registry under Final check and the unknown last', () => {
     const steps = ['ssh', 'master', 'release', 'claude', 'gh', 'probe', 'registry', 'mirror:claude:mcp:linear'].map((s) => step(s, 'ok'));
-    expect(groupSteps(steps).map((g) => g.label)).toEqual(['Reaching it', 'Svall there', 'Agents there', 'Your agent setup', 'Trying it out']);
+    expect(groupSteps(steps, 'box').map((g) => g.label)).toEqual(['Connection', 'Svall on box', 'Agents on box', 'Your agent setup', 'Final check']);
     // a machine's own doctor reports its service, and the checks Svall knows nothing of come last
-    expect(groupSteps(['weather', 'systemd', 'git', 'mirror:unchecked'].map((s) => step(s, 'ok'))).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
-      ['What it needs', ['git']], ['Svall there', ['systemd']], ['Your agent setup', ['mirror:unchecked']], ['Checks', ['weather']],
+    expect(groupSteps(['weather', 'systemd', 'launchd', 'git', 'mirror:unchecked'].map((s) => step(s, 'ok')), 'box').map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
+      ['System', ['git']], ['Svall on box', ['systemd', 'launchd']], ['Your agent setup', ['mirror:unchecked']], ['Other checks', ['weather']],
     ]);
   });
 
   it("a step that comes back to an earlier phase joins that phase's group", () => {
-    expect(groupSteps([step('ssh', 'ok'), step('tools', 'ok'), step('master', 'ok')]).map((g) => [g.label, g.rows.map((r) => r.step)]))
-      .toEqual([['Reaching it', ['ssh', 'master']], ['What it needs', ['tools']]]);
-  });
-
-  it('calls no phase by the name of a step in it', () => {
-    const steps = ['name', 'machine', 'ssh', 'master', 'os', 'home', 'tools', 'space', 'linger', 'release', 'upload', 'install',
-      'tmux', 'uninstall', 'keys', 'service', 'identity', 'claude', 'codex', 'opencode', 'versions', 'probe', 'rollback', 'registry'];
-    for (const g of groupSteps(steps.map((s) => step(s, 'ok')))) expect(g.rows.map((r) => stepLabel(r.step))).not.toContain(g.label);
+    expect(groupSteps([step('ssh', 'ok'), step('tools', 'ok'), step('master', 'ok')], 'box').map((g) => [g.label, g.rows.map((r) => r.step)]))
+      .toEqual([['Connection', ['ssh', 'master']], ['System', ['tools']]]);
   });
 
   it('shows every phase of an add, and of a removal, as one run', () => {
@@ -243,8 +238,8 @@ describe('the attended checklist', () => {
       'install', 'tmux', 'service', 'identity', 'claude', 'codex', 'opencode', 'versions', 'probe', 'registry'];
     const remove = ['machine', 'uninstall', 'registry'];
     for (const steps of [add, remove]) {
-      const labels = groupSteps(steps.map((s) => step(s, 'ok'))).map((g) => g.label);
-      expect(labels).not.toContain('Checks');
+      const labels = groupSteps(steps.map((s) => step(s, 'ok')), 'box').map((g) => g.label);
+      expect(labels).not.toContain('Other checks');
       expect(new Set(labels).size).toBe(labels.length);
     }
   });
@@ -252,10 +247,10 @@ describe('the attended checklist', () => {
   it('puts the rollback of an upgrade whose probe failed beside the probe, after it', () => {
     const steps = [step('machine', 'ok'), step('master', 'ok'), step('release', 'ok'), step('upload', 'ok'), step('install', 'ok'),
                    step('probe', 'warn'), step('rollback', 'warn')];
-    expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
-      ['Reaching it', ['machine', 'master']],
-      ['Svall there', ['release', 'upload', 'install']],
-      ['Trying it out', ['probe', 'rollback']],
+    expect(groupSteps(steps, 'box').map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
+      ['Connection', ['machine', 'master']],
+      ['Svall on box', ['release', 'upload', 'install']],
+      ['Final check', ['probe', 'rollback']],
     ]);
   });
 
@@ -263,15 +258,15 @@ describe('the attended checklist', () => {
     const relayed = [step('name', 'ok'), step('ssh', 'ok'), step('linger', 'warn'), step('release', 'start'), step('relay', 'start'), step('relay', 'ok'),
                      step('release', 'start'), step('release', 'ok'), step('upload', 'ok'), step('install', 'ok')];
     const run = relayed.reduce((r, e) => applyStep(r, e), beginRun('add', { name: 'box' }));
-    expect(groupSteps(run.steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
-      ['Reaching it', ['name', 'ssh']],
-      ['What it needs', ['linger']],
-      ['Svall there', ['release', 'relay', 'upload', 'install']],
+    expect(groupSteps(run.steps, 'box').map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
+      ['Connection', ['name', 'ssh']],
+      ['System', ['linger']],
+      ['Svall on box', ['release', 'relay', 'upload', 'install']],
     ]);
   });
 
   it('shows a step it does not know rather than dropping it', () => {
-    expect(groupSteps([step('weather', 'ok')])).toEqual([{ phase: 'other', label: 'Checks', rows: [step('weather', 'ok')] }]);
+    expect(groupSteps([step('weather', 'ok')], 'box')).toEqual([{ phase: 'other', label: 'Other checks', rows: [step('weather', 'ok')] }]);
   });
 
   it('replaceRows swaps the mirror rows in place and keeps every other step', () => {
