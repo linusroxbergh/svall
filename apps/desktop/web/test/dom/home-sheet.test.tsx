@@ -423,8 +423,13 @@ describe('the sheet of a home move', () => {
     expect(raw(unread)).toBe('svalld connection closed --token …');
     expect(screen.queryByTestId('home-try-again')).toBeNull();
     expect([...document.querySelectorAll('.modal .acts button')].map((b) => b.textContent)).toEqual(['Check again', 'Close']);
-    read = () => Promise.resolve({ moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } });
+    // asked again, the last failure goes while the home answers, so nothing stale stands at the foot
+    let answer: (v: unknown) => void = () => {};
+    read = () => new Promise((r) => { answer = r; });
     fireEvent.click(screen.getByTestId('home-move-read'));
+    expect(screen.queryByTestId('home-move-unread')).toBeNull();
+    expect(document.querySelector('.modal .acts')).toBeNull();
+    await act(async () => { answer({ moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } }); });
     expect(await screen.findByTestId('home-retry')).toBeTruthy();
     expect(screen.queryByTestId('home-move-unread')).toBeNull();
   });

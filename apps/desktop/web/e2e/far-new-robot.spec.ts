@@ -145,3 +145,26 @@ test('when the home goes the open dialog lists this Mac\'s clones, and says whos
     await local.close();
   }
 });
+
+test('the arrow keys never leave the chosen folder under the pinned Other folder… or its shadow', async ({ page }) => {
+  const { home, local } = await farHome();
+  try {
+    await open(page, local.port);
+    await expect.poll(() => home.calls.some((c) => c.method === 'state.get')).toBe(true);
+    await page.keyboard.press('Meta+t');
+    await expect(picks(page)).toHaveCount(many.length);
+    await picks(page).first().focus();
+    const other = page.getByTestId('new-robot-other');
+    for (let row = 1; row <= 6; row++) {
+      await page.keyboard.press('ArrowDown');
+      const chosen = picks(page).nth(row);
+      await expect(chosen).toHaveAttribute('aria-selected', 'true');
+      const [box, pinned] = [(await chosen.boundingBox())!, (await other.boundingBox())!];
+      // the shadow reaches a few pixels above the pinned row
+      expect(box.y + box.height).toBeLessThanOrEqual(pinned.y - 4);
+    }
+  } finally {
+    await home.close();
+    await local.close();
+  }
+});

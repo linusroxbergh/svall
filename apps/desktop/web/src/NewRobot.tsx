@@ -108,7 +108,7 @@ export function NewRobot() {
     next.click();
     keyed.current = true;
     next.focus();
-    // clear of the pinned Other folder…, which the list's scroll padding keeps it out from under
+    // clear of the pinned Other folder… and its shadow, which the list's scroll padding keeps it out from under
     next.scrollIntoView?.({ block: 'nearest' });
   };
   const away = on === via?.machine && !via?.online;
