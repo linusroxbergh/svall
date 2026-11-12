@@ -611,6 +611,8 @@ describe('fleet home retry', () => {
     putMarker(resolvePaths(home), marker());
     const out = await resumeHome(deps);
     expect(failed()).toMatchObject({ step: 'adopt', detail: expect.stringContaining('holds no key') });
+    // a move goes by its id nowhere a person reads
+    expect(failed()).not.toHaveProperty('raw');
     expect(out.actions).toEqual(['svall fleet home abort']);
     expect(lines.filter((l) => l.includes('--home-ssh'))).toEqual([]);
     expect(started()).toBe(0);

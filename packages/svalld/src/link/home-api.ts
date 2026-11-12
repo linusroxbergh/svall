@@ -97,7 +97,10 @@ export class HomeApi {
       if (e instanceof MachineMismatch) {
         return await this.settle(base, { state: 'machine', detail: e.found ? `${worker.homeName} is a different machine than ${homeWord()} expects ${ids(e.found, worker.homeMachineId)}` : message });
       }
-      if (e instanceof SshError && e.kind === 'version') return await this.settle(base, { state: 'version', detail: message });
+      if (e instanceof SshError && e.kind === 'version') {
+        this.o.log?.error(`the home's API: ${inFull(e)}`);
+        return await this.settle(base, { state: 'version', detail: message });
+      }
       await this.drop();
       return this.away(base, inFull(e));
     }

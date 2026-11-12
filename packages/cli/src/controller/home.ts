@@ -525,7 +525,7 @@ async function finishOut(run: Runner, d: MoveDeps, client: Client, paths: Paths,
   driverJournal(paths, id, 'adopt');
   const enrol = await run.step('adopt', async () => {
     const key = driverAdoptKey(paths, id);
-    if (!key) throw new StepError(`${thisMachine()}'s journal holds no key of this move, so ${o.name} cannot take the fleet`, 'svall fleet home abort', undefined, o.ends, id);
+    if (!key) throw new StepError(`${thisMachine()}'s journal holds no key of this move, so ${o.name} cannot take the fleet`, 'svall fleet home abort', undefined, o.ends);
     // the key on stdin, and only now that this home is marked
     const answer = await far(['fleet', 'adopt', id, '--home-ssh', o.ssh], key).catch(async (e: Error) => settleAcross(far, id, o, e));
     if (answer.status === 'adopted') return { value: answer.enrol, detail: `${o.name} runs the fleet` };
@@ -537,7 +537,7 @@ async function finishOut(run: Runner, d: MoveDeps, client: Client, paths: Paths,
   await run.step('join', async () => {
     if (enrol) {
       const key = driverKey(paths, id);
-      if (!key) throw new StepError(`${thisMachine()}'s journal holds no key of this move; Svall's background service asks ${o.name} itself`, undefined, undefined, undefined, id);
+      if (!key) throw new StepError(`${thisMachine()}'s journal holds no key of this move; Svall's background service asks ${o.name} itself`);
       await client.call('fleet.homeMove', { op: 'join', id, enrol, key }).catch(() => writeEnrol(paths, id, enrol, key));
       await d.daemon.start();
     }

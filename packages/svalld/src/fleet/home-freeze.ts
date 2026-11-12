@@ -11,6 +11,7 @@ import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
 import { releaseVersion } from '../release.js';
 import { addEnrol, carriedKb, createMarker, endMove, keyFits, MAX_CARRIED_KB, moveInFlight, phoneOwed, readMarker, servedPhone, TOLD_UNMARKED } from './home-move.js';
+import { inFull } from '../link/ssh.js';
 import { keyLine, listedWorkerIds, noLoginFix } from '../placement/workers.js';
 
 // what still answers on a frozen home: a person's terminals go on, as do the robots
@@ -238,7 +239,7 @@ export class HomeFreeze {
   async settle(op: 'status' | 'abort'): Promise<void> {
     const asked = this.marker;
     if (!asked?.ask) return;
-    const answer = await this.d.ask(asked, op).catch((e: Error): AdoptAnswer => ({ status: 'pending', phase: 'unreachable', detail: e.message }));
+    const answer = await this.d.ask(asked, op).catch((e: Error): AdoptAnswer => ({ status: 'pending', phase: 'unreachable', detail: inFull(e) }));
     // an answer about an earlier move says nothing of the one standing now
     if (this.marker?.id === asked.id) await this.act(this.marker, answer);
   }
@@ -415,19 +416,21 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   const leaver = i.back ?? (mac ? 'this Mac' : 'this home');
   const failed: Blocker[] = [];
   const waits: NonNullable<HomeSheet['waits']> = [];
-  const fail = (reason: string, action: string, more: Pick<Blocker, 'run' | 'raw'> = {}): void => { failed.push({ reason, action, ...more }); };
+  // a sentence opens with a capital, but for a machine's name
+  const This = (who: string): string => who.replace(/^this /, 'This ');
+  const fail = (reason: string, action: string, more: Pick<Blocker, 'run' | 'raw'> = {}): void => { failed.push({ reason, action: `${action[0].toUpperCase()}${action.slice(1)}`, ...more }); };
   const robots = Object.values(state.robots);
-  if (!i.fromIsHome) fail('this daemon is not the fleet\'s home', 'run this where the fleet\'s home is');
+  if (!i.fromIsHome) fail('This daemon is not the fleet\'s home', 'run this where the fleet\'s home is');
   if (!i.linked) fail(`${far} is not reachable`, 'try again when it is awake');
   else if (!i.synced) fail(`${far} is still catching up`, 'try again in a moment');
   if (from.release !== to.release || from.protocol !== to.protocol || from.stateSchema !== to.stateSchema) fail(`${far} runs ${there.release}, this machine ${here.release}`, 'upgrade it under Machines');
   for (const r of robots.filter((c) => c.moving)) fail(`${r.name} is moving`, 'wait for its move to finish');
-  if (from.enrolling) fail('a worker is being enrolled', 'try again in a moment');
-  if (!from.workers) fail(`${i.back ?? 'this machine'} cannot read which workers this fleet has`, `fix ${from.fleetHome}/workers.json`);
+  if (from.enrolling) fail('A worker is being enrolled', 'try again in a moment');
+  if (!from.workers) fail(`${This(i.back ?? 'this machine')} cannot read which workers this fleet has`, `fix ${from.fleetHome}/workers.json`);
   const others = (from.workers ?? []).filter((m) => m !== to.machineId && m !== from.machineId);
   // a machine that could not be asked says nothing of a worker it would carry; one it would not, as a second Mac, is refused all the same
   const unasked = (m: string): boolean => i.reach === null && (!i.carried || i.carried.includes(m));
-  if (i.linked && others.some(unasked)) fail(`${taker} could not be asked whether it reaches the other workers`, 'try again in a moment');
+  if (i.linked && others.some(unasked)) fail(`${This(taker)} could not be asked whether it reaches the other workers`, 'try again in a moment');
   for (const m of others.filter((w) => !unasked(w))) {
     const name = state.machines?.[m as MachineId]?.name ?? m;
     const r = i.reach?.[m];
@@ -439,8 +442,8 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
     } else if (r.ok) continue;
     else if (r.kind === 'unreachable' && !i.linkedTo?.(m)) waits.push({ id: m as MachineId, name });
     // a key is made where the fleet goes, which on the way out is the far machine
-    else if (r.kind === 'auth' || r.kind === 'host_key') fail(`${taker} cannot log in to ${name}`, noLoginFix(taker, r.ssh, publicHalf(i, r.ssh)), { ...(!i.back && { run: keyLine(r.ssh) }), raw: r.raw });
-    else if (r.kind === 'unreachable') fail(`${taker} cannot reach ${name}, which ${leaver} reaches`, `check Tailscale on both machines, then ssh ${r.ssh} from ${taker}`, { raw: r.raw });
+    else if (r.kind === 'auth' || r.kind === 'host_key') fail(`${This(taker)} cannot log in to ${name}`, noLoginFix(taker, r.ssh, publicHalf(i, r.ssh)), { ...(!i.back && { run: keyLine(r.ssh) }), raw: r.raw });
+    else if (r.kind === 'unreachable') fail(`${This(taker)} cannot reach ${name}, which ${leaver} reaches`, `check Tailscale on both machines, then ssh ${r.ssh} from ${taker}`, { raw: r.raw });
     else fail(`${name}: ${r.why}`, r.kind === 'release' ? UPGRADE_ACTION : 'fix it, or remove it first', { raw: r.raw });
   }
   const farPlatform = i.platformOf?.(there.machineId);
@@ -448,21 +451,21 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
     fail(`${far}'s clock and this machine's are more than 5 minutes apart`, 'set the one that is wrong: on a server, ssh there, then sudo timedatectl set-ntp on', farPlatform === 'darwin' ? {} : { run: NTP });
   }
   // on the way back, the leaving home's facts are its own only once it answers
-  if (i.linked && from.fleetKb === undefined) fail(`${i.back ?? 'this machine'} cannot tell what the fleet's files come to`, `check that everything in ${from.fleetHome} can be read`);
+  if (i.linked && from.fleetKb === undefined) fail(`${This(i.back ?? 'this machine')} cannot tell what the fleet's files come to`, `check that everything in ${from.fleetHome} can be read`);
   const fleetKb = from.fleetKb ?? 0;
   if (fleetKb > MAX_CARRIED_KB) {
-    fail(`the fleet's files are ${mb(fleetKb)} MB; a move carries ${mb(MAX_CARRIED_KB)} MB`, 'remove what you no longer need from docs and retro', { raw: `${from.fleetHome}/docs\n${from.fleetHome}/retro` });
+    fail(`The fleet's files are ${mb(fleetKb)} MB; a move carries ${mb(MAX_CARRIED_KB)} MB`, 'remove what you no longer need from docs and retro', { raw: `${from.fleetHome}/docs\n${from.fleetHome}/retro` });
   }
   const needKb = COPIES_TAKEN * fleetKb + SPARE_KB;
-  if (to.freeKb !== undefined && to.freeKb < needKb) fail(`${goesTo} has ${Math.floor(to.freeKb / 1024)} MB free, and taking the fleet takes ${mb(needKb)} MB`, i.back ? 'free some space here' : 'free some space there');
-  if (from.moving) fail('the fleet is moving already', 'finish or call off that move first', { raw: from.moving });
-  if (to.moving) fail(i.back ? 'this machine is still taking a move' : `${toName} is still leaving a move`, 'finish or call off that move first', { raw: to.moving });
+  if (to.freeKb !== undefined && to.freeKb < needKb) fail(`${This(goesTo)} has ${Math.floor(to.freeKb / 1024)} MB free, and taking the fleet takes ${mb(needKb)} MB`, i.back ? 'free some space here' : 'free some space there');
+  if (from.moving) fail('The fleet is moving already', 'finish or call off that move first');
+  if (to.moving) fail(i.back ? 'This machine is still taking a move' : `${toName} is still leaving a move`, 'finish or call off that move first');
   // Tailscale by its state on each machine; a command is typed only on the far one, where its terminal opens
   const tailscale = (f: HomeFacts, on: string, platform: string | undefined, where: string, typed: boolean): void => {
     const state = f.tailscale.state ?? (f.tailscale.stopped ? 'stopped' : f.tailscale.error ? 'missing' : 'ok');
     const raw = { raw: f.tailscale.error };
     const app = platform === 'darwin';
-    if (state === 'missing') fail(`${on} has no Tailscale`, `install it${where} from tailscale.com/download and sign in`, raw);
+    if (state === 'missing') fail(`${This(on)} has no Tailscale`, `install it${where} from tailscale.com/download and sign in`, raw);
     else if (state === 'stopped') fail(`Tailscale is not running on ${on}`, app ? `open the Tailscale app${where}` : `start it${where}: sudo systemctl start tailscaled`, { ...(!app && typed && { run: 'sudo systemctl start tailscaled' }), ...raw });
     else if (state === 'signedOut') fail(`Tailscale on ${on} is signed out`, app ? `sign in from the Tailscale app${where}` : `sign in${where}: sudo tailscale up`, { ...(!app && typed && { run: 'sudo tailscale up' }), ...raw });
   };

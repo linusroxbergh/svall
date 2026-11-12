@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { emptyState, type AdoptAnswer, type HomeFacts, type Result } from '@svall/protocol';
 import { homeCheck, HomeFreeze } from '../../src/fleet/home-freeze.js';
+import { SshError } from '../../src/link/ssh.js';
 import {  } from '../../src/fleet/home-move.js';
 import { resolvePaths } from '../../src/paths.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -23,16 +24,16 @@ describe('the check names each machine for what it is', () => {
 
   it('on the way back, a workers.json the home cannot read is studio\'s to fix', () => {
     const r = back({ from: facts({ machineId: STUDIO, fleetHome: '/home/ada/.svall' as never }) });
-    expect(blockers(r)).toEqual([['studio cannot read which workers this fleet has', 'fix /home/ada/.svall/workers.json']]);
+    expect(blockers(r)).toEqual([['studio cannot read which workers this fleet has', 'Fix /home/ada/.svall/workers.json']]);
   });
 
   it('on the way back, what is the old home\'s it says of studio', () => {
     const r = back({ linked: false, from: facts({ machineId: STUDIO, release: '0.21', clock: 1e9, tailscale: { state: 'signedOut', error: 'BackendState NeedsLogin' }, workers: [] }), to: facts({ release: '0.22' }) });
     expect(blockers(r)).toEqual([
-      ['studio is not reachable', 'try again when it is awake'],
-      ['studio runs 0.21, this machine 0.22', 'upgrade it under Machines'],
-      ["studio's clock and this machine's are more than 5 minutes apart", 'set the one that is wrong: on a server, ssh there, then sudo timedatectl set-ntp on'],
-      ['Tailscale on studio is signed out', 'sign in there: sudo tailscale up'],
+      ['studio is not reachable', 'Try again when it is awake'],
+      ['studio runs 0.21, this machine 0.22', 'Upgrade it under Machines'],
+      ["studio's clock and this machine's are more than 5 minutes apart", 'Set the one that is wrong: on a server, ssh there, then sudo timedatectl set-ntp on'],
+      ['Tailscale on studio is signed out', 'Sign in there: sudo tailscale up'],
     ]);
     expect(behind(r)).toEqual([
       ["studio's clock and this machine's are more than 5 minutes apart", 'sudo timedatectl set-ntp on', undefined],
@@ -45,13 +46,13 @@ describe('the check names each machine for what it is', () => {
   it('on the way back, what is this machine\'s it says of this machine, a worker besides included', () => {
     const r = back({ synced: false, from: facts({ machineId: STUDIO, workers: ['99999999-7777-8888-9999-aaaaaaaaaaaa'] }), to: facts({ freeKb: 10, moving: 'hm_abcdefghij', tailscale: { state: 'missing' } }), platformOf: (id: string) => (id === MAC ? 'linux' : undefined) });
     expect(blockers(r)).toEqual([
-      ['studio is still catching up', 'try again in a moment'],
-      ['99999999-7777-8888-9999-aaaaaaaaaaaa is a worker of this fleet too', 'remove 99999999-7777-8888-9999-aaaaaaaaaaaa first; add it again after the move'],
-      ['this machine has 0 MB free, and taking the fleet takes 100 MB', 'free some space here'],
-      ['this machine is still taking a move', 'finish or call off that move first'],
-      ['this machine has no Tailscale', 'install it from tailscale.com/download and sign in'],
+      ['studio is still catching up', 'Try again in a moment'],
+      ['99999999-7777-8888-9999-aaaaaaaaaaaa is a worker of this fleet too', 'Remove 99999999-7777-8888-9999-aaaaaaaaaaaa first; add it again after the move'],
+      ['This machine has 0 MB free, and taking the fleet takes 100 MB', 'Free some space here'],
+      ['This machine is still taking a move', 'Finish or call off that move first'],
+      ['This machine has no Tailscale', 'Install it from tailscale.com/download and sign in'],
     ]);
-    expect(behind(r)).toEqual([['this machine is still taking a move', undefined, 'hm_abcdefghij']]);
+    expect(behind(r)).toEqual([]);
   });
 
   it('on the way out, studio is where the fleet goes', () => {
@@ -60,12 +61,12 @@ describe('the check names each machine for what it is', () => {
       linked: false, synced: true, fromIsHome: true, platformOf: (id) => (id === MAC ? 'linux' : undefined),
     });
     expect(blockers(r)).toEqual([
-      ['studio is not reachable', 'try again when it is awake'],
-      ['studio runs 0.21, this machine 0.22', 'upgrade it under Machines'],
-      ['studio has 0 MB free, and taking the fleet takes 100 MB', 'free some space there'],
-      ['studio is still leaving a move', 'finish or call off that move first'],
-      ['studio has no Tailscale', 'install it there from tailscale.com/download and sign in'],
-      ['this machine has no Tailscale', 'install it from tailscale.com/download and sign in'],
+      ['studio is not reachable', 'Try again when it is awake'],
+      ['studio runs 0.21, this machine 0.22', 'Upgrade it under Machines'],
+      ['studio has 0 MB free, and taking the fleet takes 100 MB', 'Free some space there'],
+      ['studio is still leaving a move', 'Finish or call off that move first'],
+      ['studio has no Tailscale', 'Install it there from tailscale.com/download and sign in'],
+      ['This machine has no Tailscale', 'Install it from tailscale.com/download and sign in'],
     ]);
   });
 });
@@ -84,6 +85,8 @@ describe('a frozen home says where the machine holding the fleet stands, apart f
   it.each([
     ['a phase', () => Promise.resolve<AdoptAnswer>({ status: 'pending', phase: 'rolledback', detail: 'the adopt was cut short' }), 'rolledback', 'the adopt was cut short'],
     ['no answer', () => Promise.reject(new Error('ssh: connect to host studio port 22: Connection refused')), 'unreachable', 'ssh: connect to host studio port 22: Connection refused'],
+    ['no svall there', () => Promise.reject(new SshError('version', 'Svall on studio did not answer', 'svall connection-info exited 127: bash: svall: command not found')), 'unreachable',
+      'Svall on studio did not answer: svall connection-info exited 127: bash: svall: command not found'],
     ['the end of it', () => Promise.resolve<AdoptAnswer>({ status: 'done' }), 'done', 'done'],
   ])('%s', async (_what, answer, phase, said) => {
     const held = frozen(answer);

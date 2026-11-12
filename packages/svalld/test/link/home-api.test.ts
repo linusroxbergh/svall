@@ -91,9 +91,12 @@ describe('how a window reaches a far home', () => {
     expect(m.run).toHaveBeenCalledTimes(2);
   });
 
-  it('reads an svall the far shell cannot run as version', async () => {
-    const a = await apiOf(dialOf(fakeMaster(() => ({ code: 127, signal: null, stderr: 'not found', stdout: '' })).master)).answer();
-    expect(a.state).toBe('version');
+  it('reads an svall the far shell cannot run as version, and logs what the far shell said', async () => {
+    const error = vi.fn();
+    const m = fakeMaster(() => ({ code: 127, signal: null, stderr: 'bash: svall: command not found', stdout: '' }));
+    const a = await new HomeApi({ worker: () => worker, dial: dialOf(m.master), linked: () => false, greets: async () => true, log: { error } }).answer();
+    expect(a).toMatchObject({ state: 'version', detail: 'Svall on studio did not answer' });
+    expect(error.mock.calls.join()).toContain('exited 127: bash: svall: command not found');
   });
 
   it('names both machines of one that answers as another, in a person\'s words', async () => {

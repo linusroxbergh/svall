@@ -1019,7 +1019,7 @@ describe('the check', () => {
   it('refuses a second worker of either kind, by decision, naming how to bring it along', () => {
     const r = homeCheck(input({ from: facts({ workers: [STUDIO, '99999999-7777-8888-9999-aaaaaaaaaaaa'] }) }));
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.refusal.action).toBe('remove 99999999-7777-8888-9999-aaaaaaaaaaaa first; add it again after the move');
+    if (!r.ok) expect(r.refusal.action).toBe('Remove 99999999-7777-8888-9999-aaaaaaaaaaaa first; add it again after the move');
   });
 
   it('gives a second worker only the way back its platform takes, and both where this machine has no record of it', () => {
@@ -1028,9 +1028,9 @@ describe('the check', () => {
       const r = homeCheck(input({ from: facts({ workers: [STUDIO, second] }), platformOf: (id: string) => (id === second ? platform : 'linux') }));
       return r.ok ? undefined : r.refusal.action;
     };
-    expect(action('linux')).toBe(`remove ${second} first; after the move, add it again from studio`);
-    expect(action('darwin')).toBe(`remove ${second} first; after the move, run svall fleet join on it`);
-    expect(action()).toBe(`remove ${second} first; add it again after the move`);
+    expect(action('linux')).toBe(`Remove ${second} first; after the move, add it again from studio`);
+    expect(action('darwin')).toBe(`Remove ${second} first; after the move, run svall fleet join on it`);
+    expect(action()).toBe(`Remove ${second} first; add it again after the move`);
   });
 
   it('a far Tailscale says how it stands: stopped, signed out or missing, each with how to fix it there, the command a terminal there runs, and its own words behind details', async () => {
@@ -1045,16 +1045,16 @@ describe('the check', () => {
 
     const stopped = await at(tailscale(true));
     expect(stopped).toEqual({ state: 'stopped', error: raw });
-    expect(check(stopped)).toMatchObject({ ok: false, refusal: { reason: 'Tailscale is not running on studio', action: 'start it there: sudo systemctl start tailscaled', run: 'sudo systemctl start tailscaled', raw, details: [] } });
+    expect(check(stopped)).toMatchObject({ ok: false, refusal: { reason: 'Tailscale is not running on studio', action: 'Start it there: sudo systemctl start tailscaled', run: 'sudo systemctl start tailscaled', raw, details: [] } });
 
     const out = await at(tailscale(true, { BackendState: 'NeedsLogin' }));
     expect(out).toEqual({ state: 'signedOut', error: 'BackendState NeedsLogin' });
-    expect(check(out)).toMatchObject({ ok: false, refusal: { reason: 'Tailscale on studio is signed out', action: 'sign in there: sudo tailscale up', run: 'sudo tailscale up', raw: 'BackendState NeedsLogin' } });
+    expect(check(out)).toMatchObject({ ok: false, refusal: { reason: 'Tailscale on studio is signed out', action: 'Sign in there: sudo tailscale up', run: 'sudo tailscale up', raw: 'BackendState NeedsLogin' } });
 
     const missing = await at(tailscale(false));
     expect(missing).toEqual({ state: 'missing' });
     const none = check(missing);
-    expect(none).toMatchObject({ ok: false, refusal: { reason: 'studio has no Tailscale', action: 'install it there from tailscale.com/download and sign in', details: [] } });
+    expect(none).toMatchObject({ ok: false, refusal: { reason: 'studio has no Tailscale', action: 'Install it there from tailscale.com/download and sign in', details: [] } });
     expect(none.ok || [none.refusal.run, none.refusal.raw]).toEqual([undefined, undefined]);
 
     expect(await at(tailscale(true, { BackendState: 'Running', Self: { DNSName: 'studio.tail.' } }))).toEqual({ host: 'studio.tail', state: 'ok' });
@@ -1070,15 +1070,15 @@ describe('the check', () => {
     const check = (platforms: Record<string, string>, o = {}) => homeCheck(input({ platformOf: (id: string) => platforms[id], ...o }));
     const far = (t: HomeFacts['tailscale']) => ({ to: { ...facts({ machineId: STUDIO }), tailscale: t } });
     const mac = check({ [STUDIO]: 'darwin' }, far(down));
-    expect(mac).toMatchObject({ refusal: { action: 'open the Tailscale app there', raw } });
+    expect(mac).toMatchObject({ refusal: { action: 'Open the Tailscale app there', raw } });
     expect(mac.ok || mac.refusal.run).toBeUndefined();
-    expect(check({ [STUDIO]: 'darwin' }, far({ state: 'signedOut' }))).toMatchObject({ refusal: { reason: 'Tailscale on studio is signed out', action: 'sign in from the Tailscale app there' } });
+    expect(check({ [STUDIO]: 'darwin' }, far({ state: 'signedOut' }))).toMatchObject({ refusal: { reason: 'Tailscale on studio is signed out', action: 'Sign in from the Tailscale app there' } });
     const here = check({ [MAC]: 'linux' }, { from: facts({ tailscale: down }) });
-    expect(here).toMatchObject({ refusal: { reason: 'Tailscale is not running on this machine', action: 'start it: sudo systemctl start tailscaled', raw } });
+    expect(here).toMatchObject({ refusal: { reason: 'Tailscale is not running on this machine', action: 'Start it: sudo systemctl start tailscaled', raw } });
     expect(here.ok || here.refusal.run).toBeUndefined();
-    expect(check({ [MAC]: 'darwin' }, { from: facts({ tailscale: down }) })).toMatchObject({ refusal: { reason: 'Tailscale is not running on this Mac', action: 'open the Tailscale app', raw } });
-    expect(check({ [MAC]: 'darwin' }, { from: facts({ tailscale: { state: 'missing' } }) })).toMatchObject({ refusal: { reason: 'this Mac has no Tailscale' } });
-    expect(check({ [MAC]: 'linux' }, { from: facts({ tailscale: { state: 'missing' } }) })).toMatchObject({ refusal: { reason: 'this machine has no Tailscale', action: 'install it from tailscale.com/download and sign in' } });
+    expect(check({ [MAC]: 'darwin' }, { from: facts({ tailscale: down }) })).toMatchObject({ refusal: { reason: 'Tailscale is not running on this Mac', action: 'Open the Tailscale app', raw } });
+    expect(check({ [MAC]: 'darwin' }, { from: facts({ tailscale: { state: 'missing' } }) })).toMatchObject({ refusal: { reason: 'This Mac has no Tailscale' } });
+    expect(check({ [MAC]: 'linux' }, { from: facts({ tailscale: { state: 'missing' } }) })).toMatchObject({ refusal: { reason: 'This machine has no Tailscale', action: 'Install it from tailscale.com/download and sign in' } });
     expect(check({}, { linked: false, ...far(down) })).toMatchObject({ refusal: { reason: 'studio is not reachable', details: [], more: [{ reason: 'Tailscale is not running on studio', raw }] } });
   });
 
@@ -1089,7 +1089,7 @@ describe('the check', () => {
     const busy = await said();
     held();
     expect(busy.enrolling).toBe(true);
-    expect(homeCheck(input({ from: { ...facts({}), enrolling: busy.enrolling } }))).toMatchObject({ ok: false, refusal: { reason: 'a worker is being enrolled', action: 'try again in a moment' } });
+    expect(homeCheck(input({ from: { ...facts({}), enrolling: busy.enrolling } }))).toMatchObject({ ok: false, refusal: { reason: 'A worker is being enrolled', action: 'Try again in a moment' } });
     const free = await said();
     expect(free.enrolling).toBeUndefined();
     expect(homeCheck(input({ from: { ...facts({}), enrolling: free.enrolling } })).ok).toBe(true);
@@ -1106,8 +1106,10 @@ describe('the check', () => {
       expect(f.moving).toBe('hm_abcdefghij');
       expect(f.enrolling).toBeUndefined();
       const r = homeCheck(input({ from: { ...facts({}), moving: f.moving, enrolling: f.enrolling } }));
-      expect(r).toMatchObject({ ok: false, refusal: { reason: 'the fleet is moving already', raw: 'hm_abcdefghij' } });
-      expect(JSON.stringify(r)).not.toContain('a worker is being enrolled');
+      expect(r).toMatchObject({ ok: false, refusal: { reason: 'The fleet is moving already' } });
+      // a move goes by its id nowhere a person reads
+      expect(JSON.stringify(r)).not.toContain('hm_');
+      expect(JSON.stringify(r)).not.toContain('A worker is being enrolled');
     } finally { held(); }
   });
 
@@ -1119,7 +1121,7 @@ describe('the check', () => {
     const { workers } = await said();
     expect(workers).toBeUndefined();
     const r = homeCheck(input({ from: { ...facts({ fleetHome: '/x' as never }), workers } }));
-    expect(r).toMatchObject({ ok: false, refusal: { reason: 'this machine cannot read which workers this fleet has', action: 'fix /x/workers.json' } });
+    expect(r).toMatchObject({ ok: false, refusal: { reason: 'This machine cannot read which workers this fleet has', action: 'Fix /x/workers.json' } });
   });
 
   it('counts only the workers the registry lists, as a token of a machine it no longer lists links nothing; all of them where it cannot be read', async () => {
@@ -1140,10 +1142,10 @@ describe('the check', () => {
   });
 
   it.each([
-    ['out', input({ from: facts({ fleetKb: undefined }) }), 'this machine'],
+    ['out', input({ from: facts({ fleetKb: undefined }) }), 'This machine'],
     ['back', input({ back: 'studio', toName: 'mac', from: facts({ machineId: STUDIO, fleetKb: undefined, workers: [] }), to: facts({}) }), 'studio'],
   ])('%s: refuses a fleet the leaving home cannot measure once it answers, as it could be past what a move carries', (_way, unmeasured, who) => {
-    expect(homeCheck(unmeasured)).toMatchObject({ ok: false, refusal: { reason: `${who} cannot tell what the fleet's files come to`, action: 'check that everything in /x can be read' } });
+    expect(homeCheck(unmeasured)).toMatchObject({ ok: false, refusal: { reason: `${who} cannot tell what the fleet's files come to`, action: 'Check that everything in /x can be read' } });
     const unreached = homeCheck({ ...unmeasured, linked: false });
     expect(unreached).toMatchObject({ ok: false, refusal: { reason: 'studio is not reachable' } });
     expect(unreached).not.toHaveProperty('refusal.more');
@@ -1175,19 +1177,19 @@ describe('the check', () => {
 
   const WAYS = [
     ['out', (fleetKb: number, freeKb: number) => input({ from: facts({ fleetKb }), to: facts({ machineId: STUDIO, freeKb }) }), 'studio', 'there'],
-    ['back', (fleetKb: number, freeKb: number) => input({ back: 'studio', toName: 'mac', from: facts({ machineId: STUDIO, fleetKb, workers: [], fleetHome: '/x' as never }), to: facts({ freeKb }) }), 'this machine', 'here'],
+    ['back', (fleetKb: number, freeKb: number) => input({ back: 'studio', toName: 'mac', from: facts({ machineId: STUDIO, fleetKb, workers: [], fleetHome: '/x' as never }), to: facts({ freeKb }) }), 'This machine', 'here'],
   ] as const;
 
   it.each(WAYS)('%s: the machine taking the fleet has room for the archive, what it unpacks to and the files built from that, and some', (_way, asked, who, where) => {
     const needs = (3 * 50 + 100) * 1024;
     expect(homeCheck(asked(50 * 1024, needs)).ok).toBe(true);
-    expect(homeCheck(asked(50 * 1024, needs - 1))).toMatchObject({ ok: false, refusal: { reason: `${who} has 249 MB free, and taking the fleet takes 250 MB`, action: `free some space ${where}` } });
+    expect(homeCheck(asked(50 * 1024, needs - 1))).toMatchObject({ ok: false, refusal: { reason: `${who} has 249 MB free, and taking the fleet takes 250 MB`, action: `Free some space ${where}` } });
   });
 
   it.each(WAYS)('%s: a fleet past what a way back can carry stays where it is, so none goes out and cannot come back', (_way, asked) => {
     expect(homeCheck(asked(MAX_CARRIED_KB, 1e9)).ok).toBe(true);
     expect(homeCheck(asked(MAX_CARRIED_KB + 1, 1e9))).toMatchObject({
-      ok: false, refusal: { reason: "the fleet's files are 180 MB; a move carries 180 MB", action: 'remove what you no longer need from docs and retro', raw: '/x/docs\n/x/retro' },
+      ok: false, refusal: { reason: "The fleet's files are 180 MB; a move carries 180 MB", action: 'Remove what you no longer need from docs and retro', raw: '/x/docs\n/x/retro' },
     });
     expect((MAX_CARRIED_KB * 1024 * 4) / 3).toBeLessThan(MAX_ARCHIVE);
   });
