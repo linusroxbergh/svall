@@ -144,7 +144,7 @@
 .side .sname { display: flex; align-items: center; gap: var(--sp-md); }
 /* the settings window: its panes listed down the left, the one picked beside them in a side card's dress; sized by its grip, inside the window */
 .set-win { position: fixed; inset: 0; margin: auto; z-index: var(--z-settings); box-sizing: border-box; overflow: hidden;
-  min-width: 640px; min-height: 440px; max-width: calc(100vw - 40px); max-height: calc(100vh - 40px); display: grid; grid-template: auto minmax(0, 1fr) / 180px minmax(0, 1fr);
+  min-width: min(640px, calc(100vw - 40px)); min-height: min(440px, calc(100vh - 40px)); max-width: calc(100vw - 40px); max-height: calc(100vh - 40px); display: grid; grid-template: auto minmax(0, 1fr) / 180px minmax(0, 1fr);
   transition: opacity var(--dur-slow) var(--ease-out), translate var(--dur-slow) var(--ease-out), scale var(--dur-slow) var(--ease-out); }
 .set-grip { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; touch-action: none;
   background: linear-gradient(135deg, transparent 55%, var(--line-strong) 55% 60%, transparent 60% 75%, var(--line-strong) 75% 80%, transparent 80%); }
