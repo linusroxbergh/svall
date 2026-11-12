@@ -41,18 +41,19 @@ such as `studio`) and its ssh destination (such as `ada@studio`), and choose **A
 svall host add studio --ssh ada@studio
 ```
 
-Both run the same steps and show each as it finishes. The app shows them in these groups:
+Both run the same steps and show each as it finishes. The app lists what needs you as it is found, then folds the
+notes, the checks that went fine and your agent setup behind a line each; the fine checks fold under these sections:
 
-1. **Reaching it.** One interactive ssh, so you can accept the host key and log in, then one control connection for
+1. **Connection.** One interactive ssh, so you can accept the host key and log in, then one control connection for
    the rest, which needs a key ssh can use without asking. From the app, ssh asks in a dialog.
-2. **What it needs.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
+2. **System.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
    Tailscale, Git, systemd, free space (under 5 GiB is a warning) and lingering, which it turns on where it is off.
-3. **Svall there.** The Linux release matching this Mac's own release, checked against the digest this Mac's release
+3. **Svall on studio.** The Linux release matching this Mac's own release, checked against the digest this Mac's release
    pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there, and the tmux it
    brings checked. Then `svall-svalld@private.service` as a systemd user unit, its machine id, and the release it
    answers from, and **Worker**: the machine becomes this fleet's worker, with a token the home issues, and the unit
    restarts as `svalld --worker`, which accepts the home alone.
-4. **Agents there.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
+4. **Agents on studio.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
    0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` names a model provider),
    and with Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's
    own `svall doctor` finds them; and `gh`'s login. Each agent is asked on the `PATH` and with the `CLAUDE_CONFIG_DIR`,
@@ -60,7 +61,7 @@ Both run the same steps and show each as it finishes. The app shows them in thes
    **Agent versions** compares each with this Mac's, as its own daemon finds it.
 5. **Your agent setup.** A row for each part of [your agent setup](#your-agent-setup-on-the-machine) that waits on
    you there: a key to tick, a variable to set, a login, a program to install.
-6. **Trying it out.** The machine's own fleet answers through a forwarded port, says it serves this fleet as a
+6. **Final check.** The machine's own fleet answers through a forwarded port, says it serves this fleet as a
    worker, and tmux opens and closes a window there. Then the machine is added to this Mac's list in
    `~/.config/svall/machines.json`, and this Mac's daemon links to it.
 
@@ -339,7 +340,8 @@ set <name>`: see [Changing home](home.md#changing-home).
 
 ## The phone while the home is off
 
-A worker can serve the phone itself while the home is off. Tick **Phone while this Mac is off** under Machines →
+A worker can serve the phone itself while the home is off. Tick **Phone while this Mac is off** (on a far home, its name
+in place of this Mac) under Machines →
 **Check** → Your agent setup, or run `svall host consent studio phone on`. Ticking copies the home's push keys and the
 phone's devices to the machine, which is why it stays off until ticked. While the home's own phone link is on, the
 worker then serves the phone with `tailscale serve` on a free https port (443 stays with whatever already serves
