@@ -239,13 +239,16 @@ function Held({ id, n, promptId, refuse }: { id: string; n: number; promptId: st
   );
 }
 
-// why the robot's machine is out of reach, and a check of it, whose release row offers the upgrade when it is the machine's to take
+// why the robot's machine is out of reach, and a check of it, whose release row offers the upgrade when it is the machine's to take;
+// on this Mac's copy of the fleet it is the home that is out of reach, and the home is tried again
 function AwayLine({ name, id, line, running, readOnly }: { name: string; id?: string; line: string; running: boolean; readOnly?: string }) {
   const run = useCheck(name, id);
+  const copy = useApp((s) => !!s.via && !s.via.online);
   return (
     <div className="side-away" data-testid="side-away">
       <span>{line}{readOnly && <small data-testid="side-away-read-only">{readOnly}</small>}</span>
-      <button className="btn sm" data-testid="side-away-run" disabled={running} data-tip="What is wrong on the machine, checked now" onClick={run}>Check {name}</button>
+      {copy ? <button className="btn sm" data-testid="side-away-retry" onClick={() => app.api().retryHome()}>Try again</button>
+        : <button className="btn sm" data-testid="side-away-run" disabled={running} data-tip="What is wrong on the machine, checked now" onClick={run}>Check {name}</button>}
     </div>
   );
 }

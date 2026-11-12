@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { contextKind, type MachineId } from '@svall/protocol';
 import { fleet } from '../fixtures.js';
-import { bridge, call, freshStore, store } from './harness.js';
+import { bridge, call, freshStore, retryHome, store } from './harness.js';
 
 window.matchMedia ??= ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} })) as never;
 document.elementFromPoint ??= () => null;
@@ -26,6 +26,7 @@ const FOLLOWING = { ...COPY, online: true as const };
 // c0 runs on the home and c1 on this Mac; both starred, with a link to remove
 beforeEach(() => {
   call.mockReset();
+  retryHome.mockReset();
   call.mockImplementation((method: string) => Promise.resolve(method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : {}));
   freshStore();
   const f = fleet();
@@ -111,7 +112,7 @@ const GPU = 'a1b2c3d4-0000-4000-8000-000000000003' as MachineId;
 
 // c0 runs on the home; c2 on a third machine, which this Mac reaches through the home and so waits on it
 test.each(STATES.flatMap((row) => [['c0', 'linus-vault', 'linus-vault', ...row], ['c2', 'gpu-box, reached through linus-vault', 'gpu-box', ...row]]))(
-  'on the Mac\'s copy %s, on %s, which is %s, says why with the home %o on the card, the pane, the toast and the tip', async (id, on, machine, home, line, which, readOnly, kicker) => {
+  'on the Mac\'s copy %s, on %s, which is %s, says why with the home %o on the card, the pane, the toast and the tip', async (id, on, _machine, home, line, which, readOnly, kicker) => {
     const f = store.getState().fleet;
     act(() => {
       store.getState().setFleet({ ...f, machines: { ...f.machines, [GPU]: { name: 'gpu-box', reachable: true, since: 0 } }, robots: { ...f.robots, c2: { ...f.robots.c2, machine: GPU } } });
@@ -122,7 +123,11 @@ test.each(STATES.flatMap((row) => [['c0', 'linus-vault', 'linus-vault', ...row],
     call.mockImplementation((method: string) => Promise.resolve(answers[method] ?? {}));
     render(<><SideCard id={id} /><TerminalArea id={id} /></>);
     await act(async () => {});
-    expect(screen.getByTestId('side-away').textContent).toBe(`${line}${readOnly}Check ${machine}`);
+    // the home is what does not answer, so it is the home that is tried again, not the robot's machine checked
+    expect(screen.getByTestId('side-away').textContent).toBe(`${line}${readOnly}Try again`);
+    expect(screen.queryByTestId('side-away-run')).toBeNull();
+    fireEvent.click(screen.getByTestId('side-away-retry'));
+    expect(retryHome).toHaveBeenCalledTimes(1);
     expect(document.querySelector('.kicker')!.textContent).toBe(kicker);
     expect(screen.getByTestId('terminal-unreachable').textContent).toBe(line);
     fireEvent.click(screen.getByTestId('side-star'));
