@@ -122,11 +122,13 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
 
   // a fleet whose home took it away is changed there alone, so this page says where and offers nothing of its old copy
   const moved = movedTo(fleet, via, status);
+  // a phone the fleet does not take changes nothing in it
+  const shut = status === 'unpaired' || status === 'refused';
   return (
     <div className="fleet">
       <header className="top">
         <h1>{document.title}</h1>
-        {!moved && <button type="button" className="ib touch" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}><Plus size="lg" /></button>}
+        {!moved && !shut && <button type="button" className="ib touch" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}><Plus size="lg" /></button>}
         {!via && <button type="button" className="ib touch" aria-label="Settings" onClick={() => setSheet({ kind: 'settings' })}><Gear /></button>}
         <span className="conn" data-status={status}>
           {status !== 'online' ? status : moved ? `moved to ${moved}` : via ? `on ${machineName(fleet, via.machine)} · ${homeName(fleet, via)} asleep` : need ? `${need} waiting` : 'all quiet'}
