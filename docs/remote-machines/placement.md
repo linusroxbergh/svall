@@ -9,8 +9,8 @@ and nothing else, and keeps its own clone of each repository its robots work in.
 Robots on different machines share islands, cards, the map, the board and the keyboard flow. A robot on a worker names
 its machine on its board card, token, sidebar row, side card and terminal card, and keeps its board column; `svall robot run`, `read`, `wait` and
 `revive` reach it there, and its terminal attaches over the home's own ssh connection to the worker. Its Files,
-Changes and Resources read its files on the worker, read-only: it edits them in its terminal, and **Terminal there**, on
-its card, each pane's machine line and the shelf's foot, opens a terminal on the worker with a `cd` to its folder typed at
+Changes and Resources read its files on the worker, read-only: it edits them in its terminal, and **Shell on linus-vault**, on
+its card and each pane's machine line (**Open terminal** on the shelf's foot), opens a terminal on the worker with a `cd` to its folder typed at
 the prompt: press Return to go there. Finder is not offered: a path there can name another file here, so the app's shell
 opens one only for this machine. A file or folder in the robot's context opens the same terminal; a path added to it,
 `~` included, is looked for on the worker, as its files are read there, so the worker must be reachable for that edit. The Usage
@@ -65,10 +65,10 @@ takes a credential file such as `.env` along, `--own-worktree` gives a robot on 
 (check 3), and `--retry` runs the robot's current move again from the step it stopped at.
 
 In the app, once the robot lands with one of them to do, the move sheet's done line says "kanban runs on linus-vault.
-2 parts of its agent setup will not work there." With the sheet closed, or for a move from elsewhere, a toast says
-"kanban is on linus-vault. 2 parts of its agent setup will not work there.", and **Show** opens its card. The card's
-**On linus-vault** section, folded until you open it, lists them while it runs there, each with **Copy keys**, **Open
-terminal** or what to do.
+2 parts of its agent setup are not there yet.", and its **Show** opens the card on them. With the sheet closed, or for a
+move from elsewhere, a toast says "kanban is on linus-vault. 2 parts of its agent setup are not there yet.", and **Show**
+opens its card. The card's **On linus-vault** section, folded until you open it, lists them while it runs there, each with
+**Copy key**, **Open terminal**, a field for a variable, or **Not needed** for a program.
 
 While it moves the card says "moving" and its terminal "moving to linus-vault…"; opening a terminal, a revive, `svall
 robot run` and closing the robot are refused with "moving to linus-vault". Then the card names the machine, and the

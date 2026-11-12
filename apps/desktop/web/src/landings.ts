@@ -1,15 +1,14 @@
-import { aside, asideLine, wayOn, type SetupRow } from '@svall/protocol';
+import { aside, wayOn, type SetupRow } from '@svall/protocol';
 import type { Api } from './api.js';
 import type { Bridge } from './bridge.js';
 import { destinationName } from './placement.js';
 import type { AppStore } from './store/index.js';
 
-/** How much of a robot's agent setup will not work on the machine it moved to, or nothing when none of that has a way on. */
+/** How much of a robot's agent setup is not yet on the machine it moved to, or nothing when none of that has a way on. */
 export function setupNote(rows: SetupRow[]): string | undefined {
   const gaps = rows.filter((r) => r.gap && !aside(r));
-  const apart = asideLine(rows.filter(aside));
   const n = gaps.length;
-  return gaps.some(wayOn) ? `${n} ${n === 1 ? 'part' : 'parts'} of its agent setup will not work there${apart ? `, and ${apart}` : ''}.` : undefined;
+  return gaps.some(wayOn) ? `${n === 1 ? '1 part of its agent setup is' : `${n} parts of its agent setup are`} not there yet.` : undefined;
 }
 
 /** A robot landing on a worker toasts how much of its agent setup will not work there, with Show to open its card;
