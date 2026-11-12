@@ -29,6 +29,8 @@ const useLoginTerminal = (step: string, terminal?: Terminal): Terminal | undefin
   useApp((s) => (step === 'ssh' || step === 'master') && !homeSshOf(s)) ? undefined : terminal;
 const FORGET = /\bhost remove \S+ --forget\b/;
 const UPGRADE = /\bhost upgrade\b/;
+// why a machine's Check and Upgrade are off: one run on the machines at a time
+const BUSY = 'Another run on a machine is under way';
 // what a failed row runs again as it ran; an add goes back to its form, a remove to its foot, a home move through its sheet
 const RUN_AGAIN = new Set<HostOp>(['upgrade', 'rollback']);
 // the runs the sheet's title names with their machine, as `Check studio`
@@ -100,12 +102,12 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
   const item = (fn: () => void) => () => { close(); fn(); };
   return (
     <span className="machine-acts" ref={box}>
-      {!menuOnly && <button className="btn sm" data-testid="machine-doctor" disabled={running} data-tip="What to fix on the machine and what will not work there yet, checked now" onClick={() => run('doctor')}>Check</button>}
+      {!menuOnly && <button className="btn sm" data-testid="machine-doctor" disabled={running} data-tip={running ? BUSY : 'What to fix on the machine and what will not work there yet, checked now'} onClick={() => run('doctor')}>Check</button>}
       <button ref={more} className={menuOnly ? 'ib' : 'btn sm'} data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label={menuOnly ? `More for ${name}` : 'More for this machine'}
         onClick={() => setOpen(!open)}><More /></button>
       {open && (
         <div ref={menu} className="machine-menu menu popover" role="menu" style={place}>
-          <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip={`Install ${release} release there`} onClick={item(() => run('upgrade'))}>Upgrade to {release} release</button>
+          <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip={running ? BUSY : `Install ${release} release there`} onClick={item(() => run('upgrade'))}>Upgrade to {release} release</button>
           <button role="menuitem" className="menu-item" data-testid="machine-terminal" disabled={running || !reachable}
             data-tip={reachable ? 'A terminal on this machine, for what Svall leaves to you there' : `This Mac has no ssh route to ${name}`}
             onClick={item(() => store().openHostTerminal(name))}>Open terminal</button>

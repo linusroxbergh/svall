@@ -636,6 +636,18 @@ test("a check this Mac cannot log in for offers no terminal on the machine, sinc
   expect(screen.queryByTestId('host-terminal-master')).toBeNull();
 });
 
+test("a machine's Check and Upgrade, off while another run is under way, say so in their tips", () => {
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().hostStarted('doctor', { name: 'box' });
+  });
+  render(<MachineActions id={MACHINE} name="trift" />);
+  expect(screen.getByTestId('machine-doctor').hasAttribute('disabled')).toBe(true);
+  expect(screen.getByTestId('machine-doctor').getAttribute('data-tip')).toBe('Another run on a machine is under way');
+  fireEvent.click(screen.getByTestId('machine-more'));
+  expect(screen.getByTestId('machine-upgrade').getAttribute('data-tip')).toBe('Another run on a machine is under way');
+});
+
 test('a step whose fix is to forget the machine offers Forget, which asks first', () => {
   render(<HostSetup />);
   act(() => {
