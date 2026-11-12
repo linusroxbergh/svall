@@ -728,7 +728,8 @@ describe('what a robot offers by where it runs', () => {
     await act(async () => { render(<Side />); });
     expect(screen.getByTestId('side-machine').textContent).toBe('Runs on studio');
     expect(screen.getByTestId('side-finder').textContent).toBe('Shell on studio');
-    expect(screen.getByTestId('side-dev-server').textContent).toBe('dev serverstays on studio; forward its port by hand to open it here');
+    expect(screen.getByTestId('side-dev-server').textContent).toBe('dev serverstays on studio');
+    expect(screen.getByTestId('side-dev-server').querySelector('b')!.dataset.tip).toBe('Forward its port by hand to open it here');
     await finder();
     expect(shownInFinder()).toEqual([]);
     expect(store.getState().hostMachine).toBe('studio');

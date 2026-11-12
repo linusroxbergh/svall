@@ -179,7 +179,8 @@ export function SideCard({ id }: { id: string }) {
             )}
             <LastActivity at={c.agent ? lastActive(c.agent) : c.shell.lastOutputAt} />
             {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><div className="set-said" data-error><Said {...splitRaw(failed)} /></div></div>}
-            {placed && <div className="row" data-testid="side-dev-server"><span>dev server</span><b>stays on {placed}; forward its port by hand to open it here</b></div>}
+            {/* the how waits in a tip, so the row stays one line */}
+            {placed && <div className="row" data-testid="side-dev-server"><span>dev server</span><b data-tip="Forward its port by hand to open it here">stays on {placed}</b></div>}
           </div>
         </Section>
       </div>
