@@ -35,7 +35,7 @@ function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; rew
       if (refused) return Promise.reject(refused);
       if (method === 'fleet.homeCheck') {
         return Promise.resolve(o.checkRefused
-          ? { ok: false, refusal: { reason: 'studio is not reachable', action: 'try again when it is awake', details: [] } }
+          ? { ok: false, refusal: { reason: 'studio is not reachable', action: 'Try again when it is awake', details: [], more: [{ reason: 'This machine has no Tailscale', action: 'Install it from tailscale.com/download and sign in' }] } }
           : { ok: true, sheet: { here: 2, there: 1, mission: [], toName: 'studio', rewrites: o.rewrites ?? [], ...(o.waits && { waits: o.waits }) } });
       }
       if (method === 'state.get') return Promise.resolve(o.state ?? { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [machineId()]: { name: 'mac', reachable: true, since: 1 } } });
@@ -177,7 +177,8 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const { deps, called } = outDeps(happy, { checkRefused: true });
     const out = await moveHomeOut('studio', deps);
     expect(out.result).toBe('actions');
-    expect(failed()).toMatchObject({ step: 'check', detail: 'studio is not reachable', action: 'try again when it is awake' });
+    // each reason a sentence of its own
+    expect(failed()).toMatchObject({ step: 'check', detail: 'studio is not reachable. This machine has no Tailscale', action: 'Try again when it is awake' });
     expect(called.some((c) => c.method === 'fleet.freeze')).toBe(false);
   });
 

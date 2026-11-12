@@ -188,10 +188,10 @@ describe.skipIf(!hasGit)('a move asked through the API', () => {
     });
 
     home.store.update((d) => { d.islands.i_home = { ...island, id: 'i_home', kind: 'home' }; d.robots.c_1.islandId = 'i_home'; });
-    const refusal = { reason: 'mission control stays on this Mac', action: 'move a robot from another island', details: [] };
+    const refusal = { reason: 'Mission control stays on this Mac', action: 'Move a robot from another island', details: [] };
     expect(await dispatch({ id: 2, method: 'robot.moveCheck', params: { id: 'c_1', machine: W } }, ctx)).toEqual({ id: 2, result: { ok: false, refusal } });
     expect(await dispatch({ id: 3, method: 'robot.moveTo', params: { id: 'c_1', machine: W } }, ctx)).toEqual({
-      id: 3, error: { code: 'refused', message: 'mission control stays on this Mac; move a robot from another island', data: { refusal } },
+      id: 3, error: { code: 'refused', message: 'Mission control stays on this Mac; move a robot from another island', data: { refusal } },
     });
     expect(home.store.state.robots.c_1.machine).toBeUndefined();
   });

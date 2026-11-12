@@ -181,7 +181,7 @@ export async function checkSessions(sessions: readonly TransferSession[], staged
     try { await adapter.checkSession(s.sessionId, path.join(staged, String(n), adapter.exportFile(s.sessionId)), sessionCwd(s, paths), run); } catch (e) {
       if (!(e instanceof SessionError && e.code === 'destination_diverged')) throw e;
       const { label, bin } = AGENTS[s.agent];
-      throw refused({ reason: `${label} went on with session ${s.sessionId} ${where} since the move`, action: `save it with ${bin} session export, then delete it` });
+      throw refused({ reason: `${label} went on with session ${s.sessionId} ${where} since the move`, action: `Save it with ${bin} session export, then delete it` });
     }
   }
 }
@@ -294,19 +294,20 @@ async function cleanWorktree(root: string, git: GitRunner): Promise<void> {
 }
 
 export type Failure = Omit<Refusal, 'details'>;
-export const refused = (f: Failure): ApiError => new ApiError('refused', `${f.reason}; ${f.action}`, { refusal: { ...f, details: [] } });
+// the refusal as one line: its reason, then what to do, which its sheet says as a sentence of its own
+export const refused = (f: Failure): ApiError => new ApiError('refused', `${f.reason}; ${f.action[0].toLowerCase()}${f.action.slice(1)}`, { refusal: { ...f, details: [] } });
 
 /** What moved in the worktree a robot left since it left, as a move that takes it back refuses it; `where` names its machine. */
 export async function changedSince(left: LeftBehind, where: string, git: GitRunner): Promise<Failure | undefined> {
   const sha = await git(['rev-parse', '--verify', '-q', `refs/heads/${left.branch}^{commit}`], left.path);
-  if (sha.stdout.trim() !== left.branchSha) return { reason: `${left.branch} moved ${where} since the move`, action: 'merge or rename it' };
+  if (sha.stdout.trim() !== left.branchSha) return { reason: `${left.branch} moved ${where} since the move`, action: 'Merge or rename it' };
   // the fingerprint is of what it holds beyond HEAD, so HEAD must be the branch it was left on
   const head = (await git(['symbolic-ref', '-q', 'HEAD'], left.path)).stdout.trim();
   if (head !== `refs/heads/${left.branch}`) {
-    return { reason: `${left.path} ${where} is on ${head.replace(/^refs\/heads\//, '') || 'no branch'} since the move`, action: `check out ${left.branch} there or remove the worktree` };
+    return { reason: `${left.path} ${where} is on ${head.replace(/^refs\/heads\//, '') || 'no branch'} since the move`, action: `Check out ${left.branch} there or remove the worktree` };
   }
   const same = async (credential: (p: string) => boolean): Promise<boolean> => await fingerprintOf(left.path, git, credential) === left.fingerprint;
-  if (!await same(isCredential) && !await same(wasCredential)) return { reason: `changes ${where} in ${left.path} since the move`, action: 'stash or commit them' };
+  if (!await same(isCredential) && !await same(wasCredential)) return { reason: `Changes ${where} in ${left.path} since the move`, action: 'Stash or commit them' };
   return undefined;
 }
 

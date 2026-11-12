@@ -100,7 +100,7 @@ and its own button or action, the first with its details behind it; `svall robot
    with another gets its own worktree at main's HEAD instead, which leaves main as it is, since neither robot alone
    can claim its changes: the sheet ticks **Give it its own worktree: two robots share svall's main checkout** and
    says so ("it leaves svall's main checkout for a new branch kanban; the checkout keeps its 3 changed files").
-   Unticked, the move refuses with "two robots share svall's main checkout; give it its own worktree". The worktree starts at
+   Unticked, the move refuses with "Two robots share svall's main checkout; give it its own worktree". The worktree starts at
    the commit the check found, whatever the robot that stays commits meanwhile; the offer is refused while another
    robot moves out of that checkout ("board is moving out of svall's main checkout; wait for the move to finish") or
    for a robot whose folder that commit lacks ("web/new is not in svall's last commit; commit it first"). "kanban is
@@ -129,7 +129,7 @@ and its own button or action, the first with its details behind it; `svall robot
    branch; rewrite them without .env first". A tracked one's deletion travels, as does a change to a tracked template
    (`.env.example`, `.env.sample`, `.env.template`). A robot given its own worktree (check 3) carries none of main's changes, so there only a carried commit
    holding one refuses, and the sheet names main's credential files: ".env stays in svall's main checkout".
-7. **The agent is idle, or you choose Interrupt it now.** "kanban is working; interrupt it now". "a command is
+7. **The agent is idle, or you choose Interrupt it now.** "kanban is working; interrupt it now". "A command is
    running; move anyway and it ends". In the app the sheet ticks the box for it, **Interrupt it now: kanban is
    working** or **Move anyway and end it: a command is running**, and **Move** takes it; unticked, the move refuses as
    above. A robot waiting on a question moves too: it resumes idle, and asks again when prompted.
@@ -200,7 +200,7 @@ recorded:
 - A git operation under way in the worktree there, or a file marked assume-unchanged, refuses as check 3 does on the
   way out.
 - An agent working there, or a command running in its shell there, refuses as check 7 does on the way out: "kanban is
-  working; interrupt it now", "a command is running; move anyway and it ends". Choosing it (`--interrupt-after`)
+  working; interrupt it now", "A command is running; move anyway and it ends". Choosing it (`--interrupt-after`)
   interrupts what still runs there after that long, then rests it.
 - The robot's agent on the home refuses as check 2 does the worker's: "claude is not installed on this Mac; on this
   Mac, run curl -fsSL https://claude.ai/install.sh | bash", "this Mac runs claude 2.1.299, linus-vault 2.1.300; on

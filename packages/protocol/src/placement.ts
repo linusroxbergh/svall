@@ -13,13 +13,13 @@ export const Refusal = Blocker.extend({ details: z.array(z.string()), more: z.ar
 export type Refusal = z.infer<typeof Refusal>;
 
 /** The actions of the refusals a move clears by interrupting: an agent at work, and a command running in a shell. */
-export const INTERRUPT_ACTIONS = { agent: 'interrupt it now', command: 'move anyway and it ends' } as const;
+export const INTERRUPT_ACTIONS = { agent: 'Interrupt it now', command: 'Move anyway and it ends' } as const;
 
 /** The action of the refusal a move clears by leaving a shared main checkout for a new worktree at its HEAD. */
-export const WORKTREE_ACTION = 'give it its own worktree';
+export const WORKTREE_ACTION = 'Give it its own worktree';
 
 /** The action of the refusal a move clears by upgrading the machine to this Mac's release. */
-export const UPGRADE_ACTION = 'upgrade it under Machines';
+export const UPGRADE_ACTION = 'Upgrade it under Machines';
 
 /** A path of fleet.json a home move writes anew, in a person's words; a key not named here goes by itself. */
 export const CONFIG_WORD: Record<string, string> = { defaultCwd: "new robots' folder", 'home.cwd': "mission control's folder", 'onboarding.firstProject': 'first project folder' };
@@ -49,6 +49,17 @@ export function moveParts(s: MoveSheet, repo: string | undefined, machine: strin
     s.notInRepo ? 'in no repository: it moves with its session only' : `branch ${s.branch}${carried.length ? `: ${carried.join(', ')}` : ''}`,
     ...(repo && !s.notInRepo ? [`${repo} on ${machine}: ${s.clone === 'clone' ? 'will clone (first time)' : 'cloned already'}`] : []),
     ...s.stays,
+  ];
+}
+
+/** What a move carries as a sheet's rows, a label and its value each; what stays behind is the sheet's notes. */
+export function moveRows(s: MoveSheet, repo: string | undefined, machine: string): [string, string][] {
+  const changed = s.changedFiles + s.untrackedFiles;
+  const carried = [...(s.commits ? [`${count(s.commits, 'commit')} not on origin`] : []), ...(changed ? [count(changed, 'changed file')] : [])];
+  return [
+    ...(s.sessionBytes ? [['session', size(s.sessionBytes)] as [string, string]] : []),
+    s.notInRepo ? ['repository', 'none: it moves with its session only'] : ['branch', [s.branch, carried.join(', ')].filter(Boolean).join(' · ')],
+    ...(repo && !s.notInRepo ? [['clone', `${repo} on ${machine} · ${s.clone === 'clone' ? 'made on this first move' : 'there already'}`] as [string, string]] : []),
   ];
 }
 

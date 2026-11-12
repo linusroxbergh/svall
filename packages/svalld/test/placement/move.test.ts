@@ -159,7 +159,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const inMain = () => { const s = state(w, w.main); return { ...s, untracked: s.untracked.filter((f) => !f.startsWith('.claude/')) }; };
     const before = inMain();
 
-    await expect(home.placement.start('c_1', W)).rejects.toMatchObject({ code: 'refused', message: "two robots share app's main checkout; give it its own worktree" });
+    await expect(home.placement.start('c_1', W)).rejects.toMatchObject({ code: 'refused', message: "Two robots share app's main checkout; give it its own worktree" });
     const id = await home.placement.start('c_1', W, { ownWorktree: true });
 
     const [wt, farWt] = [path.join(w.main, '.claude/worktrees/ada'), path.join(w.clone, '.claude/worktrees/ada')];
@@ -315,7 +315,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
 
     const a = fs.readFileSync(path.join(w.wt, 'a.txt'));
     fs.appendFileSync(path.join(w.wt, 'a.txt'), 'edited on the Mac\n');
-    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({ code: 'refused', message: `changes on this Mac in ${w.wt} since the move; stash or commit them` });
+    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({ code: 'refused', message: `Changes on this Mac in ${w.wt} since the move; stash or commit them` });
     fs.writeFileSync(path.join(w.wt, 'a.txt'), a);
 
     expect((await home.placement.check('c_1', H)).ok).toBe(true);
@@ -662,7 +662,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const agent = win.job;
     win.job = 'npm test';
     expect(await home.placement.check('c_1', H)).toMatchObject({
-      ok: false, refusal: { reason: 'a command is running', action: INTERRUPT_ACTIONS.command, details: ['wait for it'] },
+      ok: false, refusal: { reason: 'A command is running', action: INTERRUPT_ACTIONS.command, details: ['wait for it'] },
     });
     win.job = agent;
     w.worker.store.update((d) => { d.robots.c_1.agent!.status = 'working'; });
@@ -691,11 +691,11 @@ describe.skipIf(!hasGit)('the move transaction', () => {
       waits.push(o?.timeoutMs);
       return call(m, method, params, { ...o, timeoutMs: 100 });
     }) as typeof home.links.call;
-    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: 'w1 did not answer the move sheet in 30 s', action: 'try again' } });
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: 'w1 did not answer the move sheet in 30 s', action: 'Try again' } });
     expect(waits).toEqual([30_000]);
     home.links.call = call;
     delete w.worker.handlers['move.sheet'];
-    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: 'w1 runs a release without move.sheet', action: 'upgrade it under Machines' } });
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: 'w1 runs a release without move.sheet', action: 'Upgrade it under Machines' } });
     w.worker.handlers['move.sheet'] = sheet;
     expect(await home.placement.check('c_1', H)).toMatchObject({ ok: true });
   });
@@ -704,7 +704,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const w = open();
     const home = await w.start();
     await home.placement.start('c_1', W);
-    const silent = { ok: false, refusal: { reason: 'w1 did not answer', action: 'try again; if it keeps happening, Check it under Machines' } };
+    const silent = { ok: false, refusal: { reason: 'w1 did not answer', action: 'Try again; if it keeps happening, Check it under Machines' } };
     // `method` hangs there, and its call here is cut short
     const call = home.links.call.bind(home.links);
     const hang = (method: string): (() => void) => {
@@ -734,15 +734,15 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     await home.placement.start('c_1', W);
     const merge = path.join(w.g(w.farWt, 'rev-parse', '--absolute-git-dir'), 'MERGE_HEAD');
     fs.writeFileSync(merge, `${w.g(w.farWt, 'rev-parse', 'HEAD')}\n`);
-    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: `${w.farWt} is in the middle of a merge`, action: 'finish or abort it first' } });
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: `${w.farWt} is in the middle of a merge`, action: 'Finish or abort it first' } });
     fs.rmSync(merge);
     expect(await home.placement.check('c_1', H)).toMatchObject({ ok: true });
   });
 
   it.each<[string, Partial<AgentProbe>, { reason: string; action: string }]>([
-    ['is not installed', { version: undefined }, { reason: 'claude is not installed on this Mac', action: `on this Mac, run ${AGENTS.claude.installCommand}` }],
-    ["is older than the worker's", { version: '2.1.299' }, { reason: 'this Mac runs claude 2.1.299, w1 2.1.300', action: 'on this Mac, run claude update' }],
-    ['is not logged in', { loggedIn: false }, { reason: 'claude is not logged in on this Mac', action: 'on this Mac, run claude auth login' }],
+    ['is not installed', { version: undefined }, { reason: 'claude is not installed on this Mac', action: `On this Mac, run ${AGENTS.claude.installCommand}` }],
+    ["is older than the worker's", { version: '2.1.299' }, { reason: 'This Mac runs claude 2.1.299, w1 2.1.300', action: 'On this Mac, run claude update' }],
+    ['is not logged in', { loggedIn: false }, { reason: 'claude is not logged in on this Mac', action: 'On this Mac, run claude auth login' }],
   ])("a return refuses, before anything moves, while this Mac's claude %s", async (_, mac, refusal) => {
     const w = open();
     const home = await w.start();
@@ -754,7 +754,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     d.agents = async (fresh) => { asked.push(fresh); return (await probe(fresh)).map((p) => ({ ...p, ...mac })); };
     expect(await home.placement.check('c_1', H)).toEqual({ ok: false, refusal: { ...refusal, details: [] } });
     expect(asked).toEqual([true]);
-    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({ code: 'refused', message: `${refusal.reason}; ${refusal.action}` });
+    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({ code: 'refused', message: `${refusal.reason}; ${refusal.action[0].toLowerCase()}${refusal.action.slice(1)}` });
     expect(home.store.state.robots.c_1).toMatchObject({ machine: W });
     expect(home.store.state.robots.c_1.moving).toBeUndefined();
     expect(w.worker.store.state.robots.c_1.tmux).toBeDefined();
@@ -804,7 +804,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const b = path.join(w.farWt, 'b.txt');
     const held = fs.readFileSync(b);
     fs.appendFileSync(b, 'edited on w1\n');
-    await expect(home.placement.start('c_1', W)).rejects.toMatchObject({ code: 'refused', message: `changes on w1 in ${w.farWt} since the move; stash or commit them` });
+    await expect(home.placement.start('c_1', W)).rejects.toMatchObject({ code: 'refused', message: `Changes on w1 in ${w.farWt} since the move; stash or commit them` });
     fs.writeFileSync(b, held);
     const head = w.g(w.farWt, 'rev-parse', 'HEAD');
     w.g(w.clone, 'update-ref', 'refs/heads/kanban', w.g(w.farWt, 'commit-tree', `${head}^{tree}`, '-p', head, '-m', 'on w1'));
@@ -917,7 +917,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     // and answers so again
     expect(await w.worker.handlers['move.abort']({ id: (failed as { data: { moveId: string } }).data.moveId })).toEqual({ kept: true });
     disarm?.();
-    await expect(home.placement.start('c_1', W)).rejects.toMatchObject({ code: 'refused', message: `changes on w1 in ${w.farWt} since the move; stash or commit them` });
+    await expect(home.placement.start('c_1', W)).rejects.toMatchObject({ code: 'refused', message: `Changes on w1 in ${w.farWt} since the move; stash or commit them` });
     expect(fs.readFileSync(b, 'utf8')).toBe(`${coming}saved on w1\n`);
   });
 
@@ -952,7 +952,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     w.g(w.clone, 'update-ref', 'refs/heads/kanban', theirs);
     const home = await w.start();
     const sentence = 'w1 has a branch kanban with commits this one lacks; merge or rename it there first';
-    expect(await home.placement.check('c_1', W)).toMatchObject({ ok: false, refusal: { reason: 'w1 has a branch kanban with commits this one lacks', action: 'merge or rename it there first' } });
+    expect(await home.placement.check('c_1', W)).toMatchObject({ ok: false, refusal: { reason: 'w1 has a branch kanban with commits this one lacks', action: 'Merge or rename it there first' } });
 
     // one made there after the check passed is refused where the bundle is applied
     w.g(w.clone, 'update-ref', '-d', 'refs/heads/kanban');
@@ -983,7 +983,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const mine = w.g(w.main, 'commit-tree', `${base}^{tree}`, '-p', base, '-m', 'on the Mac');
     w.g(w.main, 'update-ref', 'refs/heads/fix-login', mine);
     const sentence = 'this Mac has a branch fix-login with commits this one lacks; merge or rename it there first';
-    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: 'this Mac has a branch fix-login with commits this one lacks', action: 'merge or rename it there first' } });
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: 'This Mac has a branch fix-login with commits this one lacks', action: 'Merge or rename it there first' } });
 
     w.g(w.main, 'update-ref', '-d', 'refs/heads/fix-login');
     at('move.journal.bundle', 'after', () => { w.g(w.main, 'update-ref', 'refs/heads/fix-login', mine); });
@@ -1066,7 +1066,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
 
     // with the step it failed at, which the move sheet names
     await expect(home.placement.start('c_1', H)).rejects.toMatchObject({
-      code: 'refused', message: `changes on this Mac in ${w.wt} since the move; stash or commit them`, data: { phase: 'prepare', moveId: expect.stringMatching(/^mv_/) },
+      code: 'refused', message: `Changes on this Mac in ${w.wt} since the move; stash or commit them`, data: { phase: 'prepare', moveId: expect.stringMatching(/^mv_/) },
     });
 
     expect(fs.readFileSync(a, 'utf8')).toBe(`${held}edited on the Mac\n`);
@@ -1100,7 +1100,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     });
 
     await expect(home.placement.start('c_1', H)).rejects.toMatchObject({
-      code: 'refused', message: `changes on this Mac in ${w.wt} since the move; stash or commit them`, data: { phase: 'prepare' },
+      code: 'refused', message: `Changes on this Mac in ${w.wt} since the move; stash or commit them`, data: { phase: 'prepare' },
     });
     d.git = git;
 
@@ -1418,7 +1418,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const away = `${w.wt}.away`;
     fs.renameSync(w.wt, away);
     const copy = state(w, away);
-    const gone = { reason: `git on this Mac still lists ${w.wt}, whose folder is gone`, action: `git worktree repair <its new place> if you moved it, else git worktree unlock '${w.wt}' && git worktree remove '${w.wt}'` };
+    const gone = { reason: `Git on this Mac still lists ${w.wt}, whose folder is gone`, action: `git worktree repair <its new place> if you moved it, else git worktree unlock '${w.wt}' && git worktree remove '${w.wt}'` };
 
     expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: gone });
     expect(state(w, away)).toEqual(copy);
@@ -1454,23 +1454,23 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     };
     const onMain = { root: w.clone, mainRoot: w.clone, branch: 'main', isWorktree: false };
     for (const s of [w.worker.store, home.store]) s.update((d) => { Object.assign(d.robots[b.id], { cwd: w.clone, repo: onMain }); });
-    expect(await refusal()).toEqual({ reason: `${name} works in app's main checkout on w1`, action: 'give it its own worktree on w1 first' });
+    expect(await refusal()).toEqual({ reason: `${name} works in app's main checkout on w1`, action: 'Give it its own worktree on w1 first' });
     // asked from a window on that machine
-    expect(await inCallerNames({ me: W }, refusal)).toEqual({ reason: `${name} works in app's main checkout on this Mac`, action: 'give it its own worktree on this Mac first' });
+    expect(await inCallerNames({ me: W }, refusal)).toEqual({ reason: `${name} works in app's main checkout on this Mac`, action: 'Give it its own worktree on this Mac first' });
     for (const s of [w.worker.store, home.store]) s.update((d) => { Object.assign(d.robots[b.id], { cwd: b.far, repo: { root: b.far, mainRoot: w.clone, branch: 'scout', isWorktree: true } }); });
 
     // no clone here, named by the worker's origin without its token; another repository, folder or origin there
     w.g(w.clone, 'remote', 'set-url', 'origin', 'https://ada:ghp_secret@github.com/ada/app.git');
-    expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'move it out of the way first' });
+    expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'Move it out of the way first' });
     fs.renameSync(w.main, `${w.main}.away`);
     expect(await refusal()).toEqual({ reason: 'app is not cloned on this Mac', action: `git clone 'https://github.com/ada/app.git' '${w.main}'` });
     w.g(w.clone, 'remote', 'set-url', 'origin', w.origin);
     fs.mkdirSync(w.main);
-    expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'move it out of the way first' });
+    expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'Move it out of the way first' });
     w.g(w.main, 'init', '-q');
     w.g(w.main, 'commit', '-q', '--allow-empty', '-m', 'another history');
     w.g(w.main, 'remote', 'add', 'origin', w.origin);
-    expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'move it out of the way first' });
+    expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'Move it out of the way first' });
     fs.rmSync(w.main, { recursive: true });
     fs.renameSync(`${w.main}.away`, w.main);
     // a shallow clone here, whose oldest commit is no root
@@ -1478,12 +1478,12 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     fs.writeFileSync(path.join(w.main, '.git/shallow'), `${w.g(w.main, 'rev-parse', 'HEAD')}\n`);
     expect(await refusal()).toEqual({ reason: 'app is a shallow clone', action: `git -C '${w.main}' fetch --unshallow` });
     w.g(w.main, 'remote', 'set-url', 'origin', path.join(w.base, 'origins/other.git'));
-    expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'move it out of the way first' });
+    expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'Move it out of the way first' });
     w.g(w.main, 'remote', 'set-url', 'origin', w.origin);
     fs.rmSync(path.join(w.main, '.git/shallow'));
     w.g(w.main, 'reset', '-q', '--hard', 'HEAD~1');
 
-    const inTheWay = { reason: `${b.mac} on this Mac is in the way`, action: 'move it out of the way first' };
+    const inTheWay = { reason: `${b.mac} on this Mac is in the way`, action: 'Move it out of the way first' };
     fs.mkdirSync(b.mac);
     expect(await refusal()).toEqual(inTheWay);
     fs.rmdirSync(b.mac);
@@ -1498,7 +1498,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
       if (locked) w.g(w.main, 'worktree', 'lock', at);
       fs.rmSync(at, { recursive: true });
       const remove = `${locked ? `git worktree unlock '${at}' && ` : ''}git worktree remove '${at}'`;
-      expect(await refusal()).toEqual({ reason: `git on this Mac still lists ${at}, whose folder is gone`, action: `git worktree repair <its new place> if you moved it, else ${remove}` });
+      expect(await refusal()).toEqual({ reason: `Git on this Mac still lists ${at}, whose folder is gone`, action: `git worktree repair <its new place> if you moved it, else ${remove}` });
       if (locked) w.g(w.main, 'worktree', 'unlock', at);
       w.g(w.main, 'worktree', 'remove', at);
     }
@@ -1506,7 +1506,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
 
     // its branch checked out here, in the main checkout too, or rebased or bisected there; one this Mac holds ahead; one it
     // cannot keep beside it
-    const held = { reason: `scout is checked out in ${w.main} on this Mac`, action: 'check out another branch there first' };
+    const held = { reason: `scout is checked out in ${w.main} on this Mac`, action: 'Check out another branch there first' };
     w.g(w.main, 'checkout', '-q', '-b', 'scout');
     expect(await refusal()).toEqual(held);
     for (const n of ['1', '2', '3']) w.g(w.main, 'commit', '-q', '--allow-empty', '-m', n);
@@ -1519,11 +1519,11 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     w.g(w.main, 'checkout', '-q', 'main');
     w.g(w.main, 'branch', '-q', '-D', 'scout');
     w.g(w.main, 'update-ref', 'refs/heads/scout', w.g(w.main, 'commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'on the Mac'));
-    expect(await refusal()).toEqual({ reason: 'this Mac has a branch scout with commits this one lacks', action: 'merge or rename it there first' });
+    expect(await refusal()).toEqual({ reason: 'This Mac has a branch scout with commits this one lacks', action: 'Merge or rename it there first' });
     w.g(w.main, 'branch', '-q', '-D', 'scout');
     for (const other of ['Scout', 'scout/old', 'SCOUT/old']) {
       w.g(w.main, 'branch', other);
-      expect(await refusal()).toEqual({ reason: `this Mac has a branch ${other}, which it cannot keep beside scout`, action: 'rename one of them first' });
+      expect(await refusal()).toEqual({ reason: `This Mac has a branch ${other}, which it cannot keep beside scout`, action: 'Rename one of them first' });
       w.g(w.main, 'branch', '-q', '-D', other);
     }
 

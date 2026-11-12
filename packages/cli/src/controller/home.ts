@@ -326,7 +326,7 @@ const farSaid = (a: AdoptAnswer): string | undefined => (a.status === 'pending' 
 // a refusal outside any step would read as a flow that ended well
 const refuse = (run: Runner, why: string, action?: string, say?: string): Promise<never> => run.step<never>('check', () => Promise.reject(new StepError(why, action, undefined, say)));
 
-const refusalStep = (refusal: Refusal): StepError => new StepError([refusal.reason, ...(refusal.more ?? []).map((m) => m.reason)].join('; '), refusal.action, refusal.run, undefined,
+const refusalStep = (refusal: Refusal): StepError => new StepError([refusal.reason, ...(refusal.more ?? []).map((m) => m.reason)].join('. '), refusal.action, refusal.run, undefined,
   [refusal.raw, ...refusal.details].filter(Boolean).join('\n') || undefined);
 
 // a terminal's word for what the sheet says of a path the machine taking the fleet does not have yet

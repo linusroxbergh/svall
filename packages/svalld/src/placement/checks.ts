@@ -75,21 +75,21 @@ export type CheckDeps = {
 type Failure = Omit<Refusal, 'details'> & { details?: string[] };
 
 const releaseFailure = (name: string, theirs: string, mine: string): Failure =>
-  ({ reason: `${name} runs ${theirs}, ${homeWord()} ${mine}`, action: compareVersions(theirs, mine) === 1 ? `update svall on ${homeWord()}` : UPGRADE_ACTION });
+  ({ reason: `${name} runs ${theirs}, ${homeWord()} ${mine}`, action: compareVersions(theirs, mine) === 1 ? `Update Svall on ${homeWord()}` : UPGRADE_ACTION });
 
 /** A worker's hello while it is linked, or why it is not: out of reach, or on a build whose state or link this Mac cannot read. */
 export function reach(link: Pick<WorkerLink, 'connected' | 'hello' | 'mismatch'> | undefined, name: string, release: string): { hello: WorkerHello } | { failure: Failure } {
   const hello = link?.connected() ? link.hello() : undefined;
   if (hello) return { hello };
   const odd = link?.mismatch();
-  if (!odd) return { failure: { reason: `${name} is not reachable`, action: 'try again when it is awake' } };
+  if (!odd) return { failure: { reason: `${name} is not reachable`, action: 'Try again when it is awake' } };
   return { failure: odd.release === release ? { reason: `${name} runs a different build`, action: UPGRADE_ACTION } : releaseFailure(name, odd.release, release) };
 }
 
 /** Why a check's call to worker `name` failed: one it gave no answer in time names the worker, not the call. */
 export const unanswered = (e: Error, name: string): Failure => (e instanceof ApiError && e.code === 'timeout'
-  ? { reason: `${name} did not answer`, action: 'try again; if it keeps happening, Check it under Machines' }
-  : { reason: e.message, action: 'try again when it is awake' });
+  ? { reason: `${name} did not answer`, action: 'Try again; if it keeps happening, Check it under Machines' }
+  : { reason: e.message, action: 'Try again when it is awake' });
 
 const originOf = async (dir: string, git: GitRunner): Promise<string | undefined> => {
   const r = await git(['remote', 'get-url', 'origin'], dir);
@@ -176,12 +176,12 @@ export function agentFailures(c: Robot, from: Agents, to: Agents): Failure[] {
   return [...kinds].flatMap((kind): Failure[] => {
     const { bin, installCommand, updateCommand, loginHint } = AGENTS[kind];
     const [here, there] = [from.agents.find((a) => a.kind === kind), to.agents.find((a) => a.kind === kind)];
-    if (!there?.version) return [{ reason: `${bin} is not installed on ${name}`, action: `install ${bin} on ${name}`, run: installCommand }];
+    if (!there?.version) return [{ reason: `${bin} is not installed on ${name}`, action: `Install ${bin} on ${name}`, run: installCommand }];
     if (here?.version && compareVersions(there.version, here.version) === -1) {
-      return [{ reason: `${name} runs ${bin} ${there.version}, ${from.name} ${here.version}`, action: `update ${bin} on ${name}`, run: updateCommand }];
+      return [{ reason: `${name} runs ${bin} ${there.version}, ${from.name} ${here.version}`, action: `Update ${bin} on ${name}`, run: updateCommand }];
     }
     // an OpenCode logged in on neither machine runs on a model that needs no login
-    if (!there.loggedIn && !(kind === 'opencode' && here?.loggedIn === false)) return [{ reason: `${bin} is not logged in on ${name}`, action: `log ${bin} in there`, run: loginHint }];
+    if (!there.loggedIn && !(kind === 'opencode' && here?.loggedIn === false)) return [{ reason: `${bin} is not logged in on ${name}`, action: `Log ${bin} in there`, run: loginHint }];
     return [];
   });
 }
@@ -222,11 +222,11 @@ export function converted(c: Robot, repo: Repo, slug: string): Robot {
 // "<reason>; <action>", as convert's refusals read
 const split = (message: string): Failure => {
   const at = message.indexOf('; ');
-  return at < 0 ? { reason: message, action: `fix it on ${homeWord()} first` } : { reason: message.slice(0, at), action: message.slice(at + 2) };
+  return at < 0 ? { reason: message, action: `Fix it on ${homeWord()} first` } : { reason: message.slice(0, at), action: `${message[at + 2].toUpperCase()}${message.slice(at + 3)}` };
 };
 
 const bundleFailure = (e: unknown): Failure => (e instanceof BundleTooLarge
-  ? { reason: e.message, action: 'push its commits or ignore its large files first' }
+  ? { reason: e.message, action: 'Push its commits or ignore its large files first' }
   : split((e as Error).message.trim().split('\n').at(-1) ?? ''));
 
 export type Carried = Pick<MoveSheet, 'sessionBytes' | 'commits' | 'changedFiles' | 'untrackedFiles'>;
@@ -235,20 +235,23 @@ export type Carried = Pick<MoveSheet, 'sessionBytes' | 'commits' | 'changedFiles
 export function restCheck(name: string, mine: Pick<Classified, 'class'>[], chosen: boolean): { failures: Failure[]; interrupts: boolean; question: boolean } {
   const failures: Failure[] = [];
   if (!chosen && mine.some((t) => t.class === 'agent-working')) failures.push({ reason: `${name} is working`, action: INTERRUPT_ACTIONS.agent });
-  if (!chosen && mine.some((t) => t.class === 'foreground')) failures.push({ reason: 'a command is running', action: INTERRUPT_ACTIONS.command, details: ['wait for it'] });
+  if (!chosen && mine.some((t) => t.class === 'foreground')) failures.push({ reason: 'A command is running', action: INTERRUPT_ACTIONS.command, details: ['wait for it'] });
   return { failures, interrupts: chosen && mine.some((t) => t.class !== 'agent-ready' && t.class !== 'shell-ready'), question: mine.some((t) => t.class === 'agent-blocked') };
 }
 
+/** A reason as a sentence of its own: one that opens on this machine says This. */
+export const opening = (reason: string): string => reason.replace(/^this /, 'This ');
+
 /** The first failure's sentence and action, with every other in `more`, and every failure's details behind the first's. */
 export function refusalOf([first, ...rest]: Failure[]): Refusal {
-  const blocker = ({ reason, action, run, raw }: Failure): Blocker => ({ reason, action, ...(run && { run }), ...(raw && { raw }) });
+  const blocker = ({ reason, action, run, raw }: Failure): Blocker => ({ reason: opening(reason), action, ...(run && { run }), ...(raw && { raw }) });
   return { ...blocker(first), details: [...first.details ?? [], ...rest.flatMap((f) => f.details ?? [])], ...(rest.length && { more: rest.map(blocker) }) };
 }
 
 /** What a move of robot `c` from this machine to one holding `have` carries, as its sheet counts it, or why it cannot. */
 export async function carriedFrom(c: Robot, have: string[], git: GitRunner, run: CliRun): Promise<Carried | { refusal: Failure }> {
   let session: number;
-  try { session = await sessionBytes(c, run); } catch (e) { return { refusal: { reason: (e as Error).message, action: 'start it fresh first' } }; }
+  try { session = await sessionBytes(c, run); } catch (e) { return { refusal: { reason: (e as Error).message, action: 'Start it fresh first' } }; }
   if (!c.repo) return { sessionBytes: session, commits: 0, changedFiles: 0, untrackedFiles: 0 };
   const into = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-check-'));
   try {
@@ -284,8 +287,8 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     }
   };
 
-  if (s.islands[c.islandId]?.kind === 'home' && !o.homeMove) fail({ reason: `mission control stays on ${homeWord()}`, action: 'move a robot from another island' });
-  if (c.moving) fail({ reason: `moving to ${named(c.moving.to)}`, action: 'wait for the move to finish' });
+  if (s.islands[c.islandId]?.kind === 'home' && !o.homeMove) fail({ reason: `Mission control stays on ${homeWord()}`, action: 'Move a robot from another island' });
+  if (c.moving) fail({ reason: `${c.name} is moving to ${named(c.moving.to)}`, action: 'Wait for the move to finish' });
 
   // 1: reachable, on this release
   const reached = reach(d.links.for(to), name, d.release);
@@ -306,7 +309,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   try {
     session = await sessionBytes(c, d.cli ?? cliRunner());
   } catch (e) {
-    fail({ reason: (e as Error).message, action: 'start it fresh first' });
+    fail({ reason: (e as Error).message, action: 'Start it fresh first' });
   }
 
   const { repo } = c;
@@ -328,7 +331,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     // 3: a worktree on a branch, or a main checkout that converts: of this robot's alone, or with a new worktree at HEAD
     if (onMain && !keep) {
       const sharing = Object.values(s.robots).some((r) => r.id !== c.id && (r.machine ?? d.me) === d.me && r.repo && !r.repo.isWorktree && clean(r.repo.root) === clean(repo.root));
-      if (sharing) fail({ reason: `two robots share ${repoName}'s main checkout`, action: WORKTREE_ACTION });
+      if (sharing) fail({ reason: `Two robots share ${repoName}'s main checkout`, action: WORKTREE_ACTION });
     }
     // main given its own worktree keeps an operation under way, which a bundle or conversion would drop
     if (!keep) {
@@ -338,7 +341,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
         fail(split((e as Error).message));
       }
     }
-    if (detached) fail({ reason: `${c.name} is on a detached HEAD`, action: 'check out a branch first' });
+    if (detached) fail({ reason: `${c.name} is on a detached HEAD`, action: 'Check out a branch first' });
     const shallow = await shallowFailure(repo.mainRoot, d.git);
     if (shallow) fail(shallow);
     if (onMain) {
@@ -348,12 +351,12 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     if (keep) {
       // one robot leaves a main checkout at a time, so two never take one slug
       const leaving = Object.values(s.robots).find((r) => r.id !== c.id && r.moving && r.repo && !r.repo.isWorktree && clean(r.repo.root) === clean(repo.root));
-      if (leaving) fail({ reason: `${leaving.name} is moving out of ${repoName}'s main checkout`, action: 'wait for the move to finish' });
+      if (leaving) fail({ reason: `${leaving.name} is moving out of ${repoName}'s main checkout`, action: 'Wait for the move to finish' });
       // a worktree at HEAD holds only the folders HEAD does
       for (const p of new Set([c.cwd, c.second?.cwd])) {
         const rel = p && holds(clean(repo.root), clean(p)) ? path.posix.relative(clean(repo.root), clean(p)) : '';
         if (rel && (await d.git(['cat-file', '-e', `HEAD:${rel}`], repo.root)).code !== 0) {
-          fail({ reason: `${rel} is not in ${repoName}'s last commit`, action: 'commit it first' });
+          fail({ reason: `${rel} is not in ${repoName}'s last commit`, action: 'Commit it first' });
           break;
         }
       }
@@ -369,15 +372,15 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
       const origin = await originOf(repo.mainRoot, d.git);
       remote = origin && withoutToken(origin);
       probe = await ask<RepoProbe>('repo.probe', { path: clone, ...(remote && { remote }), ...(branch && { branch }) });
-      const inTheWay: Failure = { reason: `${clone} on ${name} is not a clone of ${repoName}`, action: 'move it out of the way there first' };
+      const inTheWay: Failure = { reason: `${clone} on ${name} is not a clone of ${repoName}`, action: 'Move it out of the way there first' };
       if (probe?.state === 'clone') {
         // a shallow clone, refused above, has no root commit to compare
         if (remoteKey(probe.remote) === remoteKey(remote) && (shallow || probe.rootCommit === await rootOf(repo.mainRoot, d.git))) have = probe.refs;
         else fail(inTheWay);
       } else if (probe?.state === 'other') fail(inTheWay);
-      else if (probe && !remote) fail({ reason: `${repoName} has no remote`, action: `push ${repoName} to a remote first` });
+      else if (probe && !remote) fail({ reason: `${repoName} has no remote`, action: `Push ${repoName} to a remote first` });
       else if (probe && remote && !probe.reachable) {
-        fail({ reason: `${name} cannot read ${webUrl(remote)?.replace(/^https:\/\//, '') ?? remote}`, action: 'log gh in there', run: 'gh auth login' });
+        fail({ reason: `${name} cannot read ${webUrl(remote)?.replace(/^https:\/\//, '') ?? remote}`, action: 'Log gh in there', run: 'gh auth login' });
       } else if (probe) {
         mode = 'clone';
         have = probe.refs;
@@ -389,7 +392,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     if (branch) {
       const places = new Set([clean(repo.mainRoot), ...(clone ? [clean(clone)] : [])]);
       const other = Object.values(s.robots).find((r) => r.id !== c.id && r.repo?.branch === branch && places.has(clean(r.repo.mainRoot)));
-      if (other) fail({ reason: `${other.name} is on ${branch} too`, action: 'put one of them on another branch first' });
+      if (other) fail({ reason: `${other.name} is on ${branch} too`, action: 'Put one of them on another branch first' });
       const there = probe?.state === 'clone' ? probe.branchSha : undefined;
       const left = c.left?.machine === to && c.left.branch === branch;
       if (there && !left && !await holdsWhole(there, 'HEAD', repo.root, d.git)) fail(branchAhead(name, branch));
@@ -403,8 +406,8 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
         const { uncommitted, committed } = await trackedCredentials(repo.root, d.git, manifest, { head: keep });
         const is = (files: string[]): string => `${files.join(', ')} ${files.length > 1 ? 'are' : 'is'}`;
         // a later commit that removes it leaves it in the commit before
-        if (committed.length) fail({ reason: `${is(committed)} in commits that would travel with the branch`, action: `rewrite them without ${committed.join(', ')} first` });
-        if (uncommitted.length) fail({ reason: `${is(uncommitted)} tracked and would travel with the branch`, action: `untrack or revert ${uncommitted.join(', ')} first` });
+        if (committed.length) fail({ reason: `${is(committed)} in commits that would travel with the branch`, action: `Rewrite them without ${committed.join(', ')} first` });
+        if (uncommitted.length) fail({ reason: `${is(uncommitted)} tracked and would travel with the branch`, action: `Untrack or revert ${uncommitted.join(', ')} first` });
         const changed = await changedFiles(repo.root, d.git);
         if (keep) {
           const listed = await untrackedFiles(repo.root, d.git);
