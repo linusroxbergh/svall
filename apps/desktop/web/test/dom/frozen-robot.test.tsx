@@ -199,7 +199,9 @@ test('a far robot with no context on the Mac\'s copy says so in its open section
   act(() => { store.getState().setFleet({ ...f, robots: { ...f.robots, c0: { ...f.robots.c0, context: [] }, c1: { ...f.robots.c1, context: [] } } }); store.getState().setVia(COPY); });
   const { unmount } = render(<SideCard id="c0" />);
   await act(async () => {});
+  // the one line stands where the pills would, at the gap content keeps under every head
   expect(screen.getByTestId('side-context-empty').textContent).toBe('nothing listed');
+  expect(screen.getByTestId('side-context-empty').parentElement!.children).toHaveLength(1);
   expect(screen.queryByTestId('context-ref')).toBeNull();
   unmount();
   render(<SideCard id="c1" />);

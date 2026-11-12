@@ -142,10 +142,10 @@ export function SideCard({ id }: { id: string }) {
             onSave={(v) => (v !== c.instructions ? save({ instructions: v }) : undefined)} />
         </Section>
         <Section name="robot.context" title="Context" head={<Info id="robot-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info>}>
-          <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove' }}
-            robotId={id} onChange={refuse ? undefined : saveContext} />
+          {refuse && !c.context.length ? <div className="set-note" data-testid="side-context-empty">nothing listed</div> : (
+            <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove' }} robotId={id} onChange={refuse ? undefined : saveContext} />
+          )}
           {!refuse && <AddLink id={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />}
-          {refuse && !c.context.length && <p className="set-note" data-testid="side-context-empty">nothing listed</p>}
         </Section>
         {started && (
           <Section name="robot.started" title="Robots it started">
