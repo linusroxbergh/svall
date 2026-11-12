@@ -1,4 +1,4 @@
-import type { AgentKind, ContextItem, FleetEntry, SetupRow } from '@svall/protocol';
+import type { AgentKind, ContextItem, FleetEntry, LimitsOffer, SetupRow } from '@svall/protocol';
 
 export type Rect = { x: number; y: number; width: number; height: number };
 // via: for a robot placed on another machine, the ssh destination and master socket that reach it
@@ -27,13 +27,16 @@ export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'home' | 'home-retry' | 'home-abort' | 'home-crew' | 'join';
 // interrupt: a person chose that what mission control's robots run is interrupted
 // id: what the command names a far home's machine by, as this Mac's registry could hold its name for another
-export type HostArgs = { name: string; id?: string; ssh?: string; forget?: boolean; asHome?: boolean; interrupt?: boolean };
+// limits: what a join leaves the fleet of its home, as `--limits` takes it, or `none`
+export type HostArgs = { name: string; id?: string; ssh?: string; forget?: boolean; asHome?: boolean; interrupt?: boolean; limits?: string };
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain;
 // forward: the port its login waits on there; tick: what a row of the mirror's report copies once ticked
-// say: what the window shows in place of `action`, where a button stands for the command; raw: what a tool said, word for word
+// say: what the window shows in place of `action`, where a button stands for the command; raw: what a tool said, word for word;
+// offer: the machine's size and the limits to ask its fleet to keep to, while none is set
 export type HostStep = {
   step: string; status: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here']; raw?: string;
+  offer?: LimitsOffer;
 };
 // one machine as `svall host list --json` gives it: no ssh for this Mac, and its last check
 export type MachineRow = {

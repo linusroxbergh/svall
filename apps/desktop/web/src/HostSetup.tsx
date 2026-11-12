@@ -1,6 +1,6 @@
-import { AGENT_UPDATE, notNeeded, updatesHere, updatesIn, type AgentKind, type MachineId, type SetupRow } from '@svall/protocol';
+import { AGENT_UPDATE, notNeeded, updatesHere, updatesIn, type AgentKind, type LimitsReport, type MachineId, type SetupRow } from '@svall/protocol';
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { app } from './boot.js';
+import { app, deps } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
@@ -11,6 +11,7 @@ import {
 import { useApp, useMeasure } from './hooks.js';
 import { startHost } from './hostRun.js';
 import { Info } from './Info.js';
+import { LimitsAsk, limitsValue } from './Limits.js';
 import { MachineTerminal } from './MachineTerminal.js';
 import { answers, homeName } from './placement.js';
 import { Said } from './Said.js';
@@ -391,7 +392,8 @@ function Sections({ rows, name, row }: { rows: HostStep[]; name: string; row: (r
 function Checklist({ run, terminal, open, unfold }: { run: HostRun; terminal?: Terminal; open: Open; unfold: (o: Open) => void }) {
   const fleet = useApp((s) => s.fleet);
   const name = run.args.name;
-  const steps = run.steps.filter((s) => !isSetup(s));
+  // the limits a machine was offered are asked under the list, not listed
+  const steps = run.steps.filter((s) => !isSetup(s) && !s.offer);
   const now = run.running ? steps.filter((s) => s.status === 'start').at(-1) : undefined;
   // a step still under way when the run ended is where it stopped; while the service is said not to run, its port's missing file
   // (svalld's one warn) only says so again, and any other port row stands
@@ -466,6 +468,22 @@ function Checklist({ run, terminal, open, unfold }: { run: HostRun; terminal?: T
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** An added machine with no limit yet: what this fleet may use of it, set through the fleet's own daemon now that it is linked. */
+function AddLimits({ run }: { run: HostRun }) {
+  const offer = run.steps.find((s) => s.offer)?.offer;
+  const name = run.args.name;
+  const id = useApp((s) => s.machines?.find((m) => m.name === name)?.id as MachineId | undefined);
+  const [set, setSet] = useState<LimitsReport>();
+  if (!offer || run.op !== 'add' || run.running || !addedBy(run)) return null;
+  if (set) return <div className="row" data-testid="limits-done"><span>limits</span><b>{limitsValue(set)}</b></div>;
+  return (
+    <div className="host-form">
+      <LimitsAsk name={name} offer={offer} waits={id ? undefined : `Check again to list ${name} here first`}
+        set={(l) => deps().api.call('machines.setLimits', { machine: id!, cpus: l.cpus ?? null, memoryMb: l.memoryMb ?? null }).then(setSet)} />
     </div>
   );
 }
@@ -623,7 +641,7 @@ export function HostSetup() {
             <div className="host-body">
               {adding && running && <span className="modal-sub">{shown.args.ssh}</span>}
               {adding && !running ? failed && <NotAdded row={failed} terminal={opens} />
-                : <Checklist run={shown} terminal={opens} open={unfolded} unfold={unfold} />}
+                : <><AddLimits run={shown} /><Checklist run={shown} terminal={opens} open={unfolded} unfold={unfold} /></>}
             </div>
             <Outcome run={shown} edit={() => edit(shown)} />
           </>

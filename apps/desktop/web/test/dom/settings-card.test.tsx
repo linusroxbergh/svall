@@ -20,6 +20,8 @@ beforeEach(() => {
   freshStore();
 });
 
+// a Linux machine's row reads its limits
+const NO_LIMIT = { size: { cores: 4, memoryMb: 8192 }, suggested: {}, limits: {}, state: 'none' };
 const show = (pane: string) => fireEvent.click(screen.getByTestId(`settings-tab-${pane}`));
 
 // the app's webview refuses to navigate away from the app, so an outside link goes through the shell
@@ -412,7 +414,7 @@ test('a far home that calls itself otherwise than this Mac\'s registry is acted 
   call.mockImplementation((method: string) => Promise.resolve(method === 'machines.list' ? { machines: [
     { id: HOME, name: 'vps-1234', role: 'home', platform: 'linux', reachable: true, robots: 7 },
     { id: ME, name: 'mac', role: 'worker', platform: 'darwin', reachable: true, robots: 3 },
-  ] } : {}));
+  ] } : method === 'machines.limits' ? NO_LIMIT : {}));
   try {
     act(() => {
       store.getState().setVia({ machine: ME as never, home: HOME as never, name: 'vps-1234', online: true });
@@ -443,7 +445,7 @@ test('Machines names each machine\'s role from the fleet, the home first and a w
     { id: ME, name: 'mac', role: 'worker', platform: 'darwin', reachable: true, robots: 3 },
     { id: DIAL, name: 'laptop', role: 'worker', platform: 'darwin', dialsIn: true, reachable: false, robots: 1 },
     { id: LINUX, name: 'vault', role: 'worker', platform: 'linux', reachable: true, robots: 0 },
-  ] } : {}));
+  ] } : method === 'machines.limits' ? NO_LIMIT : {}));
   try {
     act(() => {
       store.getState().setVia({ machine: ME as never, home: HOME as never, name: 'studio', online: true });

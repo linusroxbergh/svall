@@ -78,8 +78,9 @@ export type UiState = {
   // the sides ⌘⇧S hid, so the next press brings back those and no others
   hiddenSides?: { sidebar: boolean; card: boolean };
   settingsOpen: boolean;
-  // the pane a control elsewhere opened the settings on, a new object each ask so a repeated one turns back to it
-  settingsAsk?: { pane: string };
+  // the pane a control elsewhere opened the settings on, a new object each ask so a repeated one turns back to it; limits:
+  // the machine whose limits it opens to change
+  settingsAsk?: { pane: string; limits?: string };
   // the action whose chord the settings' Keyboard pane is waiting for; while it is set, keys are read, not obeyed
   capturingKey?: ActionId;
   usageOpen: boolean;
@@ -154,7 +155,7 @@ export type UiActions = {
   setCapturingKey(id?: ActionId): void;
   toggleSidebar(open?: boolean): void;
   toggleSides(): void;
-  toggleSettings(open?: boolean, pane?: string): void;
+  toggleSettings(open?: boolean, pane?: string, limits?: string): void;
   toggleUsage(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleMobile(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleLoad(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
@@ -318,13 +319,13 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
       if (back.card) s.toggleSideCard(!hide);
       set({ hiddenSides: hide ? open : undefined });
     },
-    toggleSettings: (open, pane) => set((s) => {
+    toggleSettings: (open, pane, limits) => set((s) => {
       const next = open ?? !s.settingsOpen;
       // a window that closes has been answered, and what it leaves behind is this machine's settings;
       // before the fleet arrives the connect screen stands in its place, and closes nobody saw answer nothing
       if (!next && s.loaded) storage?.setSettings(s.settings);
       // a window that goes must not leave the keyboard listening
-      return { settingsOpen: next, settingsAsk: next ? (pane ? { pane } : s.settingsAsk) : undefined, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen, loadOpen: next ? false : s.loadOpen, feedbackOpen: next ? false : s.feedbackOpen,
+      return { settingsOpen: next, settingsAsk: next ? (pane ? { pane, ...(limits && { limits }) } : s.settingsAsk) : undefined, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen, loadOpen: next ? false : s.loadOpen, feedbackOpen: next ? false : s.feedbackOpen,
         keepPageFocus: next && (s.usageOpen || s.mobileOpen || s.loadOpen || s.feedbackOpen) ? true : s.keepPageFocus,
         capturingKey: next ? s.capturingKey : undefined };
     }),

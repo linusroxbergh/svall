@@ -69,6 +69,7 @@ const plainRow = (event: HostStep, names: MachineNames): HostStep => ({
   ...(event.gap ? { gap: event.gap } : {}),
   ...(event.here ? { here: event.here } : {}),
   ...(event.raw ? { raw: withoutTokens(event.raw) } : {}),
+  ...(event.offer ? { offer: event.offer } : {}),
 });
 
 /** The sections the fine checks are listed under, in the sheet's order, and the steps `svall host …` and a machine's own doctor emit inside each; `on`, named for the machine. */

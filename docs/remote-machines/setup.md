@@ -377,8 +377,13 @@ A fleet on a Linux machine can be held to a number of cores and an amount of mem
 else the machine runs. `svall host add` and `svall fleet join` read the machine's size and, in a terminal, ask: "studio
 has 12 cores and 94 GB. This fleet may use [11 cores, 93 GB], or none:". Return takes the default, all but one core and
 1 GB; `4,8G` names another; `none` sets no limit. `--limits 4,8G` and `--no-limits` answer ahead. A run with no one to
-ask, as the app's, sets nothing and says so in its `limits` step, with the command that sets the default. A machine
-that already holds a limit is shown it and not asked. A Mac has no limit.
+ask sets nothing and says so in its `limits` step, with the command that sets the default. A machine that already
+holds a limit is shown it and not asked. A Mac has no limit.
+
+The app asks the same with the default filled in: **Add machine** once the machine is added; the first run's server
+path between installing the server and this Mac joining it, with **Set** or **No limit**; and after a join that finds
+the home with no limit, the window opens Settings → Machines on the home's limits, once. Settings → Machines shows each
+Linux machine's `limits` row, with **Change** for the cores, the memory and **No limit**, and why a limit does not hold.
 
 | Command | Where | What it does |
 | --- | --- | --- |
@@ -399,8 +404,9 @@ put on the unit is taken back.
 At the limit on cores the fleet's processes run slower. A fleet with a memory limit uses no swap, so at
 that limit the machine's disk is left alone and the kernel stops one process of the fleet at once: the robot's terminal says `Killed`, the agent can be
 revived, and every other robot runs on. The daemon marks each robot's processes as the ones to stop first, so it is
-not tmux or the daemon. The app says so as it happens; `svall host doctor` and the daemon's log say how often it happened; which robot lost a
-process only root's kernel log says.
+not tmux or the daemon. The app says so as it happens, with **Change limits**; the machine's `limits` row,
+`svall host doctor` and the daemon's log say how often it happened; which robot lost a process only root's kernel log
+says.
 
 What a limit does not reach: a fleet whose terminals run on a tmux Svall did not bring, such as Ubuntu's own kept
 through an upgrade, which starts each terminal outside the unit (the limit reads "the fleet's terminals run outside

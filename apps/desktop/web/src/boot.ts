@@ -9,6 +9,7 @@ import { dropBuffers } from './ide/buffers.js';
 import { createRepoWatch, type RepoWatch } from './ide/watch.js';
 import { followBindings, installKeyHandlers } from './keyboard.js';
 import { followLandings, logToasts } from './landings.js';
+import { followLimitsAsk, limitHit } from './limitsAsk.js';
 import { followMenu } from './menu.js';
 import { followNotifications } from './notifications.js';
 import { followMemory, followQuit } from './quit.js';
@@ -65,6 +66,7 @@ function createApp(): AppContext {
     a.onEvent = (e) => {
       if (e.event === 'repo.changed') { repoWatch?.emit(e.data.id); return; }
       if (e.event === 'mobile.phones') { store.getState().setPhones(e.data.phones); return; }
+      if (e.event === 'machines.limitHit') { limitHit(store, e.data); return; }
       if (e.event === 'app.show') { shows = shows.then(() => applyShow({ api: a, store, bridge }, e.data)).catch((err: Error) => console.warn(`app.show: ${err.message}`)); return; }
       if (e.event === 'state.patch') fleet.patch(e.data.ops);
     };
@@ -91,6 +93,7 @@ function createApp(): AppContext {
   installDropHandlers({ bridge, store, api: () => api });
   followLandings({ store, api: () => api });
   logToasts({ store, bridge });
+  followLimitsAsk(store);
   applyZoom(bridge, store.getState().settings.zoom);
   store.subscribe((s, prev) => { if (s.settings.zoom !== prev.settings.zoom) applyZoom(bridge, s.settings.zoom); });
   // a robot that left the fleet takes its editor buffers with it

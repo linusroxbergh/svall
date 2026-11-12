@@ -29,6 +29,15 @@
 .machine-said .said > div { font-size: var(--text-sm); color: var(--ink-2); }
 .machine-acts { position: relative; display: flex; flex-wrap: wrap; gap: var(--sp-xs); }
 .machine-menu { min-width: max-content; }
+/* a Linux machine's settings rows under it, first its limits, whose editor opens beneath them */
+.machine-rows { grid-column: 2 / 4; min-width: 0; }
+.set-win .row .fld.inline.limits-fld { width: 5em; text-align: right; }
+.limits-edit .row > span:empty { flex: 1; }
+/* a connect's ask: the machine's size and two short fields in the sentence, Set at its end */
+.limits-ask { display: flex; flex-direction: column; gap: var(--sp-xs); }
+.limits-ask-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-md); font-size: var(--text-md); color: var(--ink); line-height: 2; }
+.limits-ask-row > .btn { flex: none; }
+.limits-ask .fld.limits-fld { display: inline-block; width: 4.5em; padding: var(--sp-2xs) var(--sp-sm); text-align: right; }
 .host .acts { flex-wrap: wrap; }
 .host-note { font-size: var(--text-md); line-height: var(--lh); color: var(--ink-2); display: flex; flex-direction: column; gap: var(--sp-md); min-width: 0; overflow-wrap: anywhere; }
 .host-steps { display: flex; flex-direction: column; gap: var(--sp-xl); }
