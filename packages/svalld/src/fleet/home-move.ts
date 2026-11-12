@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import {
   AdoptAnswer, Enrolment, HomeDelivery, HomeManifest, HomeMoving, MachineId, MachineRecord, migrateState, relabelHome, WorkerFile,
-  type FleetState, type HomeMoveId, type HomeWorker,
+  type FleetState, type HomeMoveId, type HomeWorker, type MobileStatus,
 } from '@svall/protocol';
 import { InvalidConfig } from '../config.js';
 import { repoRootOf, repoSlug } from '../docs.js';
@@ -48,7 +48,8 @@ const STOP_MS = 60_000;
 /** A destination's phases: `stopping` while its daemon is down with its files as they were; `installing` while its files are changing, which only a recovery ends; `installed` until its daemon answers as the home. `released`: the old home's own, that the machine holding the fleet ended its marker. */
 const AdoptPhase = z.enum(['staging', 'staged', 'stopping', 'installing', 'installed', 'rolledback', 'adopted', 'aborted', 'released', 'done']);
 type AdoptPhase = z.infer<typeof AdoptPhase>;
-const Record_ = z.object({ phase: z.string(), at: z.number(), detail: z.string().optional() });
+// `fix`, `run`, `raw`: beside a phone link's try that failed, what to do, the command that does it, and what the tool said
+const Record_ = z.object({ phase: z.string(), at: z.number(), detail: z.string().optional(), fix: z.string().optional(), run: z.string().optional(), raw: z.string().optional() });
 
 export const adoptDir = (p: Pick<Paths, 'home'>, id: string): string => path.join(p.home, `adopt-${id}`);
 const journalOf = (p: Pick<Paths, 'homeMoves'>, id: string): string => path.join(p.homeMoves, `${id}.ndjson`);
@@ -141,16 +142,24 @@ export function phoneOwed(p: Pick<Paths, 'homeMoves'>): string[] {
   });
 }
 
-export const servedPhone = (p: Pick<Paths, 'homeMoves'>, id: string, why?: string): void => enter(p, id, SERVED, why);
+type PhoneSaid = Pick<MobileStatus, 'fix' | 'run' | 'raw'>;
+
+export const servedPhone = (p: Pick<Paths, 'homeMoves'>, id: string, why?: string, said: PhoneSaid = {}): void => {
+  appendDurable(journalOf(p, id), { phase: SERVED, at: Date.now(), ...(why && { detail: why, ...said }) });
+};
 
 // by the newest try of any move: what its failure said stands until a later try, or a person's own switch, says otherwise
-const phoneTries = (p: Pick<Paths, 'homeMoves'>): { id: string; at: number; detail?: string }[] => moveIds(p).flatMap((id) => {
+const phoneTries = (p: Pick<Paths, 'homeMoves'>): (z.infer<typeof Record_> & { id: string })[] => moveIds(p).flatMap((id) => {
   // what a journal that cannot be read tried says nothing to a person's switch
-  try { return journalLines(p, id).filter((l) => l.phase === SERVED).map((l) => ({ id, at: l.at, ...(l.detail && { detail: l.detail }) })); } catch { return []; }
+  try { return journalLines(p, id).filter((l) => l.phase === SERVED).map((l) => ({ ...l, id })); } catch { return []; }
 }).sort((a, b) => a.at - b.at);
 
-/** Why the phone link did not come on when a move last tried it, for Settings → Phone to say. */
-export const phoneReason = (p: Pick<Paths, 'homeMoves'>): string | undefined => phoneTries(p).at(-1)?.detail;
+/** Why the phone link did not come on when a move last tried it, with what to do and what the tool said, for Settings → Phone to say. */
+export const phoneReason = (p: Pick<Paths, 'homeMoves'>): (PhoneSaid & { reason: string }) | undefined => {
+  const last = phoneTries(p).at(-1);
+  return last?.detail === undefined ? undefined
+    : { reason: last.detail, ...(last.fix && { fix: last.fix }), ...(last.run && { run: last.run }), ...(last.raw && { raw: last.raw }) };
+};
 
 /** A person's own switch: what a move's try said no longer stands. */
 export function forgetPhoneReason(p: Pick<Paths, 'homeMoves'>): void {

@@ -458,9 +458,9 @@ describe('a not adopted is final', () => {
     const w = await world();
     enter(w.studio.paths, ID, 'adopted', 'serve');
     servedPhone(w.studio.paths, ID, 'tailscale refused it');
-    expect(phoneReason(w.studio.paths)).toBe('tailscale refused it');
+    expect(phoneReason(w.studio.paths)).toEqual({ reason: 'tailscale refused it' });
     fs.mkdirSync(path.join(w.studio.paths.homeMoves, 'hm_otherother.ndjson'));
-    expect(phoneReason(w.studio.paths)).toBe('tailscale refused it');
+    expect(phoneReason(w.studio.paths)).toEqual({ reason: 'tailscale refused it' });
     forgetPhoneReason(w.studio.paths);
     expect(phoneReason(w.studio.paths)).toBeUndefined();
     expect(journalLines(w.studio.paths, 'hm_nevernever')).toEqual([]);

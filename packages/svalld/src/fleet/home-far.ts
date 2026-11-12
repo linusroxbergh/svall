@@ -13,6 +13,9 @@ import { driverKey, enrolFits, forgetPhoneReason, moveOutcome, phoneOwed, phoneR
 
 const ASK_MS = 30_000;
 
+// a phone link's try: why it is off, what to do, the command that does it, and what the tool said
+type Served = { error?: string | null; fix?: string; run?: string; raw?: string };
+
 // the fleet there by its folder, as its profile there need not be the one it has here
 const farSvall = (svallBase: string, fleetHome: string, args: string[]): string[] => ['env', shq(`SVALL_HOME=${fleetHome}`), shq(svallExe(svallBase)), '--json', ...args.map(shq)];
 
@@ -107,11 +110,12 @@ export async function deliverOwed(paths: Paths, open: Open = openMaster): Promis
 }
 
 // the link the old home's was, on this home once it has taken the fleet: tried once, and what fails is logged, and Settings → Phone says why
-async function servePhones(paths: Paths, log: Pick<Logger, 'error' | 'info'>, serve: () => Promise<{ error?: string | null; raw?: string }>): Promise<void> {
+async function servePhones(paths: Paths, log: Pick<Logger, 'error' | 'info'>, serve: () => Promise<Served>): Promise<void> {
   for (const id of phoneOwed(paths)) {
-    const [why, raw] = await serve().then((s) => [s.error ?? undefined, s.raw], (e: Error) => [e.message, undefined]);
-    if (why) log.error(`the phone link did not come on here: ${raw ? `${why}: ${raw}` : why}`);
-    servedPhone(paths, id, why);
+    const s: Served = await serve().catch((e: Error) => ({ error: e.message }));
+    const why = s.error ?? undefined;
+    if (why) log.error(`the phone link did not come on here: ${s.raw ? `${why}: ${s.raw}` : why}`);
+    servedPhone(paths, id, why, { ...(s.fix && { fix: s.fix }), ...(s.run && { run: s.run }), ...(s.raw && { raw: s.raw }) });
   }
 }
 
@@ -120,7 +124,7 @@ export const phoneWithReason = (mobile: Mobile, paths: Paths): Mobile => ({
   get: async () => {
     const s = await mobile.get();
     const reason = s.serving || s.error ? undefined : phoneReason(paths);
-    return reason ? { ...s, reason } : s;
+    return reason ? { ...s, ...reason } : s;
   },
   set: (on) => {
     forgetPhoneReason(paths);
@@ -133,7 +137,7 @@ export const phoneWithReason = (mobile: Mobile, paths: Paths): Mobile => ({
  * Tells the old home what this machine owes it, from the moment that is known, for as long as this daemon runs, and with `serve`,
  * a home's, turns on the phone link a move it took owes; the returned function stops it.
  */
-export function startDeliveries(paths: Paths, log: Pick<Logger, 'error' | 'info'>, open?: Parameters<typeof deliverOwed>[1], serve?: () => Promise<{ error?: string | null; raw?: string }>): () => void {
+export function startDeliveries(paths: Paths, log: Pick<Logger, 'error' | 'info'>, open?: Parameters<typeof deliverOwed>[1], serve?: () => Promise<Served>): () => void {
   let timer: NodeJS.Timeout | undefined;
   let stopped = false;
   let ms = FIRST_MS;

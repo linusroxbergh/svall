@@ -4,7 +4,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { emptyState, WorkerFile, type Enrolment, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineId } from '@svall/protocol';
 import { readFleetConfig } from '../../src/config.js';
 import { HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
-import { deliverOwed, markedThere, startDeliveries } from '../../src/fleet/home-far.js';
+import { deliverOwed, markedThere, phoneWithReason, startDeliveries } from '../../src/fleet/home-far.js';
 import { homeCheck, homeFacts, HomeFreeze } from '../../src/fleet/home-freeze.js';
 import { abortAdopt, addEnrol, adoptDir, adoptStatus, createMarker, driverKey, enter, installAdopt, journalLines, landed, markKey, moveInFlight, moveOutcome, oldHomeName, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, TOLD_UNMARKED, writeEnrol } from '../../src/fleet/home-move.js';
 import { silentLogger } from '../../src/log.js';
@@ -495,7 +495,7 @@ describe('the phone link a move owes', () => {
     await stageAdopt(w.studio.deps, ID, packed.sha256, packed.bytes);
     return w;
   };
-  const tick = async (paths: Side['paths'], serve: () => Promise<{ error?: string }>, log: string[] = []) => {
+  const tick = async (paths: Side['paths'], serve: () => Promise<{ error?: string; fix?: string; run?: string; raw?: string }>, log: string[] = []) => {
     vi.useFakeTimers();
     const stop = startDeliveries(paths, { error: (l) => log.push(l), info: (l) => log.push(l) }, undefined, serve);
     await vi.advanceTimersByTimeAsync(5_100);
@@ -553,6 +553,17 @@ describe('the phone link a move owes', () => {
     expect(journalLines(w.studio.paths, ID).at(-1)).toMatchObject({ phase: 'served', detail: 'Access denied: serve config denied' });
     expect(moveOutcome(w.studio.paths, ID)?.status).toBe('adopted');
     expect(phoneOwed(w.studio.paths)).toEqual([]);
+  });
+
+  it('what to do about a link refused here, and what tailscale said, stand on every read after it', async () => {
+    const w = await serving();
+    expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
+    const said = { error: 'Tailscale on studio does not let Svall share this fleet', fix: 'Run once on studio: sudo tailscale set --operator=$USER', run: 'sudo tailscale set --operator=$USER', raw: 'Access denied: serve config denied' };
+    await tick(w.studio.paths, () => Promise.resolve(said));
+    const off = { serving: false, url: '', port: 0, logins: [], phones: [] };
+    const link = phoneWithReason({ get: () => Promise.resolve(off), set: () => Promise.resolve(off) } as never, w.studio.paths);
+    expect(await link.get()).toEqual({ ...off, reason: said.error, fix: said.fix, run: said.run, raw: said.raw });
+    expect(await link.get()).toMatchObject({ fix: said.fix });
   });
 
   it('a daemon with nothing to serve with, a worker\'s, leaves it owed', async () => {
