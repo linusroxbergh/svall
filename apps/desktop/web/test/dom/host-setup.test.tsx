@@ -910,6 +910,7 @@ test("a key the machine has its own of says so by the machine's name, with no bo
   const box = screen.getByTestId('host-tick-mirror:codex:mcp:github') as HTMLInputElement;
   expect([box.checked, box.indeterminate]).toEqual([false, true]);
   call.mockClear();
+  call.mockImplementation(async (method: string) => (method === 'machines.consent' ? { rows: [] } : {}));
   fireEvent.click(box);
   const consents = call.mock.calls.filter(([method]) => method === 'machines.consent');
   expect(consents).toEqual([['machines.consent', { machine: MACHINE, item: 'codex:mcp:github', fields: ['env.A'], on: false }]]);
