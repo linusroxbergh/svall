@@ -230,10 +230,12 @@ test('a robot that lands on a machine says what of its agent setup is not there 
   });
   await expect.poll(under).toBeLessThanOrEqual(0.5);
   await expect(body).not.toHaveAttribute('data-more', 'true');
-  // squeezed, it scrolls inside under a fade, and the sections below it stay in the card
-  await page.setViewportSize({ width: 1280, height: 600 });
+  // squeezed into its rows' words, it scrolls inside under a fade from the row its edge cuts, and the sections below it stay in the card;
+  // the details give way first, so it takes a shorter window than they need
+  await page.setViewportSize({ width: 1280, height: 560 });
   await expect.poll(under).toBeGreaterThan(0.5);
   await expect(body).toHaveAttribute('data-more', 'true');
+  await expect(body).toHaveAttribute('data-whole', 'cut');
   expect(await body.evaluate((el) => getComputedStyle(el).maskImage)).toContain('gradient');
   await expect(card.getByTestId('sec-fold-robot.details')).toBeInViewport({ ratio: 1 });
   const secs = (await card.locator('.side-secs').boundingBox())!;
