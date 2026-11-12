@@ -449,9 +449,8 @@ export const setDormancy = (d: ActionDeps, hours: number): void => {
 };
 
 // the daemon holds the only answer, and `svall mobile` can change it while the app is open
-export const loadMobileStatus = (d: ActionDeps): void => {
+export const loadMobileStatus = (d: ActionDeps): Promise<void> =>
   d.api.call('mobile.get', {}).then((m) => d.store.getState().setMobile(m)).catch(() => {});
-};
 
 // a link that cannot be made comes back as a status carrying the reason, not as a rejection
 export const serveFleet = (d: ActionDeps, enabled: boolean): Promise<void> =>

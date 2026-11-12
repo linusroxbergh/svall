@@ -125,3 +125,13 @@ test('the far home offers to bring the fleet back, keeps Check, Upgrade and its 
   fireEvent.click(screen.getByTestId('machine-bring-back'));
   expect(store.getState().homeSheet).toEqual({ to: VAULT, name: 'vault', back: true });
 });
+
+test('Open terminal is off for a machine this Mac has no ssh route to, and says so', () => {
+  freshStore();
+  store.getState().setFleet(fleet());
+  act(() => store.getState().setMachines([]));
+  render(<MachineActions name="studio" menuOnly />);
+  fireEvent.click(more());
+  const terminal = screen.getByTestId('machine-terminal');
+  expect([terminal.hasAttribute('disabled'), terminal.getAttribute('data-tip')]).toEqual([true, 'This Mac has no ssh route to studio']);
+});

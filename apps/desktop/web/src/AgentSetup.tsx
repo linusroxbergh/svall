@@ -170,6 +170,7 @@ export function AgentSetup() {
           </div>
         )}
       </Group>
+      {rows === undefined && !failed && <section className="set-group set-note" data-testid="setup-reading"><span className="move-spin" />Reading this Mac&apos;s agent setup…</section>}
       {!!rows?.length && (
         <Group name="Keys" testid="setup-keys"
           info={<Info id="setup-keys">A key stays on this Mac unless you switch it on for {home}; switched off, it leaves {home} at the next copy. A server or file sent whole stays until you remove it on {home}.</Info>}>

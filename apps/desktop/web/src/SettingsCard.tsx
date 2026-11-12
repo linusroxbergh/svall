@@ -23,6 +23,8 @@ import { canFill, OPACITY, SETTINGS_SIZE, zoomBy, type KeepAwake, type NotifySet
 import { useWidthGrip } from './widthGrip.js';
 
 const set = (patch: Partial<Settings>) => app.store.getState().setSettings(patch);
+// why a control the shell answers is off in a page with no shell
+const APP_ONLY = 'Works only in the Svall app.';
 
 function Opacity({ label, name, value, info }: { label: string; name: 'cardOpacity' | 'fullOpacity'; value: number; info?: ReactNode }) {
   return (
@@ -42,8 +44,10 @@ function Phone() {
   const status = sw.status;
   const home = useApp((s) => s.via && homeName(s.fleet, s.via));
   const [copied, setCopied] = useState(false);
+  // a status not read yet reads as off, so the rows wait for the first answer
+  const [asked, setAsked] = useState(false);
   const revert = useRef<number>(undefined);
-  useEffect(() => { loadMobileStatus(deps()); return () => window.clearTimeout(revert.current); }, []);
+  useEffect(() => { void loadMobileStatus(deps()).finally(() => setAsked(true)); return () => window.clearTimeout(revert.current); }, []);
   // the copied link pairs the phone, as the QR code does
   const copy = () => {
     if (!status) return;
@@ -52,6 +56,7 @@ function Phone() {
     window.clearTimeout(revert.current);
     revert.current = window.setTimeout(() => setCopied(false), 1500);
   };
+  if (!status && !asked) return <Group name="Phone link"><div className="set-note" data-testid="set-mobile-reading"><span className="move-spin" />Reading the phone link…</div></Group>;
   return (
     <Group name="Phone link">
       <div className="row">
@@ -223,15 +228,17 @@ function Machines() {
   ];
   // a home on this Mac with no worker is what it always was
   const shown = !via && !rows.some((r) => r.role !== 'home') ? [] : rows;
+  // the registry's rows wait for the fleet's, which place them
+  const reading = (machines === undefined && !error && app.bridge.present) || (online && fleetRows === undefined);
   return (
     <Group name="Machines" info={<Info id="machines">The home holds the fleet and starts new robots. A worker runs robots moved to it.</Info>}
       end={(!via || via.online) && <button className="btn sm" data-testid="machine-add" onClick={() => app.store.getState().toggleHost(true)}>Add machine</button>}>
       <div data-testid="machines">
-        {machines === undefined && !error && app.bridge.present && <div className="set-note"><span className="move-spin" />Reading the machines…</div>}
-        {machines && !shown.length && (
+        {reading && <div className="set-note" data-testid="machines-reading"><span className="move-spin" />Reading the machines…</div>}
+        {!reading && machines && !shown.length && (
           <div className="set-note" data-testid="machines-empty">No other machine yet. A Linux machine can run this fleet&apos;s robots while this Mac sleeps, or run the whole fleet.</div>
         )}
-        {shown.map((m) => {
+        {!reading && shown.map((m) => {
           const label = m.id === via?.machine || (m.role === 'home' && !via) ? 'this Mac' : m.name;
           const acts = !!m.ssh && (via ? m.role === 'home' || !!registered.get(m.id)?.far : m.role !== 'home');
           const mismatch = !!links?.[m.id as MachineId]?.mismatch;
@@ -466,12 +473,12 @@ function Machine() {
         <div className="row">
           <span>Ghostty config<Info id="ghostty-config">Terminal font, colours and cursor.</Info></span>
           <b><button className="btn sm" data-testid="settings-ghostty" aria-label="Open Ghostty config" disabled={!shell}
-            onClick={() => openConfig(app.bridge, 'ghostty')}>Open</button></b>
+            data-tip={shell ? undefined : APP_ONLY} onClick={() => openConfig(app.bridge, 'ghostty')}>Open</button></b>
         </div>
         <div className="row">
           <span>Fleet config<Info id="fleet-config">Mission control, fleet defaults, scribe and phone logins.</Info></span>
           <b><button className="btn sm" data-testid="settings-fleet" aria-label="Open Fleet config" disabled={!shell || apart}
-            data-tip={via?.served ? `This window has no route to ${home}, where fleet.json is.` : apart ? `${home} is not reachable; its fleet.json is there.` : undefined}
+            data-tip={!shell ? APP_ONLY : via?.served ? `This window has no route to ${home}, where fleet.json is.` : apart ? `${home} is not reachable; its fleet.json is there.` : undefined}
             onClick={() => (via ? void openFleetConfig(deps()) : openConfig(app.bridge, 'fleet'))}>Open</button></b>
         </div>
       </Group>
@@ -495,7 +502,7 @@ function Browser() {
       <div className="row">
         <span>Chrome cookies<Info id="cookies">A one-time copy from a Chrome profile, so your Chrome sign-ins work here too.</Info></span>
         <b><button className="btn sm" data-testid="settings-cookies" aria-label="Import Chrome cookies" disabled={!shell}
-          onClick={() => app.bridge.send({ type: 'browser.importCookies' })}>Import</button></b>
+          data-tip={shell ? undefined : APP_ONLY} onClick={() => app.bridge.send({ type: 'browser.importCookies' })}>Import</button></b>
       </div>
     </Group>
   );

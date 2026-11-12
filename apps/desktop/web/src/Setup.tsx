@@ -9,6 +9,7 @@ import { Caret, Close, Mark } from './icons.js';
 import { Said } from './Said.js';
 import { DEFAULT_SETTINGS, type Settings } from './settings.js';
 import { localAppStorage, TOUR_KEY } from './store/persist.js';
+import { Tips } from './Tips.js';
 
 export function Setup() {
   const [bridge] = useState(createBridge);
@@ -17,6 +18,7 @@ export function Setup() {
   return (
     <>
       <SetupScreen bridge={bridge} />
+      <Tips bridge={bridge} />
       {feedback && <FeedbackPopover onClose={() => setFeedback(false)} diagnostics={() => Promise.reject(new Error('no diagnostics before setup'))} />}
     </>
   );
@@ -217,6 +219,8 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       farRows.current = [];
       if (farSteps) setFarSteps(undefined); else setFork(undefined);
     };
+    const wanting = busy ? 'Waits while Svall checks this Mac' : blockers.length > 0 ? 'Fix what is listed above first'
+      : !/^[A-Za-z0-9][A-Za-z0-9._@:[\]-]*$/.test(ssh.trim()) ? 'Needs the server\'s ssh destination' : undefined;
     return (
       <Page>
         <header className="setup-intro">
@@ -244,7 +248,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
         <div className="setup-acts">
           {running ? <button type="button" className="btn" data-testid="fork-stop" disabled={stopped} onClick={() => { setStopped(true); bridge.send({ type: 'host.cancel' }); }}>{stopped ? 'Stopping…' : 'Stop'}</button> : (
             <>
-              <button type="button" className="btn pri" data-testid="fork-go" disabled={busy || blockers.length > 0 || !/^[A-Za-z0-9][A-Za-z0-9._@:[\]-]*$/.test(ssh.trim())} onClick={() => farRun(fork)}>
+              <button type="button" className="btn pri" data-testid="fork-go" disabled={!!wanting} data-tip={wanting} onClick={() => farRun(fork)}>
                 {farSteps ? 'Try again' : fork === 'server' ? 'Set up and connect' : 'Connect'}
               </button>
               <button type="button" className="btn" data-testid="fork-back" disabled={busy} onClick={back}>Back</button>

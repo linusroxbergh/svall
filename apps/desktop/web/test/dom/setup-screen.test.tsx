@@ -262,6 +262,16 @@ describe('the first run forks three ways', () => {
     expect(screen.queryByTestId('fork-ssh')).toBeNull();
   });
 
+  test('Connect stays off until the server\'s ssh destination is typed, and its tip on the setup page says so', async () => {
+    shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-join'));
+    const go = screen.getByTestId('fork-go');
+    fireEvent.pointerOver(go);
+    expect((await screen.findByTestId('tip')).textContent).toBe("Needs the server's ssh destination");
+    toSsh('ada@studio');
+    expect([go.hasAttribute('disabled'), go.hasAttribute('data-tip')]).toEqual([false, false]);
+  });
+
   test('connecting sets this Mac up, then joins, and only a join that ended well opens the window, so no first start comes before it', async () => {
     const { sent, receive } = shell(ready, { fork: false });
     fireEvent.click(screen.getByTestId('fork-join'));

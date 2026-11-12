@@ -97,7 +97,8 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
       {open && (
         <div ref={menu} className="machine-menu menu popover" role="menu" style={place}>
           <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip={`Install ${release} release there`} onClick={item(() => run('upgrade'))}>Upgrade to {release} release</button>
-          <button role="menuitem" className="menu-item" data-testid="machine-terminal" disabled={running || !reachable} data-tip="A terminal on this machine, for what Svall leaves to you there"
+          <button role="menuitem" className="menu-item" data-testid="machine-terminal" disabled={running || !reachable}
+            data-tip={reachable ? 'A terminal on this machine, for what Svall leaves to you there' : `This Mac has no ssh route to ${name}`}
             onClick={item(() => store().openHostTerminal(name))}>Open terminal</button>
           {worker && id && (
             <button role="menuitem" className="menu-item" data-testid="machine-make-home" disabled={running} data-tip={`The fleet's islands, notes, settings and phone pairing move to ${name}; robots stay where they run`}
@@ -381,6 +382,7 @@ function AddForm({ from }: { from?: HostArgs }) {
   const home = useApp(homeOf);
   const [name, setName] = useState(from?.name ?? '');
   const [ssh, setSsh] = useState(from?.ssh ?? '');
+  const wanting = !machineName(name) ? 'Needs a name: lowercase letters, digits and dashes' : !sshDestination(ssh) ? 'Needs the ssh destination, such as linus@studio' : undefined;
   return (
     <>
       <div className="host-body">
@@ -404,7 +406,7 @@ function AddForm({ from }: { from?: HostArgs }) {
       </div>
       <div className="host-foot">
         <div className="acts">
-          <button className="btn pri" data-testid="host-add" disabled={!machineName(name) || !sshDestination(ssh)} onClick={() => startHost('add', { name, ssh })}>Add machine</button>
+          <button className="btn pri" data-testid="host-add" disabled={!!wanting} data-tip={wanting} onClick={() => startHost('add', { name, ssh })}>Add machine</button>
         </div>
       </div>
     </>

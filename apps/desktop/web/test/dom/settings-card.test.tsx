@@ -23,18 +23,18 @@ beforeEach(() => {
 const show = (pane: string) => fireEvent.click(screen.getByTestId(`settings-tab-${pane}`));
 
 // the app's webview refuses to navigate away from the app, so an outside link goes through the shell
-test('the Tailscale link in the phone tip opens in the default browser', () => {
+test('the Tailscale link in the phone tip opens in the default browser', async () => {
   render(<SettingsCard />);
   show('phone');
-  const link = screen.getByRole('link', { name: 'Tailscale' });
+  const link = await screen.findByRole('link', { name: 'Tailscale' });
   expect(fireEvent.click(link)).toBe(false);
   expect(sent).toContainEqual({ type: 'openUrl', url: 'https://tailscale.com/download' });
 });
 
-test('the phone tip asks for Tailscale on the home: this Mac on the home, and by its name in a window on a worker', () => {
+test('the phone tip asks for Tailscale on the home: this Mac on the home, and by its name in a window on a worker', async () => {
   render(<SettingsCard />);
   show('phone');
-  const tip = screen.getByRole('link', { name: 'Tailscale' }).parentElement!;
+  const tip = (await screen.findByRole('link', { name: 'Tailscale' })).parentElement!;
   expect(tip.textContent).toContain('needs Tailscale on this Mac and the phone.');
   act(() => store.getState().setVia({ machine: '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId, home: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, name: 'studio', online: true }));
   expect(tip.textContent).toContain('needs Tailscale on studio and the phone.');
@@ -107,6 +107,19 @@ test('outside the app there is no shell to post banners or hold the Mac awake, s
     render(<SettingsCard />);
     expect(screen.queryByTestId('settings-tab-notifications')).toBeNull();
     expect(screen.queryByTestId('set-keep-awake')).toBeNull();
+  } finally {
+    bridge.present = true;
+  }
+});
+
+test('outside the app the config files and the cookie import are off, each saying why', () => {
+  bridge.present = false;
+  try {
+    render(<SettingsCard />);
+    const off = (id: string) => [screen.getByTestId(id).hasAttribute('disabled'), screen.getByTestId(id).getAttribute('data-tip')];
+    expect([off('settings-ghostty'), off('settings-fleet')]).toEqual([[true, 'Works only in the Svall app.'], [true, 'Works only in the Svall app.']]);
+    show('browser');
+    expect(off('settings-cookies')).toEqual([true, 'Works only in the Svall app.']);
   } finally {
     bridge.present = true;
   }
@@ -285,6 +298,7 @@ test('Machines asks the fleet again after a list that failed', async () => {
     act(() => {
       store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: 'bbbbbbbb-0000-4000-8000-000000000000' as never, name: 'studio', online: true });
       store.getState().setStatus('online');
+      store.getState().setMachines([]);
     });
     render(<SettingsCard />);
     show('machines');
@@ -296,6 +310,30 @@ test('Machines asks the fleet again after a list that failed', async () => {
   } finally {
     vi.useRealTimers();
     call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('Phone reads the link before it shows its switch, which never reads off while it does not know', async () => {
+  let answer!: (m: unknown) => void;
+  try {
+    call.mockImplementation((m: string) => (m === 'mobile.get' ? new Promise((r) => { answer = r; }) : Promise.resolve({})));
+    render(<SettingsCard />);
+    show('phone');
+    expect(screen.getByTestId('set-mobile-reading').textContent).toBe('Reading the phone link…');
+    expect(screen.queryByTestId('set-mobile')).toBeNull();
+    await act(async () => answer({ serving: true, url: 'https://mac.ts.net:8443', port: 8443, logins: ['ada@github'], phones: [] }));
+    expect(screen.queryByTestId('set-mobile-reading')).toBeNull();
+    expect(checked('set-mobile')).toBe('true');
+    cleanup();
+    freshStore();
+    call.mockImplementation((m: string) => (m === 'mobile.get' ? Promise.reject(new Error('not connected')) : Promise.resolve({})));
+    render(<SettingsCard />);
+    show('phone');
+    // a read that failed leaves the switch to try
+    await screen.findByTestId('set-mobile');
+    expect(checked('set-mobile')).toBe('false');
+  } finally {
+    call.mockImplementation(() => Promise.resolve({ serving: false, logins: [], phones: [] }));
   }
 });
 
@@ -364,11 +402,11 @@ test('a far home that calls itself otherwise than this Mac\'s registry is acted 
     act(() => {
       store.getState().setVia({ machine: ME as never, home: HOME as never, name: 'vps-1234', online: true });
       store.getState().setStatus('online');
+      store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }] as never);
     });
     render(<SettingsCard />);
     show('machines');
-    const row = await screen.findByTestId('machine-vps-1234');
-    act(() => store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }] as never));
+    const row = await screen.findByTestId('machine-studio');
     fireEvent.click(row.querySelector('[data-testid="machine-more"]')!);
     expect((row.querySelector('[data-testid="machine-terminal"]') as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(row.querySelector('[data-testid="machine-bring-back"]')!);
@@ -395,11 +433,11 @@ test('Machines names each machine\'s role from the fleet, the home first and a w
     act(() => {
       store.getState().setVia({ machine: ME as never, home: HOME as never, name: 'studio', online: true });
       store.getState().setStatus('online');
+      store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }] as never);
     });
     render(<SettingsCard />);
     show('machines');
     await screen.findByTestId('machine-studio');
-    act(() => store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }] as never));
     const rows = [...screen.getByTestId('machines').querySelectorAll('.machine')];
     expect(rows.map((r) => r.getAttribute('data-role'))).toEqual(['home', 'worker', 'worker', 'worker']);
     const line = (name: string, part: string) => screen.getByTestId(`machine-${name}`).querySelector(part)?.textContent;
@@ -513,7 +551,7 @@ test('each pane is groups of rows under their names, and an action is a row with
   expect(document.querySelector('.set-win .desc, .set-win .opens')).toBeNull();
 });
 
-test('an Info says what a control is for in two sentences at most', () => {
+test('an Info says what a control is for in two sentences at most', async () => {
   render(<SettingsCard />);
   expect(tipOf('keep-awake')).toBe('Stops idle sleep while agents work, so they keep running and your phone reaches the fleet. The screen still dims and locks, and nothing is held on battery.');
   show('fleet');
@@ -524,6 +562,7 @@ test('an Info says what a control is for in two sentences at most', () => {
   expect(tipOf('worktrees')).toBe('Agents in a git repo make a worktree for their task and leave the main checkout alone.');
   call.mockImplementation(() => Promise.resolve({ serving: false, url: '', port: 0, logins: [], phones: [] }));
   show('phone');
+  await screen.findByTestId('set-mobile');
   expect(tipOf('phone')).toBe('Reachable only on your tailnet; needs Tailscale on this Mac and the phone. After switching it off, turn notifications on again on each phone.');
 });
 
@@ -704,6 +743,20 @@ describe('Machines', () => {
     act(() => store.getState().setFleet({ ...store.getState().fleet, machines: { [W]: { name: 'vault', reachable: false, since, mismatch: true } } } as never));
     await waitFor(() => expect(dot('vault')!.getAttribute('aria-label')).toBe('needs an upgrade'));
     expect(said('vault')).toBe('needs an upgrade');
+  });
+
+  test('the registry\'s machines wait for the fleet\'s list, so no row shifts in or changes later', async () => {
+    let answer!: (r: unknown) => void;
+    call.mockImplementation((m: string) => (m === 'machines.list' ? new Promise((r) => { answer = r; }) : Promise.resolve({})));
+    act(() => { store.getState().setStatus('online'); store.getState().setMachines([{ name: 'vault', id: W, ssh: 'ada@vault', platform: 'linux-x64' }] as never); });
+    render(<SettingsCard />);
+    show('machines');
+    await act(async () => {});
+    expect(screen.getByTestId('machines-reading').textContent).toBe('Reading the machines…');
+    expect(screen.queryByTestId('machine-vault')).toBeNull();
+    await act(async () => answer({ machines: [{ id: HOME, name: 'mac', role: 'home', reachable: true, robots: 1 }, { id: W, name: 'vault', role: 'worker', reachable: true, robots: 0 }] }));
+    expect(screen.queryByTestId('machines-reading')).toBeNull();
+    expect(screen.getByTestId('machine-vault').getAttribute('data-role')).toBe('worker');
   });
 
   test('a list that cannot be read is said, with Read again at the right', () => {
@@ -933,12 +986,31 @@ test('a push from the home that failed here is said', async () => {
   }
 });
 
+test('until home.setup answers, a line says this Mac\'s agent setup is being read where its keys and backup will show', async () => {
+  try {
+    let answerRows: ((r: unknown) => void) | undefined;
+    farWindow({ ...SETUP, 'home.setup': () => new Promise((r) => { answerRows = r; }) });
+    render(<SettingsCard />);
+    show('setup');
+    const reading = screen.getByTestId('setup-reading');
+    expect([reading.textContent, !!reading.querySelector('.move-spin')]).toEqual(["Reading this Mac's agent setup…", true]);
+    await waitFor(() => expect(answerRows).toBeDefined());
+    act(() => answerRows!({ rows: [tickRow], backup: '/Users/ada/.svall/mirror-backup/2026-11-04' }));
+    await screen.findByTestId('setup-keys');
+    expect(screen.getByTestId('setup-backup')).toBeTruthy();
+    expect(screen.queryByTestId('setup-reading')).toBeNull();
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
 test('a home.setup that fails shows why and leaves Copy off', async () => {
   try {
     farWindow({ ...SETUP, 'home.setup': () => { throw new Error('this Mac\'s daemon did not answer'); } });
     render(<SettingsCard />);
     show('setup');
     expect((await screen.findByTestId('setup-failed')).textContent).toContain('did not answer');
+    expect(screen.queryByTestId('setup-reading')).toBeNull();
     expect((screen.getByTestId('setup-copy') as HTMLButtonElement).disabled).toBe(true);
   } finally {
     call.mockImplementation(() => Promise.resolve({}));

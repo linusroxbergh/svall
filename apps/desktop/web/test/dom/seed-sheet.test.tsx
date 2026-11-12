@@ -49,6 +49,32 @@ describe('the first copy of an agent setup onto a far home', () => {
     expect(copies()).toEqual([]);
   });
 
+  it('keeps Copy off while it reads this Mac\'s keys and while a tick saves, its tip saying which', async () => {
+    following();
+    let rows!: (r: unknown) => void;
+    let saved!: (r: unknown) => void;
+    here.mockImplementation((m: string) => (m === 'machines.holdsSetup' ? Promise.resolve({ holds: true })
+      : m === 'home.setup' ? new Promise((r) => { rows = r; }) : new Promise((r) => { saved = r; })));
+    render(<SeedSheet />);
+    const copy = await screen.findByTestId('seed-copy');
+    expect([copy.hasAttribute('disabled'), copy.getAttribute('data-tip')]).toEqual([true, "Waits for this Mac's keys"]);
+    await waitFor(() => expect(rows).toBeDefined());
+    rows({ rows: [KEY] });
+    fireEvent.click(await screen.findByTestId('setup-tick-claude:mcp:a'));
+    expect([copy.hasAttribute('disabled'), copy.getAttribute('data-tip')]).toEqual([true, 'Waits for your ticks to save']);
+    saved({ rows: [KEY] });
+    await waitFor(() => expect(copy.hasAttribute('disabled')).toBe(false));
+    expect(copy.hasAttribute('data-tip')).toBe(false);
+  });
+
+  it('keeps Copy off when this Mac\'s keys cannot be read, its tip saying so', async () => {
+    following();
+    here.mockImplementation((m: string) => (m === 'machines.holdsSetup' ? Promise.resolve({ holds: true }) : Promise.reject(new Error('the consent file cannot be read'))));
+    render(<SeedSheet />);
+    await screen.findByTestId('seed-failed');
+    expect(screen.getByTestId('seed-copy').getAttribute('data-tip')).toBe("This Mac's keys could not be read");
+  });
+
   it('says what it copies in a row, and each key as a labelled box with its value masked: one for each key of a server, one for a file sent whole', async () => {
     following();
     here.mockImplementation((m: string) => Promise.resolve(m === 'machines.holdsSetup' ? { holds: true } : { rows: [KEY, TWO, WHOLE] }));

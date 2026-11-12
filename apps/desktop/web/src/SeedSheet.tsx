@@ -88,7 +88,8 @@ export function SeedSheet() {
         )}
         {failed && <div role="alert" data-testid="seed-failed"><Said {...splitRaw(failed)} /></div>}
         <div className="acts">
-          <button className="btn pri" data-testid="seed-copy" disabled={busy || rows === undefined || pending > 0} onClick={copy}>{busy ? 'Copying…' : `Copy to ${home}`}</button>
+          <button className="btn pri" data-testid="seed-copy" disabled={busy || rows === undefined || pending > 0}
+            data-tip={busy ? undefined : rows === undefined ? (failed ? "This Mac's keys could not be read" : "Waits for this Mac's keys") : pending > 0 ? 'Waits for your ticks to save' : undefined} onClick={copy}>{busy ? 'Copying…' : `Copy to ${home}`}</button>
           <button className="btn" data-testid="seed-no" disabled={busy} onClick={close}>Not now</button>
         </div>
         <span className="modal-sub">Later: Settings → Agent setup.</span>

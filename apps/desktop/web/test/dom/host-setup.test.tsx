@@ -108,10 +108,14 @@ test('a name the registry would refuse says what a name takes, and Add machine w
     fireEvent.change(screen.getByTestId('host-name'), { target: { value: name } });
     expect(screen.getByTestId('host-name-problem').textContent, name).toBe('Name the machine with up to 32 lowercase letters, digits and dashes, starting with a letter');
     expect((screen.getByTestId('host-add') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('host-add').getAttribute('data-tip')).toBe('Needs a name: lowercase letters, digits and dashes');
   }
   fireEvent.change(screen.getByTestId('host-name'), { target: { value: 'vault-local' } });
   expect(screen.queryByTestId('host-name-problem')).toBeNull();
   expect((screen.getByTestId('host-add') as HTMLButtonElement).disabled).toBe(false);
+  expect(screen.getByTestId('host-add').hasAttribute('data-tip')).toBe(false);
+  fireEvent.change(screen.getByTestId('host-ssh'), { target: { value: '' } });
+  expect(screen.getByTestId('host-add').getAttribute('data-tip')).toBe('Needs the ssh destination, such as linus@studio');
 });
 
 test('opened on a machine, the panel names it once, its ⋯ beside the ×, and offers Check at its foot', () => {

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
+import type { Bridge } from './bridge.js';
 import { holdCutout } from './cutout.js';
 
 // a tip opens after this pause, and at once while another is open or has just closed
@@ -9,8 +10,9 @@ const GAP = 6;
 const EDGE = 8;
 const TIPPED = '[data-tip]:not([data-tip=""])';
 
-// one tip for the window, said by whatever the pointer rests on with a data-tip; a line starting `• ` is a bullet
-export function Tips() {
+// one tip for the window, said by whatever the pointer rests on with a data-tip; a line starting `• ` is a bullet.
+// `bridge`: the page's own, where it has no app
+export function Tips({ bridge }: { bridge?: Bridge }) {
   const [tip, setTip] = useState<{ el: Element; text: string; cold: boolean }>();
   const ref = useRef<HTMLDivElement>(null);
 
@@ -58,7 +60,7 @@ export function Tips() {
     box.style.left = `${Math.max(EDGE, Math.min(a.left + a.width / 2 - w / 2, window.innerWidth - EDGE - w))}px`;
   }, [tip]);
   // a tip over a terminal or a browser tab is seen only through a hole in them; the presses there stay theirs
-  useEffect(() => (tip && ref.current ? holdCutout(app.bridge, ref.current, false) : undefined), [tip]);
+  useEffect(() => (tip && ref.current ? holdCutout(bridge ?? app.bridge, ref.current, false) : undefined), [tip]);
 
   if (!tip) return null;
   return (
