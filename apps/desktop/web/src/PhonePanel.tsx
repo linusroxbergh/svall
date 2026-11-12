@@ -65,7 +65,8 @@ export function MobilePanel({ compact = false }: { compact?: boolean | 'qr' }) {
   const redact = useApp((s) => s.phoneRedact);
   const [copied, setCopied] = useState(false);
   const revert = useRef<number>(undefined);
-  useEffect(() => { loadMobileStatus(deps()); return () => { window.clearTimeout(revert.current); app.store.getState().setPhoneRedact(undefined); }; }, []);
+  // a screenshot's redaction lasts until the dock's own panel closes, whatever other pane showed the QR meanwhile
+  useEffect(() => { loadMobileStatus(deps()); return () => { window.clearTimeout(revert.current); if (!compact) app.store.getState().setPhoneRedact(undefined); }; }, []);
   const copy = () => {
     if (!status?.url) return;
     // the copied link pairs the phone, as the QR code does

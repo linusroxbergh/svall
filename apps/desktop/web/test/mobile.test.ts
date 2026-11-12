@@ -310,7 +310,8 @@ describe('the phones on the page', () => {
     expect(phonesHere([{ login: 'me@example.com', since: at(14, 2) }], true)).toBe(`me@example.com since ${clock(at(14, 2))}`);
     expect(phonesHere([{ login: 'me@example.com', since: at(9, 5) }, { login: 'you@example.com', since: at(14, 30) }]))
       .toBe(`me@example.com connected since ${clock(at(9, 5))} · you@example.com connected since ${clock(at(14, 30))}`);
-    expect(clock(at(14, 2))).toBe(new Date(at(14, 2)).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).split(', ').at(-1));
+    // the same time as a date beside it gives, in whatever locale
+    expect(new Date(at(14, 2)).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })).toContain(clock(at(14, 2)));
   });
 
   // an off forgets every phone's notifications, so the remedy that turns it off and on says so

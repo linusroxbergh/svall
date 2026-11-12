@@ -602,6 +602,17 @@ test('an Info says what a control is for in two sentences at most', async () => 
   expect(tipOf('phone')).toBe('Reachable only on your tailnet; needs Tailscale on this Mac and the phone. After switching it off, turn notifications on again on each phone.');
 });
 
+test('a token in the scribe\'s failure is masked in its line, its fix and the words behind details', () => {
+  render(<SettingsCard />);
+  show('fleet');
+  for (const message of ['claude -p failed: Not logged in · token=sk-ant-0123456789', 'claude -p exited 1: refused --token sk-ant-0123456789', 'the scribe stopped token=sk-ant-0123456789: Command failed: claude -p exited 1 --token sk-ant-0123456789']) {
+    act(() => store.getState().setFleet({ ...fleet(), scribeError: { message, at: 1 } }));
+    const failure = screen.getByTestId('set-scribe-error');
+    expect(failure.textContent, message).not.toContain('sk-ant-0123456789');
+    expect(failure.querySelector('.modal-more-body')!.textContent, message).toContain('…');
+  }
+});
+
 test('a fleet name that will not do is said in a note under its row, and the last scribe failure keeps a tool\'s words behind details', () => {
   act(() => store.getState().setFleet({ ...fleet(), scribeError: { message: 'the scribe stopped: Command failed: claude -p exited 1', at: 1 } }));
   render(<SettingsCard />);
@@ -706,6 +717,20 @@ describe('Phone', () => {
     act(() => { vi.advanceTimersByTime(1500); });
     expect(url.textContent).toBe('https://mac.ts.net:8443');
     expect(url.querySelector('svg')).not.toBeNull();
+  });
+
+  test('a screenshot\'s redaction still greys the address and logins after the pane was left and shown again', async () => {
+    answer({ ...SERVING, phones: [{ login: 'ada@github', since: Date.now() }] });
+    act(() => store.getState().setPhoneRedact('data:image/png;base64,BB'));
+    render(<SettingsCard />);
+    show('phone');
+    await screen.findByTestId('set-mobile-url');
+    show('machine');
+    show('phone');
+    await screen.findByTestId('set-mobile-url');
+    expect(store.getState().phoneRedact).toBe('data:image/png;base64,BB');
+    for (const id of ['set-mobile-url', 'set-mobile-logins']) expect(screen.getByTestId(id).textContent, id).not.toContain('ada@github');
+    expect(screen.getByTestId('set-mobile-url').querySelector('.mob-mask')).not.toBeNull();
   });
 
   test('a screenshot\'s redaction greys the address, who is connected and who can be, as in the dock', async () => {
@@ -824,6 +849,15 @@ describe('Machines', () => {
     act(() => store.getState().setFleet({ ...store.getState().fleet, machines: { [W]: { name: 'vault', reachable: false, since, mismatch: true } } } as never));
     await waitFor(() => expect(dot('vault')!.getAttribute('aria-label')).toBe('needs an upgrade'));
     expect(said('vault')).toBe('needs an upgrade');
+  });
+
+  test('a token in what a worker\'s join try said is masked behind details', async () => {
+    await open([
+      { id: HOME, name: 'mac', role: 'home', reachable: true, robots: 2 },
+      { id: W, name: 'atlas', role: 'worker', reachable: false, robots: 0, joining: 'atlas did not take the enrolment', raw: 'svall worker enroll exited 1: refused token=0123456789abcdef' },
+    ], [{ name: 'atlas', id: W, ssh: 'ada@atlas', platform: 'linux-x64' }]);
+    const raw = screen.getByTestId('machine-joining-atlas').querySelector('.modal-more-body')!.textContent;
+    expect(raw).toBe('svall worker enroll exited 1: refused token=…');
   });
 
   test('a worker not joined yet has no dot, and says why in the home\'s words with what to check, a warning, ssh\'s words behind details', async () => {
