@@ -464,6 +464,8 @@ test('every check a move failed shows at once, each with its own button, and one
   expect(screen.getByTestId('move-refusal-1').textContent).toBe('linus-vault runs claude 1.2.3, this Mac 1.2.4');
   expect(screen.getByTestId('move-refusal-2').textContent).toBe('ada is on a detached HEADcheck out a branch first');
   expect([...document.querySelectorAll('.modal button.btn')].map((b) => b.textContent)).toEqual(['Upgrade linus-vault', 'Update Claude Code', 'Check again']);
+  // a row's button is small at its end; only the foot's is primary
+  expect([...document.querySelectorAll('.modal button.btn')].map((b) => b.className)).toEqual(['btn sm', 'btn sm', 'btn pri']);
   await act(async () => fireEvent.click(screen.getByTestId('move-action-1')));
   expect(call).toHaveBeenCalledWith('machines.updateAgents', { machine: VAULT, kinds: ['claude'] });
   // the update done, the checks run again

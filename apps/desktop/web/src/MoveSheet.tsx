@@ -278,18 +278,18 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
               const updates = b.run ? updatesIn(b.run) : undefined;
               const at = (id: string) => (i ? `${id}-${i}` : id);
               const button = atMe && (b.action === UPGRADE_ACTION || b.run) ? undefined : b.action === UPGRADE_ACTION ? (
-                <button className="btn pri" data-testid={at('move-action')} disabled={host?.running} data-tip={`Installs this Mac's release on ${far}, then checks again`}
+                <button className="btn sm" data-testid={at('move-action')} disabled={host?.running} data-tip={`Installs this Mac's release on ${far}, then checks again`}
                   onClick={upgrade}>Upgrade {far}</button>
               ) : updates && farId ? (
-                <button className="btn pri" data-testid={at('move-action')} data-tip={`Runs ${b.run} on ${far}, then checks again`}
+                <button className="btn sm" data-testid={at('move-action')} data-tip={`Runs ${b.run} on ${far}, then checks again`}
                   onClick={() => update(updates, farId)}>Update {updates.map((k) => AGENT_LABEL[k]).join(' and ')}</button>
               ) : b.run ? (
-                <button className="btn pri" data-testid={at('move-action')} data-tip={`Opens a terminal on ${where} with ${b.run} typed, for you to run`}
+                <button className="btn sm" data-testid={at('move-action')} data-tip={`Opens a terminal on ${where} with ${b.run} typed, for you to run`}
                   onClick={() => { setAway(true); terminalOn(where, b.run); }}>Open terminal</button>
               ) : b.action === WORKTREE_ACTION ? (
-                <button className="btn pri" data-testid={at('move-action')} onClick={() => setOwn(true)}>{OWN_WORKTREE}</button>
+                <button className="btn sm" data-testid={at('move-action')} onClick={() => setOwn(true)}>{OWN_WORKTREE}</button>
               ) : answerable ? (
-                <button className="btn pri" data-testid={at('move-action')} onClick={() => setInterrupt(answerable)}>{b.action[0].toUpperCase()}{b.action.slice(1)}</button>
+                <button className="btn sm" data-testid={at('move-action')} onClick={() => setInterrupt(answerable)}>{b.action[0].toUpperCase()}{b.action.slice(1)}</button>
               ) : undefined;
               const { line, raw } = b.raw ? { line: b.reason, raw: b.raw } : splitRaw(b.reason);
               const tail = [raw, ...(i === 0 ? refusal.details : [])].filter(Boolean).join('\n');
