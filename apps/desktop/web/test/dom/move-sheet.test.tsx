@@ -570,7 +570,7 @@ test('an agent older there is updated from the sheet, which says so and then che
   expect(screen.getByTestId('move-fixing').textContent).toBe('Updating Claude Code on linus-vault…');
   expect(store.getState().hostOpen).toBe(false);
 
-  await act(async () => finish(new Error('claude update exited 1: no network')));
+  await act(async () => finish(new ApiError('internal', 'Claude Code did not update', { raw: 'claude update exited 1: no network' })));
   expect(said(screen.getByTestId('move-fix-failed'))).toEqual(['Claude Code did not update on linus-vault']);
   expect(raw(screen.getByTestId('move-fix-failed'))).toBe('claude update exited 1: no network');
   expect(checks()).toHaveLength(1);
@@ -603,9 +603,10 @@ test('an upgrade that fails says how it ended and offers the upgrade again', asy
   answers = [{ ok: false, refusal: { reason: 'linus-vault runs 0.20.0, this Mac 0.21.0', action: UPGRADE_ACTION, details: [] } }];
   await open(VAULT);
   await act(async () => fireEvent.click(screen.getByTestId('move-action')));
-  await act(async () => store.getState().hostStep('upgrade', { step: 'upload', status: 'fail', detail: 'no space left' }));
+  await act(async () => store.getState().hostStep('upgrade', { step: 'upload', status: 'fail', detail: 'did not finish', raw: 'svall-unpack exited 1: no space left' }));
   await act(async () => store.getState().hostDone('upgrade', 1));
-  expect(said(screen.getByTestId('move-fix-failed'))).toEqual(['Upgrade stopped at Upload: no space left']);
+  expect(said(screen.getByTestId('move-fix-failed'))).toEqual(['Upgrade stopped at Upload: did not finish']);
+  expect(raw(screen.getByTestId('move-fix-failed'))).toBe('svall-unpack exited 1: no space left');
   expect(screen.getByTestId('move-action').textContent).toBe('Upgrade linus-vault');
   expect(checks()).toHaveLength(1);
 });

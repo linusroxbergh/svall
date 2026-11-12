@@ -173,7 +173,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   useEffect(() => {
     if (!fix || !('upgrade' in fix) || host?.op !== 'upgrade' || host.args.name !== far || host.running) return;
     const stop = host.steps.find((s) => s.status === 'fail');
-    if (stop) setFix({ failed: `Upgrade stopped at ${stepLabel(stop.step)}${stop.detail ? `: ${stop.detail}` : ''}` });
+    if (stop) setFix({ failed: `Upgrade stopped at ${stepLabel(stop.step)}${stop.detail ? `: ${stop.detail}` : ''}`, ...(stop.raw && { raw: stop.raw }) });
     else recheck();
   }, [host]);
   // through, as answered or, with the answer lost, as the robot's arrival says
@@ -219,7 +219,10 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
     const names = kinds.map((k) => AGENT_LABEL[k]).join(' and ');
     setFix({ doing: `Updating ${names} on ${far}` });
     app.api().call('machines.updateAgents', { machine, kinds })
-      .then(recheck, (e: Error) => setFix({ failed: `${names} did not update on ${far}`, raw: plainStep(e.message, machineNames(store().machines)) }));
+      .then(recheck, (e: Error & { data?: { raw?: unknown } }) => {
+        const said = typeof e.data?.raw === 'string' ? e.data.raw : e.message;
+        setFix({ failed: `${names} did not update on ${far}`, raw: plainStep(said, machineNames(store().machines)) });
+      });
   };
   const doing = fix && 'doing' in fix ? fix : undefined;
   const step = doing?.upgrade && host?.running ? host.steps.at(-1)?.step : undefined;
