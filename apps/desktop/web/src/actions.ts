@@ -452,8 +452,9 @@ export const setDormancy = (d: ActionDeps, hours: number): void => {
 export const loadMobileStatus = (d: ActionDeps): Promise<void> =>
   d.api.call('mobile.get', {}).then((m) => d.store.getState().setMobile(m)).catch(() => {});
 
-// a link that cannot be made comes back as a status carrying the reason, not as a rejection
+// a link that cannot be made comes back as a status carrying the reason, not as a rejection;
+// the open phone panel says that reason itself, where a toast would cover it
 export const serveFleet = (d: ActionDeps, enabled: boolean): Promise<void> =>
   d.api.call('mobile.set', { enabled })
-    .then((m) => { d.store.getState().setMobile(m); if (m.error) d.store.getState().showToast(m.error); })
+    .then((m) => { d.store.getState().setMobile(m); if (m.error && !d.store.getState().mobileOpen) d.store.getState().showToast(m.error); })
     .catch(toast(d));

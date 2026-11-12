@@ -144,6 +144,8 @@ test('a link that cannot start keeps Phone in the dock and its panel open, which
     await expect(page.getByTestId('mobile-problem')).toContainText('Tailscale on mac does not let Svall share this fleet');
     await expect(page.getByTestId('mobile-problem')).toContainText('Run once on mac: sudo tailscale set --operator=$USER');
     await expect(page.getByTestId('mobile-body')).not.toContainText('Reach this fleet');
+    // no toast over the panel that says it
+    await expect(page.getByTestId('toast')).toHaveCount(0);
     await expect(page.getByTestId('mobile-panel')).toBeVisible();
     await expect(page.getByTestId('mobile-tab')).toHaveAttribute('aria-expanded', 'true');
 

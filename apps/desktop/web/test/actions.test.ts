@@ -531,6 +531,16 @@ describe('serveFleet', () => {
     expect(store.getState().mobileOpen).toBe(false);
   });
 
+  it('leaves the reason to the phone panel when that is open, and keeps the panel', async () => {
+    const store = createAppStore(undefined);
+    store.getState().setMobile(status({ serving: false }));
+    store.getState().toggleMobile(true);
+    const api = { call: () => Promise.resolve(status({ serving: false, error: 'tailscale is not logged in' })) } as unknown as Api;
+    await serveFleet({ api, store }, true);
+    expect(store.getState().toast).toBeUndefined();
+    expect(store.getState()).toMatchObject({ mobileOpen: true, mobile: { error: 'tailscale is not logged in' } });
+  });
+
   it('toasts a rejection as well', async () => {
     const store = createAppStore(undefined);
     const api = { call: () => Promise.reject(new Error('svalld is gone')) } as unknown as Api;
