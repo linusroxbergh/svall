@@ -8,7 +8,7 @@ import { fleet } from '../test/fixtures.js';
 
 const SERVING: MobileStatus = { serving: true, url: 'https://mac.tailnet.ts.net:8443/', port: 8443, logins: [], phones: [] };
 // a time as the page says one, in the page's own locale
-const hhmm = (page: Page, ms: number) => page.evaluate((t) => new Date(t).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }), ms);
+const hhmm = (page: Page, ms: number) => page.evaluate((t) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }), ms);
 
 // the phone link needs a tailnet, which no test machine is promised, so the daemon behind these is a stand-in
 async function fakeDaemon() {

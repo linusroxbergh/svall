@@ -16,10 +16,10 @@ export function Fix({ fix, run }: { fix: string; run?: string }) {
  * A problem, said once: its line, what to do under it, what a tool said behind details, and for its command `run` a terminal
  * on `on` with it typed when this Mac reaches it, or, with no `on`, Copy, as it runs on this Mac, where the window opens no
  * terminal. A command the fix does not quote stands in mono under it beside Copy, and behind details where neither is offered.
- * `settings`: the fix as a note of the Settings window. `mark`: false inside a row that carries its own.
+ * `settings`: the fix as a note of the Settings window. `mark`: false inside a row that carries its own; `ok` for what went well.
  */
 export function Said({ line, fix, raw, run, on, settings, mark = 'fail' }: {
-  line: ReactNode; fix?: ReactNode; raw?: string; run?: string; on?: string; settings?: boolean; mark?: 'fail' | 'warn' | false;
+  line: ReactNode; fix?: ReactNode; raw?: string; run?: string; on?: string; settings?: boolean; mark?: 'fail' | 'warn' | 'ok' | false;
 }) {
   const route = useRoute(run ? on : undefined);
   const terminal = !!run && !!on && route;

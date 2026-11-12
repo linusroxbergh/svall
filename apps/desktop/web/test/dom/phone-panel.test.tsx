@@ -79,7 +79,7 @@ test('the address is a button that copies, with a copy mark, the whole of it on 
 
 test('a phone on the page is said to be connected, and since when', async () => {
   await panel({ ...SERVING, phones: [{ login: 'ada@example.com', since: new Date(2026, 10, 12, 11, 54).getTime() }] });
-  expect(screen.getByTestId('mobile-here').textContent).toBe(`ada@example.com connected since ${new Date(2026, 10, 12, 11, 54).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`);
+  expect(screen.getByTestId('mobile-here').textContent).toBe(`ada@example.com connected since ${new Date(2026, 10, 12, 11, 54).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`);
 });
 
 test('on a Mac home, whose terminal this window cannot open, the fix sets its command as code, whole', async () => {

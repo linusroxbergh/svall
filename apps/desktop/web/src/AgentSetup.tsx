@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { type Result, type SetupRow } from '@svall/protocol';
 import { app, deps } from './boot.js';
 import { openFolder } from './bridge.js';
@@ -60,9 +60,8 @@ function HomeFiles({ id, skills, home }: { id: string; skills: number; home: str
       )}
       {(!folds || open) && rules.map((file) => row(file, file, () => void go(file)))}
       {unread && (
-        <div className="set-note" data-testid="setup-rules-failed">
-          {`The rules on ${home} could not be read.`}
-          <details className="modal-more"><summary><Caret dir="right" />details</summary><div className="modal-more-body mono">{withoutTokens(unread)}</div></details>
+        <div className="set-said" data-testid="setup-rules-failed" data-error>
+          <Said line={`The rules on ${home} could not be read`} raw={withoutTokens(unread)} settings />
         </div>
       )}
     </div>
@@ -119,18 +118,17 @@ const backupLabel = (dir: string): string => {
 
 const and = (names: string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
-/** What a copy did on the home besides copying, in one line: what it replaced, in the home's backup by its day, and what it left as edited there. */
-function Copied({ r }: { r: Result<'machines.copySetupFrom'> }) {
-  const replaced = r.replaced?.length ? `Its own ${and(r.replaced)} ${r.replaced.length > 1 ? 'are' : 'is'}` : 'What it replaced is';
-  const left = r.left?.length ? `${and(r.left)} ${r.left.length > 1 ? 'stay' : 'stays'} as edited there` : undefined;
-  if (!r.backup && !r.replaced?.length && !left) return null;
-  return (
-    <span>
-      {r.backup ? <>{replaced} in its <span data-tip={r.backup}>{backupLabel(r.backup)}</span></> : r.replaced?.length ? <>Its own {and(r.replaced)} went to its backup folder</> : null}
-      {left && (r.backup || r.replaced?.length ? `; ${left}` : left[0].toUpperCase() + left.slice(1))}.
-    </span>
-  );
-}
+/** What a copy did on `home` besides copying, a sentence a fact: what it replaced, kept in the home's backup by its day, and what it left as edited. */
+const copiedFacts = (r: Result<'machines.copySetupFrom'>, home: string): ReactNode => {
+  const what = r.replaced?.length ? and(r.replaced) : 'the files the copy replaced';
+  const kept = r.backup ? <>Kept in {home}&apos;s <span data-tip={r.backup}>{backupLabel(r.backup)}</span>: {what}.</>
+    : r.replaced?.length ? <>Kept in {home}&apos;s backup folder: {what}.</> : undefined;
+  const left = r.left?.length ? <>Left as edited on {home}: {and(r.left)}.</> : undefined;
+  return kept || left ? <>{kept}{kept && left && ' '}{left}</> : undefined;
+};
+
+// how long Copy waits while another copy lands on the home, which says nothing when that one ends
+const LANDING_MS = 10_000;
 
 /** A window on a worker: the agent setup lives on the fleet's home, whose files open here, and this machine's own goes there only when copied. */
 export function AgentSetup() {
@@ -149,6 +147,12 @@ export function AgentSetup() {
   const [failed, setFailed] = useState<{ line: string; raw: string }>();
   const [replaced, setReplaced] = useState<string[]>([]);
   const [pushFailed, setPushFailed] = useState<string>();
+  const [landing, setLanding] = useState(false);
+  useEffect(() => {
+    if (!landing) return;
+    const t = setTimeout(() => setLanding(false), LANDING_MS);
+    return () => clearTimeout(t);
+  }, [landing]);
   const show = (r: Result<'home.setup'>) => { setRows(r.rows); setBackup(r.backup); setReplaced(r.replaced ?? []); setPushFailed(r.pushFailed); setFailed(undefined); };
   // what failed in the window's words, and the daemon's behind them
   const fail = (line: string) => (e: Error) => setFailed({ line, raw: withoutTokens(e.message) });
@@ -163,13 +167,14 @@ export function AgentSetup() {
   const off = !follows ? (dialed ? `This window has no route to ${home}` : `${home} is not reachable`)
     : failed ? failed.line
     : rows === undefined ? "This Mac's agent setup is still being read"
-    : pending > 0 ? 'A key switched a moment ago is still being saved' : undefined;
+    : pending > 0 ? 'A key switched a moment ago is still being saved'
+    : landing ? `Another copy is landing on ${home}` : undefined;
   const copy = () => {
     setBusy(true);
     setSaid(undefined);
     app.api().call('machines.copySetupFrom', { machine: me! }).then(
       (r) => { setSaid({ ok: true, r }); void reloadResources(deps()); },
-      (e: Error) => setSaid({ ok: false, e }),
+      (e: Error) => { if ((e as Error & { code?: string }).code === 'busy') setLanding(true); else setSaid({ ok: false, e }); },
     ).finally(() => setBusy(false));
   };
   return (
@@ -185,7 +190,7 @@ export function AgentSetup() {
           : <div className="set-note"><span className="move-spin" />Reading {home}&apos;s files…</div>}
         {pushFailed && (
           <div className="set-said" role="alert" data-testid="setup-push-failed" data-error>
-            <Said line={`${home}'s last push did not land on this Mac`} fix={`Svall sends it again the next time this Mac links to ${home}`} raw={withoutTokens(pushFailed)} settings mark="warn" />
+            <Said line={`${home}'s agent setup has not reached this Mac yet`} fix={`Svall sends it again the next time this Mac links to ${home}`} raw={withoutTokens(pushFailed)} settings mark="warn" />
           </div>
         )}
       </Group>
@@ -196,12 +201,8 @@ export function AgentSetup() {
           <b><button className="btn sm" data-testid="setup-copy" disabled={!!off || busy} data-tip={off ?? `One copy, now, of what is on this Mac; ${home} stays the source after it`}
             onClick={copy}>{busy ? 'Copying…' : 'Copy now'}</button></b>
         </div>
-        {said?.ok && (
-          <div className="set-note set-done" role="status" data-testid="setup-copied">
-            <span>Copied to {home}</span>
-            <Copied r={said.r} />
-          </div>
-        )}
+        {said?.ok && <div className="set-said" role="status" data-testid="setup-copied"><Said line={`Copied to ${home}`} fix={copiedFacts(said.r, home)} settings mark="ok" /></div>}
+        {landing && <div className="set-note" role="status" data-testid="setup-copy-landing"><span className="move-spin" />Another copy is landing on {home}…</div>}
         {said && !said.ok && <div className="set-said" role="status" data-testid="setup-copy-failed" data-error><Said {...saidOf(said.e)} settings /></div>}
         {failed && (
           <div className="row" role="alert" data-testid="setup-failed">

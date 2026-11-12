@@ -41,6 +41,8 @@ export type AgentKind = z.infer<typeof AgentKind>;
 export const AGENT_LABEL: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 /** Each agent CLI's own update to its latest release, however it was installed; it runs unattended. */
 export const AGENT_UPDATE: Record<AgentKind, string> = { claude: 'claude update', codex: 'codex update', opencode: 'opencode upgrade' };
+/** What logs each agent in, in a terminal. */
+export const AGENT_LOGIN: Record<AgentKind, string> = { claude: 'claude auth login', codex: 'codex login', opencode: 'opencode auth login' };
 /** The agents `run` updates, as their updates joined by &&; none for any other command. */
 export function updatesIn(run: string): AgentKind[] | undefined {
   const kinds = run.split(' && ').map((c) => AgentKind.options.find((k) => AGENT_UPDATE[k] === c));

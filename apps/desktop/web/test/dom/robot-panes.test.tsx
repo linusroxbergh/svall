@@ -58,7 +58,7 @@ test('on this Mac\'s copy of the fleet, a far robot\'s Files say how old the cop
     store.getState().setPanes('c0', { left: 'files' });
   });
   render(<RobotPanes id="c0" />);
-  const time = new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const time = new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
   expect(away(screen.getByTestId('pane-elsewhere'))).toEqual(['studio is not reachable', `Showing the fleet as of ${time}.`, 'Try again']);
   expect(time).not.toMatch(/2026/);
   fireEvent.click(screen.getByTestId('away-retry'));

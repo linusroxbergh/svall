@@ -2,7 +2,7 @@ import type { MobileStatus, PhoneSession } from '@svall/protocol';
 import { splitRaw, withoutTokens } from './host.js';
 
 /** A time of day as the window says one beside a date: the system's hours and minutes. */
-export const clock = (at: number): string => new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+export const clock = (at: number): string => new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
 /** Who has the phone page open right now: the line the corner panel and the settings row both carry, the row's
  *  `labelled` by its label, so it says neither what nor its own word for nobody. */

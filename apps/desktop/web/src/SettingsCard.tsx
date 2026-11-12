@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, MODELS, fleetNameProblem, placingOn, type MachineId, type PushStatus, type Result } from '@svall/protocol';
+import { AGENT_LABEL, AGENT_LOGIN, AgentKind, DORMANT_AFTER_HOURS, MODELS, fleetNameProblem, placingOn, type MachineId, type PushStatus, type Result } from '@svall/protocol';
 import { AgentSetup } from './AgentSetup.js';
 import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setModel, setPlacing, setScribe, setWorktrees } from './actions.js';
 import { app, deps } from './boot.js';
@@ -198,7 +198,7 @@ function FleetName() {
   );
 }
 
-const when = (at: number): string => new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const when = (at: number): string => new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 const found = (c: NonNullable<MachineRow['check']>): string | undefined => (c.failed ? `${plural(c.failed, 'check')} failed` : c.warned ? plural(c.warned, 'warning') : undefined);
 // a join's why says its fix after `; `; what ssh or the far svall said comes on the row, or after the sentence from a home that keeps it there
 const joinSaid = (text: string, raw?: string): { line: string; fix?: string; raw?: string } => {
@@ -208,6 +208,7 @@ const joinSaid = (text: string, raw?: string): { line: string; fix?: string; raw
   return { line: at < 0 ? said : said.slice(0, at), ...(fix && { fix: fix[0].toUpperCase() + fix.slice(1) }), raw: raw ? withoutTokens(raw) : told };
 };
 const DOT = { ok: 'reachable', off: 'not reachable', upgrade: 'needs an upgrade' } as const;
+const UNREAD = "This Mac's list of machines could not be read";
 const ROLE_TIP = { home: 'Holds the fleet and starts new robots.', worker: 'Runs robots moved to it.' } as const;
 
 type FleetMachine = Result<'machines.list'>['machines'][number];
@@ -256,7 +257,9 @@ function Machines() {
   const reading = (machines === undefined && !error && app.bridge.present) || (online && fleetRows === undefined && !unread);
   return (
     <Group name="Machines" info={<Info id="machines">The home holds the fleet and starts new robots. A worker runs robots moved to it.</Info>}
-      end={(!via || via.online) && <button className="btn sm" data-testid="machine-add" onClick={() => app.store.getState().toggleHost(true)}>Add machine</button>}>
+      end={(!via || via.online) && (
+        <button className="btn sm" data-testid="machine-add" disabled={!!error} data-tip={error ? UNREAD : undefined} onClick={() => app.store.getState().toggleHost(true)}>Add machine</button>
+      )}>
       <div data-testid="machines">
         {reading && <div className="set-note" data-testid="machines-reading"><span className="move-spin" />Reading the machines…</div>}
         {!reading && machines && !shown.length && !error && !unread && (
@@ -291,7 +294,7 @@ function Machines() {
               ) : dot === 'off' ? (
                 <div className="machine-said">
                   <span>{m.since ? `not reachable since ${when(m.since)}` : 'not reachable'}</span>
-                  {acts && m.role === 'worker' && <span className="set-note">Removed it by hand? Forget drops it from this list.</span>}
+                  {acts && m.role === 'worker' && <span className="set-note">Removed it by hand? Forget, under ⋯, drops it from this list.</span>}
                 </div>
               ) : mismatch ? <div className="machine-said">needs an upgrade</div>
                 : m.check && (told || m.role !== 'home') ? (
@@ -307,16 +310,13 @@ function Machines() {
             </div>
           );
         })}
-        {unread && (
-          <div className="row" data-testid="machines-list-error">
-            <div className="set-said" data-error><Said {...splitRaw(`The fleet's machines could not be read: ${unread}`)} settings /></div>
-            <b><button className="btn sm" data-testid="machines-list-reload" onClick={() => setAsks((n) => n + 1)}>Read again</button></b>
-          </div>
-        )}
-        {error && (
+        {(error || unread) && (
           <div className="row" data-testid="machines-error">
-            <div className="set-said" data-error><Said line="This Mac's list of machines could not be read" raw={withoutTokens(error)} settings /></div>
-            <b><button className="btn sm" data-testid="machines-reload" onClick={list}>Read again</button></b>
+            <div className="set-said" data-error>
+              <Said line={error && unread ? 'The machines could not be read' : error ? UNREAD : "The fleet's machines could not be read"}
+                raw={[error, unread].filter(Boolean).map((e) => withoutTokens(e!)).join('\n\n')} settings />
+            </div>
+            <b><button className="btn sm" data-testid="machines-reload" onClick={() => { if (error) list(); if (unread) setAsks((n) => n + 1); }}>Try again</button></b>
           </div>
         )}
       </div>
@@ -337,16 +337,15 @@ function RobotPreferences() {
   </>;
 }
 
-// a pass's error starts with the agent's command: what the agent said after it is the line, its hint after ` · ` the fix, with a
-// slash command it names as code, and the whole of it behind details
-const AGENT_RUN = /^(?:claude -p|codex exec|opencode run) (?:failed|exited \d+)(?:: (.+))?$/;
-const SLASH = /(?:^|\s)(\/[\w-]+)/;
-const passSaid = (message: string): { line: string; fix?: string; run?: string; raw?: string } => {
-  const m = AGENT_RUN.exec(message);
-  if (!m) return splitRaw(message);
-  const [line, fix] = (m[1] ?? 'stopped without saying why').split(' · ');
-  const run = fix ? SLASH.exec(fix)?.[1] : undefined;
-  return { line, ...(fix && { fix }), ...(run && { run }), raw: withoutTokens(message) };
+// a pass's error starts with the agent's command, and what the agent said after it stays behind details: one for want of a
+// login says so with the agent's login on `where`, the scribe's machine; any other, that the pass did not finish
+const AGENT_RUN = /^(?:claude -p|codex exec|opencode run) (?:failed|exited \d+)(?::|$)/;
+const NO_LOGIN = /not logged in|\/login|log in|logged out|authenticat/i;
+const passSaid = (message: string, agent: AgentKind, where: string): { line: string; fix?: string; run?: string; raw?: string } => {
+  if (!AGENT_RUN.test(message)) return splitRaw(message);
+  const raw = withoutTokens(message);
+  if (NO_LOGIN.test(message)) return { line: `${AGENT_LABEL[agent]} is not logged in on ${where}`, fix: `Log in once: ${AGENT_LOGIN[agent]}`, run: AGENT_LOGIN[agent], raw };
+  return { line: `${AGENT_LABEL[agent]} did not finish the scribe's last pass`, raw };
 };
 
 function Scribe() {
@@ -356,7 +355,9 @@ function Scribe() {
   const flip = () => setScribe(deps(), !on);
   const placing = useApp((s) => placingOn(s.fleet));
   const worktrees = useApp((s) => !s.fleet.worktreesOff);
-  const failure = error && passSaid(error.message);
+  // the scribe runs on the fleet's home
+  const home = useApp((s) => (s.via ? homeName(s.fleet, s.via) : undefined));
+  const failure = error && passSaid(error.message, scribeAgent, home ?? 'this Mac');
   return (
     <>
       <Group name="Fleet">
@@ -389,7 +390,7 @@ function Scribe() {
               <span>last failure</span>
               <b data-testid="set-scribe-error-at">{when(error.at)}</b>
             </div>
-            <div className="set-said" data-testid="set-scribe-error" data-error><Said {...failure} settings /></div>
+            <div className="set-said" data-testid="set-scribe-error" data-error><Said {...failure} on={home} settings /></div>
           </>
         )}
       </Group>

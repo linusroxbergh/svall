@@ -94,7 +94,7 @@ export const frozenWhy = (s: Standing, id: string): (Apart & { robot: string; ma
 };
 
 /** When this Mac's copy of the fleet was taken, dated as Machines dates a check: no year. */
-export const copiedAt = (at: number): string => new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+export const copiedAt = (at: number): string => new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
 /** What a try at changing such a robot is told; while a move of the home stands, no robot takes a change. */
 export const frozenLine = (s: Standing, id: string): string | undefined => {

@@ -190,7 +190,8 @@
 .set-win .rows { border-top: 0; padding-top: 0; }
 .set-win .row { box-sizing: border-box; min-height: calc(var(--ctl-md) + var(--sp-xs)); align-items: center; }
 .set-win .row.set-sub { padding-left: var(--sp-2xl); }
-.set-win .row small.mono { margin-left: var(--sp-xs); padding: 0 var(--sp-xs); border-radius: var(--r-xs); background: var(--fill-1); font-size: var(--text-xs); color: var(--ink-3); }
+.set-win .row small.mono { margin-left: var(--sp-xs); padding: 0 var(--sp-xs); border-radius: var(--r-xs); background: var(--fill-1); font-size: var(--text-2xs);
+  color: color-mix(in srgb, var(--ink-3) 70%, transparent); }
 .set-win .row .btn.ghost { padding-block: 0; }
 /* a value that copies: the value's own ink, a copy mark after it */
 .set-win .row .btn.set-copy { display: inline-flex; align-items: center; gap: var(--sp-sm); max-width: 100%; color: var(--ink); }
@@ -212,18 +213,17 @@
 .side .opens:has(.set-info) { align-items: center; }
 .set-info > .ib { margin: calc(-1 * var(--sp-2xs)) 0 calc(-1 * var(--sp-2xs)) var(--sp-2xs); vertical-align: middle; }
 /* the tip is opened and placed by the script: it flips over its row when the panel's floor is too near */
-.set-tip { display: none; position: absolute; left: 0; top: calc(100% + 5px); z-index: var(--z-popover); overflow: hidden auto; box-sizing: border-box; width: max-content; max-width: min(100%, 400px);
+.set-tip { display: none; position: absolute; left: 0; right: 0; top: calc(100% + 5px); z-index: var(--z-popover); overflow: hidden auto; box-sizing: border-box;
   padding: var(--sp-lg) var(--sp-lg); color: var(--ink); font-size: var(--text-sm); font-weight: var(--w-regular); line-height: var(--lh); text-align: left; text-transform: none; letter-spacing: normal; }
-/* raised off the pane it covers, so the rows under it read as covered, not gone */
-.set-tip.popover { background: var(--panel-hi); backdrop-filter: blur(var(--blur-panel)); border-color: var(--line-strong); }
+/* raised off the pane and solid, covering the rows under it whole, so none reads half there */
+.set-tip.popover { background: linear-gradient(var(--panel-hi), var(--panel-hi)), var(--surface-2); border-color: var(--line-strong); }
 .set-tip[data-open="true"] { display: block; }
 .set-tip[data-place="up"] { top: auto; bottom: calc(100% + 5px); }
 /* one line under the row or group it belongs to */
 .set-note { color: var(--ink-3); font-size: var(--text-sm); line-height: var(--lh); }
 .set-note code { font-family: var(--mono); font-size: var(--text-xs); -webkit-user-select: text; user-select: text; }
-/* a copy that went: that it went, then what it left where */
-.set-done { display: flex; flex-direction: column; gap: var(--sp-2xs); }
-.set-done > span:first-child { color: var(--ink-2); }
+/* what went well, said as a problem is with its own mark */
+.said[data-mark="ok"] > .said-mark { color: var(--done); }
 .side .row b.set-slider, .side .row b.set-zoom { display: flex; align-items: center; gap: var(--sp-lg); }
 .set-slider input { width: 132px; accent-color: var(--sand); }
 .set-slider .tnum, .set-zoom .tnum { min-width: 36px; text-align: right; }

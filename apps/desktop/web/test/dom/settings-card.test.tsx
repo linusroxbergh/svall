@@ -307,12 +307,13 @@ test('Machines asks the fleet again after a list that failed, showing this Mac\'
     expect(screen.queryByTestId('machine-studio')).toBeNull();
     expect(screen.queryByTestId('machines-reading')).toBeNull();
     expect(screen.queryByTestId('machine-box')).not.toBeNull();
-    expect(screen.getByTestId('machines-list-error').textContent).toContain("The fleet's machines could not be read");
+    expect(screen.getByTestId('machines-error').textContent).toContain("The fleet's machines could not be read");
+    expect(screen.getByTestId('machines-reload').textContent).toBe('Try again');
     fails = false;
-    fireEvent.click(screen.getByTestId('machines-list-reload'));
+    fireEvent.click(screen.getByTestId('machines-reload'));
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(screen.queryByTestId('machine-studio')).not.toBeNull();
-    expect(screen.queryByTestId('machines-list-error')).toBeNull();
+    expect(screen.queryByTestId('machines-error')).toBeNull();
   } finally {
     vi.useRealTimers();
     call.mockImplementation(() => Promise.resolve({}));
@@ -614,17 +615,18 @@ test('a fleet name that will not do is said in a note under its row, and the las
   const failure = screen.getByTestId('set-scribe-error');
   expect(within(failure).getByText('the scribe stopped')).toBeTruthy();
   expect(failure.querySelector('details')!.textContent).toBe('detailsCommand failed: claude -p exited 1');
-  // an agent's own failure says what the agent said, its hint under it with the command in it as code, its words behind details
+  // an agent refused for want of a login is said in Svall's words, with its login to copy, the agent's own words behind details
   act(() => store.getState().setFleet({ ...fleet(), scribeError: { message: 'claude -p failed: Not logged in · Please run /login', at: 1 } }));
-  expect(screen.getByTestId('set-scribe-error').querySelector('.said > div > span')!.textContent).toBe('Not logged in');
-  expect(screen.getByTestId('set-scribe-error').querySelector('.set-note code')!.textContent).toBe('/login');
-  expect(screen.getByTestId('set-scribe-error').querySelector('.set-note')!.textContent).toBe('Please run /login');
+  expect(screen.getByTestId('set-scribe-error').querySelector('.said > div > span')!.textContent).toBe('Claude Code is not logged in on this Mac');
+  expect(screen.getByTestId('set-scribe-error').querySelector('.set-note')!.textContent).toBe('Log in once: claude auth login');
+  expect(screen.getByTestId('set-scribe-error').querySelector('.set-note code')!.textContent).toBe('claude auth login');
+  expect(within(screen.getByTestId('set-scribe-error')).getByTestId('said-copy')).toBeTruthy();
   expect(screen.getByTestId('set-scribe-error').querySelector('details')!.textContent).toBe('detailsclaude -p failed: Not logged in · Please run /login');
   // under its row, which says when, not beside it
   expect(screen.getByTestId('set-scribe-error').closest('.row')).toBeNull();
-  expect(screen.getByTestId('set-scribe-error-at').textContent).toBe(new Date(1).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
+  expect(screen.getByTestId('set-scribe-error-at').textContent).toBe(new Date(1).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }));
   act(() => store.getState().setFleet({ ...fleet(), scribeError: { message: 'codex exec exited 1', at: 1 } }));
-  expect(screen.getByTestId('set-scribe-error').querySelector('.said > div > span')!.textContent).toBe('stopped without saying why');
+  expect(screen.getByTestId('set-scribe-error').querySelector('.said > div > span')!.textContent).toBe("Claude Code did not finish the scribe's last pass");
 });
 
 describe('the window', () => {
@@ -812,8 +814,8 @@ describe('Machines', () => {
     expect([dot('mac')!.getAttribute('aria-label'), dot('vault')!.getAttribute('aria-label'), dot('box')!.getAttribute('aria-label')]).toEqual(['reachable', 'not reachable', 'reachable']);
     // a machine on this Mac's list but not in this fleet has no link to tell of
     expect(dot('spare')).toBeNull();
-    const at = new Date(since).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-    expect(said('vault')).toBe(`not reachable since ${at}Removed it by hand? Forget drops it from this list.`);
+    const at = new Date(since).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    expect(said('vault')).toBe(`not reachable since ${at}Removed it by hand? Forget, under ⋯, drops it from this list.`);
     expect(said('box')).toBe(`checked ${at} · 1 warning`);
     expect(screen.getByTestId('machine-box').querySelector('.machine-meta')!.textContent).toBe('ada@box · release 0.9.4');
     expect(said('spare')).toBe('not checked yet');
@@ -845,7 +847,7 @@ describe('Machines', () => {
       { id: W, name: 'box', role: 'worker', reachable: true, robots: 0 },
     ], [{ name: 'studio', id: HOME, ssh: 'ada@studio', platform: 'linux-x64', check: { at, failed: 1, warned: 0 } },
       { name: 'box', id: W, ssh: 'ada@box', platform: 'linux-x64', check: { at, failed: 0, warned: 2 } }]);
-    const when = new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const when = new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
     expect(said('box')).toBe(`checked ${when} · 2 warnings`);
     expect(said('studio')).toBe(`checked ${when} · 1 check failed`);
     sent.length = 0;
@@ -868,7 +870,25 @@ describe('Machines', () => {
     expect(screen.getByTestId('machine-vault').getAttribute('data-role')).toBe('worker');
   });
 
-  test('a list that cannot be read is said, with Read again at the right', () => {
+  test('both lists failing are one error with one Try again that reads both, and Add machine is off saying why', async () => {
+    call.mockImplementation((m: string) => (m === 'machines.list' ? Promise.reject(new Error('the fleet did not answer')) : Promise.resolve({})));
+    act(() => store.getState().setStatus('online'));
+    render(<SettingsCard />);
+    show('machines');
+    act(() => store.getState().setMachines([], 'svall host list exited 1: bad registry'));
+    await waitFor(() => expect(screen.getByTestId('machines-error').querySelector('.said > div > span')!.textContent).toBe('The machines could not be read'));
+    expect(screen.getAllByTestId('machines-error')).toHaveLength(1);
+    expect(screen.getByTestId('machines-error').querySelector('.modal-more-body')!.textContent).toBe('svall host list exited 1: bad registry\n\nthe fleet did not answer');
+    const add = screen.getByTestId('machine-add') as HTMLButtonElement;
+    expect([add.disabled, add.dataset.tip]).toEqual([true, "This Mac's list of machines could not be read"]);
+    sent.length = 0;
+    call.mockClear();
+    fireEvent.click(screen.getByTestId('machines-reload'));
+    expect(sent).toContainEqual({ type: 'host.list' });
+    await waitFor(() => expect(call).toHaveBeenCalledWith('machines.list', {}));
+  });
+
+  test('a list that cannot be read is said, with Try again at the right', () => {
     render(<SettingsCard />);
     show('machines');
     act(() => store.getState().setMachines([], 'svall host list exited 1: ssh: connect to host'));
@@ -956,7 +976,7 @@ test('past six rules the rules fold behind one line, and rules that cannot be re
     render(<SettingsCard />);
     show('setup');
     const failed = await screen.findByTestId('setup-rules-failed');
-    expect([failed.className, failed.firstChild!.textContent]).toEqual(['set-note', 'The rules on studio could not be read.']);
+    expect([failed.className, failed.querySelector('.said')!.getAttribute('data-mark'), failed.querySelector('.said > div > span')!.textContent]).toEqual(['set-said', 'fail', 'The rules on studio could not be read']);
     expect(failed.querySelector('.modal-more-body')!.textContent).toBe('ssh: connect to host studio port 22: timed out');
     expect(store.getState().toast).toBeUndefined();
   } finally {
@@ -996,7 +1016,9 @@ test('the pane\'s ticks go to this Mac\'s daemon, and the copy to the home, nami
     fireEvent.click(copy);
     expect(call).toHaveBeenCalledWith('machines.copySetupFrom', { machine: FAR_ME });
     const copied = await screen.findByTestId('setup-copied');
-    expect([...copied.children].map((c) => c.textContent)).toEqual(['Copied to studio', `What it replaced is in its backup from ${new Date(2026, 10, 4).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}.`]);
+    expect(copied.querySelector('.said')!.getAttribute('data-mark')).toBe('ok');
+    expect(copied.querySelector('.said > div > span')!.textContent).toBe('Copied to studio');
+    expect(copied.querySelector('.set-note')!.textContent).toBe(`Kept in studio's backup from ${new Date(2026, 10, 4).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}: the files the copy replaced.`);
     expect(copied.querySelector('[data-tip]')!.getAttribute('data-tip')).toBe('/home/ada/.svall/mirror-backup/2026-11-04');
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
@@ -1097,7 +1119,7 @@ test('a push from the home that failed here is said under the home, what to expe
     show('setup');
     const failed = await screen.findByTestId('setup-push-failed');
     expect(failed.closest('.set-group')!.contains(screen.getByTestId('setup-lives'))).toBe(true);
-    expect(within(failed).getByText('studio\'s last push did not land on this Mac')).toBeTruthy();
+    expect(within(failed).getByText('studio\'s agent setup has not reached this Mac yet')).toBeTruthy();
     expect(within(failed).getByText('Svall sends it again the next time this Mac links to studio').className).toBe('set-note');
     expect(failed.querySelector('.modal-more-body')!.textContent).toBe("EACCES: permission denied, open '/Users/ada/.claude/settings.json'");
   } finally {
@@ -1180,7 +1202,7 @@ test('a copy says what a tick went over on the home and what an untick left ther
     await screen.findByTestId('setup-tick-claude:mcp:linear');
     fireEvent.click(screen.getByTestId('setup-copy'));
     const copied = await screen.findByTestId('setup-copied');
-    expect([...copied.children].map((c) => c.textContent)).toEqual(['Copied to studio', `Its own linear is in its backup from ${new Date(2026, 10, 4).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}; odd stays as edited there.`]);
+    expect(copied.querySelector('.set-note')!.textContent).toBe(`Kept in studio's backup from ${new Date(2026, 10, 4).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}: linear. Left as edited on studio: odd.`);
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -1206,8 +1228,11 @@ test('a refused copy says why, and the pane names the folder the first push kept
       : Promise.resolve(m === 'home.setup' ? { rows: [] } : {})));
     await waitFor(() => expect((screen.getByTestId('setup-copy') as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByTestId('setup-copy'));
-    await waitFor(() => expect(screen.getByTestId('setup-copy-failed').querySelector('.set-note')?.textContent).toBe('Try again when it is done'));
-    expect(screen.getByTestId('setup-copy-failed').querySelector('.said > div > span')!.textContent).toBe('Another copy is landing on studio');
+    // a copy refused as another lands is no failure: a quiet line, and Copy off saying why
+    expect((await screen.findByTestId('setup-copy-landing')).textContent).toBe('Another copy is landing on studio…');
+    expect(screen.queryByTestId('setup-copy-failed')).toBeNull();
+    const copy = screen.getByTestId('setup-copy') as HTMLButtonElement;
+    expect([copy.disabled, copy.dataset.tip]).toEqual([true, 'Another copy is landing on studio']);
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
