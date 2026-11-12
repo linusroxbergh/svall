@@ -16,14 +16,15 @@ export function Info({ id, children }: { id: string; children: ReactNode }) {
   const hide = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(false), TIP_LINGER); };
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  // the row at the foot of the panel has no room under it, so the tip is placed against the panel it lives in,
-  // and placed again whenever the panel scrolls or the window resizes under an open tip
+  // the row at the foot of the panel has no room under it, so the tip is placed against the panel it lives in, and
+  // above the next group's heading, which it would read as one of; placed again whenever the panel scrolls or the window resizes
   useMeasure(open, () => {
     const el = tip.current;
     const row = el?.offsetParent as HTMLElement | null;
     if (!el || !row) return;
-    const panel = el.closest('.side-secs, .side')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
-    setPlace(placeTip(row.getBoundingClientRect(), el.scrollHeight, panel));
+    const box = el.closest('.side-secs, .side')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
+    const next = row.closest('.set-group')?.nextElementSibling?.getBoundingClientRect().top ?? Infinity;
+    setPlace(placeTip(row.getBoundingClientRect(), el.scrollHeight, { top: box.top, bottom: Math.min(box.bottom, next) }));
   });
 
   return (

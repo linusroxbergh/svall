@@ -92,6 +92,8 @@ test('a command that runs on this Mac stands whole in mono with Copy beside it, 
   try {
     const { container, rerender } = render(<Said line="Tailscale on this Mac does not let Svall share this fleet" fix="Run once on this Mac: sudo tailscale set --operator=$USER" run="sudo tailscale set --operator=$USER" raw="Access denied" />);
     expect(container.querySelector('.modal-sub code.said-run')!.textContent).toBe('sudo tailscale set --operator=$USER');
+    // ending the fix, it stands on a line of its own, as a command the fix does not quote does
+    expect(container.querySelector('.modal-sub code.said-run')!.hasAttribute('data-own-line')).toBe(true);
     expect(container.querySelector('.modal-sub')!.textContent).toBe('Run once on this Mac: sudo tailscale set --operator=$USER');
     expect(container.querySelector('.modal-more-body')!.textContent).toBe('Access denied');
     expect(terminal()).toBeNull();

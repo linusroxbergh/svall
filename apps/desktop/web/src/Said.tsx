@@ -5,11 +5,12 @@ import { Caret, Mark } from './icons.js';
 import { terminalOn } from './MoveSheet.js';
 import { useRoute } from './OnMachine.js';
 
-/** `fix` with the command `run` in it set as code, whole on its line. */
+/** `fix` with the command `run` in it set as code, whole; one that ends the fix on a line of its own, as a command it does not quote stands. */
 export function Fix({ fix, run }: { fix: string; run?: string }) {
   const at = run ? fix.indexOf(run) : -1;
   if (at < 0) return <>{fix}</>;
-  return <>{fix.slice(0, at)}<code className="said-run">{run}</code>{fix.slice(at + run!.length)}</>;
+  const after = fix.slice(at + run!.length);
+  return <>{fix.slice(0, at)}<code className="said-run" data-own-line={!after || undefined}>{run}</code>{after}</>;
 }
 
 /**
@@ -17,9 +18,10 @@ export function Fix({ fix, run }: { fix: string; run?: string }) {
  * on `on` with it typed when this Mac reaches it, or, with no `on`, Copy, as it runs on this Mac, where the window opens no
  * terminal. A command the fix does not quote stands in mono under it beside Copy, and behind details where neither is offered.
  * `settings`: the fix as a note of the Settings window. `mark`: false inside a row that carries its own; `ok` for what went well.
+ * `copy`: how Copy reaches the clipboard, on a page with a bridge of its own.
  */
-export function Said({ line, fix, raw, run, on, settings, mark = 'fail' }: {
-  line: ReactNode; fix?: ReactNode; raw?: string; run?: string; on?: string; settings?: boolean; mark?: 'fail' | 'warn' | 'ok' | false;
+export function Said({ line, fix, raw, run, on, settings, mark = 'fail', copy = (text) => copyText(app.bridge, text) }: {
+  line: ReactNode; fix?: ReactNode; raw?: string; run?: string; on?: string; settings?: boolean; mark?: 'fail' | 'warn' | 'ok' | false; copy?: (text: string) => void;
 }) {
   const route = useRoute(run ? on : undefined);
   const terminal = !!run && !!on && route;
@@ -49,7 +51,7 @@ export function Said({ line, fix, raw, run, on, settings, mark = 'fail' }: {
       {terminal && <button className="btn sm" onClick={() => terminalOn(on!, run!)}>Open terminal</button>}
       {here && (
         <button className="btn sm" data-testid="said-copy" data-tip={`Copy ${run} to run in a terminal on this Mac`}
-          onClick={() => { copyText(app.bridge, run!); setCopied(true); }}>{copied ? 'Copied' : 'Copy'}</button>
+          onClick={() => { copy(run!); setCopied(true); }}>{copied ? 'Copied' : 'Copy'}</button>
       )}
     </div>
   );

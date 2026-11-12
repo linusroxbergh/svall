@@ -190,7 +190,7 @@ export function AgentSetup() {
           : <div className="set-note"><span className="move-spin" />Reading {home}&apos;s files…</div>}
         {pushFailed && (
           <div className="set-said" role="alert" data-testid="setup-push-failed" data-error>
-            <Said line={`${home}'s agent setup has not reached this Mac yet`} fix={`Svall sends it again the next time this Mac links to ${home}`} raw={withoutTokens(pushFailed)} settings mark="warn" />
+            <Said line={`This Mac's agents still run the setup from before ${home}'s last change`} fix={`Svall sends it again the next time this Mac links to ${home}`} raw={withoutTokens(pushFailed)} settings mark="warn" />
           </div>
         )}
       </Group>
