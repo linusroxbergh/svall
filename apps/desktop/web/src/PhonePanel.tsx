@@ -28,8 +28,8 @@ export function MobileSwitch({ testId }: { testId: string }) {
   );
 }
 
-/** Once the fleet is served, the link to reach it by; the panel's title carries the switch. */
-export function MobilePanel() {
+/** Once the fleet is served, the link to reach it by; the panel's title carries the switch. Compact shows the QR and link alone. */
+export function MobilePanel({ compact = false }: { compact?: boolean }) {
   const status = useApp((s) => s.mobile);
   const redact = useApp((s) => s.phoneRedact);
   const [copied, setCopied] = useState(false);
@@ -45,14 +45,20 @@ export function MobilePanel() {
   };
 
   if (!status) return null;
+  const link = status.serving && (
+    <>
+      {status.qr && <img className="mob-qr" src={redact ?? status.qr} alt={`QR code for ${status.url}`} />}
+      <button className="mob-url" data-testid="mobile-url" data-tip="Copy the link" onClick={copy}>
+        {redact ? <><i className="mob-mask" /><i className="mob-mask" /></> : copied ? 'copied' : status.url}
+      </button>
+    </>
+  );
+  if (compact) return <div className="mob" data-testid="mobile-body">{link}</div>;
   return (
     <div className="mob" data-testid="mobile-body">
       {status.serving && (
         <>
-          {status.qr && <img className="mob-qr" src={redact ?? status.qr} alt={`QR code for ${status.url}`} />}
-          <button className="mob-url" data-testid="mobile-url" data-tip="Copy the link" onClick={copy}>
-            {redact ? <><i className="mob-mask" /><i className="mob-mask" /></> : copied ? 'copied' : status.url}
-          </button>
+          {link}
           <div className="mob-here" data-testid="mobile-here" data-live={status.phones.length > 0 || undefined}>{phonesHere(status.phones)}</div>
         </>
       )}
