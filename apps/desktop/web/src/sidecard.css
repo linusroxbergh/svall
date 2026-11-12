@@ -11,6 +11,8 @@
 .side .sec[data-open="true"] { flex: 0 1 auto;
   min-height: clamp(calc(var(--sec-head) + var(--sp-sm)), calc((100cqh - 5 * var(--sp-2xl)) / 6), calc(var(--sec-head) + var(--sp-sm) + 40px)); }
 .side .sec:has(> .sec-body:empty) { min-height: auto; }
+/* one that holds only a one-line note is as tall as the note, at the gap every section keeps */
+.side .sec:has(> .sec-body > .set-note:only-child) { min-height: auto; }
 .side .sec[data-fit="true"] { flex-shrink: 1000; }
 /* a placed robot's gaps each carry their way on, so the other fitted sections give way before it; the details the card ends on
    give way after the rest */
@@ -79,6 +81,9 @@
 .side-island-head .btn { flex: none; white-space: nowrap; }
 .side textarea.h2:focus { outline: none; border-color: var(--sand); }
 .side .desc { color: var(--ink-2); font-size: var(--text-md); line-height: var(--lh); }
+/* a field that takes no change reads as text, its why in its tip */
+.side .fld.desc[readonly] { background: none; cursor: default; }
+.side .fld.desc[readonly]:focus { border-color: var(--line); }
 .side .fld.inline { width: auto; text-align: right; padding: 0; border: 0; background: none; color: var(--ink); font-size: var(--text-sm); font-weight: var(--w-medium); appearance: none; cursor: pointer; }
 .side .fld.inline:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
 /* in the settings a field and a pick read as controls */
