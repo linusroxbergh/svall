@@ -294,12 +294,21 @@ final class HostProcessTests: XCTestCase {
                                                     action: nil, raw: "svall: no registry at ~/.config/svall"))
     }
 
-    func testARunThatEndsOnAWarnedRowIsNotSaidToHaveStoppedWithoutWhy() throws {
-        let warned = #"{"step":"linger","status":"warn","detail":"off: the fleet stops when you log out"}"#
-        let helper = try fakeHelper(prints: [warned], then: "echo 'Warning: Permanently added studio to the list of known hosts.' >&2\nexit 1")
-        let (steps, code) = try run(HostProcess(executable: helper, arguments: ["host", "doctor", "studio", "--json"]))
+    func testARunThatEndsOnARowToFixOrItsResultIsNotSaidToHaveStoppedWithoutWhy() throws {
+        let toFix = #"{"step":"linger","status":"warn","detail":"off: the fleet stops when you log out","action":"sudo loginctl enable-linger linus","run":"sudo loginctl enable-linger linus"}"#
+        let noise = "echo 'Warning: Permanently added studio to the list of known hosts.' >&2\nexit 1"
+        let (steps, code) = try run(HostProcess(executable: try fakeHelper(prints: [toFix], then: noise), arguments: ["host", "doctor", "studio", "--json"]))
         XCTAssertEqual(steps.map(\.step), ["linger"])
         XCTAssertEqual(code, 1)
+        let (ended, _) = try run(HostProcess(executable: try fakeHelper(prints: [step, outcome], then: noise), arguments: ["host", "add", "studio", "--json"]))
+        XCTAssertEqual(ended.map(\.step), ["ssh"])
+    }
+
+    func testANoteThenAnExitThatSaysNothingKeepsWhatTheCommandSaid() throws {
+        let note = #"{"step":"mirror:unchecked","status":"warn","detail":"not checked"}"#
+        let helper = try fakeHelper(prints: [note], then: "echo 'svall: TypeError: cannot read the rows' >&2\nexit 1")
+        let (steps, _) = try run(HostProcess(executable: helper, arguments: ["host", "add", "studio", "--json"]))
+        XCTAssertEqual(steps.last, HostProcess.Step(step: "svall", status: "fail", detail: "svall stopped without saying why", action: nil, raw: "svall: TypeError: cannot read the rows"))
     }
 
     func testTheStepsAndTheEndOfARunAreWhatThePageIsSent() {

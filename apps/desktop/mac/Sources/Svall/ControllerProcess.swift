@@ -156,8 +156,11 @@ final class HostProcess {
         var raw: String? = nil
     }
 
+    /// The result a run that went its whole way ends with, which the page has no row for.
+    private struct Ended: Decodable { let result: String }
+
     private let child: LineChild
-    // a failed row says why the run ended, and a warned one may be the to-do its exit code is for
+    // a failed row says why the run ended, as does a warned one with something to do, which its exit code may be for, or its result; a note does not
     private var saidWhy = false
 
     var onStep: (Step) -> Void = { _ in }
@@ -182,11 +185,13 @@ final class HostProcess {
 
     /// A line that is no step, as the result or report a run ends with, is not the page's.
     private func take(_ line: String) {
-        if let step = try? JSONDecoder().decode(Step.self, from: Data(line.utf8)) { send(step) }
+        let data = Data(line.utf8)
+        if let step = try? JSONDecoder().decode(Step.self, from: data) { send(step) }
+        else if (try? JSONDecoder().decode(Ended.self, from: data)) != nil { saidWhy = true }
     }
 
     private func send(_ step: Step) {
-        if step.status == "fail" || step.status == "warn" { saidWhy = true }
+        if step.status == "fail" || (step.status == "warn" && (step.run != nil || step.action != nil)) { saidWhy = true }
         onStep(step)
     }
 

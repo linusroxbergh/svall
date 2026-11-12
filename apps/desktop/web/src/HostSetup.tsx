@@ -62,10 +62,11 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
   const up = useApp((s) => !!id && answers(s.fleet.machines?.[id as MachineId]));
   // a remove of it that did not finish leaves Forget the way to drop it, as its row's action says
   const unremoved = useApp((s) => !!s.host && s.host.op === 'remove' && !s.host.running && s.host.args.name === name && !removedBy(s.host));
-  // on the release it would get, an upgrade does nothing: as a check of it just found, else as its last one did
+  // on the release it would get, with nothing to fix, an upgrade does nothing: as a check of it just found, else as its last one did
   const current = useApp((s) => {
-    const found = s.host && !s.host.running && s.host.op === 'doctor' && s.host.args.name === name ? s.host.steps.find((x) => x.step === 'release') : undefined;
-    return found ? found.status === 'ok' : !!row?.current;
+    const checked = s.host && !s.host.running && s.host.op === 'doctor' && s.host.args.name === name ? s.host : undefined;
+    if (!checked?.steps.some((x) => x.step === 'release')) return !!row?.current;
+    return !checked.steps.some((x) => !x.step.startsWith('mirror:') && (x.status === 'fail' || x.status === 'warn'));
   });
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<CSSProperties>();

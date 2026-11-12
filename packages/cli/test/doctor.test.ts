@@ -461,8 +461,13 @@ describe('doctor on Linux', () => {
     expect(c.gateway).toBeUndefined();
     const stopped = byName(await doctor(priv, linux({ [show]: 'LoadState=loaded\nActiveState=inactive\nSubState=dead\nUnitFileState=disabled\n' }).deps));
     expect(stopped.systemd).toEqual({ name: 'systemd', status: 'fail', detail: 'not running', action: 'svall setup', raw: `${unit}: loaded, inactive (dead), disabled`, run: 'svall setup' });
-    // the unit is the cause: what waits on it is not checked, rather than said to be down again
-    for (const name of ['svalld', 'hook receiver']) expect(stopped[name]).toMatchObject({ status: 'skip', detail: 'not checked' });
+    // the port and the hook socket are checked on their own, with the unit stopped or not read at all
+    const running = byName(await doctor(priv, linux().deps));
+    const unread = byName(await doctor(priv, linux({ [show]: undefined as never }).deps));
+    for (const name of ['svalld', 'hook receiver']) {
+      expect(running[name].status, name).toBe('ok');
+      expect([stopped[name].status, unread[name].status], name).toEqual(['ok', 'ok']);
+    }
     const work = 'svall-svalld@work.service';
     const named = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, linux({ [showOf(work)]: 'LoadState=loaded\nActiveState=failed\nSubState=failed\nUnitFileState=enabled\n' }).deps));
     expect(named.systemd).toMatchObject({ status: 'fail', detail: 'not running', action: 'svall host upgrade <this machine> from the controller' });

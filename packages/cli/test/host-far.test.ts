@@ -5,7 +5,8 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { enter } from '@svall/svalld/fleet/home-move';
 import { resolvePaths } from '@svall/svalld/paths';
 import { noLoginFix } from '@svall/svalld/placement/workers';
-import { hostCommands, setupList, type There } from '../src/commands/host.js';
+import { releaseVersion } from '@svall/svalld/release';
+import { hostCommands, recordJoined, setupList, type There } from '../src/commands/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { FLEET, fleet, ssh, useHostWorld, work } from './controller/host-world.js';
 
@@ -51,6 +52,13 @@ describe('host list with a far home', () => {
     const listed = JSON.parse(await cli(['list'], true)) as { name: string; far?: boolean; worker?: boolean }[];
     expect(listed.filter((r) => r.far).map((r) => r.name)).toEqual(['box', 'other-mac']);
     expect(listed.some((r) => r.worker)).toBe(false);
+  });
+
+  it('marks the home a join found on this release, with nothing to fix, as current, so its menu offers no upgrade there', async () => {
+    ssh.reply(['host', 'list'], { stdout: `${JSON.stringify(rows)}\n` });
+    recordJoined(path.join(work, 'config'), HOME as never, releaseVersion());
+    const listed = JSON.parse(await cli(['list'], true)) as { id: string; current?: true }[];
+    expect(listed.find((r) => r.id === HOME)).toMatchObject({ current: true });
   });
 
   it('in words: a machine with no route reads as one that dials in, and one owed an enrolment says why', async () => {

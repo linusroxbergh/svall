@@ -521,8 +521,9 @@ describe('host list', () => {
     const { recordJoined, lastChecks } = await import('../src/commands/host.js');
     recordJoined(config, REMOTE, '1.2.4');
     expect(machineRows(registry, lastChecks(config), undefined, '1.2.4')[1]).toMatchObject({ current: true, check: { release: '1.2.4', failed: 0 } });
-    // a machine last checked on the release this one runs says so, and on any other does not
-    expect(machineRows(registry, { [REMOTE]: check }, undefined, '1.2.3')[1]).toMatchObject({ current: true });
-    expect(machineRows(registry, { [REMOTE]: check }, undefined, '1.2.4')[1]).not.toHaveProperty('current');
+    // a machine last checked on the release this one runs with nothing found says so; with anything left there, or on another release, it does not
+    expect(machineRows(registry, { [REMOTE]: { ...check, warned: 0 } }, undefined, '1.2.3')[1]).toMatchObject({ current: true });
+    expect(machineRows(registry, { [REMOTE]: check }, undefined, '1.2.3')[1]).not.toHaveProperty('current');
+    expect(machineRows(registry, { [REMOTE]: { ...check, warned: 0 } }, undefined, '1.2.4')[1]).not.toHaveProperty('current');
   });
 });

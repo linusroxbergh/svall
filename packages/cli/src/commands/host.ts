@@ -279,7 +279,7 @@ export function forgetCheck(dir: string, id: string): void {
 
 /** One machine as `host list --json` gives it: no ssh for this one, and its last check. */
 // worker: holds this fleet's token here, as a Mac asks of its far home; far: a machine of that home, its `ssh` as that home reaches it
-// joining: a move left this fleet owing it an enrolment, and why the last try failed; current: its last check found it on this release
+// joining: a move left this fleet owing it an enrolment, and why the last try failed; current: its last check found it on this release, with nothing to fix
 export type MachineRow = { name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string; check?: LastCheck; current?: true; worker?: true; far?: true; joining?: string };
 
 const dialRow = (d: ReturnType<typeof dialingFleet>): Pick<MachineRow, 'dialedBy' | 'unreadWorker'> =>
@@ -288,7 +288,8 @@ const dialRow = (d: ReturnType<typeof dialingFleet>): Pick<MachineRow, 'dialedBy
 export function machineRows(registry: MachineRegistry, checks: Record<string, LastCheck>, dialedBy: (id: string) => ReturnType<typeof dialingFleet> = () => undefined, release?: string): MachineRow[] {
   return registry.list().map(({ id, record }) => ({
     name: record.name, id, ...(record.ssh && { ssh: record.ssh }), platform: `${record.platform}-${record.arch}`, ...dialRow(dialedBy(id)), ...(checks[id] && { check: checks[id] }),
-    ...(release && checks[id]?.release === release && { current: true as const }),
+    // a machine on this release may still want an upgrade to become this fleet's worker, which its check says
+    ...(release && checks[id]?.release === release && !checks[id].failed && !checks[id].warned && { current: true as const }),
   }));
 }
 

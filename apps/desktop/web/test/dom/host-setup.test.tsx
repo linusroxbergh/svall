@@ -905,6 +905,14 @@ test("the ⋯ menu offers no upgrade to the release the machine runs, as its las
     store.getState().hostDone('doctor', 0);
   });
   expect(screen.queryByTestId('machine-upgrade')).toBeNull();
+  // on this release, a machine not yet this fleet's worker still wants the upgrade that makes it one
+  act(() => {
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'release', status: 'ok', detail: '0.9.4, same as this Mac' });
+    store.getState().hostStep('doctor', { step: 'worker', status: 'fail', detail: "does not run this fleet's robots yet", action: 'svall host upgrade trift sets it up' });
+    store.getState().hostDone('doctor', 1);
+  });
+  expect(screen.getByTestId('machine-upgrade')).toBeTruthy();
 });
 
 test('a check that finds the machine on another release offers its upgrade on that row', () => {
