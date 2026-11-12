@@ -34,10 +34,11 @@
 .modal.sheet.holds > .acts { margin-top: auto; }
 /* what a done move's sheet holds under its state line, spaced as the sheet is */
 .move-end { display: contents; }
-/* the phone's code after a home move, its place held while the window reaches the new home */
+/* the phone's code after a home move, its place held from reaching the new home to what its link says, a problem said at its top */
 .home-phone { display: flex; flex-direction: column; justify-content: center; gap: var(--sp-xl); }
 .home-phone:empty { display: none; }
-.home-phone[data-wait]:not(:has(.said)) { min-height: 262px; }
+.home-phone[data-wait] { min-height: 262px; }
+.home-phone:has(.said) { justify-content: flex-start; }
 .home-wait { display: flex; align-items: center; justify-content: center; gap: var(--sp-sm); }
 /* under the phone's problem, where its sentence starts */
 .home-later { margin-top: var(--sp-sm); padding-inline-start: calc(var(--text-md) + var(--sp-sm)); }

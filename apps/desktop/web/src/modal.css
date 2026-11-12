@@ -48,12 +48,13 @@
 .said-run { display: inline-block; max-width: 100%; vertical-align: bottom; font-family: var(--mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
 /* New Robot on a home elsewhere: that machine's folders, at one height while they are read, fading at the foot while more lie below, and a field for any other path there */
 .new-folder { display: flex; flex-direction: column; gap: var(--sp-xs); min-width: 0; }
-.new-folder-list { display: flex; flex-direction: column; height: 119px; overflow: hidden auto; }
+/* four whole rows, the last of them Other folder… with its rule */
+.new-folder-list { display: flex; flex-direction: column; height: calc(4 * (var(--lh) * var(--text-md) + 2 * var(--sp-xs)) + 1px); overflow: hidden auto; }
 .new-folder-list[data-empty] { height: auto; }
 .new-folder-list .list-row { flex: none; display: block; overflow: hidden; text-align: start; text-overflow: ellipsis; white-space: nowrap; }
 /* the way to any other folder stays in view at the list's foot, the folders scrolling under it */
 .new-folder-list .new-folder-other { position: sticky; bottom: 0; overflow: visible; border-top: 1px solid var(--line-soft); background: var(--surface-2); }
 .new-folder-list .new-folder-other:hover { background: linear-gradient(var(--fill-1), var(--fill-1)), var(--surface-2); }
 .new-folder-list .new-folder-other[aria-selected="true"] { background: linear-gradient(var(--fill-2), var(--fill-2)), var(--surface-2); }
-.new-folder-list[data-more] .new-folder-other::before { content: ''; position: absolute; inset-inline: 0; bottom: 100%; height: 24px; background: linear-gradient(transparent, var(--surface-2)); pointer-events: none; }
+.new-folder-list[data-more] .new-folder-other::before { content: ''; position: absolute; inset-inline: 0; bottom: 100%; height: 12px; background: linear-gradient(transparent, var(--surface-2)); pointer-events: none; }
 .new-folder-quiet { display: flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-md); color: var(--ink-3); font-size: var(--text-sm); }

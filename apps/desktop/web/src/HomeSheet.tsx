@@ -147,17 +147,20 @@ export function HomeSheet() {
   const item = ({ step, words: w, row, now }: Row) => {
     const said = (now === 'failed' || now === 'warned') && row ? row : undefined;
     const todo = said && (said.say ?? said.action);
-    // why, and what to do under it; a row that says only what to do says that, and mission control left away is said once, its button at the foot
-    const why = step === 'crew' && said ? { line: onThisMac(said.say ?? said.detail ?? '') }
-      : said?.detail ? { ...rawOf(onThisMac(said.detail), said.raw), fix: todo && onThisMac(todo) } : todo ? { line: onThisMac(todo) } : undefined;
+    // mission control left away is said once, as the row itself, its button at the foot
+    const left = step === 'crew' && said ? onThisMac(said.say ?? said.detail ?? '') : undefined;
+    // why, and what to do under it; a row that says only what to do says that
+    const why = left === undefined && (said?.detail ? { ...rawOf(onThisMac(said.detail), said.raw), fix: todo && onThisMac(todo) } : todo ? { line: onThisMac(todo) } : undefined);
     return (
       <li key={step} data-state={now} data-testid={`home-step-${step}`}>
         <span className="move-mark" aria-hidden>{now === 'doing' ? <span className="move-spin" /> : <Mark status={({ done: 'ok', failed: 'fail', warned: 'warn', todo: 'todo' } as const)[now]} />}</span>
-        <div>{now === 'doing' || now === 'done' ? w[now] : w.todo}{why && <div data-testid={now === 'failed' ? 'home-failed' : undefined}><Said {...why} mark={false} /></div>}</div>
+        <div>{left ?? (now === 'doing' || now === 'done' ? w[now] : w.todo)}{why && <div data-testid={now === 'failed' ? 'home-failed' : undefined}><Said {...why} mark={false} /></div>}</div>
       </li>
     );
   };
   const crewLeft = !!run?.steps.some((s) => s.step === 'crew' && s.status === 'warn');
+  // the bar is the move's steps; mission control left away is said under them, not one of them
+  const bar = rows.filter((r) => r.step !== 'crew');
   const phone = !!run?.steps.some((s) => s.step === 'phone');
   const blockers = !run && (
     <>
@@ -227,8 +230,8 @@ export function HomeSheet() {
         )}
         {run && !done && (
           <>
-            <div className="move-bar" role="progressbar" aria-valuemin={0} aria-valuemax={rows.length} aria-valuenow={rows.filter((r) => r.now === 'done' || r.now === 'warned').length} data-testid="home-bar">
-              {rows.map((r) => <i key={r.step} data-state={r.now} />)}
+            <div className="move-bar" role="progressbar" aria-valuemin={0} aria-valuemax={bar.length} aria-valuenow={bar.filter((r) => r.now === 'done' || r.now === 'warned').length} data-testid="home-bar">
+              {bar.map((r) => <i key={r.step} data-state={r.now} />)}
             </div>
             <ol className="move-steps" data-testid="home-steps" aria-live="polite">{shown.map(item)}</ol>
           </>

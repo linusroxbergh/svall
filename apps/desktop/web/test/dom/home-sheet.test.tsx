@@ -441,8 +441,9 @@ describe('the sheet of a home move', () => {
     step('crew', 'warn', { detail: "Mission control's crew stayed where the move sent them", say: "Mission control's crew is still on studio" });
     act(() => { store.getState().hostDone('home', 1); });
     await screen.findByTestId('home-crew-back');
-    // said once, its way back at the foot
-    expect(said(screen.getByTestId('home-step-crew'))).toEqual(["Mission control's crew is still on studio"]);
+    // said once, as the row itself, its way back at the foot, and no segment of the move's bar
+    expect(screen.getByTestId('home-step-crew').textContent).toBe("Mission control's crew is still on studio");
+    expect([...screen.getByTestId('home-bar').children].map((i) => i.getAttribute('data-state'))).toEqual(['done', 'todo', 'failed', 'todo', 'todo', 'todo', 'todo']);
     expect([...document.querySelectorAll('.modal .acts button')].map((b) => [b.textContent, b.className])).toEqual([['Bring them back', 'btn pri'], ['Close', 'btn']]);
     fireEvent.click(screen.getByTestId('home-crew-back'));
     expect(store.getState().homeSheet).toBeUndefined();

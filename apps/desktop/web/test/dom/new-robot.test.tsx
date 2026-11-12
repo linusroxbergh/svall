@@ -119,7 +119,7 @@ test('a typed path the home refuses is said in the dialog, with the home\'s name
   typeOther();
   fireEvent.change(folder(), { target: { value: ' /home/linus/x ' } });
   await create();
-  expect(screen.getByTestId('new-robot-refused').textContent).toBe('studio has no folder /home/linus/x');
+  expect(screen.getByTestId('new-robot-refused').textContent).toBe('No such folder on studio');
   expect(creates().map((p) => p.cwd)).toEqual(['/home/linus/x']);
   expect(store.getState().namingRobot).toBe(true);
   // the same folder would be refused again, so Create waits for another
@@ -129,7 +129,7 @@ test('a typed path the home refuses is said in the dialog, with the home\'s name
   expect(screen.getByTestId('new-robot-create').hasAttribute('disabled')).toBe(false);
   fireEvent.change(folder(), { target: { value: '~/fartest-file.txt' } });
   await create();
-  expect(screen.getByTestId('new-robot-refused').textContent).toBe('~/fartest-file.txt is a file, not a folder');
+  expect(screen.getByTestId('new-robot-refused').textContent).toBe('That is a file, not a folder');
 });
 
 test('another refusal is the home\'s own words, on the toast', async () => {
@@ -188,7 +188,7 @@ test('a refusal in fallback that names no folder there says this Mac, never the 
   typeOther();
   fireEvent.change(folder(), { target: { value: '/x' } });
   await create();
-  expect(screen.getByTestId('new-robot-refused').textContent).toBe('This Mac has no folder /x');
+  expect(screen.getByTestId('new-robot-refused').textContent).toBe('No such folder on this Mac');
 });
 
 test('a window whose home dials it reads the list where the robot would start, and says so', async () => {

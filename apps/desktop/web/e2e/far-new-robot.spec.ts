@@ -91,10 +91,10 @@ test('a window on a far home starts a robot in one of the home\'s folders, its l
     await expect(page.getByTestId('new-robot-folder')).toBeFocused();
     await page.keyboard.type('/home/linus/x');
     await page.getByTestId('new-robot-create').click();
-    await expect(page.getByTestId('new-robot-refused')).toHaveText('studio has no folder /home/linus/x');
+    await expect(page.getByTestId('new-robot-refused')).toHaveText('No such folder on studio');
     await page.getByTestId('new-robot-folder').fill('/home/linus/f.txt');
     await page.getByTestId('new-robot-create').click();
-    await expect(page.getByTestId('new-robot-refused')).toHaveText('/home/linus/f.txt is a file, not a folder');
+    await expect(page.getByTestId('new-robot-refused')).toHaveText('That is a file, not a folder');
     await expect(page.getByTestId('new-robot')).toBeVisible();
 
     await page.getByTestId('new-robot-pick-/home/linus/code/a-rather-long-clone-name-1').click();

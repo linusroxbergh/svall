@@ -88,7 +88,8 @@ export function NewRobot() {
       if (column) await placeRobot(d, id, column);
     } catch (e) {
       const { code, data } = e as { code?: string; data?: { kind?: string } };
-      if (via && code === 'not_a_folder') setRefused(data?.kind === 'file' ? `${folder} is a file, not a folder` : `${where === 'this Mac' ? 'This Mac' : where} has no folder ${folder}`);
+      // the field above holds the path, so the refusal does not say it again
+      if (via && code === 'not_a_folder') setRefused(data?.kind === 'file' ? 'That is a file, not a folder' : `No such folder on ${where}`);
       else d.store.getState().showToast(e as Error);
       setBusy(false);
     }
