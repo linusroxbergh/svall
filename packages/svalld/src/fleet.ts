@@ -571,7 +571,7 @@ export class Fleet extends EventEmitter<Events> {
     const cwd = expandHome(p.cwd);
     // tmux would start the window in the daemon's own directory, or in $HOME
     if (!path.isAbsolute(cwd)) throw new NotAFolder(`cwd ${p.cwd} is not an absolute path`);
-    if (!isFolder(cwd)) throw new NotAFolder(`cwd ${p.cwd} is not a directory`);
+    if (!isFolder(cwd)) throw new NotAFolder(`cwd ${p.cwd} is not a directory`, { kind: fs.existsSync(cwd) ? 'file' : 'missing' });
     const id = newId('c');
     // the path tmux reports for a pane started here, as for /tmp, so a poll moves the robot only once the pane moves
     const panePath = fs.realpathSync(cwd);

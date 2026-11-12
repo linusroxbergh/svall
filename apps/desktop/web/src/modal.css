@@ -30,8 +30,9 @@
 .said { display: flex; align-items: center; gap: var(--sp-md); min-width: 0; }
 .said > div { flex: 1; display: flex; flex-direction: column; gap: var(--sp-2xs); min-width: 0; color: var(--ink); font-size: var(--text-md); line-height: var(--lh); overflow-wrap: anywhere; }
 .said > .btn { flex: none; }
-/* New Robot on a home elsewhere: that machine's folders under a field that takes any path there */
+/* New Robot on a home elsewhere: that machine's folders, at one height while they are read, and a field for any other path there */
 .new-folder { display: flex; flex-direction: column; gap: var(--sp-xs); min-width: 0; }
-.new-folder-list { display: flex; flex-direction: column; max-height: 148px; overflow: hidden auto; }
+.new-folder-list { display: flex; flex-direction: column; height: 132px; overflow: hidden auto; }
 .new-folder-list .list-row { flex: none; display: block; overflow: hidden; text-align: start; text-overflow: ellipsis; white-space: nowrap; }
+.new-folder-quiet { display: flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-md); color: var(--ink-3); font-size: var(--text-sm); }
 .new-folder-refused { color: var(--danger); font-size: var(--text-sm); }

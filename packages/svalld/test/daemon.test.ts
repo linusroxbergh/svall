@@ -471,8 +471,8 @@ runIf('startDaemon', () => {
       fs.renameSync(aside, paths.fleetConfig);
 
       const robots = Object.keys(d.store.state.robots).length;
-      for (const cwd of [path.join(home, 'no-such'), paths.fleetConfig, path.join(paths.fleetConfig, 'under'), 'relative/path']) {
-        expect(await call('robot.create', { islandId: island.id, cwd })).toMatchObject({ error: { code: 'not_a_folder' } });
+      for (const [cwd, kind] of [[path.join(home, 'no-such'), 'missing'], [paths.fleetConfig, 'file'], [path.join(paths.fleetConfig, 'under'), 'missing'], ['relative/path']]) {
+        expect(await call('robot.create', { islandId: island.id, cwd })).toMatchObject({ error: { code: 'not_a_folder', ...(kind && { data: { kind } }) } });
       }
       expect(Object.keys(d.store.state.robots)).toHaveLength(robots);
 

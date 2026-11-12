@@ -23,14 +23,17 @@ export function NewRobot() {
   const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cwd, setCwd] = useState('');
-  const [listed, setListed] = useState<Result<'workspace.clones'>>();
+  // the field is for a folder the list does not hold
+  const [other, setOther] = useState(false);
+  // null: the list could not be read
+  const [listed, setListed] = useState<Result<'workspace.clones'> | null>();
   const [refused, setRefused] = useState<string>();
   // a folder the user chose stands through the list being read again
   const chosen = useRef(false);
   const field = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!open) { setName(''); setNote(''); setLinks(''); setMore(false); setBusy(false); setCwd(''); setListed(undefined); setRefused(undefined); chosen.current = false; return; }
+    if (!open) { setName(''); setNote(''); setLinks(''); setMore(false); setBusy(false); setCwd(''); setOther(false); setListed(undefined); setRefused(undefined); chosen.current = false; return; }
     field.current?.focus();
   }, [open]);
 
@@ -49,7 +52,7 @@ export function NewRobot() {
       // state holds the fleet's own folders as they were typed, `~` and all
       const wanted = start === s.fleet.home.cwd ? r.defaults.home : start === s.fleet.defaultCwd ? r.defaults.cwd : start;
       if (!chosen.current) setCwd([wanted, r.defaults.cwd, offered[0]].find((p) => p !== undefined && offered.includes(p)) ?? '');
-    }, () => {});
+    }, () => { if (!left) setListed(null); });
     return () => { left = true; };
   }, [open, startsAt]);
 
@@ -59,6 +62,8 @@ export function NewRobot() {
   const where = via && (on === via.machine ? 'this Mac' : homeName({ machines }, via));
   const folders = via && listed ? offeredOf(listed, via) : [];
   const folder = cwd.trim();
+  // a chosen folder a list read again no longer holds stays in the field
+  const typing = other || (listed !== undefined && !folders.some((f) => f.path === folder));
 
   const create = async () => {
     if (busy || (via && !folder)) return;
@@ -73,12 +78,13 @@ export function NewRobot() {
       showCreated(d, id);
       if (column) await placeRobot(d, id, column);
     } catch (e) {
-      if (via && (e as { code?: string }).code === 'not_a_folder') setRefused(`${folder} is not a folder on ${where}`);
+      const { code, data } = e as { code?: string; data?: { kind?: string } };
+      if (via && code === 'not_a_folder') setRefused(data?.kind === 'file' ? `${folder} is a file, not a folder` : `${where === 'this Mac' ? 'This Mac' : where} has no folder ${folder}`);
       else d.store.getState().showToast((e as Error).message);
       setBusy(false);
     }
   };
-  const choose = (path: string) => { chosen.current = true; setCwd(path); setRefused(undefined); };
+  const choose = (path: string, typed = false) => { chosen.current = true; setOther(typed); setCwd(path); setRefused(undefined); };
 
   return (
     <div className="modal-back" data-testid="new-robot" onPointerDown={close}>
@@ -90,19 +96,22 @@ export function NewRobot() {
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />
         {via && (
           <div className="new-folder">
-            <span className="modal-sub" data-testid="new-robot-where">Folder on {where}{on === via.machine && !via.online && `, while ${homeName({ machines }, via)} is not reachable`}</span>
-            <input className="fld mono" placeholder={via.online ? `a path on ${where}` : 'a path inside a clone here'} aria-label="Folder" value={cwd} data-testid="new-robot-folder" {...AS_TYPED}
-              onChange={(e) => choose(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />
-            {refused && <span className="new-folder-refused" role="alert" data-testid="new-robot-refused">{refused}</span>}
-            {folders.length > 0 && (
-              <div className="new-folder-list" data-testid="new-robot-folders">
-                {folders.map((f) => (
-                  <button key={f.path} className="list-row sm mono" data-testid={`new-robot-pick-${f.path}`} data-active={f.path === folder} data-tip={f.path} onClick={() => choose(f.path)}><bdi>{shortPath(f.path)}</bdi></button>
-                ))}
-              </div>
+            <span className="modal-sub" id="new-robot-where" data-testid="new-robot-where">folder on {where}{on === via.machine && !via.online && `, while ${homeName({ machines }, via)} is not reachable`}</span>
+            <div className="new-folder-list" role="listbox" aria-labelledby="new-robot-where" aria-busy={listed === undefined || undefined} data-testid="new-robot-folders">
+              {listed === undefined && <span className="new-folder-quiet"><span className="move-spin" aria-hidden />Reading {where}'s folders…</span>}
+              {listed === null && <span className="new-folder-quiet">Could not read {where}'s folders.</span>}
+              {listed && !folders.length && <span className="new-folder-quiet" data-testid="new-robot-none">{via.online ? `No clone or robot folder on ${where} yet.` : 'No clone listed here; type a path inside one.'}</span>}
+              {folders.map((f) => (
+                <button key={f.path} className="list-row sm mono" role="option" aria-selected={!typing && f.path === folder} data-testid={`new-robot-pick-${f.path}`} data-tip={f.path} onClick={() => choose(f.path)}><bdi>{shortPath(f.path)}</bdi></button>
+              ))}
+              {folders.length > 0 && <button className="list-row sm" role="option" aria-selected={typing} data-testid="new-robot-other" onClick={() => choose('', true)}>Other folder…</button>}
+            </div>
+            {typing && (
+              <input className="fld mono" placeholder="~/code/project" aria-label="Folder" value={cwd} data-testid="new-robot-folder" {...AS_TYPED} autoFocus={other}
+                onChange={(e) => choose(e.target.value, true)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />
             )}
-            {listed && !folders.length && <span className="modal-sub" data-testid="new-robot-none">{via.online ? `No clone or robot folder on ${where} yet; type a path there.` : 'No clone listed here; type a path inside one.'}</span>}
+            {refused && <span className="new-folder-refused" role="alert" data-testid="new-robot-refused">{refused}</span>}
           </div>
         )}
         {!more && (

@@ -19,8 +19,8 @@ stays in this Mac's tmux, its Files edit in place as ever, and its card reads as
 Mission control runs on the home and has no move button.
 
 **New robot** asks for a folder, since the window's own mean nothing on studio. It lists the folders on studio where its robots work, the
-clones in its default folder, dot folders aside, and the fleet's default and mission control folders, and takes any path there; `~` is studio's. studio checks
-a typed path before the robot starts: "/home/linus/x is not a folder on studio". A link to a folder counts, as it does for
+clones in its default folder, dot folders aside, and the fleet's default and mission control folders; **Other folder…** takes any path there, and `~` is studio's. studio checks
+a typed path before the robot starts: "studio has no folder /home/linus/x", or "~/notes.txt is a file, not a folder". A link to a folder counts, as it does for
 `svall robot new --cwd`. The **+** beside an island starts in the folder of a robot working on studio there, and with none opens **New robot** for
 that island. A Mac home has no such field: a new robot starts beside the robot or island you selected.
 
