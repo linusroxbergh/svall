@@ -65,12 +65,11 @@ test('an add that did not go through says where it stopped and asks again with i
   // the failed row alone, said once, a tool's words behind details
   expect(screen.queryAllByTestId(/^host-step-/).map((e) => e.getAttribute('data-testid'))).toEqual(['host-step-ssh']);
   const said = screen.getByTestId('host-step-ssh');
-  expect(said.textContent).toBe('Loginthis Mac cannot log in to studiorun ssh ada@studio once in a terminal and answer what it asksdetailsPermission denied (publickey).Open terminal');
+  // the login's fix runs on this Mac, and a terminal on studio would need the login it lacks
+  expect(said.textContent).toBe('Loginthis Mac cannot log in to studiorun ssh ada@studio once in a terminal and answer what it asksdetailsPermission denied (publickey).');
+  expect(screen.queryByTestId('host-terminal-ssh')).toBeNull();
   expect(screen.queryByTestId('machine-more')).toBeNull();
   expect(screen.getByTestId('host-outcome').textContent).toBe('Add machine did not finishEdit and try againClose');
-  fireEvent.click(screen.getByTestId('host-terminal-ssh'));
-  expect(sent.filter((m) => m.type === 'term.show').at(-1)).toMatchObject({ machine: { ssh: 'ada@studio', type: 'ssh ada@studio' } });
-  act(() => store.getState().closeHostTerminal());
 
   fireEvent.click(screen.getByTestId('host-edit'));
   expect(screen.getByTestId('host-machine').textContent).toBe('Add a machine');
@@ -603,6 +602,22 @@ test("a check row that setup there fixes offers Repair, which installs this Mac'
   });
   expect(screen.queryByTestId('host-repair-claude')).toBeNull();
   expect(screen.getByTestId('host-terminal-claude').textContent).toBe('Open terminal');
+});
+
+test("a check this Mac cannot log in for offers no terminal on the machine, since the key's fix runs on this Mac", () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', {
+      step: 'master', status: 'fail', detail: 'this Mac cannot log in to ada@trift', action: 'on this Mac, run ssh-copy-id ada@trift, then try again',
+      run: 'ssh-copy-id ada@trift', raw: 'Permission denied (publickey).',
+    });
+    store.getState().hostDone('doctor', 1);
+  });
+  expect(screen.getByTestId('host-step-master').textContent).toContain('on this Mac, run ssh-copy-id ada@trift');
+  expect(screen.queryByTestId('host-terminal-master')).toBeNull();
 });
 
 test('a step whose fix is to forget the machine offers Forget, which asks first', () => {

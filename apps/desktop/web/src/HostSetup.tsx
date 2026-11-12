@@ -22,6 +22,11 @@ import { VarField } from './VarField.js';
 // the machine's own setup, which installing this Mac's release there runs again
 const SETUP = /^svall(-dev)? setup$/;
 const isFarHome = (s: App): boolean => { const id = s.machines?.find((m) => m.name === s.hostMachine)?.id; return !!id && id === s.via?.home; };
+// a machine of a far home is reached through that home, whose own ssh knows it
+const homeSshOf = (s: App): string | undefined => (s.via && !isFarHome(s) ? s.machines?.find((m) => m.id === s.via!.home)?.ssh : undefined);
+// a login's fix runs where the login starts: on a far home through its ssh, else on this Mac, which a machine's terminal is not
+const useLoginTerminal = (step: string, terminal?: Terminal): Terminal | undefined =>
+  useApp((s) => (step === 'ssh' || step === 'master') && !homeSshOf(s)) ? undefined : terminal;
 const FORGET = /\bhost remove \S+ --forget\b/;
 const UPGRADE = /\bhost upgrade\b/;
 // what a failed row runs again as it ran; an add goes back to its form, a remove to its foot, a home move through its sheet
@@ -170,7 +175,8 @@ function Outcome({ run, edit }: { run: HostRun; edit(): void }) {
 
 type Terminal = (command: string, forward?: number, step?: string) => void;
 
-function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: Terminal }) {
+function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; terminal?: Terminal }) {
+  const terminal = useLoginTerminal(row.step, opener);
   const name = run.args.name;
   // the run's own far id, as this Mac's registry may give its name to another machine
   const id = useApp((s) => run.args.id ?? s.machines?.find((m) => m.name === name)?.id);
@@ -431,8 +437,7 @@ export function HostSetup() {
   const terminal = useApp((s) => s.hostTerminal);
   // the registry's destination, or the one an add not yet in the registry was given
   const ssh = useApp((s) => s.machines?.find((m) => m.name === s.hostMachine)?.ssh ?? (s.host?.args.name === s.hostMachine ? s.host?.args.ssh : undefined));
-  // a machine of a far home is reached through that home, whose own ssh knows it
-  const homeSsh = useApp((s) => (s.via && !isFarHome(s) ? s.machines?.find((m) => m.id === s.via!.home)?.ssh : undefined));
+  const homeSsh = useApp(homeSshOf);
   const homeLabel = useApp((s) => s.via?.name);
   const forward = homeSsh && terminal?.run && !terminal.bare ? loginForward(terminal.run, terminal.forward) : terminal?.forward;
   const typed = !homeSsh || terminal?.bare ? terminal?.run : terminal?.run ? overHome(ssh!, terminal.run, forward) : `ssh ${ssh}`;
@@ -545,7 +550,8 @@ export function HostSetup() {
 }
 
 /** Where an add that did not go through stopped: the step, how it stands and what to do, a tool's words behind details. */
-function NotAdded({ row, terminal }: { row: HostStep; terminal?: Terminal }) {
+function NotAdded({ row, terminal: opener }: { row: HostStep; terminal?: Terminal }) {
+  const terminal = useLoginTerminal(row.step, opener);
   const { line, raw } = splitRaw(row.detail ?? row.action ?? '');
   return (
     <ol className="move-steps" data-testid="host-not-added">
