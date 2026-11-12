@@ -1037,7 +1037,7 @@ describe('fleet home set local', () => {
     const out = await moveHomeBack(deps);
     expect(failed()?.step).toBe('pause');
     expect(out.actions).toContain('svall fleet home crew-back');
-    expect(events.find((e) => e.step === 'crew' && e.status === 'warn')?.say).toBe(`Mission control's crew, scout are still on ${thisMachine()}`);
+    expect(events.find((e) => e.step === 'crew' && e.status === 'warn')?.say).toBe(`Mission control's robots crew, scout are still on ${thisMachine()}`);
   }, 30_000);
 
   it('crew-back from a worker asks the home, and moves them to the machine the home says it is', async () => {
