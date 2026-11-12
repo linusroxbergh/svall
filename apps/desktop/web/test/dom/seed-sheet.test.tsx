@@ -232,7 +232,7 @@ describe('the first copy of an agent setup onto a far home', () => {
 
   it('stays, saying why, when the home refuses or the copy fails', async () => {
     following();
-    there.mockImplementation((m: string) => (m === 'machines.holdsSetup' ? Promise.resolve({ holds: false }) : Promise.reject(new Error('studio could not take it: Command failed: tar -x\nno space left'))));
+    there.mockImplementation((m: string) => (m === 'machines.holdsSetup' ? Promise.resolve({ holds: false }) : Promise.reject(new Error('studio could not take it: Command failed: tar -x --token s3cr3t\nno space left'))));
     render(<SeedSheet />);
     await screen.findByTestId('setup-tick-claude:mcp:a');
     fireEvent.click(screen.getByTestId('setup-tick-claude:mcp:a'));
@@ -240,7 +240,8 @@ describe('the first copy of an agent setup onto a far home', () => {
     fireEvent.click(screen.getByTestId('seed-copy'));
     const failed = await screen.findByTestId('seed-failed');
     expect(failed.querySelector('.said > div > span')!.textContent).toBe('Your agent setup did not reach studio');
-    expect(failed.querySelector('details .modal-more-body')!.textContent).toBe('studio could not take it: Command failed: tar -x\nno space left');
+    // what the daemon said shows, any token it carried masked
+    expect(failed.querySelector('details .modal-more-body')!.textContent).toBe('studio could not take it: Command failed: tar -x --token …\nno space left');
     expect(screen.getByTestId('seed-sheet')).toBeTruthy();
     expect(store.getState().toast).toBeUndefined();
     // a copy that failed is tried again or closed

@@ -122,14 +122,31 @@ test('a typed path the home refuses is said in the dialog, with the home\'s name
   expect(screen.getByTestId('new-robot-refused').textContent).toBe('No such folder on studio');
   expect(creates().map((p) => p.cwd)).toEqual(['/home/linus/x']);
   expect(store.getState().namingRobot).toBe(true);
-  // the same folder would be refused again, so Create waits for another
+  // the same folder would be refused again, so Create waits for another, and Enter in either field asks nothing
   expect([screen.getByTestId('new-robot-create').hasAttribute('disabled'), screen.getByTestId('new-robot-create').dataset.tip]).toEqual([true, 'Choose another folder on studio']);
+  fireEvent.keyDown(folder(), { key: 'Enter' });
+  fireEvent.keyDown(screen.getByTestId('new-robot-name'), { key: 'Enter' });
+  await act(async () => {});
+  expect(creates()).toHaveLength(1);
   fireEvent.change(folder(), { target: { value: '/home/linus/app' } });
   expect(screen.queryByTestId('new-robot-refused')).toBeNull();
   expect(screen.getByTestId('new-robot-create').hasAttribute('disabled')).toBe(false);
   fireEvent.change(folder(), { target: { value: '~/fartest-file.txt' } });
   await create();
   expect(screen.getByTestId('new-robot-refused').textContent).toBe('That is a file, not a folder');
+});
+
+test('a refusal is of a folder on the machine the list came from, so a list read from another machine clears it', async () => {
+  answers(STUDIO, FOLDERS, () => Promise.reject(new ApiError('not_a_folder', 'cwd /home/linus/x is not a directory', { kind: 'missing' })));
+  await open(far);
+  typeOther();
+  fireEvent.change(folder(), { target: { value: '/home/linus/x' } });
+  await create();
+  expect(screen.getByTestId('new-robot-refused').textContent).toBe('No such folder on studio');
+  answers(MAC, [{ path: '/Users/ada/app', clone: true }]);
+  await act(async () => { store.getState().setVia(apart); });
+  expect(screen.queryByTestId('new-robot-refused')).toBeNull();
+  expect(screen.getByTestId('new-robot-create').hasAttribute('disabled')).toBe(false);
 });
 
 test('another refusal is the home\'s own words, on the toast', async () => {
@@ -376,9 +393,29 @@ test('the arrow keys walk the list, choosing as they go, and leave the focus the
   expect(screen.getByTestId('new-robot-other').getAttribute('aria-selected')).toBe('true');
   expect(document.activeElement).toBe(screen.getByTestId('new-robot-other'));
   expect(screen.getByTestId('new-robot-folder')).toBeTruthy();
+  // at the foot ArrowDown stays on Other folder…, at the top ArrowUp on the first
+  fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+  expect(document.activeElement).toBe(screen.getByTestId('new-robot-other'));
   fireEvent.keyDown(document.activeElement!, { key: 'Home' });
   expect(picked()).toBe('/home/linus/app');
   expect(screen.queryByTestId('new-robot-folder')).toBeNull();
+  fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
+  expect(document.activeElement).toBe(screen.getByTestId('new-robot-pick-/home/linus/app'));
+  expect(picked()).toBe('/home/linus/app');
+});
+
+test('a row the arrow keys reach is brought clear of the pinned Other folder…', async () => {
+  const seen = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value(this: HTMLElement, o: unknown) { seen(this.dataset.testid, o); } });
+  try {
+    answers(STUDIO, FOLDERS);
+    await open(far);
+    screen.getByTestId('new-robot-pick-/home/linus/app').focus();
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    expect(seen).toHaveBeenLastCalledWith('new-robot-pick-/home/linus/notes', { block: 'nearest' });
+  } finally {
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollIntoView;
+  }
 });
 
 test('folders past the list\'s foot are said by a fade over it, gone once the list is scrolled to its end', async () => {

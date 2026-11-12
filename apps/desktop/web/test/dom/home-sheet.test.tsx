@@ -399,6 +399,36 @@ describe('the sheet of a home move', () => {
     expect(screen.queryByTestId('home-try-again')).toBeNull();
   });
 
+  it('a stopped move offers nothing at its foot while the home has yet to say whether the move stands', async () => {
+    call.mockImplementation((method: string) => (method === 'fleet.homeMove' ? new Promise(() => {}) : Promise.resolve(method === 'fleet.homeCheck' ? { ok: true, sheet: SHEET } : {})));
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    step('copy', 'fail', { detail: "studio did not stage the fleet's files" });
+    await act(async () => { store.getState().hostDone('home', 1); await Promise.resolve(); });
+    expect(call).toHaveBeenCalledWith('fleet.homeMove', { op: 'status' });
+    expect(document.querySelector('.modal .acts')).toBeNull();
+  });
+
+  it('a stopped move whose home could not say whether the move stands says so and asks again, never guessing at its foot', async () => {
+    let read = (): Promise<unknown> => Promise.reject(new Error('svalld connection closed --token s3cr3t'));
+    call.mockImplementation((method: string) => (method === 'fleet.homeMove' ? read() : Promise.resolve(method === 'fleet.homeCheck' ? { ok: true, sheet: SHEET } : {})));
+    // the banner's last poll, which says no move stands, is not what the foot goes by
+    act(() => { store.getState().setHomeMove(undefined); });
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    step('copy', 'fail', { detail: "studio did not stage the fleet's files" });
+    act(() => { store.getState().hostDone('home', 1); });
+    const unread = await screen.findByTestId('home-move-unread');
+    expect(said(unread)).toEqual(['This Mac could not tell whether the move still stands']);
+    expect(raw(unread)).toBe('svalld connection closed --token …');
+    expect(screen.queryByTestId('home-try-again')).toBeNull();
+    expect([...document.querySelectorAll('.modal .acts button')].map((b) => b.textContent)).toEqual(['Check again', 'Close']);
+    read = () => Promise.resolve({ moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } });
+    fireEvent.click(screen.getByTestId('home-move-read'));
+    expect(await screen.findByTestId('home-retry')).toBeTruthy();
+    expect(screen.queryByTestId('home-move-unread')).toBeNull();
+  });
+
   it('a running move shows a bar of its steps over them, and once through folds them behind one line', async () => {
     await open();
     fireEvent.click(screen.getByTestId('home-go'));

@@ -5,7 +5,7 @@ import { app, deps } from './boot.js';
 import { openFolder, type HostStep } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { dialogKeys, useApp } from './hooks.js';
-import { onThisMac, plural, splitRaw, stepLabel } from './host.js';
+import { onThisMac, plural, splitRaw, stepLabel, withoutTokens } from './host.js';
 import { startHost } from './hostRun.js';
 import { Caret, Mark } from './icons.js';
 import { Info } from './Info.js';
@@ -68,8 +68,10 @@ export function HomeSheet() {
   const [working, setWorking] = useState<string>();
   const [started, setStarted] = useState(false);
   const [unfolded, setUnfolded] = useState(false);
-  // a stopped run's foot waits for the home's own word on whether the move stands, as the banner's last poll may be old
-  const [told, setTold] = useState(false);
+  // a stopped run's foot waits for the home's own word on whether the move stands, as the banner's last poll may be old:
+  // true once it answers, why when it could not be asked, which is asked again
+  const [told, setTold] = useState<boolean | string>(false);
+  const [asked, setAsked] = useState(0);
   // a move that stopped past its mark stands until it is finished or called off, which holds the crew where it is
   const stands = useApp((s) => !!s.homeMove && !s.homeMove.unmarked);
   // the fleet's files are trimmed where they are: on this Mac, when it is the home
@@ -110,11 +112,14 @@ export function HomeSheet() {
   useEffect(() => {
     if (!ended || done) return;
     let live = true;
-    (app.api().local ?? app.api()).call('fleet.homeMove', { op: 'status' })
-      .then((r) => { if (live) app.store.getState().setHomeMove(r.moving); }, () => undefined)
-      .finally(() => { if (live) setTold(true); });
+    setTold(false);
+    (app.api().local ?? app.api()).call('fleet.homeMove', { op: 'status' }).then((r) => {
+      if (!live) return;
+      app.store.getState().setHomeMove(r.moving);
+      setTold(true);
+    }, (e: Error) => { if (live) setTold(withoutTokens(e.message)); });
     return () => { live = false; };
-  }, [ended, done]);
+  }, [ended, done, asked]);
   if (!ask) return null;
   const { name, back } = ask;
   const dest = back ? 'this Mac' : name;
@@ -254,9 +259,15 @@ export function HomeSheet() {
           </div>
         )}
         {ended && !done && !failed && <div data-testid="home-ended"><Said line="The move stopped without saying why." raw={`exit ${run.code}`} /></div>}
-        {ended && !done && told && (
+        {ended && !done && typeof told === 'string' && <div data-testid="home-move-unread"><Said line="This Mac could not tell whether the move still stands" raw={told} /></div>}
+        {ended && !done && told !== false && (
           <div className="acts">
-            {stands ? (
+            {told !== true ? (
+              <>
+                <button className="btn pri" data-testid="home-move-read" onClick={() => setAsked((n) => n + 1)}>Check again</button>
+                <button className="btn" data-testid="home-close-failed" onClick={close}>Close</button>
+              </>
+            ) : stands ? (
               <>
                 <button className="btn pri" data-testid="home-retry" onClick={then('home-retry')}>Finish the move</button>
                 <button className="btn" data-testid="home-abort" onClick={then('home-abort')}>Call it off</button>

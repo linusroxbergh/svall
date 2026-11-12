@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Result, SetupRow } from '@svall/protocol';
 import { app, deps } from './boot.js';
 import { dialogKeys, useApp } from './hooks.js';
-import { keyLabel, keyMask } from './host.js';
+import { keyLabel, keyMask, withoutTokens } from './host.js';
 import { Info } from './Info.js';
 import { homeName } from './placement.js';
 import { reloadResources } from './resources/load.js';
@@ -25,7 +25,7 @@ export function SeedSheet() {
   const copyRef = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const show = (r: Result<'home.setup'>) => { setRows(r.rows); setFailed(undefined); };
-  const fail = (line: string, copy?: true) => (e: Error) => setFailed({ line, raw: e.message, ...(copy && { copy }) });
+  const fail = (line: string, copy?: true) => (e: Error) => setFailed({ line, raw: withoutTokens(e.message), ...(copy && { copy }) });
   useEffect(() => {
     if (!follows || !fleetHome || seedAnswered(fleetHome)) return;
     let left = false;

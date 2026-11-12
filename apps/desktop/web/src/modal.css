@@ -54,7 +54,7 @@
 /* the list and the field for a path hold the list's height whatever the home answers */
 .new-folder-pick { display: flex; flex-direction: column; gap: var(--sp-xs); min-height: var(--folder-rows); }
 /* four whole rows, the last of them Other folder… */
-.new-folder-list { display: flex; flex-direction: column; height: var(--folder-rows); overflow: hidden auto; }
+.new-folder-list { display: flex; flex-direction: column; height: var(--folder-rows); overflow: hidden auto; scroll-padding-block-end: calc(var(--folder-rows) / 4); }
 .new-folder-list[data-empty] { height: auto; }
 .new-folder-list .list-row { flex: none; display: block; overflow: hidden; text-align: start; text-overflow: ellipsis; white-space: nowrap; }
 /* the way to any other folder stays in view at the list's foot, the folders scrolling under it */

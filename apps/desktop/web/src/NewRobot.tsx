@@ -49,6 +49,8 @@ export function NewRobot() {
     if (!open || !via) return;
     let left = false;
     setListed(undefined);
+    // a refusal was of a folder on the machine the list came from
+    setRefused(undefined);
     app.api().call('workspace.clones', {}).then((r) => {
       if (left) return;
       setListed(r);
@@ -106,6 +108,8 @@ export function NewRobot() {
     next.click();
     keyed.current = true;
     next.focus();
+    // clear of the pinned Other folder…, which the list's scroll padding keeps it out from under
+    next.scrollIntoView?.({ block: 'nearest' });
   };
   const away = on === via?.machine && !via?.online;
 
