@@ -93,7 +93,8 @@ button.setup-row > svg { color: var(--ink-3); }
 .setup-install-head a { color: var(--ink-3); font-size: var(--text-sm); font-weight: var(--w-regular); }
 /* the buttons stay in sight over a page taller than the window, the page fading under them */
 .setup-acts { position: sticky; bottom: 0; z-index: 1; display: flex; gap: var(--sp-md); margin-block: calc(-1 * var(--sp-xl)); padding-block: var(--sp-xl);
-  background: var(--surface-1); box-shadow: 0 calc(-1 * var(--sp-xl)) var(--sp-xl) var(--surface-1); }
+  background: var(--surface-1); }
+.setup-acts::before { content: ''; position: absolute; inset: auto 0 100%; height: var(--sp-3xl); background: linear-gradient(transparent, var(--surface-1)); pointer-events: none; }
 .setup-acts .btn { padding-inline: var(--sp-3xl); }
 .setup .setup-blocker, .setup .setup-error { color: var(--danger); font-size: var(--text-lg); }
 /* banners: a strip over what it is about, its words and then its buttons, in the tone of what it reports */
