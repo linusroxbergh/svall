@@ -46,8 +46,10 @@
 .toast:has(.toast-act) { pointer-events: auto; }
 /* its words take what its buttons leave, which stay whole on its first line */
 .toast-text { flex: 1 1 auto; min-width: 0; }
-/* what to do, under the sentence */
+/* what to do, under the sentence; its buttons go to a line of their own, so the fix's command has the toast's width */
 .toast-fix { display: block; margin-top: var(--sp-2xs); font-size: var(--text-sm); font-weight: var(--w-medium); }
+.toast:has(.toast-fix) { flex-wrap: wrap; row-gap: var(--sp-md); }
+.toast:has(.toast-fix) > .toast-text { flex-basis: 100%; }
 .toast-act { flex: none; white-space: nowrap; padding: 0; background: none; border: 0; font: inherit; font-weight: var(--w-semibold); color: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 /* a toast with two buttons keeps them on its one line */
 .toast[data-tone="ok"]:has(.toast-dismiss) { max-width: none; white-space: nowrap; }

@@ -611,6 +611,12 @@ test('a fleet name that will not do is said in a note under its row, and the las
   const failure = screen.getByTestId('set-scribe-error');
   expect(within(failure).getByText('the scribe stopped')).toBeTruthy();
   expect(failure.querySelector('details')!.textContent).toBe('detailsCommand failed: claude -p exited 1');
+  // an agent's own failure says what the agent said, its command behind details
+  act(() => store.getState().setFleet({ ...fleet(), scribeError: { message: 'claude -p failed: Not logged in · Please run /login', at: 1 } }));
+  expect(screen.getByTestId('set-scribe-error').querySelector('.said > div > span')!.textContent).toBe('Not logged in · Please run /login');
+  expect(screen.getByTestId('set-scribe-error').querySelector('details')!.textContent).toBe('detailsclaude -p failed: Not logged in · Please run /login');
+  act(() => store.getState().setFleet({ ...fleet(), scribeError: { message: 'codex exec exited 1', at: 1 } }));
+  expect(screen.getByTestId('set-scribe-error').querySelector('.said > div > span')!.textContent).toBe('stopped without saying why');
 });
 
 describe('the window', () => {

@@ -330,6 +330,13 @@ function RobotPreferences() {
   </>;
 }
 
+// a pass's error starts with the agent's command: what the agent said after it is the line, the whole of it behind details
+const AGENT_RUN = /^(?:claude -p|codex exec|opencode run) (?:failed|exited \d+)(?:: (.+))?$/;
+const passSaid = (message: string): { line: string; raw?: string } => {
+  const m = AGENT_RUN.exec(message);
+  return m ? { line: m[1] ?? 'stopped without saying why', raw: withoutTokens(message) } : splitRaw(message);
+};
+
 function Scribe() {
   const on = useApp((s) => !s.fleet.scribeOff && !s.fleet.scribeAsk);
   const error = useApp((s) => s.fleet.scribeError);
@@ -337,7 +344,7 @@ function Scribe() {
   const flip = () => setScribe(deps(), !on);
   const placing = useApp((s) => placingOn(s.fleet));
   const worktrees = useApp((s) => !s.fleet.worktreesOff);
-  const failure = error && splitRaw(error.message);
+  const failure = error && passSaid(error.message);
   return (
     <>
       <Group name="Fleet">
