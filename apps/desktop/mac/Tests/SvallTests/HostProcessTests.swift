@@ -294,6 +294,14 @@ final class HostProcessTests: XCTestCase {
                                                     action: nil, raw: "svall: no registry at ~/.config/svall"))
     }
 
+    func testARunThatEndsOnAWarnedRowIsNotSaidToHaveStoppedWithoutWhy() throws {
+        let warned = #"{"step":"linger","status":"warn","detail":"off: the fleet stops when you log out"}"#
+        let helper = try fakeHelper(prints: [warned], then: "echo 'Warning: Permanently added studio to the list of known hosts.' >&2\nexit 1")
+        let (steps, code) = try run(HostProcess(executable: helper, arguments: ["host", "doctor", "studio", "--json"]))
+        XCTAssertEqual(steps.map(\.step), ["linger"])
+        XCTAssertEqual(code, 1)
+    }
+
     func testTheStepsAndTheEndOfARunAreWhatThePageIsSent() {
         let step = HostProcess.Step(step: "ssh", status: "warn", detail: "slow", action: "try again")
         XCTAssertEqual(FromShell.hostStep(op: "add", step: step).json as NSDictionary,

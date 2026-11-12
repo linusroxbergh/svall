@@ -157,7 +157,8 @@ final class HostProcess {
     }
 
     private let child: LineChild
-    private var sawFailure = false
+    // a failed row says why the run ended, and a warned one may be the to-do its exit code is for
+    private var saidWhy = false
 
     var onStep: (Step) -> Void = { _ in }
     var onExit: (Int32) -> Void = { _ in }
@@ -185,14 +186,14 @@ final class HostProcess {
     }
 
     private func send(_ step: Step) {
-        if step.status == "fail" { sawFailure = true }
+        if step.status == "fail" || step.status == "warn" { saidWhy = true }
         onStep(step)
     }
 
     /// The end of the run, after its last line: a run that failed with nothing to show for it leaves the user what the
     /// command itself said, behind a sentence of its own.
     private func finish(_ status: Int32, said: [String]) {
-        if status != 0, !sawFailure, !said.isEmpty {
+        if status != 0, !saidWhy, !said.isEmpty {
             onStep(Step(step: "svall", status: "fail", detail: "svall stopped without saying why", action: nil, raw: said.joined(separator: "\n")))
         }
         onExit(status)

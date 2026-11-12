@@ -11,7 +11,7 @@ import { enrollArgv, tokenFor, workerProfile } from '../placement/workers.js';
 import { PRIVATE } from '../profile.js';
 import { svallExe } from '../release.js';
 import { shq } from '../text.js';
-import { owedWhy, owedWorkers, readMarker, readWorkersOwed } from './home-move.js';
+import { owedWhy, owedWorkers, readMarker, readWorkersOwed, type WorkersOwed } from './home-move.js';
 
 type Far = Pick<SshMaster, 'run' | 'close'>;
 const openMaster = (destination: string): Promise<Far> => SshMaster.open({ destination });
@@ -66,7 +66,7 @@ export async function reachWorkers(workers: HomeWorker[], o: { fleetId: string; 
 /** The workers a move owes an enrolment, for its install to carry in. */
 export const writeOwed = (p: Pick<Paths, 'workersOwed'>, id: string, workers: string[]): void => writeDurable(p.workersOwed, { id, workers: Object.fromEntries(workers.map((w) => [w, {}])) }, { mode: 0o600 });
 
-function changeOwed(p: Pick<Paths, 'workersOwed'>, machine: string, entry?: { why?: string; login?: string }): void {
+function changeOwed(p: Pick<Paths, 'workersOwed'>, machine: string, entry?: Omit<WorkersOwed['workers'][string], 'tried'>): void {
   const owed = readWorkersOwed(p);
   if (!owed?.workers[machine]) return;
   const { [machine]: _gone, ...rest } = owed.workers;
@@ -112,12 +112,13 @@ export function startRejoins(o: {
   let running = false;
   let threw: string | undefined;
 
-  // a cause goes on the row and in the log once, however often it comes back; what a tool said goes to the log alone
-  const failed = (machine: string, why: string, raw?: string, login?: string): false => {
+  // a cause goes on the row and in the log once, however often it comes back, what a tool said behind it on the row
+  const failed = (machine: string, name: string, entry: Omit<WorkersOwed['workers'][string], 'tried' | 'raw'>, raw?: string): false => {
+    const why = owedWhy(entry, name);
     const cause = raw ? `${why}: ${raw}` : why;
     if (said.get(machine) === cause) return false;
     said.set(machine, cause);
-    changeOwed(o.paths, machine, login ? { login } : { why });
+    changeOwed(o.paths, machine, { ...entry, ...(raw && { raw }) });
     o.log.error(`${machine} has not joined this home yet: ${cause}`);
     return false;
   };
@@ -125,15 +126,19 @@ export function startRejoins(o: {
   async function enrol(machine: MachineId, entry: MachineEntry): Promise<boolean> {
     const ssh = entry.record.ssh!;
     const name = entry.record.name;
-    const notTaken = (e: unknown): false => {
+    // `opening`: ssh's own failure to reach it, said as this home not reaching it, ssh's words behind
+    const notTaken = (e: unknown, opening = false): false => {
       const kind = farKind(e);
       if (STOPS.includes(kind)) refused.add(machine);
-      const login = kind === 'auth' || kind === 'host_key' ? ssh : undefined;
-      return failed(machine, login ? owedWhy({ login }, name) : (e as Error).message, e instanceof SshError ? e.raw : undefined, login);
+      const { message } = e as Error;
+      const raw = e instanceof SshError ? e.raw : undefined;
+      if (kind === 'auth' || kind === 'host_key') return failed(machine, name, { login: ssh }, raw);
+      if (opening) return failed(machine, name, { unreached: /\bwithin \d|did not open a control master/.test(message) ? 'timeout' : 'unreachable' }, raw ?? message);
+      return failed(machine, name, { why: message }, raw);
     };
     const profile = workerProfile(o.paths, machine);
     let master: Far;
-    try { master = await open(ssh); } catch (e) { return notTaken(e); }
+    try { master = await open(ssh); } catch (e) { return notTaken(e, true); }
     try {
       try {
         await farFleet(master, { svall: svallOn(entry.record, profile), name, ssh, machine, fleetId: String(o.fleetId()), as: 'worker', timeoutMs: PROBE_MS });
@@ -169,7 +174,7 @@ export function startRejoins(o: {
       if (refused.has(machine)) continue;
       if (Date.now() - (enrolled.get(machine) ?? -Infinity) < GREET_MS) { fine = false; continue; }
       const entry = o.records().find((r) => r.id === machine);
-      if (!entry?.record.ssh) fine = failed(machine, 'this home has no ssh route to it; svall host add it again with --ssh <its destination>');
+      if (!entry?.record.ssh) fine = failed(machine, entry?.record.name ?? machine, { why: 'this home has no ssh route to it; svall host add it again with --ssh <its destination>' });
       else fine = await enrol(machine, entry) && fine;
       triedOwed(o.paths, machine);
     }

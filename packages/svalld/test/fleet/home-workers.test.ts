@@ -9,7 +9,7 @@ import { reachWorkers, settleOwed, startRejoins, writeOwed } from '../../src/fle
 import { createMarker, enter, owedWhy, owedWorkers, readMarker, readWorkersOwed } from '../../src/fleet/home-move.js';
 import { enrolLock, homeMoveLock } from '../../src/kernel-lock.js';
 import { SshError } from '../../src/link/ssh.js';
-import { inCallerNames } from '../../src/machine.js';
+import { homeWord, inCallerNames } from '../../src/machine.js';
 import { resolvePaths } from '../../src/paths.js';
 import { dropToken, issueToken, keyLine, noLoginFix, tokenFor } from '../../src/placement/workers.js';
 import { silentLogger } from '../../src/log.js';
@@ -28,6 +28,7 @@ const record: MachineRecord = { name: 'box', ssh: 'ada@box', platform: 'linux', 
 const worker: HomeWorker = { id: W, record, profile: 'private' };
 // what the machine taking the fleet back calls itself in its own window
 const HERE = process.platform === 'darwin' ? 'this Mac' : 'this machine';
+const This = HERE.replace(/^this /, 'This ');
 
 // a master that answers each command by its own result: `svall version --json` by what it is handed, and the enrol as ssh would
 const masterOf = (version: object | string, enroll: { code: number | null; signal?: string | null; stderr?: string } = { code: 0 }) => {
@@ -69,7 +70,7 @@ describe('what the machine that would take the fleet finds of a worker', () => {
     expect(reach_[W]).toMatchObject({ ok: false, kind, why: e.message, raw: said });
     const r = homeCheck({ state: { robots: {}, islands: {}, machines: { [W]: { name: 'box', reachable: true, since: 0 } } } as unknown as FleetState, from: { machineId: OTHER, release: '1.2.3', protocol: 1, stateSchema: 1, clock: 1, fleetHome: '/f', tailscale: {}, workers: [W], fleetKb: 1 } as never, to: { machineId: ME, release: '1.2.3', protocol: 1, stateSchema: 1, clock: 1, fleetHome: '/f', tailscale: {} } as never, toName: 'albumap', back: 'studio', linked: true, synced: true, fromIsHome: true, reach: reach_, linkedTo: () => true });
     if (r.ok) throw new Error('passed');
-    expect(r.refusal).toMatchObject({ reason: `${HERE} cannot log in to box`, action: expect.stringMatching(new RegExp(`^on ${HERE}, run `)), raw: said });
+    expect(r.refusal).toMatchObject({ reason: `${This} cannot log in to box`, action: expect.stringMatching(new RegExp(`^On ${HERE}, run `)), raw: said });
     expect(JSON.stringify(r.refusal)).not.toMatch(/could not reach|once in a terminal/);
   });
 
@@ -128,7 +129,7 @@ describe('the check of a move with another worker', () => {
 
   it('a worker with no route for the new home, as a second Mac, stays refused', () => {
     const r = check({});
-    expect(r).toMatchObject({ ok: false, refusal: { reason: 'box is a worker of this fleet too', action: 'remove box first; add it again after the move' } });
+    expect(r).toMatchObject({ ok: false, refusal: { reason: 'box is a worker of this fleet too', action: 'Remove box first; add it again after the move' } });
   });
 
   it('one that does not answer and is not linked passes, named on the sheet', () => {
@@ -153,7 +154,7 @@ describe('the check of a move with another worker', () => {
 
   it('a home the machine could not be asked about says so once, with no word of removing a worker', () => {
     const r = check({ reach: null });
-    expect(r).toMatchObject({ ok: false, refusal: { reason: 'studio could not be asked whether it reaches the other workers', action: 'try again in a moment' } });
+    expect(r).toMatchObject({ ok: false, refusal: { reason: 'studio could not be asked whether it reaches the other workers', action: 'Try again in a moment' } });
     expect(JSON.stringify(r)).not.toContain('remove box');
   });
 
@@ -183,7 +184,7 @@ describe('the check of a move with another worker', () => {
     ['other', 'Svall on box did not answer'],
   ])('a worker answering wrongly as %s is refused in those words, linked or not', (kind, why) => {
     for (const linked of [true, false]) {
-      expect(check({ reach: { [W]: { ok: false, kind, why, ssh: 'ada@box' } }, linked })).toMatchObject({ ok: false, refusal: { reason: `box: ${why}`, action: 'fix it, or remove it first' } });
+      expect(check({ reach: { [W]: { ok: false, kind, why, ssh: 'ada@box' } }, linked })).toMatchObject({ ok: false, refusal: { reason: `box: ${why}`, action: 'Fix it, or remove it first' } });
     }
   });
 
@@ -193,11 +194,12 @@ describe('the check of a move with another worker', () => {
     try {
       const reasons = (o: Parameters<typeof check>[0]) => { const r = check(o); if (r.ok) throw new Error('passed'); return [r.refusal, ...(r.refusal.more ?? [])]; };
       const [auth] = reasons({ reach: { [W]: { ok: false, kind: 'auth', why: 'refused', ssh: 'ada@box' } }, back: 'studio' });
-      expect(auth.reason).toBe(`${taker} cannot log in to box`);
-      expect(auth.action).toMatch(new RegExp(`^on ${taker}, run `));
+      const This = taker.replace(/^this /, 'This ');
+      expect(auth.reason).toBe(`${This} cannot log in to box`);
+      expect(auth.action).toMatch(new RegExp(`^On ${taker}, run `));
       const [cut] = reasons({ reach: { [W]: { ok: false, kind: 'unreachable', why: 'No route', ssh: 'ada@box' } }, linked: true, back: 'studio' });
-      expect(cut).toMatchObject({ reason: `${taker} cannot reach box, which studio reaches`, action: `check Tailscale on both machines, then ssh ada@box from ${taker}` });
-      expect(reasons({ reach: null, back: 'studio' }).map((m) => m.reason)).toContain(`${taker} could not be asked whether it reaches the other workers`);
+      expect(cut).toMatchObject({ reason: `${This} cannot reach box, which studio reaches`, action: `Check Tailscale on both machines, then ssh ada@box from ${taker}` });
+      expect(reasons({ reach: null, back: 'studio' }).map((m) => m.reason)).toContain(`${This} could not be asked whether it reaches the other workers`);
       const [out] = reasons({ reach: { [W]: { ok: false, kind: 'unreachable', why: 'No route', ssh: 'ada@box' } }, linked: true });
       expect(out.reason).toBe(`studio cannot reach box, which ${leaver} reaches`);
     } finally { Object.defineProperty(process, 'platform', was); }
@@ -209,14 +211,14 @@ describe('the check of a move with another worker', () => {
     it('on the way out, name the far machine in words and its route in the line', () => {
       const r = check({ reach: refused, farSsh: 'ada@studio.tail' });
       if (r.ok) throw new Error('passed');
-      expect(r.refusal.action).toContain("on studio, run test -f ~/.ssh/id_ed25519");
+      expect(r.refusal.action).toContain("On studio, run test -f ~/.ssh/id_ed25519");
       expect(r.refusal.action).toContain("ssh ada@studio.tail cat .ssh/id_ed25519.pub | ssh ada@box 'cat >> .ssh/authorized_keys'");
     });
 
     it('on the way back, hand on this machine\'s own key over the home that reaches the worker, naming no machine as ssh would not', () => {
       const r = check({ reach: refused, back: 'studio', farSsh: 'ada@studio.tail' });
       if (r.ok) throw new Error('passed');
-      expect(r.refusal.action).toContain(`on ${HERE}, run`);
+      expect(r.refusal.action).toContain(`On ${HERE}, run`);
       expect(r.refusal.action).toContain(`cat ~/.ssh/id_ed25519.pub | ssh ada@studio.tail "ssh ada@box 'cat >> .ssh/authorized_keys'"`);
       expect(r.refusal.action).not.toContain('ssh this machine');
     });
@@ -230,12 +232,12 @@ describe('the check of a move with another worker', () => {
 
     it('a worker this machine cannot reach names who can', () => {
       const r = check({ reach: { [W]: { ok: false, kind: 'unreachable', why: 'No route', ssh: 'ada@box' } }, linked: true, back: 'studio' });
-      expect(r).toMatchObject({ ok: false, refusal: { reason: `${HERE} cannot reach box, which studio reaches` } });
+      expect(r).toMatchObject({ ok: false, refusal: { reason: `${This} cannot reach box, which studio reaches` } });
     });
   });
 
   it('one on another release is refused, with the upgrade', () => {
-    expect(check({ reach: { [W]: { ok: false, kind: 'release', why: 'it runs 1.2.2', ssh: 'ada@box' } } })).toMatchObject({ ok: false, refusal: { action: 'upgrade it under Machines' } });
+    expect(check({ reach: { [W]: { ok: false, kind: 'release', why: 'it runs 1.2.2', ssh: 'ada@box' } } })).toMatchObject({ ok: false, refusal: { action: 'Upgrade it under Machines' } });
   });
 });
 
@@ -529,9 +531,9 @@ describe('the workers a new home owes an enrolment', () => {
     let tries = 0;
     const s = run(p, () => (++tries === 2 ? Promise.resolve(m.master) : Promise.reject(new SshError('unreachable', 'No route to host'))), { log: { ...silentLogger, error } });
     await vi.waitFor(() => expect(m.enrols()).toHaveLength(1));
-    expect(owedWorkers(p)[W]?.why).toBeUndefined();
+    expect(owedWorkers(p)[W]?.raw).toBeUndefined();
     s.again();
-    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toBe('No route to host'));
+    await vi.waitFor(() => expect(owedWorkers(p)[W]?.raw).toBe('No route to host'));
     s.stop();
     expect(error).toHaveBeenCalledTimes(2);
   });
@@ -662,17 +664,47 @@ describe('the workers a new home owes an enrolment', () => {
     const s = run(p, open);
     await vi.waitFor(() => expect(open.mock.calls.length).toBeGreaterThan(2));
     s.stop();
-    expect(owedWorkers(p)[W]?.why).toContain('No route to host');
+    expect(reason(p)).toBe(`box is not reachable from ${homeWord()}; check that it is on and on Tailscale`);
+  });
+
+  it('one ssh did not reach is said in what the reader calls this home, ssh\'s words kept apart on the row', async () => {
+    const p = setup('adopted');
+    const s = run(p, () => Promise.reject(new SshError('unreachable', 'ssh could not reach ada@box', 'ssh: connect to host box port 22: Operation timed out')));
+    await vi.waitFor(() => expect(owedWorkers(p)[W]?.raw).toBeDefined());
+    s.stop();
+    const ctx = {
+      store: { state: { machines: { [W]: { name: 'box', reachable: false, since: 0 } }, robots: {} } }, workersOwed: () => owedWorkers(p), viewer: { kind: 'app', send: () => {}, backlog: () => 0 },
+    } as unknown as Ctx;
+    const row = async () => ((await dispatch({ id: 1, method: 'machines.list', params: {} }, ctx)) as { result: { machines: { joining?: string; raw?: string }[] } }).result.machines[0];
+    expect(await inCallerNames({ home: 'studio' }, row)).toMatchObject({
+      joining: 'box is not reachable from studio; check that it is on and on Tailscale', raw: 'ssh: connect to host box port 22: Operation timed out',
+    });
+    expect((await row()).joining).not.toContain('ada@box');
+  });
+
+  it('one ssh gave up on in time did not answer, and an enrol that failed keeps what the far svall said on the row', async () => {
+    const p = setup('adopted');
+    const s = run(p, () => Promise.reject(new SshError('unreachable', 'ssh did not open a control master to ada@box within 20 s')));
+    await vi.waitFor(() => expect(reason(p)).toBeTruthy());
+    s.stop();
+    expect(reason(p)).toBe('box did not answer in 20 s; check that it is on and on Tailscale');
+    expect(owedWorkers(p)[W]?.raw).toBe('ssh did not open a control master to ada@box within 20 s');
+    const q = setup('adopted');
+    const m = masterOf(serving(), { code: 1, stderr: 'svall: worker.json not written: no\n' });
+    const again = run(q, () => Promise.resolve(m.master));
+    await vi.waitFor(() => expect(owedWorkers(q)[W]?.raw).toBeDefined());
+    again.stop();
+    expect(owedWorkers(q)[W]).toMatchObject({ why: 'box did not take the enrolment', raw: 'svall worker enroll exited 1: worker.json not written: no' });
   });
 
   it('the file holds ids, the last failure and when it ended, no token', async () => {
     const p = setup('adopted');
     const s = run(p, () => Promise.reject(new SshError('unreachable', 'No route to host')));
-    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toBeDefined());
+    await vi.waitFor(() => expect(owedWorkers(p)[W]?.tried).toBeDefined());
     s.stop();
     const file = fs.readFileSync(p.workersOwed, 'utf8');
     expect(file).not.toContain(tokenFor(p, W)!);
-    expect(JSON.parse(file).workers[W]).toEqual({ why: expect.any(String), tried: expect.any(Number) });
+    expect(JSON.parse(file).workers[W]).toEqual({ unreached: 'unreachable', raw: 'No route to host', tried: expect.any(Number) });
   });
 
   it.each(['rejoin.enrolling', 'rejoin.enrolled'] as const)('%s: a kill leaves it owed, and the next start enrols it', async (point) => {

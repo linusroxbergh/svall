@@ -185,7 +185,7 @@ const handlers: Handlers = {
     const home = fleetHome?.();
     const known = registered?.();
     const workers = Object.entries(store.state.machines ?? {}).filter(([id]) => id !== home?.machine).map(([id, m]) => ({
-      id: id as MachineId, name: m.name, role: 'worker' as const, platform: known?.get(id)?.platform, ...(known?.get(id)?.dial === 'worker' && { dialsIn: true as const }), reachable: m.reachable, since: m.since, release: m.release, ...(owed[id] && { joining: owedWhy(owed[id], m.name) }), ...(owed[id]?.tried !== undefined && { joinTried: owed[id].tried }),
+      id: id as MachineId, name: m.name, role: 'worker' as const, platform: known?.get(id)?.platform, ...(known?.get(id)?.dial === 'worker' && { dialsIn: true as const }), reachable: m.reachable, since: m.since, release: m.release, ...(owed[id] && { joining: owedWhy(owed[id], m.name) }), ...(owed[id]?.tried !== undefined && { joinTried: owed[id].tried }), ...(owed[id]?.raw && { raw: owed[id].raw }),
       robots: robots.filter((r) => r.machine === id).length,
     }));
     if (!home) return { machines: workers };
