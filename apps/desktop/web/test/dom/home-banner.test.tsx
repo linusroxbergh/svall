@@ -93,14 +93,14 @@ describe('the banner of a home this window cannot follow', () => {
     fireEvent.click(screen.getByTestId('home-upgrade'));
     store.getState().hostStep('upgrade', { step: 'release', status: 'fail', detail: 'this build publishes no companion for linux-x64' } as never);
     store.getState().hostDone('upgrade', 1);
-    await waitFor(() => expect(screen.getByTestId('home-upgrade-failed').textContent).toBe('this build publishes no companion for linux-x64'));
+    await waitFor(() => expect(screen.getByTestId('home-upgrade-failed').textContent).toBe('this build publishes no companion for linux-x64.'));
     expect(screen.getByTestId('home-upgrade-failed').className).toBe('banner-sub');
     expect((screen.getByTestId('home-upgrade') as HTMLButtonElement).disabled).toBe(false);
 
     fireEvent.click(screen.getByTestId('home-upgrade'));
     store.getState().hostStep('upgrade', { step: 'install', status: 'fail', detail: 'the install did not finish: svall setup exited 1: no space left on device' } as never);
     store.getState().hostDone('upgrade', 1);
-    await waitFor(() => expect(screen.getByTestId('home-upgrade-failed').textContent).toBe('the install did not finish: svall setup'));
+    await waitFor(() => expect(screen.getByTestId('home-upgrade-failed').textContent).toBe('the install did not finish: svall setup.'));
     expect(screen.getByTestId('home-upgrade-failed').dataset.tip).toBe('exited 1: no space left on device');
 
     fireEvent.click(screen.getByTestId('home-upgrade'));

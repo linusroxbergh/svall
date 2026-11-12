@@ -600,7 +600,7 @@ describe('a move nothing is driving', () => {
     expect(screen.getByTestId('home-move-abort').textContent).toBe('Calling it off…');
     step('abort', 'fail', { detail: 'studio has not let go of it: staged', action: 'svall fleet home abort again once it answers, or svall fleet home retry', say: 'Call it off again once it answers, or finish the move' }, 'home-abort');
     act(() => { store.getState().hostDone('home-abort', 1); });
-    expect(screen.getByTestId('home-move-failed').textContent).toBe('studio has not let go of it: staged. Call it off again once it answers, or finish the move');
+    expect(screen.getByTestId('home-move-failed').textContent).toBe('studio has not let go of it: staged. Call it off again once it answers, or finish the move.');
     expect(screen.getByTestId('home-move-failed').className).toBe('banner-sub');
   });
 
@@ -621,7 +621,7 @@ describe('a move nothing is driving', () => {
     act(() => { store.getState().hostStarted('home', { name: 'studio' }); });
     step('adopt', 'fail', { detail: 'studio did not take the fleet: rolledback', action: 'svall fleet home abort, or svall fleet home retry', say: 'Close to finish the move or call it off' }, 'home');
     act(() => { store.getState().hostDone('home', 1); });
-    expect(screen.getByTestId('home-move-failed').textContent).toBe('studio did not take the fleet: rolledback');
+    expect(screen.getByTestId('home-move-failed').textContent).toBe('studio did not take the fleet: rolledback.');
   });
 
   it('a press while another run is under way starts nothing, and says so', async () => {

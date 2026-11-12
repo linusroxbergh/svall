@@ -10,11 +10,13 @@ import { machineOf, myMachine } from './placement.js';
 
 const WAIT_MS = 5000;
 
+const ended = (t: string): string => (/[.!?…]$/.test(t) ? t : `${t}.`);
+
 // a run that failed, in the window's words: why, then what to do here, unless that was said elsewhere; what a tool said waits behind the pointer
 function Failed({ step, alone = false, plain = onThisMac, testid }: { step: HostStep; alone?: boolean; plain?: (text: string) => string; testid: string }) {
   const { line, raw } = splitRaw(plain(step.detail ?? step.step));
   const todo = !alone && (step.say ?? step.action);
-  return <span className="banner-sub" data-testid={testid} data-tip={step.raw ?? raw}>{todo ? `${line}. ${plain(todo)}` : line}</span>;
+  return <span className="banner-sub" data-testid={testid} data-tip={step.raw ?? raw}>{todo ? `${ended(line)} ${ended(plain(todo))}` : ended(line)}</span>;
 }
 
 /** A move of the fleet's home that nothing is driving: this Mac's daemon waits on how it ends, and a person finishes it or calls it off. */
@@ -94,7 +96,7 @@ export function CrewAwayBanner() {
 }
 
 // a sentence the daemon gives in lower case, as the line under a banner's fact
-const sentence = (t: string): string => `${t[0].toUpperCase()}${t.slice(1)}${/[.!?…]$/.test(t) ? '' : '.'}`;
+const sentence = (t: string): string => ended(`${t[0].toUpperCase()}${t.slice(1)}`);
 
 /** How this window stands with a fleet's home on another machine; nothing while it follows one, or has yet to hear. */
 export function HomeBanner() {
