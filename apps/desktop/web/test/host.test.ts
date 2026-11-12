@@ -177,6 +177,13 @@ describe('a step by name', () => {
     expect(stepLabel('weather')).toBe('weather');
   });
 
+  it('names the steps of a join and a home move', () => {
+    expect(['fleet', 'tailscale', 'snapshot', 'seed', 'join', 'adopt', 'pause', 'copy', 'mission', 'phone', 'workers', 'abort', 'check'].map(stepLabel)).toEqual([
+      'This fleet', 'Tailscale', 'First copy of the fleet', 'Your agent setup', 'This Mac joins', 'Takes over', 'Pause', 'Copy the fleet', 'Mission control',
+      'Phone link', 'Other workers', 'Call off', 'Check',
+    ]);
+  });
+
   it('stepLabel names a mirror row by agent and server, a var row by its variable', () => {
     expect(stepLabel('mirror:claude:mcp:linear')).toBe('Claude MCP linear'); expect(stepLabel('mirror:var:GAMMA_TOKEN')).toBe('GAMMA_TOKEN');
     expect([

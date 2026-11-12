@@ -146,6 +146,8 @@ const STEP_LABEL: Record<string, string> = {
   gh: 'GitHub CLI', git: 'Git', hooks: 'Agent hooks', 'codex hooks': 'Codex hooks', 'codex sandbox': 'Codex sandbox', 'opencode plugin': 'OpenCode plugin',
   'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: "Machine's own checks", svall: 'Svall', keys: 'Copied keys',
   mark: 'Mark the move', crew: 'Mission control',
+  fleet: 'This fleet', tailscale: 'Tailscale', snapshot: 'First copy of the fleet', join: 'This Mac joins', adopt: 'Takes over', pause: 'Pause',
+  copy: 'Copy the fleet', mission: 'Mission control', phone: 'Phone link', workers: 'Other workers', abort: 'Call off', check: 'Check',
 };
 
 const AGENT_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode' };
