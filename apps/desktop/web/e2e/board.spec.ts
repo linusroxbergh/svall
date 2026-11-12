@@ -208,6 +208,9 @@ test('beside an open side card the bar keeps every control inside the board, + C
   expect(add.x + add.width).toBeLessThanOrEqual(board.x + board.width);
   expect(await page.locator('.kb-bar').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   await expect(page.getByTestId('board-add-column')).toHaveAccessibleName('New column');
+  // the Auto-place chip shows only its state, and keeps its whole name for a screen reader and its tip
+  await expect(page.getByTestId('chip-placing')).toHaveAccessibleName('Auto-place: scribe');
+  await expect(page.getByTestId('chip-placing')).toHaveAttribute('data-tip', 'Auto-place: scribe');
 });
 
 test('a card selected out of sight comes into its column', async ({ page, svall }) => {

@@ -109,6 +109,7 @@ export function Board() {
   const dropHover = useApp((s) => s.dropHover);
   const placing = useApp((s) => scribePlaces(s.fleet));
   const placingNow = useApp((s) => s.placingNow);
+  const placeState = placingNow ? 'placing…' : placing ? 'scribe' : 'off';
   const toastShown = useApp((s) => s.settings.boardToastShown);
   const [filter, setFilter] = useState<Filter>({ open: true, needsYou: false });
   const [renaming, setRenaming] = useState<string>();
@@ -306,9 +307,10 @@ export function Board() {
           <button type="button" className="ib kb-page" data-testid="chips-next" aria-label="More islands" disabled={!moreChips} onClick={() => pageChips(1)}><Caret dir="right" /></button>
         )}
         <span className="kb-gap" />
+        {/* its name whole, as a narrowed bar shows only the state */}
         <button type="button" className="pill kb-chip" data-testid="chip-placing" data-on={placing} data-busy={placingNow} aria-busy={placingNow} aria-haspopup="menu"
-          onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); placingMenu(r.left, r.bottom + 4); }}>
-          <Place /><span className="kb-wide">Auto-place: </span>{placingNow ? 'placing…' : placing ? 'scribe' : 'off'}<Caret dir="down" />
+          aria-label={`Auto-place: ${placeState}`} data-tip={`Auto-place: ${placeState}`} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); placingMenu(r.left, r.bottom + 4); }}>
+          <Place /><span className="kb-wide">Auto-place: </span>{placeState}<Caret dir="down" />
         </button>
         <button type="button" className="pill kb-chip" data-testid="chip-needs" aria-pressed={filter.needsYou} onClick={() => setFilter((f) => ({ ...f, needsYou: !f.needsYou }))}>
           Needs you <span className={needs > 0 ? 'count tnum' : 'n'}>{needs}</span>
