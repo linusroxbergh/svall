@@ -84,6 +84,7 @@
 /* a field that takes no change reads as text, its why in its tip */
 .side .fld.desc[readonly] { background: none; cursor: default; }
 .side .fld.desc[readonly]:focus { border-color: var(--line); }
+.side .fld.desc[readonly]:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
 .side .fld.inline { width: auto; text-align: right; padding: 0; border: 0; background: none; color: var(--ink); font-size: var(--text-sm); font-weight: var(--w-medium); appearance: none; cursor: pointer; }
 .side .fld.inline:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
 /* in the settings a field and a pick read as controls */

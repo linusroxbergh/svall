@@ -9,8 +9,8 @@ export function useRefusal(id: string | undefined): ((() => void) & { why: strin
   return line === undefined ? undefined : Object.assign(() => app.store.getState().showToast(line), { why: line });
 }
 
-// a field that takes no change reads as text and says why in its tip
-export const fieldTry = (refuse?: { why?: string }) => (refuse ? { readOnly: true, 'data-tip': refuse.why } : {});
+// a field that takes no change reads as text and says why in its tip, and to a screen reader through `why`, the element holding it
+export const fieldTry = (refuse?: { why?: string }, why?: string) => (refuse ? { readOnly: true, 'data-tip': refuse.why, 'aria-describedby': why } : {});
 
 // disabled would swallow the press that asks why
 export const buttonTry = (refuse?: () => void) => (refuse ? {

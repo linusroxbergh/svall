@@ -35,17 +35,31 @@ export function Tips({ bridge }: { bridge?: Bridge }) {
       if (el) { if (warm) show(el, false); else timer = setTimeout(() => show(el, true), DELAY); }
     };
     const out = (e: PointerEvent) => { if (!e.relatedTarget) { under = undefined; hide(); } };
+    // focus moved by the keyboard says its element's tip, as the pointer resting there does
+    let keyed = false;
+    const key = () => { keyed = true; };
+    const point = () => { keyed = false; };
+    const focus = (e: FocusEvent) => {
+      const el = keyed && e.target instanceof Element ? e.target.closest(TIPPED) : null;
+      if (el) { under = el; show(el, true); }
+    };
     // a press, a key or a scroll puts it away, and it waits for the pointer to come onto something else
     const events = ['pointerdown', 'keydown', 'wheel', 'scroll'] as const;
     document.addEventListener('pointerover', over);
     document.addEventListener('pointerout', out);
     for (const t of events) document.addEventListener(t, hide, true);
+    document.addEventListener('keydown', key, true);
+    document.addEventListener('pointerdown', point, true);
+    document.addEventListener('focusin', focus);
     window.addEventListener('blur', hide);
     return () => {
       clearTimeout(timer);
       document.removeEventListener('pointerover', over);
       document.removeEventListener('pointerout', out);
       for (const t of events) document.removeEventListener(t, hide, true);
+      document.removeEventListener('keydown', key, true);
+      document.removeEventListener('pointerdown', point, true);
+      document.removeEventListener('focusin', focus);
       window.removeEventListener('blur', hide);
     };
   }, []);

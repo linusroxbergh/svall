@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { ROBOT_NOTE_MAX, lastActive, type Robot, type ContextItem, type FleetState, type MachineId, type Params } from '@svall/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
@@ -71,6 +72,7 @@ function LastActivity({ at }: { at: number }) {
 export function SideCard({ id }: { id: string }) {
   const c = useApp((s) => s.fleet.robots[id]);
   const refuse = useRefusal(id);
+  const whyId = useId();
   const home = useApp((s) => s.home);
   const homeState = home?.state;
   const readOnly = useApp((s) => { const why = frozenWhy(s, id); return why && `Read-only until ${why.once}.`; });
@@ -114,7 +116,7 @@ export function SideCard({ id }: { id: string }) {
       <div className="side-id">
         <div className="side-head">
           <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} refuse={refuse} />
-          <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} {...fieldTry(refuse)} data-testid="side-name"
+          <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} {...fieldTry(refuse, whyId)} data-testid="side-name"
             onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; return save({ name }); }} />
           <button className="ib side-star" data-testid="side-star" aria-pressed={starred} data-tip={starred ? 'Unstar' : 'Star'}
             aria-label="Star" {...buttonTry(refuse)} onClick={() => setStar(deps(), id, !starred)}><Star on={starred} size="lg" /></button>
@@ -129,16 +131,17 @@ export function SideCard({ id }: { id: string }) {
         {c.hint && <div className="side-hint" data-testid="side-hint">{hintText(c)}</div>}
         {by && <div className="side-by" data-testid="side-started-by">started by <RobotLink c={{ id: c.startedBy!, name: by }} /></div>}
         {c.relayed?.held && <Held id={id} n={c.relayed.n} promptId={c.relayed.held} refuse={refuse} />}
+        {refuse && <span id={whyId} hidden>{refuse.why}</span>}
       </div>
       <div className="side-secs">
         {placed && c.machine && !onHome && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} away={away} />}
         <Section name="robot.note" title="Note" head={<Info id="robot-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
-          <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} {...fieldTry(refuse)} maxLength={ROBOT_NOTE_MAX} data-testid="side-note"
+          <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} {...fieldTry(refuse, whyId)} maxLength={ROBOT_NOTE_MAX} data-testid="side-note"
             onSave={(v) => (v !== c.note ? save({ note: v }) : undefined)} />
         </Section>
         <Section name="robot.instructions" title="Agent instructions" shut head={<Info id="robot-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info>}>
           <AgentProfilePick id={id} refuse={refuse} />
-          <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} {...fieldTry(refuse)} data-testid="side-instructions"
+          <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} {...fieldTry(refuse, whyId)} data-testid="side-instructions"
             onSave={(v) => (v !== c.instructions ? save({ instructions: v }) : undefined)} />
         </Section>
         <Section name="robot.context" title="Context" head={<Info id="robot-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info>}>

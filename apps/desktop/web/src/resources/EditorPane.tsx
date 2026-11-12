@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useId } from 'react';
 import { saveEntityField } from '../actions.js';
 import { app, deps } from '../boot.js';
 import { FollowTextarea } from '../Field.js';
@@ -18,10 +18,14 @@ function Field({ r }: { r: FieldRef }) {
   const e = useApp((s) => entityOf(s, r))!;
   const value = fieldValue(e, r.field);
   const refuse = useRefusal(r.tier === 'robot' ? r.id : undefined);
+  const why = useId();
   const save = (v: string) => (v !== value ? saveEntityField(deps(), r, v) : undefined);
   return (
-    <FollowTextarea className="res-field" data-testid="resources-field" aria-label={fieldLabel(r)}
-      placeholder={r.field === 'note' ? fieldLabel(r) : 'Instructions for the agent'} key={`${r.id}:${r.field}`} value={value} {...fieldTry(refuse)} onSave={save} />
+    <>
+      <FollowTextarea className="res-field" data-testid="resources-field" aria-label={fieldLabel(r)}
+        placeholder={r.field === 'note' ? fieldLabel(r) : 'Instructions for the agent'} key={`${r.id}:${r.field}`} value={value} {...fieldTry(refuse, why)} onSave={save} />
+      {refuse && <span id={why} hidden>{refuse.why}</span>}
+    </>
   );
 }
 

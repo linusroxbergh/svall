@@ -18,6 +18,7 @@ const { dispatchKey } = await import('../../src/keyboard.js');
 const { ContextMenu } = await import('../../src/ContextMenu.js');
 const { TerminalArea } = await import('../../src/TerminalArea.js');
 const { HoverCard } = await import('../../src/map/HoverCard.js');
+const { Tips } = await import('../../src/Tips.js');
 
 const MAC = 'a1b2c3d4-0000-4000-8000-000000000001' as MachineId;
 const HOME = 'a1b2c3d4-0000-4000-8000-000000000002' as MachineId;
@@ -189,6 +190,17 @@ test('while a move of the home stands, a robot\'s card takes no change, its fiel
   render(<SideCard id="c0" />);
   await act(async () => {});
   expect(box('side-note').readOnly).toBe(false);
+});
+
+test('a read-only field Tab lands on takes the focus, and says why to a screen reader and in its tip', async () => {
+  act(() => store.getState().setVia(COPY));
+  render(<><SideCard id="c0" /><Tips /></>);
+  await act(async () => {});
+  fireEvent.keyDown(document.body, { key: 'Tab' });
+  act(() => box('side-note').focus());
+  expect(document.activeElement).toBe(box('side-note'));
+  expect(document.getElementById(box('side-note').getAttribute('aria-describedby')!)?.textContent).toBe(WHY);
+  expect(screen.getByTestId('tip').textContent).toBe(WHY);
 });
 
 test('a far robot with no context on the Mac\'s copy says so in its open section, where one this Mac can change offers the field', async () => {
