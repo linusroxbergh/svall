@@ -3,7 +3,7 @@ import { AGENT_LABEL, tierOf, type AgentKind, type SetupPlan, type Tier } from '
 import { copyText, createBridge, openUrl, type Bridge, type HostOp, type HostStep } from './bridge.js';
 import { FeedbackPopover } from './FeedbackPanel.js';
 import { AS_TYPED } from './Field.js';
-import { onThisMac, plainStep, plural, splitRaw, stepLabel, withoutTokens } from './host.js';
+import { onThisMac, plainStep, plural, splitRaw, stepLabel, stepTier, withoutTokens } from './host.js';
 import { shortPath } from './paths.js';
 import { Caret, Close, Mark } from './icons.js';
 import { Said } from './Said.js';
@@ -80,7 +80,13 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       // an add that warns exits 1 too, so its last step says as well that it ran through
       if (!stopped && !failed && m.op === 'add' && (m.code === 0 || farRows.current.some((r) => r.step === 'registry' && r.status === 'ok'))) bridge.send({ type: 'host.start', op: 'join', args: { name: '', ssh: to.ssh } });
       // a join that went through as Stop went out has joined, so the window opens
-      else if (m.op !== 'add' && !failed && m.code === 0) { if (to.warnings?.length) setWarnings(to.warnings); else window.location.replace('/'); }
+      else if (m.op !== 'add' && !failed && m.code === 0) {
+        // a warning the join leaves a person, as a last check it could not save, is said before the window opens
+        const left = farRows.current.filter((r) => r.op === 'join' && r.status === 'warn' && stepTier(r, 'join', undefined) === 'todo')
+          .map((r) => `${stepLabel(r.step)} ${r.detail ?? ''}${r.raw ? `\n  ${r.raw}` : ''}`);
+        const all = [...(to.warnings ?? []), ...left];
+        if (all.length) setWarnings(all); else window.location.replace('/');
+      }
       else {
         pending.current = undefined;
         setRunning(false);

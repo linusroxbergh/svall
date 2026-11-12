@@ -320,6 +320,20 @@ describe('the first run forks three ways', () => {
     expect(replaced).toHaveBeenCalledWith('/');
   });
 
+  test("a join that went through with a warning a person needs says it before the window opens, what was said behind details", () => {
+    const { receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-join'));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive(FAR);
+    receive({ type: 'host.step', op: 'join', event: { step: 'snapshot', status: 'ok', detail: "studio's fleet is here" } });
+    receive({ type: 'host.step', op: 'join', event: { step: 'checks', status: 'warn', detail: 'not saved', raw: "EISDIR: illegal operation on a directory, rename '/Users/ada/.config/svall/checks.json'" } });
+    receive({ type: 'host.done', op: 'join', code: 0 });
+    expect(replaced).not.toHaveBeenCalled();
+    expect(screen.getByText('Svall is set up')).toBeTruthy();
+    expect(screen.getByText('Last check not saved')).toBeTruthy();
+  });
+
   test('a server path keeps the notification ask, and shows Setup\'s warnings once the join lands', () => {
     const { sent, receive } = shell(ready, { fork: false });
     fireEvent.click(screen.getByTestId('fork-join'));
