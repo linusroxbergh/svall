@@ -32,7 +32,7 @@ type Opts = {
   host: string; port: number; token: string;
   store: Store; fleet: Fleet; fleets: Fleets; systemInfo: Ctx['systemInfo']; diagnostics?: Ctx['diagnostics']; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: Ctx['load']; mobileControl: Mobile; log: Logger;
   push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Ctx['links']; mutations?: WorkerMutations; retro?: Ctx['retro'];
-  remoteWatches?: RemoteWatches; mirror?: Mirror; drops?: Ctx['drops']; fleetFlag?: Ctx['fleetFlag']; phone?: Ctx['phone']; fleetHome?: Ctx['fleetHome']; workersOwed?: Ctx['workersOwed']; rejoinsAgain?: Ctx['rejoinsAgain']; registered?: Ctx['registered']; homeApi?: Ctx['homeApi']; setupCopy?: Ctx['setupCopy']; workerSetup?: Ctx['workerSetup']; fleetConfig?: Ctx['fleetConfig']; freeze?: Ctx['freeze']; homeChecks?: Ctx['homeChecks']; homeWaits?: Ctx['homeWaits'];
+  remoteWatches?: RemoteWatches; mirror?: Mirror; drops?: Ctx['drops']; fleetFlag?: Ctx['fleetFlag']; phone?: Ctx['phone']; limits?: Ctx['limits']; fleetHome?: Ctx['fleetHome']; workersOwed?: Ctx['workersOwed']; rejoinsAgain?: Ctx['rejoinsAgain']; registered?: Ctx['registered']; homeApi?: Ctx['homeApi']; setupCopy?: Ctx['setupCopy']; workerSetup?: Ctx['workerSetup']; fleetConfig?: Ctx['fleetConfig']; freeze?: Ctx['freeze']; homeChecks?: Ctx['homeChecks']; homeWaits?: Ctx['homeWaits'];
   // read on every request: the logins take this Mac's own once tailscale names it
   origins?: () => string[]; logins?: () => string[]; dist?: string; key?: () => string; pass: string; fleetName?: () => string | undefined; heartbeatMs?: number;
 };
@@ -139,7 +139,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     },
   };
   const apps: AppWindows = { show: (p) => { for (const v of pages) v.send({ event: 'app.show', data: p }); return pages.size; } };
-  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, systemInfo, diagnostics, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, router, placement, links, mutations, remoteWatches, mirror, drops, fleetFlag, retro, apps, phone, fleetHome: opts.fleetHome, registered: opts.registered, homeApi: opts.homeApi, setupCopy: opts.setupCopy, workerSetup: opts.workerSetup, fleetConfig: opts.fleetConfig, freeze: opts.freeze, homeChecks: opts.homeChecks, homeWaits: opts.homeWaits, workersOwed: opts.workersOwed, rejoinsAgain: opts.rejoinsAgain };
+  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, systemInfo, diagnostics, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, router, placement, links, mutations, remoteWatches, mirror, drops, fleetFlag, retro, apps, phone, limits: opts.limits, fleetHome: opts.fleetHome, registered: opts.registered, homeApi: opts.homeApi, setupCopy: opts.setupCopy, workerSetup: opts.workerSetup, fleetConfig: opts.fleetConfig, freeze: opts.freeze, homeChecks: opts.homeChecks, homeWaits: opts.homeWaits, workersOwed: opts.workersOwed, rejoinsAgain: opts.rejoinsAgain };
   const unwatch = [
     phones.onChange((list) => { for (const v of desktops) v.send({ event: 'mobile.phones', data: { phones: list } }); }),
   ];

@@ -45,6 +45,7 @@
     "./retro/test-report": "./test/fixtures/retro/report.ts",
     "./mobile": "./src/mobile.ts",
     "./tmux/conf": "./src/tmux/conf.ts",
+    "./linux/limits": "./src/linux/limits.ts",
     "./linux/setup": "./src/linux/setup.ts",
     "./linux/service": "./src/linux/service.ts",
     "./placement/mirror-consent": "./src/placement/mirror-consent.ts",

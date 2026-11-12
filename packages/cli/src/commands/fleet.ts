@@ -22,6 +22,7 @@ import { SshMaster } from '../controller/ssh.js';
 import { printResult } from '../format.js';
 import { farProfile, type Target } from '../target.js';
 import { ended, interactiveSsh, stepLine, tiered } from './host.js';
+import { connectChoice, connectFlags, fleetLimits } from './limits.js';
 import { parseDuration } from './parse.js';
 import { enrollHere, realEnrol } from './worker.js';
 
@@ -241,15 +242,16 @@ export function fleetCommands(target: () => Target, json: () => boolean): Comman
       if (!json()) throw new Error('fleet enroll-worker prints a new token for svall worker enroll to read; run it with --json');
       printResult(await enrollWorker(target(), id, o), true);
     });
-  cmd.command('join').description('make this fleet, empty, a worker of the fleet whose home is at <ssh>; the home never dials this machine')
+  cmd.addCommand(fleetLimits(target, json));
+  connectFlags(cmd.command('join').description('make this fleet, empty, a worker of the fleet whose home is at <ssh>; the home never dials this machine')
     .argument('<ssh>', "the home's ssh destination")
     .option('--name <name>', 'the name the fleet knows this machine by; this machine\'s own, by default')
-    .option('--home-profile <name>', 'the fleet there, when it is not the private one')
-    .action(async (ssh: string, o: { name?: string; homeProfile?: string }) => {
+    .option('--home-profile <name>', 'the fleet there, when it is not the private one'))
+    .action(async (ssh: string, { limits, ...o }: { name?: string; homeProfile?: string; limits?: string | false }) => {
       const t = target();
       const steps: StepEvent[] = [];
       const emit = flowReporter(json(), steps);
-      const out = await joinHome({ ssh, ...o }, {
+      const out = await joinHome({ ssh, ...o, ...connectChoice({ limits }, !json() && process.stdin.isTTY === true && process.stdout.isTTY === true) }, {
         emit, openMaster: (destination) => SshMaster.open({ destination }), interactiveSsh, registry: MachineRegistry.load(), target: t, me: machineId(), svallBase: installPrefix(),
         tailnet: async () => { const m = realMobileDeps(); await tailnetSelf(m, await resolveTailscale(m)); },
         enrol: (e, token) => enrollHere(t, e, { ...realEnrol, token: () => Promise.resolve(token), out: (line) => { if (!json()) process.stdout.write(`${line}\n`); } }),

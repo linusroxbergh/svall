@@ -62,6 +62,27 @@ export const FleetConfig = z.object({
 });
 export type FleetConfig = z.infer<typeof FleetConfig>;
 
+/** What a fleet may use of a Linux machine; a part left out has no limit. */
+export const Limits = z.object({ cpus: z.number().int().min(1).optional(), memoryMb: z.number().int().min(512).optional() });
+export type Limits = z.infer<typeof Limits>;
+
+export const MachineSize = z.object({ cores: z.number().int().min(1), memoryMb: z.number().int().min(1) });
+export type MachineSize = z.infer<typeof MachineSize>;
+
+/** A machine's size, the limits to offer for it, those its fleet's unit is written with and whether they hold: `pending` until the unit runs, `no_cpu`
+ *  or `no_memory` where the account is given no such control, `outside` while the fleet's tmux runs outside the unit. `heldMb`:
+ *  the memory the fleet's processes hold now; `hits`: the times it reached its memory limit since its daemon started. */
+export const LimitsReport = z.object({
+  size: MachineSize,
+  suggested: Limits,
+  limits: Limits,
+  state: z.enum(['none', 'applied', 'pending', 'unapplied', 'no_cpu', 'no_memory', 'outside']),
+  heldMb: z.number().int().optional(),
+  hits: z.number().int().optional(),
+  lastHit: z.number().optional(),
+});
+export type LimitsReport = z.infer<typeof LimitsReport>;
+
 /** node.json: what belongs to this machine. */
 export const NodeConfig = z.object({
   port: z.number().int().default(47800),
@@ -71,6 +92,8 @@ export const NodeConfig = z.object({
   agentsOff: z.array(AgentKind).optional(),
   // the agents whose hooks setup installs; absent, every agent found. Read from agentsOff, else from an integrations list
   integrations: z.array(AgentKind).optional(),
+  // on Linux, what the fleet's systemd unit caps the fleet at
+  limits: Limits.optional(),
   mobile: z.object({
     // the https port this fleet is reached on, which svalld saves once it serves there
     httpsPort: z.number().int().min(1).max(65535).optional(),

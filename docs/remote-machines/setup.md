@@ -52,7 +52,8 @@ notes, the checks that went fine and your agent setup behind a line each; the fi
    pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there, and the tmux it
    brings checked. Then `svall-svalld@private.service` as a systemd user unit, its machine id, and the release it
    answers from, and **Worker**: the machine becomes this fleet's worker, with a token the home issues, and the unit
-   restarts as `svalld --worker`, which accepts the home alone.
+   restarts as `svalld --worker`, which accepts the home alone. **Limits**: the machine's cores and memory, and what
+   this fleet may use of them ([Limits](#limits)).
 4. **Agents on studio.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
    0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` names a model provider),
    and with Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's
@@ -370,6 +371,42 @@ reached. With no machine, it says what a machine is.
 After you update Svall on the Mac, run `svall host upgrade <name>`: until both machines run the same release, a move
 refuses with "studio runs X, this Mac Y; upgrade it under Machines". Robots already there keep running meanwhile.
 
+### Limits
+
+A fleet on a Linux machine can be held to a number of cores and an amount of memory, so the rest stays with whatever
+else the machine runs. `svall host add` and `svall fleet join` read the machine's size and, in a terminal, ask: "studio
+has 12 cores and 94 GB. This fleet may use [11 cores, 93 GB], or none:". Return takes the default, all but one core and
+1 GB; `4,8G` names another; `none` sets no limit. `--limits 4,8G` and `--no-limits` answer ahead. A run with no one to
+ask, as the app's, sets nothing and says so in its `limits` step, with the command that sets the default. A machine
+that already holds a limit is shown it and not asked. A Mac has no limit.
+
+| Command | Where | What it does |
+| --- | --- | --- |
+| `svall host limits <name>` | the Mac, or the home | Shows the machine's size, the limit, whether it holds and how often the fleet reached it. |
+| `svall host limits <name> --cpus 4 --memory 8G` | the same | Sets it; either flag alone limits that part only. `--none` removes it. |
+| `svall fleet limits`, `svall fleet limits set …` | the Linux machine | The same, there. |
+
+The limit is two lines, `CPUQuota` and `MemoryMax`, in the fleet's own `svall-svalld@<fleet>.service`, from `limits` in
+the fleet home's `node.json` on that machine. Setting it reloads systemd and restarts nothing: robots keep running.
+`svall setup`, an upgrade, a re-enrol and a home move write the unit with it. Each fleet on a machine has its own unit
+and its own limit, so two fleets with the default may together ask for more than the machine has.
+
+A limit is refused when it is more than the machine has, when its memory is under what the fleet's processes hold now
+("the fleet holds 6.2 GB here now; stop a robot or allow more"), and, for cores, where the account is given no
+control of them, as on an older systemd; the refusal names the root drop-in that gives it. A limit systemd does not
+put on the unit is taken back.
+
+At the limit on cores the fleet's processes run slower. At the limit on memory the kernel first swaps the fleet out,
+where the machine has swap, then stops one process of the fleet: the robot's terminal says `Killed`, the agent can be
+revived, and every other robot runs on. The daemon marks each robot's processes as the ones to stop first, so it is
+not tmux or the daemon. `svall host doctor` and the daemon's log say how often it happened; which robot lost a
+process only root's kernel log says.
+
+What a limit does not reach: a fleet whose terminals run on a tmux Svall did not bring, such as Ubuntu's own kept
+through an upgrade, which starts each terminal outside the unit (the limit reads "the fleet's terminals run outside
+its unit" until every robot there is closed and the daemon restarts); a process a robot starts with `systemd-run
+--user`; and a rollback to a release before limits, whose unit has none until the next upgrade.
+
 On the Linux machine itself:
 
 - `svall setup --rollback [release]` puts the release before back, or the kept release named, restarts the units and
@@ -397,7 +434,7 @@ On the Linux machine, all under the account:
   (`bin/tmux`); `~/.local/bin/svall` points into it. Each install keeps the release before it, for a rollback, and
   removes older ones.
 - `~/.config/systemd/user/svall-svalld@<fleet>.service`, one per fleet the machine is a worker of, running
-  `svalld --worker`. Each fleet's unit carries the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`,
+  `svalld --worker`, with the fleet's [limits](#limits). Each fleet's unit carries the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`,
   `XDG_DATA_HOME` and `OPENCODE_DB` the account's login shell sets. Its `PATH` holds the release's `bin`, each
   folder the login shell finds an agent in (such as nvm's or Linuxbrew's), `~/.local/bin` and `~/.opencode/bin`,
   where OpenCode's installer puts it. nvm's folder names a Node version: after `nvm alias default` picks another,
@@ -408,7 +445,7 @@ On the Linux machine, all under the account:
 - `~/.cache/svall`, where `svall host add` and `upgrade` upload and unpack a release.
 - `~/.svall` (and `~/.svall-<name>`), each fleet's home there: `worker.json`, which names the home, the fleet and
   the token the home issued; `.env`, the variables its robots there get, mode 600, written by `svall worker env` or
-  the app's **Set on studio**;
+  the app's **Set on studio**; `node.json`, the machine's own settings, with the fleet's [limits](#limits);
   `cache/docs`, a copy of the fleet's notes; `cache/mirror-state.json`, what Svall last wrote there of your agent setup,
   as hashes; `cache/mirror-vars.json`, the names of the variables the copied setup reads; `journal/`, what happened
   there that the home has not taken yet, and each move's journal; `mirror-overrides/`, settings of the machine's own

@@ -61,6 +61,12 @@ export async function unitStatus(run: Run, unit: string): Promise<UnitStatus> {
   return { unit, load: field('LoadState'), active: field('ActiveState'), sub: field('SubState'), state: field('UnitFileState') };
 }
 
+/** The cgroup of a unit that runs; none for one that does not. */
+export async function unitCgroup(run: Run, unit: string): Promise<string | undefined> {
+  const out = await systemctl(run, ['show', unit, '--property=ControlGroup', '--property=ActiveState']);
+  return /^ActiveState=(active|reloading|activating)$/m.test(out) ? /^ControlGroup=(.+)$/m.exec(out)?.[1] : undefined;
+}
+
 export type Linger = { user: string; linger: boolean; action: string };
 
 /** Whether the user's services survive logout, and the one command that turns it on. Never run here. */

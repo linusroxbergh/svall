@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { AgentKind, FleetConfig, FleetId, NodeConfig, RESERVED } from '@svall/protocol';
+import { AgentKind, FleetConfig, FleetId, NodeConfig, RESERVED, type Limits } from '@svall/protocol';
 import { createDurable, writeDurable } from './durable.js';
 import { Invalid } from './errors.js';
 import { resolvePaths, type Paths } from './paths.js';
@@ -230,6 +230,14 @@ export function saveConfig(paths: Paths, patch: ConfigPatch, say?: (line: string
   const off = integrations && AgentKind.options.filter((k) => !integrations.includes(k));
   const node = { ...('integrations' in patch && { integrations: undefined, agentsOff: off }), ...(mobile && { mobile }) };
   if (Object.keys(node).length) patchConfigFile(paths.nodeConfig, NodeConfig, node);
+}
+
+/** Sets what the fleet may use of this machine in node.json; none of it drops the key. */
+export function saveLimits(paths: Paths, limits: Limits): void {
+  fs.mkdirSync(paths.home, { recursive: true });
+  initConfig(paths);
+  // a part left out is written out as absent, since a patch merges an object a level down
+  patchConfigFile(paths.nodeConfig, NodeConfig, { limits: limits.cpus || limits.memoryMb ? { cpus: limits.cpus, memoryMb: limits.memoryMb } : undefined });
 }
 
 export function saveMainAgent(paths: Paths, agent: AgentKind, say?: (line: string) => void): void {

@@ -217,6 +217,56 @@ describe('machines.refresh', () => {
   });
 });
 
+describe('machines.limits and machines.setLimits', () => {
+  const ME = '11111111-1111-4111-8111-111111111111';
+  const FAR = '22222222-2222-4222-8222-222222222222';
+  const report = (limits: object = {}) => ({ size: { cores: 12, memoryMb: 96_000 }, suggested: { cpus: 11, memoryMb: 94_976 }, limits, state: 'applied' });
+  const base = (o: object = {}) => ({
+    viewer: { kind: 'app' }, store: { state: { machines: { [FAR]: { name: 'studio', reachable: true } } } },
+    fleetHome: () => ({ machine: ME, name: 'mac', mine: true, me: ME }), registered: () => new Map(), ...o,
+  }) as unknown as Ctx;
+
+  it('answers for the machine it runs on, and sets there what is asked, a null part left out', async () => {
+    const set: unknown[] = [];
+    const ctx = base({ limits: { read: () => Promise.resolve(report()), set: (l: object) => { set.push(l); return Promise.resolve(report(l)); } } });
+    expect(await dispatch({ id: 1, method: 'machines.limits', params: { machine: ME } }, ctx)).toEqual({ id: 1, result: report() });
+    expect(await dispatch({ id: 1, method: 'machines.limits', params: {} }, ctx)).toEqual({ id: 1, result: report() });
+    expect(await dispatch({ id: 2, method: 'machines.setLimits', params: { machine: ME, cpus: null, memoryMb: 8192 } }, ctx)).toEqual({ id: 2, result: report({ memoryMb: 8192 }) });
+    expect(await dispatch({ id: 3, method: 'machines.setLimits', params: { machine: ME, cpus: null, memoryMb: null } }, ctx)).toMatchObject({ result: { limits: {} } });
+    expect(set).toEqual([{ memoryMb: 8192 }, {}]);
+  });
+
+  it('has no limit for a Mac, the one it runs on or a worker', async () => {
+    const calls: unknown[] = [];
+    const ctx = base({ registered: () => new Map([[FAR, { platform: 'darwin' }]]), links: { call: (...a: unknown[]) => { calls.push(a); return Promise.resolve(report()); } } });
+    for (const machine of [ME, FAR]) {
+      expect(await dispatch({ id: 1, method: 'machines.setLimits', params: { machine, cpus: 2, memoryMb: null } }, ctx)).toEqual({ id: 1, error: { code: 'not_supported', message: 'a limit is for a Linux machine' } });
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it('asks a worker over its link, and says to upgrade one whose release knows no limit', async () => {
+    const calls: unknown[][] = [];
+    const ctx = base({ links: { call: (...a: unknown[]) => { calls.push(a.slice(0, 3)); return Promise.resolve(report({ cpus: 4 })); } } });
+    expect(await dispatch({ id: 1, method: 'machines.limits', params: { machine: FAR } }, ctx)).toEqual({ id: 1, result: report({ cpus: 4 }) });
+    expect(await dispatch({ id: 2, method: 'machines.setLimits', params: { machine: FAR, cpus: 4, memoryMb: null } }, ctx)).toEqual({ id: 2, result: report({ cpus: 4 }) });
+    expect(calls).toEqual([[FAR, 'limits.get', {}], [FAR, 'limits.set', { cpus: 4 }]]);
+    const old = base({ links: { call: () => Promise.reject(new ApiError('unknown_method', 'unknown method limits.get')) } });
+    expect(await dispatch({ id: 3, method: 'machines.limits', params: { machine: FAR } }, old)).toEqual({ id: 3, error: { code: 'not_supported', message: 'studio runs a release that takes no limit; upgrade it under Machines' } });
+    expect(await dispatch({ id: 4, method: 'machines.limits', params: { machine: '33333333-3333-4333-8333-333333333333' } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
+  });
+
+  it('is asked of the home by a worker for any machine but its own, and is no phone\'s to ask', async () => {
+    const sent: unknown[][] = [];
+    const router = { onWorker: true, toHome: (...a: unknown[]) => { sent.push(a.slice(0, 2)); return Promise.resolve(report()); } };
+    const ctx = base({ router, fleetHome: () => ({ machine: FAR, name: 'studio', mine: false, me: ME }), limits: { read: () => Promise.resolve(report({ cpus: 2 })) } });
+    expect(await dispatch({ id: 1, method: 'machines.limits', params: { machine: ME } }, ctx)).toEqual({ id: 1, result: report({ cpus: 2 }) });
+    expect(await dispatch({ id: 2, method: 'machines.limits', params: { machine: FAR } }, ctx)).toEqual({ id: 2, result: report() });
+    expect(sent).toEqual([['machines.limits', { machine: FAR }]]);
+    expect(await dispatch({ id: 3, method: 'machines.setLimits', params: { machine: ME, cpus: 1, memoryMb: null } }, { ...base(), viewer: { kind: 'phone' } } as unknown as Ctx)).toMatchObject({ error: {} });
+  });
+});
+
 describe('machines.setup and machines.consent', () => {
   let worker: ReturnType<typeof farHome>;
   let w: ReturnType<typeof world>;

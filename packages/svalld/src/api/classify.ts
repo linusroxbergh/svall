@@ -39,6 +39,8 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'machines.consent': 'mutation',
   'machines.updateAgents': 'mutation',
   'machines.setVar': 'mutation',
+  'machines.limits': 'read',
+  'machines.setLimits': 'mutation',
   'machines.copySetupFrom': 'mutation',
   'machines.holdsSetup': 'read',
   'column.add': 'mutation',

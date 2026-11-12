@@ -25,6 +25,7 @@ import {
   bootstrapSetup, companionAsset, companionCache, currentRelease, downloadCompanion, inspectCompanion, noCompanion, ownCompanion,
   remoteRollback, requireCompatible, rollbackRefusal, uploadArchive, type CompanionArchive, type FetchLike,
 } from './install.js';
+import { limitsStep, type LimitsChoice } from './limits.js';
 import { redact } from './process.js';
 import { MachineRegistry, reservedName, type MachineEntry } from './registry.js';
 import { classifySsh, inFull, SshError, type SshMaster } from './ssh.js';
@@ -81,7 +82,7 @@ export type HostDeps = {
   joining(machine: MachineId): Promise<{ why: string; tried?: number } | undefined>;
 };
 
-export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean };
+export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean } & LimitsChoice;
 
 /** A step that could not finish, with the one thing the user can do about it. */
 export class StepError extends Error {
@@ -811,6 +812,11 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
           return enrol(master, { name: o.name, machine, svallBase: remote.svallBase, off }, d);
         });
       }
+
+      await run.step('limits', () => limitsStep(master, {
+        svallBase: remote.svallBase, ...(o.asHome ? { env: [], flags: [] } : farFleet(machine, d)), name: o.name,
+        later: o.asHome ? `ssh ${o.ssh}, then svall fleet limits set` : `${hostCmd(d)} limits ${o.name}`,
+      }, o));
 
       const versions = await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase, report, fleet: d.fleet.home }, run);
       await run.step('versions', async () => versionsOutcome(versions, await d.localAgents().catch((err: Error) => err), o.ssh));

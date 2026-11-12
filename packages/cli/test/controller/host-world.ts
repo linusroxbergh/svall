@@ -119,7 +119,9 @@ export const THERE = { ssh: 'trift.test', svall: 'svall' };
 export const okRow = (key: string): SetupRow => ({ key, status: 'ok', detail: `${key.split(':').at(-1)} is set on trift` });
 
 /** Everything a healthy Ubuntu companion answers, in the order `host add` asks for it. */
-export function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doctor?: string; agents?: boolean; tmux?: { stdout?: string; stderr?: string; code?: number }; home?: string } = {}): void {
+export const LIMITS = { size: { cores: 12, memoryMb: 96_000 }, suggested: { cpus: 11, memoryMb: 94_976 }, limits: {}, state: 'none', heldMb: 200 };
+
+export function healthy(o: { limits?: object; linger?: string; tools?: string[]; osRelease?: string; doctor?: string; agents?: boolean; tmux?: { stdout?: string; stderr?: string; code?: number }; home?: string } = {}): void {
   const home = o.home ?? HOME;
   ssh.reply(['uname', '-sm'], { stdout: 'Linux aarch64\n' });
   ssh.reply(['cat', '/etc/os-release'], { stdout: o.osRelease ?? OS_RELEASE });
@@ -138,6 +140,7 @@ export function healthy(o: { linger?: string; tools?: string[]; osRelease?: stri
   ssh.reply(['worker', 'enroll'], { stdout: `systemd unit -> ${home}/.config/systemd/user/svall-svalld@private.service\nsystemctl --user restart svall-svalld@private.service\n` });
   ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'worker', worker: SERVES }, null, 2) });
   ssh.reply(['svall-tmux'], {});
+  ssh.reply(['fleet', 'limits'], { stdout: JSON.stringify(o.limits ?? LIMITS) });
   if (o.agents === false) return;
   const PATH = UNIT_PATH.replaceAll(HOME, home);
   ssh.reply([PATH, 'claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });

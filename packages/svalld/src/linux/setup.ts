@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AgentKind } from '@svall/protocol';
+import type { AgentKind, Limits } from '@svall/protocol';
 import { readCodexHooks, requireWritableHooks } from '../agent-hooks.js';
 import { AGENT_KINDS, AGENTS, onPath } from '../agents.js';
 import { codexPaths, type CodexPaths } from '../codex/install.js';
@@ -106,6 +106,13 @@ const logFile = (o: UnitOptions, unit: string): string =>
 
 export type Unit = { name: string; text: string };
 
+/** The unit's lines for what node.json lets the fleet use, each led by a newline. */
+export const unitLimits = (limits: Limits | undefined): string =>
+  `${limits?.cpus ? `\nCPUQuota=${limits.cpus * 100}%` : ''}${limits?.memoryMb ? `\nMemoryMax=${limits.memoryMb}M` : ''}`;
+
+// a node.json that does not parse is the daemon's to report, and limits nothing
+const limitsOf = (home: string): Limits | undefined => { try { return peekConfig(resolvePaths(home)).limits; } catch { return undefined; } };
+
 export function svalldUnit(o: UnitOptions & { fleet: string; home: string }): Unit {
   const name = svalldUnitName(o.fleet);
   return {
@@ -119,6 +126,7 @@ export function svalldUnit(o: UnitOptions & { fleet: string; home: string }): Un
       PATH: esc(unitPath(o)),
       ENV: Object.entries(o.env ?? {}).map(([k, v]) => `\n${unitEnv(k, v)}`).join(''),
       LOG: logFile(o, name).replace(/%/g, '%%'),
+      LIMITS: unitLimits(limitsOf(o.home)),
     }),
   };
 }

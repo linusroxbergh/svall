@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { HomeReach, HomeWorker, MachineId, type HomeFacts, type HomeMoving, type ParsedParams, type Robot } from '@svall/protocol';
+import { HomeReach, HomeWorker, Limits, MachineId, type HomeFacts, type HomeMoving, type ParsedParams, type Robot } from '@svall/protocol';
 import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
@@ -27,7 +27,9 @@ import { HomeDial } from './link/dialout.js';
 import { HomeLinks, socketTransport, sshTransport, UnknownEvent } from './link/home.js';
 import { daemonLock } from './kernel-lock.js';
 import { HomeConnection } from './link/worker.js';
+import { readLimits, setLimits, watchMemoryHits } from './linux/limits.js';
 import { lingerState, realRun } from './linux/service.js';
+import { unitDirOf } from './linux/setup.js';
 import { hooklessGit } from './links/git.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
 import { configDir, homeWord, homeWordOnWorker, listsWorker, machineId, machineIdentity, machineIdFailure, ownName, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
@@ -371,6 +373,16 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   });
   // what a worker's agent CLIs are, which the home reads before it moves a robot there
   if (connection) calls['system.info'] = info;
+  const memoryHits = process.platform === 'linux' ? watchMemoryHits({ onHit: (n) => log.error(`the fleet reached its memory limit: the kernel stopped one of its processes (${n} since this daemon started)`) }) : undefined;
+  const limitsTarget = { fleet: profile, home: paths.home, unitDir: unitDirOf(os.homedir()), run: realRun, tmuxPid: () => tmux.serverPid() };
+  const limits = memoryHits && {
+    read: async () => ({ ...await readLimits(limitsTarget), ...memoryHits.hits() }),
+    set: async (l: Limits) => ({ ...await setLimits(l, limitsTarget), ...memoryHits.hits() }),
+  };
+  if (connection && limits) {
+    calls['limits.get'] = () => limits.read();
+    calls['limits.set'] = (p) => limits.set(Limits.parse(p));
+  }
   const claude = claudePaths();
   const codex = codexPaths();
   // looked up on every call, so a fleet made while this one runs is kept out too; any folder named like a fleet home
@@ -518,7 +530,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: (m) => (profileOn(m) === PRIVATE ? '' : `-p ${isProfileName(profileOn(m)) ? profileOn(m) : shq(profileOn(m))} `),
-      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(ownSetup && { workerSetup: ownSetup }), fleetHome, workersOwed: () => (worker ? {} : owedWorkers(paths)), rejoinsAgain: () => rejoins?.again(),
+      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(limits && { limits }), ...(ownSetup && { workerSetup: ownSetup }), fleetHome, workersOwed: () => (worker ? {} : owedWorkers(paths)), rejoinsAgain: () => rejoins?.again(),
       ...(!worker && { fleetConfig: fleetConfigFile(paths, log, refused) }), freeze, homeChecks, homeWaits,
       registered: () => new Map(registered().map((m) => [m.id, m.record])),
     });

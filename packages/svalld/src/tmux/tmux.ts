@@ -9,6 +9,11 @@ import { helper } from '../runtime.js';
 import { shq } from '../text.js';
 import { ControlClient } from './control.js';
 
+/** Has the kernel stop a robot's process before the daemon or tmux when the fleet's unit runs out of the memory it may use. */
+export function preferAsVictim(pid: number, proc = '/proc'): void {
+  try { fs.writeFileSync(path.join(proc, String(pid), 'oom_score_adj'), '500'); } catch { /* the pane is gone already */ }
+}
+
 const exec = promisify(execFile);
 // a tmux server that stops answering must not hang every poll and API call behind it
 const CALL = { timeout: 10_000, killSignal: 'SIGKILL' } as const;
@@ -312,14 +317,15 @@ export class Tmux {
     const unset = Object.keys(secret).flatMap((k) => [';', 'set-environment', '-t', SESSION, '-u', k]);
     const out = await this.call([
       ...(set ? ['source-file', '-', ';'] : []),
-      'new-window', '-d', '-P', '-F', '#{window_id} #{pane_id}', '-a', '-t', `${SESSION}:`,
+      'new-window', '-d', '-P', '-F', '#{window_id} #{pane_id} #{pane_pid}', '-a', '-t', `${SESSION}:`,
       '-n', name, '-c', dir, ...envArgs,
       ...unset,
     ], undefined, set)
       // a new-window that failed ends the sequence before the unset
       .catch(async (e) => { if (set) await this.run(...unset.slice(1)).catch(() => {}); throw e; });
-    const [windowId, paneId] = out.trim().split(' ');
+    const [windowId, paneId, pid] = out.trim().split(' ');
     if (!windowId || !paneId) throw new Error(`tmux new-window returned ${JSON.stringify(out)}`);
+    if (process.platform === 'linux' && Number(pid)) preferAsVictim(Number(pid));
     return { windowId, paneId };
   }
 

@@ -23,6 +23,7 @@ import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { ask } from '../prompt.js';
 import { farProfile, type Target } from '../target.js';
 import { MARK, rawLines, tickMark, type Check } from '../checks-view.js';
+import { connectArgs, connectChoice, hostLimits } from './limits.js';
 import { checkLines } from './doctor.js';
 
 /**
@@ -408,14 +409,18 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .option('--release <archive>', 'install this companion archive instead of the one this release publishes')
     .option('--allow-unsigned', 'install a --release archive that carries no signature')
     .option('--as-home', 'leave it a fleet\'s home, for svall fleet join to follow, not a worker of this fleet')
+    .addOption(new Option('--limits <cores,memory>', 'what the fleet may use of the machine, such as 11,93G, set without asking'))
+    .addOption(new Option('--no-limits', 'leave the fleet all of the machine, without asking'))
     .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
-    .action((name: string, { relayed: _, ...o }: { ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean; relayed?: boolean }) => {
+    .action((name: string, { relayed: _, limits, ...o }: { ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean; relayed?: boolean; limits?: string | false }) => {
       const home = o.asHome ? undefined : farFor(name);
-      if (home) return onHome(home, [...['host', 'add', name, '--ssh', o.ssh], ...companionFlags(o)], json(), (r, steps) => outcomeText(r as HostOutcome, 'add', name, { there: farThere(home, o.ssh, target()), steps, fleet: fleetOf(target().home) }), { installs: true });
+      if (home) return onHome(home, [...['host', 'add', name, '--ssh', o.ssh], ...companionFlags(o), ...connectArgs({ limits })], json(), (r, steps) => outcomeText(r as HostOutcome, 'add', name, { there: farThere(home, o.ssh, target()), steps, fleet: fleetOf(target().home) }), { installs: true });
       carriedGoes(o.release, target());
       const there = { ...thereOf(name, dir(), target()), ssh: o.ssh };
-      return runFlow(json(), 'add', (out, ends) => outcomeText(out, 'add', name, { there, ...ends }), (d) => addHost({ name, ...o }, d), dir(), target(), { name, there });
+      return runFlow(json(), 'add', (out, ends) => outcomeText(out, 'add', name, { there, ...ends }), (d) => addHost({ name, ...o, ...connectChoice({ limits }, askable(json())) }, d), dir(), target(), { name, there });
     });
+
+  host.addCommand(hostLimits(target, json));
 
   host.command('list')
     .description('every machine in the registry and its last check')

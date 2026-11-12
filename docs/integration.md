@@ -147,6 +147,12 @@ each machine's daemon and unit logs.
     remote the way the app attaches them, over local's ssh master, and a tmux on local stands in for the terminal. The
     master is killed: every terminal ends, the daemon opens the master again, each comes back to its own pane with its
     process unchanged, and an OSC 52 copy in a far pane reaches the terminal.
+23. **What the fleet may use of remote.** `host add` left no limit. `svall host limits remote --cpus 1 --memory 1G` on
+    local puts both in the cgroup of remote's unit (`cpu.max`, `memory.max`) and in its unit file with no restart, and
+    more cores than remote has is refused. A process in a robot's pane there, marked as the one to stop first, takes
+    memory until the kernel kills it; the daemon, tmux and every other pane run on, and `host limits` and `svall doctor`
+    count the hit, each daemon answering for its own machine. The default then holds through adding remote again, which
+    shows the limit and asks nothing, and, when steps 16 and 18 run, through the home's move to remote and back.
 
 Steps 1, 2, 5, 6, 14 and 16 also check that the bare repository on remote is untouched: a move never pushes.
 
