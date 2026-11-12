@@ -14,7 +14,7 @@ import { tmuxTooOld } from '@svall/svalld/tmux/conf';
 import { isWorker } from '@svall/svalld/worker/mode';
 import type { AgentKind } from '@svall/protocol';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
-import { MARK, type Check } from '../checks-view.js';
+import { MARK, rawLines, type Check } from '../checks-view.js';
 
 export type PreflightDeps = {
   /** `path`: the PATH to find `cmd` on, when it is not this process's own; `env`: added to this process's environment */
@@ -118,7 +118,7 @@ export async function preflight(d: PreflightDeps): Promise<Check[]> {
   return [await tmux(d), node(d), ...await agentChecks(d), shimDirOnPath(d)];
 }
 
-export const checkLine = (c: Check): string => `${MARK[c.status]} ${c.name}  ${[c.detail, c.action].filter(Boolean).join(' -> ')}`;
+export const checkLine = (c: Check): string => `${MARK[c.status]} ${c.name}  ${[c.detail, c.action].filter(Boolean).join(' -> ')}${rawLines(c, (t) => t)}`;
 
 // the lines to show for warnings; any failure stops the caller before it changes anything
 export function requireReady(checks: Check[]): string[] {

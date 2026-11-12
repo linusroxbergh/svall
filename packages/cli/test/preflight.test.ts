@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { preflight, realPreflightDeps, type PreflightDeps } from '../src/commands/preflight.js';
+import { preflight, realPreflightDeps, requireReady, type PreflightDeps } from '../src/commands/preflight.js';
 
 const loggedOut = () => Object.assign(new Error('Not logged in'), { code: 1 });
 
@@ -81,5 +81,13 @@ describe('realPreflightDeps', () => {
     // this Mac's own entry is no machine to move a robot to, and a registry that cannot be read may list one
     expect(await rows({ platform: 'darwin', machines: [local], claude: '2.1.200' })).not.toContainEqual(expect.objectContaining({ name: 'claude', status: 'warn' }));
     expect(await rows({ platform: 'darwin', registry: '{', claude: '2.1.200' })).toContainEqual(expect.objectContaining({ name: 'claude', status: 'warn' }));
+  });
+});
+
+describe('requireReady', () => {
+  it("keeps what a tool said under a check that stops setup, and under one that warns", () => {
+    expect(() => requireReady([{ name: 'tmux', status: 'fail', detail: 'does not run', raw: 'dyld: Library not loaded: libevent' }]))
+      .toThrow('nothing was changed; fix these first:\n✗ tmux  does not run\n  dyld: Library not loaded: libevent');
+    expect(requireReady([{ name: 'codex', status: 'warn', detail: 'does not run', raw: 'codex: bad CPU type' }])).toEqual(['! codex  does not run\n  codex: bad CPU type']);
   });
 });
