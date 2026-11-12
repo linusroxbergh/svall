@@ -41,3 +41,4 @@
 .away-says > span:first-child { -webkit-user-select: text; user-select: text; }
 .away-says > .btn { margin-top: var(--sp-md); }
 .pon-there { flex: none; padding: 0; border: 0; background: none; color: var(--away); font: inherit; cursor: pointer; text-decoration: underline; }
+.pon-there:disabled { cursor: default; }

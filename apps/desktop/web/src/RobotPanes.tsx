@@ -87,7 +87,7 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
       {on && (
         <div className="pon">
           <MachineLine name={on} className="" testid={`pane-${side}-machine`} />
-          <TerminalThere name={on} dir={c.cwd} className="pon-there" testid={`pane-${side}-terminal-there`} />
+          <TerminalThere name={on} dir={c.cwd} className="pon-there" testid={`pane-${side}-terminal-there`} away={away} />
         </div>
       )}
       <div className="pbody">{body(surface, side)}</div>
