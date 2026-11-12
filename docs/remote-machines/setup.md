@@ -365,7 +365,7 @@ reached. With no machine, it says what a machine is.
 | `svall host upgrade <name>` | Upgrade to this Mac's release, in the ⋯ menu | Installs this Mac's release there, restarts every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. It then makes the machine this fleet's worker, unless it is one already, and ends with your agent setup there as `host add` does, asking the same. On an Ubuntu older than 22.04 it installs nothing. A fleet's tmux server running through the upgrade, such as one on Ubuntu's own tmux, keeps its tmux while a robot runs in it, and starts over on the new release's at a daemon start with none. Robots running there keep running, and while an older companion's tmux runs them, what is copied in their terminals may not reach the Mac. |
 | `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. It refuses, changing nothing, while a fleet there keeps its state at a newer schema than that release reads, or runs a tmux server that release could not reach. |
 | `svall host remove <name>` | Remove, in the ⋯ menu | Runs `svall uninstall` there, which first takes back what [your agent setup](#your-agent-setup-on-the-machine) copied there with keys (see `svall uninstall` below), shows what it took back, and ends with a warning to do by hand where it could not take a key back or a copy changed there since; it drops the machine from the registry, its last check from `checks.json` and its ticks from every fleet on this Mac. It refuses while a robot of a fleet here runs on the machine or is moving to it ("2 robots are on linus-vault: ada, bo; move them back first"), and while a fleet home there serves another Mac as a worker or its `worker.json` cannot be read, as `svall uninstall` there stops every fleet on it. Its fleets and their files stay on that machine. |
-| `svall host remove <name> --forget` | Forget, in the ⋯ menu while the machine cannot be reached | Drops the machine, its last check and its ticks without reaching it, when it is gone. Keys the mirror copied there stay there. |
+| `svall host remove <name> --forget` | Forget, in the ⋯ menu while the machine cannot be reached | Drops the machine, its last check and its ticks without reaching it, when it is gone. Keys Svall copied there stay there. |
 
 After you update Svall on the Mac, run `svall host upgrade <name>`: until both machines run the same release, a move
 refuses with "studio runs X, this Mac Y; upgrade it under Machines". Robots already there keep running meanwhile.
@@ -376,13 +376,13 @@ On the Linux machine itself:
   checks each fleet's daemon answers from it. `svall setup` sets the machine up again from the release `current`
   names.
 - `svall uninstall` ends the robots that run there, so move them back first. Before it removes Svall, it takes back
-  what each fleet's mirror copied there with keys, each while it is as the mirror wrote it: a copied key becomes what
+  what Svall copied there with keys from each fleet's agent setup, each while it is as Svall wrote it: a copied key becomes what
   an untick leaves (an `env` key the agent's reference to its variable, a key in a URL or argument the rest of it, any
   other key emptied), a server copied as it is leaves its config file, a key in `known_marketplaces.json`, a
   `marketplace.json` or a subagent is taken out where it lies there, even where an entry added above it moved it, and
-  the file stays, another file the mirror wrote holding a ticked key, such as a plugin's server file or a subagent
+  the file stays, another file Svall wrote holding a ticked key, such as a plugin's server file or a subagent
   whose `mcpServers` Svall cannot read or whose server has settings Svall cannot copy one by one, is deleted, and a copy a daemon
-  left unapplied in the fleet's `cache` goes. A key, server or file changed on the machine since the mirror wrote it
+  left unapplied in the fleet's `cache` goes. A key, server or file changed on the machine since Svall wrote it
   stays, named in what it prints, and so does every key in a config file there that no longer parses, as do the
   fleet's `.env` and its `mirror-overrides/`, which are the machine's own.
 - Each fleet's own log is `svalld.log` in its fleet home (`~/.svall` for the private fleet), beside the units'
@@ -409,7 +409,7 @@ On the Linux machine, all under the account:
 - `~/.svall` (and `~/.svall-<name>`), each fleet's home there: `worker.json`, which names the home, the fleet and
   the token the home issued; `.env`, the variables its robots there get, mode 600, written by `svall worker env` or
   the app's **Set on studio**;
-  `cache/docs`, a copy of the fleet's notes; `cache/mirror-state.json`, what the agent setup mirror last wrote there,
+  `cache/docs`, a copy of the fleet's notes; `cache/mirror-state.json`, what Svall last wrote there of your agent setup,
   as hashes; `cache/mirror-vars.json`, the names of the variables the copied setup reads; `journal/`, what happened
   there that the home has not taken yet, and each move's journal; `mirror-overrides/`, settings of the machine's own
   that the agent setup the home copies there never replaces; and the robots' tmux server, hooks socket and
