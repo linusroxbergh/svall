@@ -342,6 +342,21 @@ describe('an edit that never reached the fleet', () => {
     expect(store.getState().toast).toEqual({ text: 'another robot is already called x', tone: 'error' });
   });
 
+  it('refused by a fleet moving its home, says it was not saved and where the fleet is going, by this window\'s names', async () => {
+    const STUDIO = '22222222-2222-4222-8222-222222222222' as MachineId;
+    const ME = '11111111-1111-4111-8111-111111111111' as MachineId;
+    const store = createAppStore(undefined);
+    store.getState().setFleet({ ...store.getState().fleet, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 0 } } });
+    store.getState().setShell({ home: '/h', log: [], op: false, machine: ME });
+    const frozen = (to?: string) => ({ call: () => Promise.reject(new ApiError('frozen', 'the fleet is moving to linus-vault; try again once it has', to === undefined ? undefined : { to })) } as unknown as Api);
+    expect(await saveRobot({ api: frozen(STUDIO), store }, 'c0', { note: 'half a thought' })).toBe(false);
+    expect(store.getState().toast).toEqual({ text: 'Not saved: the fleet is moving to studio.', tone: 'error' });
+    await saveIsland({ api: frozen(ME), store }, 'i_a', { name: 'x' });
+    expect(store.getState().toast?.text).toBe('Not saved: the fleet is moving to this Mac.');
+    await saveRobot({ api: frozen(), store }, 'c0', { note: 'half a thought' });
+    expect(store.getState().toast?.text).toBe('the fleet is moving to linus-vault; try again once it has');
+  });
+
   it.each(['not_reachable', 'timeout', 'stopping', 'internal'])('stays to send again when it failed as %s, which the fleet never weighed', async (code) => {
     const api = { call: () => Promise.reject(new ApiError(code, 'studio is not reachable')) } as unknown as Api;
     const store = createAppStore(undefined);

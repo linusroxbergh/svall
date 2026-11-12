@@ -1,9 +1,9 @@
-import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, keptSession, type Cell, type Column, type ContextItem, type HomeAction, type Params, type Result, type Size } from '@svall/protocol';
+import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, keptSession, type Cell, type Column, type ContextItem, type HomeAction, type MachineId, type Params, type Result, type Size } from '@svall/protocol';
 import { ApiError, type Api } from './api.js';
 import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { withoutSecond } from './panes.js';
-import { startsBeside } from './placement.js';
+import { myMachine, startsBeside } from './placement.js';
 import type { FieldRef } from './resources/model.js';
 import { robotsOf, islandCwd, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startCwd, startOf } from './selectors.js';
 import type { AppState, AppStore } from './store/index.js';
@@ -328,8 +328,16 @@ export const startHomeAction = async (d: ActionDeps, action: HomeAction): Promis
 };
 
 // an edit that never reached the fleet may have left with its field, so the toast keeps it to send again
+// a fleet frozen for a home move names the machine it is moving to, which the window says by its own name for it
+function unsaid(d: ActionDeps, e: Error): string {
+  const to = e instanceof ApiError && e.code === 'frozen' ? e.data?.to : undefined;
+  const s = d.store.getState();
+  const name = typeof to !== 'string' ? undefined : to === myMachine(s) ? 'this Mac' : s.fleet.machines?.[to as MachineId]?.name;
+  return name ? `Not saved: the fleet is moving to ${name}.` : e.message;
+}
+
 const unsent = (d: ActionDeps, retry: () => void) => (e: Error) =>
-  d.store.getState().showToast(e.message, 'error', refused(e) ? undefined : { label: 'Retry', run: retry });
+  d.store.getState().showToast(unsaid(d, e), 'error', refused(e) ? undefined : { label: 'Retry', run: retry });
 
 // false once the fleet refused it, for a field to put back what the fleet holds; one that never reached the fleet stays to send again
 const saved = (d: ActionDeps, call: Promise<unknown>, retry: () => void): Promise<boolean> =>
