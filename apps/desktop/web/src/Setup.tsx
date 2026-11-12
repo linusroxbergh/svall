@@ -162,7 +162,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       <h1>Svall is set up</h1>
       <section>
         <h2>Before you start</h2>
-        {warnings.map((w) => <Said key={w} {...splitRaw(w)} mark="warn" />)}
+        {warnings.map((w) => { const { line, raw } = splitRaw(w); return <Said key={w} line={inMono(line)} raw={raw} mark="warn" />; })}
       </section>
       <div className="setup-acts"><button type="button" className="btn pri" onClick={() => window.location.replace('/')}>Continue</button></div>
     </Page>
@@ -394,6 +394,17 @@ const HERE = 'Svall on this Mac';
 // the join's `home` step finds the fleet's home, where an add's looks at the home folder
 const labelOf = (r: FarRow): string => (!r.op ? HERE : r.op === 'join' && r.step === 'home' ? 'The home' : stepLabel(r.step));
 const STATE = { start: 'doing', ok: 'done', skip: 'done', warn: 'warned', fail: 'failed' } as const;
+// a command the CLI sets in backticks, and a link, in mono
+const MONO = /`([^`]+)`|(https?:\/\/\S+?)(?=[.,;)]?(?:\s|$))/g;
+function inMono(text: string): ReactNode {
+  const parts: ReactNode[] = [];
+  let at = 0;
+  for (const m of text.matchAll(MONO)) {
+    parts.push(text.slice(at, m.index), <code key={m.index}>{m[1] ?? m[2]}</code>);
+    at = m.index + m[0].length;
+  }
+  return parts.length ? [...parts, text.slice(at)] : text;
+}
 const SSH_THEN = /^ssh \S+, then /;
 
 function FarStep({ row }: { row: FarRow }) {
@@ -409,7 +420,7 @@ function FarStep({ row }: { row: FarRow }) {
   return (
     <li data-state={STATE[row.status]} data-step={row.step} data-status={row.status}>
       <span className="move-mark" aria-hidden><Mark status={row.status} /></span>
-      <div>{labelOf(row)}{told && <Said {...told} mark={false} />}</div>
+      <div>{labelOf(row)}{told && <Said {...told} line={inMono(told.line)} fix={told.fix && inMono(told.fix)} mark={false} />}</div>
     </li>
   );
 }

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Caret, Mark } from './icons.js';
 import { terminalOn } from './MoveSheet.js';
 import { useRoute } from './OnMachine.js';
@@ -15,17 +16,18 @@ export function Fix({ fix, run }: { fix: string; run?: string }) {
  * `settings`: the fix as a note of the Settings window. `mark`: false inside a row that carries its own.
  */
 export function Said({ line, fix, raw, run, on, settings, mark = 'fail' }: {
-  line: string; fix?: string; raw?: string; run?: string; on?: string; settings?: boolean; mark?: 'fail' | 'warn' | false;
+  line: ReactNode; fix?: ReactNode; raw?: string; run?: string; on?: string; settings?: boolean; mark?: 'fail' | 'warn' | false;
 }) {
   const route = useRoute(run ? on : undefined);
   const terminal = !!run && !!on && route;
-  const more = [!terminal && run && !fix?.includes(run) ? run : undefined, raw].filter(Boolean).join('\n\n');
+  const quoted = typeof fix === 'string' && !!run && fix.includes(run);
+  const more = [!terminal && run && !quoted ? run : undefined, raw].filter(Boolean).join('\n\n');
   return (
     <div className="said" data-mark={mark || undefined}>
       {mark && <span className="said-mark" aria-hidden><Mark status={mark} /></span>}
       <div>
         <span>{line}</span>
-        {fix && <span className={settings ? 'set-note' : 'modal-sub'}><Fix fix={fix} run={run} /></span>}
+        {fix && <span className={settings ? 'set-note' : 'modal-sub'}>{typeof fix === 'string' ? <Fix fix={fix} run={run} /> : fix}</span>}
         {more && (
           <details className="modal-more">
             <summary><Caret dir="right" />details</summary>

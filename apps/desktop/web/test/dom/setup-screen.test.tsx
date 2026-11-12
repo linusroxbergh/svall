@@ -161,6 +161,18 @@ test('successful setup retains actionable warnings before continuing, each a row
   expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
 });
 
+test('a warning sets the commands the CLI marks, and a link, in mono, with no backticks', () => {
+  const s = shell(ready);
+  next(); next();
+  fireEvent.click(screen.getByRole('button', { name: 'Set up Svall' }));
+  s.receive({ type: 'setup.result', step: 'run', ok: true, json: JSON.stringify({ warnings: ['Codex asks once to trust these hooks: start `codex` and choose "Trust all and continue", or trust them in `/hooks`', 'See https://svall.dev/docs.'] }) });
+  const lines = [...document.querySelectorAll('.said > div > span:first-child')];
+  expect(lines.map((l) => [l.textContent, [...l.querySelectorAll('code')].map((c) => c.textContent)])).toEqual([
+    ['Codex asks once to trust these hooks: start codex and choose "Trust all and continue", or trust them in /hooks', ['codex', '/hooks']],
+    ['See https://svall.dev/docs.', ['https://svall.dev/docs']],
+  ]);
+});
+
 test('Help\'s Send Feedback… opens the form on the setup page, and Esc closes it', async () => {
   setAppStore(createAppStore());
   const s = shell(ready);
@@ -352,6 +364,18 @@ describe('the first run forks three ways', () => {
     expect(failed.querySelector('.said > div > span')!.textContent).toBe('Tailscale is not running on ada@studio');
     expect(failed.querySelector('.modal-sub')).toBeNull();
     expect(failed.querySelector('.modal-more-body.mono')!.textContent).toBe('start it: sudo systemctl start tailscaled\ntailscaled is stopped');
+  });
+
+  test('a failed step\'s fix says its link in mono', () => {
+    const { receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-server'));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive(FAR);
+    receive({ type: 'host.step', op: 'add', event: { step: 'tailscale', status: 'fail', detail: 'this Mac has no Tailscale', action: 'Install it from https://tailscale.com/download and sign in' } });
+    receive({ type: 'host.done', op: 'add', code: 1 });
+    const fix = screen.getByTestId('fork-steps').querySelector('li[data-status="fail"] .modal-sub')!;
+    expect([fix.textContent, fix.querySelector('code')?.textContent]).toEqual(['Install it from https://tailscale.com/download and sign in', 'https://tailscale.com/download']);
   });
 
   test('installing on a server adds it as a home, then joins it', () => {
