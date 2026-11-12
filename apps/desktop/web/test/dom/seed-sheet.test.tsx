@@ -125,8 +125,7 @@ describe('the first copy of an agent setup onto a far home', () => {
   it('once the keys are read the focus is on Copy, beside Cancel', async () => {
     following();
     render(<SeedSheet />);
-    await waitFor(() => expect(screen.getByTestId('seed-copy').hasAttribute('disabled')).toBe(false));
-    expect(document.activeElement).toBe(screen.getByTestId('seed-copy'));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('seed-copy')));
     expect([screen.getByTestId('seed-copy').textContent, screen.getByTestId('seed-no').textContent]).toEqual(['Copy to studio', 'Cancel']);
   });
 
