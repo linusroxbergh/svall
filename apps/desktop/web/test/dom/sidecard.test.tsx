@@ -782,7 +782,7 @@ describe('what a robot offers by where it runs', () => {
     sent.length = 0;
     await follow(pill('folder', '/home/linus/app'), 'c0');
     expect(store.getState().hostTerminal).toBeUndefined();
-    expect(store.getState().toast?.text).toBe('/home/linus/app is on added; open it there');
+    expect(store.getState().toast).toEqual({ text: '/home/linus/app is on added.', tone: 'info' });
     expect(sent).toEqual([{ type: 'host.list' }]);
   });
 
@@ -809,7 +809,7 @@ describe('what a robot offers by where it runs', () => {
     act(() => store.getState().setMachines([{ name: 'ada-laptop', id: LAPTOP, platform: 'darwin' }]));
     await act(async () => { render(<Side />); });
     await act(async () => { fireEvent.click(screen.getByText('app')); });
-    expect(store.getState().toast?.text).toBe('/Users/bo/app is on ada-laptop; open it there');
+    expect(store.getState().toast).toEqual({ text: '/Users/bo/app is on ada-laptop.', tone: 'info' });
     expect(store.getState().hostTerminal).toBeUndefined();
   });
 });

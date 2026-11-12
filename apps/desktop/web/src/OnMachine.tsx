@@ -2,16 +2,12 @@ import { useEffect, useState } from 'react';
 import { aside, asideLine, notNeeded, toTick, type MachineId, type SetupRow } from '@svall/protocol';
 import { app } from './boot.js';
 import { useApp } from './hooks.js';
-import type { AppState } from './store/index.js';
+import { cdLine, hasRoute } from './host.js';
 import { terminalOn } from './MoveSheet.js';
 import { Section } from './Section.js';
 import { VarField } from './VarField.js';
 
-export const cdLine = (dir: string): string => `cd '${dir.replaceAll("'", "'\\''")}'`;
-
-/** Whether this Mac has an ssh route to the machine `name`, as far as its list says: a list not read, or not readable, says nothing against one. */
-export const hasRoute = (s: Pick<AppState, 'machines' | 'machinesError'>, name: string): boolean =>
-  s.machines === undefined || !!s.machinesError || !!s.machines.find((m) => m.name === name)?.ssh;
+export { cdLine, hasRoute };
 
 /** Whether a terminal on `name` can be offered from this Mac; none for no machine. */
 export function useRoute(name: string | undefined): boolean {

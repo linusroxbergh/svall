@@ -1,5 +1,6 @@
 import { aside, asideLine, MachineRecord, wayOn, type SetupRow } from '@svall/protocol';
 import type { HostArgs, HostOp, HostStep, MachineRow } from './bridge.js';
+import type { AppState } from './store/index.js';
 
 export { keyLabel, keyMask } from '@svall/protocol';
 
@@ -47,6 +48,12 @@ export const plainStep = (text: string, names: MachineNames): string => withoutI
 
 /** What the CLI says of this machine, as a window on it says it. */
 export const onThisMac = (text: string): string => text.replace(/\bthis machine\b/g, 'this Mac').replace(/\bThis machine\b/g, 'This Mac');
+
+export const cdLine = (dir: string): string => `cd '${dir.replaceAll("'", "'\\''")}'`;
+
+/** Whether this Mac has an ssh route to the machine `name`, as far as its list says: a list not read, or not readable, says nothing against one. */
+export const hasRoute = (s: Pick<AppState, 'machines' | 'machinesError'>, name: string): boolean =>
+  s.machines === undefined || !!s.machinesError || !!s.machines.find((m) => m.name === name)?.ssh;
 
 const plainRow = (event: HostStep, names: MachineNames): HostStep => ({
   step: event.step, status: event.status,
