@@ -459,7 +459,7 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   if (to.moving) fail(i.back ? 'this machine is still taking a move' : `${toName} is still leaving a move`, 'finish or call off that move first', { raw: to.moving });
   // Tailscale by its state on each machine; a command is typed only on the far one, where its terminal opens
   const tailscale = (f: HomeFacts, on: string, platform: string | undefined, where: string, typed: boolean): void => {
-    const state = f.tailscale.state ?? (f.tailscale.error ? 'missing' : 'ok');
+    const state = f.tailscale.state ?? (f.tailscale.stopped ? 'stopped' : f.tailscale.error ? 'missing' : 'ok');
     const raw = { raw: f.tailscale.error };
     const app = platform === 'darwin';
     if (state === 'missing') fail(`${on} has no Tailscale`, `install it${where} from tailscale.com/download and sign in`, raw);

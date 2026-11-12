@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, crewAway, emptyState, HOME_ISLAND, type AdoptAnswer, type HomeFacts, type HomeMoveId, type HomeMoving, type MachineId, type MobileStatus } from '@svall/protocol';
+import { ApiError, crewAway, emptyState, HOME_ISLAND, HomeFacts, type AdoptAnswer, type HomeMoveId, type HomeMoving, type MachineId, type MobileStatus } from '@svall/protocol';
 import { dispatch, type Ctx } from '../../src/api/methods.js';
 import { moveRobot } from '../../src/arrange.js';
 import { configRewrites, homeCheck, homeFacts, HomeFreeze, type FreezeDeps } from '../../src/fleet/home-freeze.js';
@@ -1060,6 +1060,8 @@ describe('the check', () => {
     expect(await at(tailscale(true, { BackendState: 'Running', Self: { DNSName: 'studio.tail.' } }))).toEqual({ host: 'studio.tail', state: 'ok' });
     // what a far side of an earlier release says reads by its error alone
     expect(check({ error: 'tailscale not found' })).toMatchObject({ refusal: { reason: 'studio has no Tailscale', raw: 'tailscale not found' } });
+    const older = HomeFacts.parse({ ...facts({ machineId: STUDIO }), tailscale: { error: 'Tailscale is stopped.', stopped: true } }).tailscale;
+    expect(check(older)).toMatchObject({ refusal: { reason: 'Tailscale is not running on studio', raw: 'Tailscale is stopped.' } });
   });
 
   it('a Tailscale is started and signed in as each machine\'s platform does it, this machine\'s too, and only the far one gets a command to type', () => {

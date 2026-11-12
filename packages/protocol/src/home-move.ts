@@ -73,7 +73,8 @@ const HomeRewrite = z.object({ key: z.string(), to: z.string(), lacks: z.boolean
 export const HomeFacts = z.object({
   machineId: MachineId, fleetId: FleetId.optional(), release: z.string(), protocol: z.number().int(), stateSchema: z.number().int(),
   clock: z.number(), freeKb: z.number().optional(), fleetKb: z.number().optional(), fleetHome: MachinePath, moving: z.string().optional(),
-  tailscale: z.object({ host: z.string().optional(), state: z.enum(['missing', 'stopped', 'signedOut', 'ok']).optional(), error: z.string().optional() }),
+  // `stopped`: how a far side of an earlier release says it, with no `state`
+  tailscale: z.object({ host: z.string().optional(), state: z.enum(['missing', 'stopped', 'signedOut', 'ok']).optional(), error: z.string().optional(), stopped: z.literal(true).optional() }),
   paths: z.record(z.string(), z.boolean()).optional(), workers: z.array(z.string()).optional(), rewrites: z.array(HomeRewrite).optional(),
   // on a home: the workers a move would carry, as what takes the fleet comes back has no registry of its own for them
   carried: z.array(HomeWorker).optional(),
