@@ -970,8 +970,11 @@ function agentSetup(ids, fx) {
   const rows = mirrorRows(checks);
   const unticked = (k) => rows[k]?.status === 'warn' && rows[k].tick?.on === false;
   const gamma = rows['var:GAMMA_TOKEN'];
+  // every warning says what to do; beyond the agent setup's three, only the machine's advice: gh, and svall on a shell's PATH
   const todo = checks.filter((c) => c.status === 'warn' && c.action);
-  check('unticked rows', unticked('claude:mcp:alpha') && unticked('claude:mcp:beta') && gamma?.status === 'warn' && gamma.run === 'svall worker env GAMMA_TOKEN' && todo.length === 3,
+  const said = ['path', 'gh', 'mirror:claude:mcp:alpha', 'mirror:claude:mcp:beta', 'mirror:var:GAMMA_TOKEN'];
+  check('unticked rows', unticked('claude:mcp:alpha') && unticked('claude:mcp:beta') && gamma?.status === 'warn' && gamma.run === 'svall worker env GAMMA_TOKEN'
+    && same(todo.map((c) => c.name).sort(), said.sort()),
     () => `${brief(rows)}; to do ${brief(todo.map((c) => c.name))}`);
 
   const ticked = consent('claude:mcp:alpha', 'on');
