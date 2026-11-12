@@ -8,7 +8,7 @@ import { figureOf, figureUrl } from '../portraits.js';
 import { islandCwd, startOf, statusOf, wantsUser } from '../selectors.js';
 import { phone } from './boot.js';
 import { CloseRobot } from './CloseRobot.js';
-import { sections, statusLabel, subtitle, waiting } from './list.js';
+import { movedTo, sections, statusLabel, subtitle, waiting } from './list.js';
 import { dragOffset, isSwipe, REVEAL, settle } from './swipe.js';
 import { IslandSheet } from './IslandSheet.js';
 import { NewRobot } from './NewRobot.js';
@@ -120,23 +120,23 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
       .catch((e: Error) => setFailed({ islandId: island.id, message: e.message }));
   };
 
-  // a page this machine still serves, of a fleet whose home took it away: only a worker's copy holds its home's snapshot
-  const movedTo = !via && status === 'online' ? Object.values(fleet.machines ?? {}).find((m) => m.snapshot)?.name : undefined;
+  // a fleet whose home took it away is changed there alone, so this page says where and offers nothing of its old copy
+  const moved = movedTo(fleet, via, status);
   return (
     <div className="fleet">
       <header className="top">
         <h1>{document.title}</h1>
-        <button type="button" className="ib touch" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}><Plus size="lg" /></button>
+        {!moved && <button type="button" className="ib touch" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}><Plus size="lg" /></button>}
         {!via && <button type="button" className="ib touch" aria-label="Settings" onClick={() => setSheet({ kind: 'settings' })}><Gear /></button>}
         <span className="conn" data-status={status}>
-          {status !== 'online' ? status : via ? `on ${machineName(fleet, via.machine)} · ${homeName(fleet, via)} asleep` : need ? `${need} waiting` : 'all quiet'}
+          {status !== 'online' ? status : moved ? `moved to ${moved}` : via ? `on ${machineName(fleet, via.machine)} · ${homeName(fleet, via)} asleep` : need ? `${need} waiting` : 'all quiet'}
         </span>
       </header>
-      {movedTo && <p className="empty" data-testid="phone-moved">This fleet runs on {movedTo} now. Scan its new QR code: on your Mac, Svall → Phone.</p>}
+      {moved && <p className="empty" data-testid="phone-moved">This fleet runs on {moved} now. Scan its new QR code: on your Mac, Svall → Phone.</p>}
       {status === 'refused' && <p className="empty">This tailnet login can't open this fleet. On the Mac, add it to mobile.logins in fleet.json, then quit and reopen Svall.</p>}
       {status === 'unpaired' && <p className="empty">This phone is not paired with the fleet. Scan the QR code in Svall → Phone on your Mac. A Home Screen icon has to be removed and added again from that link.</p>}
-      {loaded && groups.length === 0 && <p className="empty">No islands yet. Tap + to make one.</p>}
-      {starred.length > 0 && (
+      {loaded && !moved && groups.length === 0 && <p className="empty">No islands yet. Tap + to make one.</p>}
+      {!moved && starred.length > 0 && (
         <section aria-label="Starred">
           <h2><span className="starred">Starred</span></h2>
           {/* a starred row swipes on its own, not with its twin on the island */}
@@ -146,7 +146,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
           ))}
         </section>
       )}
-      {groups.map(({ island, robots }) => {
+      {!moved && groups.map(({ island, robots }) => {
         const folded = island.collapsed && edits(island);
         return (
         <section key={island.id}>

@@ -67,3 +67,11 @@ test("the home island's sheet carries its buttons, and one starts the skill", as
   expect(calls.find(([m]) => m === 'robot.create')).toEqual(['robot.create', { islandId: 'home', cwd: '/mc', command: fleet().home.command, name: 'retro', run: '/svall-retro' }]);
   expect(onOpen).toHaveBeenCalledWith('n1');
 });
+
+test('a page of a fleet that moved away offers no mission control', () => {
+  const moved = fleet();
+  moved.machines = { studio: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } } } as never;
+  store.getState().setFleet(moved);
+  render(<MissionBar onOpen={() => {}} />);
+  expect(screen.queryByLabelText('Mission control')).toBeNull();
+});

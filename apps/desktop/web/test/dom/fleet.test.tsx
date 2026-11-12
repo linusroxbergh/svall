@@ -284,6 +284,11 @@ test('a page a worker still serves says where the fleet runs now; the home and a
   store.getState().setStatus('online');
   const { unmount } = render(<Fleet onOpen={() => {}} />);
   expect(screen.getByTestId('phone-moved').textContent).toBe('This fleet runs on studio now. Scan its new QR code: on your Mac, Svall → Phone.');
+  // its old copy offers nothing to change, and the header says where it went
+  expect(screen.queryByRole('button', { name: 'New island' })).toBeNull();
+  expect(screen.queryAllByRole('button', { name: /^New robot on / })).toEqual([]);
+  expect(document.querySelector('section')).toBeNull();
+  expect(document.querySelector('.conn')!.textContent).toBe('moved to studio');
   unmount();
   store.getState().setVia({ machine: 'm', home: 'studio' } as never);
   const fallback = render(<Fleet onOpen={() => {}} />);
