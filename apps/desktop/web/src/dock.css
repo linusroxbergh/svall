@@ -53,6 +53,10 @@
 .mob-url > svg { flex: none; color: var(--ink-3); }
 .mob-url:hover { background: var(--fill-3); }
 .mob-url:hover > svg { color: var(--ink); }
+/* the panel is narrow: a problem's button goes under its words, which keep the width for a command whole */
+.mob .said { flex-wrap: wrap; row-gap: var(--sp-sm); }
+.mob .said > div { flex: 1 1 calc(100% - 1em - var(--sp-sm)); }
+.mob .said > .btn { margin-left: calc(1em + var(--sp-sm)); }
 /* a screenshot's grey bars over the link and the logins */
 .mob-mask { display: block; height: .8em; margin: .3em 0; border-radius: var(--r-xs); background: var(--fill-3); }
 .mob-mask + .mob-mask { width: 60%; }

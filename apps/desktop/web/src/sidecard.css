@@ -222,6 +222,8 @@
 /* one line under the row or group it belongs to */
 .set-note { color: var(--ink-3); font-size: var(--text-sm); line-height: var(--lh); }
 .set-note code { font-family: var(--mono); font-size: var(--text-xs); -webkit-user-select: text; user-select: text; }
+/* a note under way, its spinner a gap from its words */
+.set-note > .move-spin { margin-right: var(--sp-sm); }
 /* what went well, said as a problem is with its own mark */
 .said[data-mark="ok"] > .said-mark { color: var(--done); }
 .side .row b.set-slider, .side .row b.set-zoom { display: flex; align-items: center; gap: var(--sp-lg); }
