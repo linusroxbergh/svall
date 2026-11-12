@@ -228,7 +228,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
           <p>{farSteps ? ssh.trim() : 'Needs Tailscale on this Mac and on the server.'}</p>
         </header>
         {blockers.map((b) => <p key={b} className="setup-blocker">{b}</p>)}
-        {farSteps ? <FarSteps rows={farSteps} running={running} code={farCode} stopped={stopped} bridge={bridge} /> : (
+        {farSteps ? <FarSteps rows={farSteps} running={running} code={farCode} stopped={stopped} bridge={bridge} server={ssh.trim()} /> : (
           <>
             <fieldset className="setup-fields" aria-busy={busy}>
               <label className="setup-field">
@@ -411,7 +411,8 @@ function inMono(text: string): ReactNode {
   }
   return parts.length ? [...parts, text.slice(from)] : text;
 }
-function FarStep({ row, bridge }: { row: FarRow; bridge: Bridge }) {
+// `server`: where an add's or a join's command runs; this Mac's own setup has none
+function FarStep({ row, bridge, server }: { row: FarRow; bridge: Bridge; server: string }) {
   const plain = (text: string) => onThisMac(plainStep(text, {}));
   const action = row.action && plain(row.action);
   const said = row.detail && (row.raw ? { line: plain(row.detail), raw: withoutTokens(row.raw) } : splitRaw(plain(row.detail)));
@@ -424,7 +425,7 @@ function FarStep({ row, bridge }: { row: FarRow; bridge: Bridge }) {
   return (
     <li data-state={STATE[row.status]} data-step={row.step} data-status={row.status}>
       <span className="move-mark" aria-hidden><Mark status={row.status} /></span>
-      <div>{labelOf(row)}{told && <Said {...told} run={row.run} copy={(text) => copyText(bridge, text)} mark={false} />}</div>
+      <div>{labelOf(row)}{told && <Said {...told} run={row.run} on={row.op && server} copy={(text) => copyText(bridge, text)} mark={false} />}</div>
     </li>
   );
 }
@@ -433,7 +434,7 @@ function FarStep({ row, bridge }: { row: FarRow; bridge: Bridge }) {
  * A server path's run as a flow: its done steps folded behind a line, then what needs a person and the step under way, then
  * its notes folded. `code`: a run that ended short with no failed row; `stopped`: a Stop ended it.
  */
-function FarSteps({ rows, running, code, stopped, bridge }: { rows: FarRow[]; running: boolean; code?: number; stopped: boolean; bridge: Bridge }) {
+function FarSteps({ rows, running, code, stopped, bridge, server }: { rows: FarRow[]; running: boolean; code?: number; stopped: boolean; bridge: Bridge; server: string }) {
   const [open, setOpen] = useState({ notes: false, done: false });
   const ended = rows.filter((r) => r.status !== 'start');
   // an add checks a machine, so a warning it may live with is a note; a join is a flow, whose warnings all need a person
@@ -441,7 +442,7 @@ function FarSteps({ rows, running, code, stopped, bridge }: { rows: FarRow[]; ru
   const [todo, notes, done] = [tiered('todo'), tiered('note'), tiered('fine')];
   // a step is named as it starts and again as it ends; between two, and while the next run starts, the spinner stays on the last
   const now = rows.at(-1);
-  const step = (r: FarRow) => <FarStep key={rows.indexOf(r)} row={r} bridge={bridge} />;
+  const step = (r: FarRow) => <FarStep key={rows.indexOf(r)} row={r} bridge={bridge} server={server} />;
   const short = !running && (stopped || code !== undefined);
   return (
     <section data-testid="fork-steps">

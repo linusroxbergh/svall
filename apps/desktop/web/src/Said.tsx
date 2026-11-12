@@ -18,14 +18,14 @@ export function Fix({ fix, run }: { fix: string; run?: string }) {
  * on `on` with it typed when this Mac reaches it, or, with no `on`, Copy, as it runs on this Mac, where the window opens no
  * terminal. A command the fix does not quote stands in mono under it beside Copy, and behind details where neither is offered.
  * `settings`: the fix as a note of the Settings window. `mark`: false inside a row that carries its own; `ok` for what went well.
- * `copy`: how Copy reaches the clipboard, on a page with a bridge of its own.
+ * `copy`: how Copy reaches the clipboard, on a page with a bridge of its own and no terminal, which copies `run` for `on` too.
  */
-export function Said({ line, fix, raw, run, on, settings, mark = 'fail', copy = (text) => copyText(app.bridge, text) }: {
+export function Said({ line, fix, raw, run, on, settings, mark = 'fail', copy }: {
   line: ReactNode; fix?: ReactNode; raw?: string; run?: string; on?: string; settings?: boolean; mark?: 'fail' | 'warn' | 'ok' | false; copy?: (text: string) => void;
 }) {
-  const route = useRoute(run ? on : undefined);
-  const terminal = !!run && !!on && route;
-  const here = !!run && on === undefined;
+  const route = useRoute(run && !copy ? on : undefined);
+  const terminal = !!run && !!on && route && !copy;
+  const here = !!run && (on === undefined || !!copy);
   const quoted = typeof fix === 'string' && !!run && fix.includes(run);
   const more = [!terminal && !here && run && !quoted ? run : undefined, raw].filter(Boolean).join('\n\n');
   const [copied, setCopied] = useState(false);
@@ -50,8 +50,8 @@ export function Said({ line, fix, raw, run, on, settings, mark = 'fail', copy = 
       </div>
       {terminal && <button className="btn sm" onClick={() => terminalOn(on!, run!)}>Open terminal</button>}
       {here && (
-        <button className="btn sm" data-testid="said-copy" data-tip={`Copy ${run} to run in a terminal on this Mac`}
-          onClick={() => { copy(run!); setCopied(true); }}>{copied ? 'Copied' : 'Copy'}</button>
+        <button className="btn sm" data-testid="said-copy" data-tip={`Copy ${run} to run in a terminal on ${on ?? 'this Mac'}`}
+          onClick={() => { (copy ?? ((text) => copyText(app.bridge, text)))(run!); setCopied(true); }}>{copied ? 'Copied' : 'Copy'}</button>
       )}
     </div>
   );

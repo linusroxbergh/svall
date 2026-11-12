@@ -386,6 +386,8 @@ describe('the first run forks three ways', () => {
     // the command stands under the fix, as a problem's does, and this page's own bridge copies it
     expect(failed.querySelector('.said > div > code.said-run')!.textContent).toBe('sudo apt install git');
     expect(failed.querySelector('details')).toBeNull();
+    // it runs on the server, which the tip names
+    expect(screen.getByTestId('said-copy').dataset.tip).toBe('Copy sudo apt install git to run in a terminal on ada@studio');
     fireEvent.click(screen.getByTestId('said-copy'));
     expect(sent).toContainEqual({ type: 'copy', text: 'sudo apt install git' });
     expect(screen.getByTestId('said-copy').textContent).toBe('Copied');
