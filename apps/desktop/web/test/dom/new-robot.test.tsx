@@ -122,9 +122,11 @@ test('a typed path the home refuses is said in the dialog, with the home\'s name
   expect(screen.getByTestId('new-robot-refused').textContent).toBe('studio has no folder /home/linus/x');
   expect(creates().map((p) => p.cwd)).toEqual(['/home/linus/x']);
   expect(store.getState().namingRobot).toBe(true);
-  expect(screen.getByTestId('new-robot-create').hasAttribute('disabled')).toBe(false);
+  // the same folder would be refused again, so Create waits for another
+  expect([screen.getByTestId('new-robot-create').hasAttribute('disabled'), screen.getByTestId('new-robot-create').dataset.tip]).toEqual([true, 'Choose another folder on studio']);
   fireEvent.change(folder(), { target: { value: '/home/linus/app' } });
   expect(screen.queryByTestId('new-robot-refused')).toBeNull();
+  expect(screen.getByTestId('new-robot-create').hasAttribute('disabled')).toBe(false);
   fireEvent.change(folder(), { target: { value: '~/fartest-file.txt' } });
   await create();
   expect(screen.getByTestId('new-robot-refused').textContent).toBe('~/fartest-file.txt is a file, not a folder');
@@ -159,7 +161,10 @@ test('in fallback the list is this Mac\'s, its clones alone, and the worker\'s a
   const outside = '/Users/ada/notes is not inside a clone on ada-mac; start it in one';
   answers(MAC, [{ path: '/Users/ada/app', clone: true }, { path: '/Users/ada/notes', clone: false }], () => Promise.reject(new ApiError('invalid', outside)));
   await open(apart);
-  expect(screen.getByTestId('new-robot-where').textContent).toBe('folder on this Mac, while studio is not reachable');
+  expect(screen.getByTestId('new-robot-where').textContent).toBe('folder on this Mac');
+  const away = screen.getByTestId('new-robot-away');
+  expect([...away.querySelectorAll('.said > div > span')].map((e) => e.textContent)).toEqual(['studio is not reachable', 'This robot starts on this Mac.']);
+  expect(away.querySelector('.said')!.getAttribute('data-mark')).toBe('warn');
   expect(shown()).toEqual(['~/app']);
   typeOther();
   fireEvent.change(folder(), { target: { value: '/Users/ada/notes' } });
@@ -212,7 +217,7 @@ test('a list that cannot be read leaves the field to type in', async () => {
   call.mockImplementation((() => Promise.reject(new Error('svalld connection closed'))) as never);
   await open(far);
   expect(shown()).toEqual([]);
-  expect(screen.getByTestId('new-robot-folders').textContent).toBe('Could not read studio\'s folders.');
+  expect(screen.getByTestId('new-robot-folders').textContent).toBe('studio did not list its folders');
   expect(screen.queryByTestId('new-robot-none')).toBeNull();
   expect(folder().value).toBe('');
 });
@@ -349,6 +354,27 @@ test('Other folder… brings the field, which takes the keys; a listed folder pu
   fireEvent.change(folder(), { target: { value: '/srv/app' } });
   await create();
   expect(creates().map((p) => p.cwd)).toEqual(['/srv/app']);
+});
+
+test('the arrow keys walk the list, choosing as they go, and leave the focus there on Other folder…', async () => {
+  answers(STUDIO, FOLDERS);
+  await open(far);
+  expect(picked()).toBe('/home/linus/app');
+  const list = screen.getByTestId('new-robot-folders');
+  const tabbable = () => [...list.querySelectorAll('[role="option"]')].filter((o) => o.getAttribute('tabindex') === '0').map((o) => o.textContent);
+  expect(tabbable()).toEqual(['~/app']);
+  screen.getByTestId('new-robot-pick-/home/linus/app').focus();
+  fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+  expect(picked()).toBe('/home/linus/notes');
+  expect(document.activeElement).toBe(screen.getByTestId('new-robot-pick-/home/linus/notes'));
+  expect(tabbable()).toEqual(['~/notes']);
+  fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+  expect(screen.getByTestId('new-robot-other').getAttribute('aria-selected')).toBe('true');
+  expect(document.activeElement).toBe(screen.getByTestId('new-robot-other'));
+  expect(screen.getByTestId('new-robot-folder')).toBeTruthy();
+  fireEvent.keyDown(document.activeElement!, { key: 'Home' });
+  expect(picked()).toBe('/home/linus/app');
+  expect(screen.queryByTestId('new-robot-folder')).toBeNull();
 });
 
 test('a listed folder chosen after Other folder… is the one created in', async () => {

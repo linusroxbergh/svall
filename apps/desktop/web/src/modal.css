@@ -46,12 +46,12 @@
 .said[data-mark="warn"] > .said-mark { color: var(--working); }
 /* a command to run, whole on its line unless it is longer than one */
 .said-run { display: inline-block; max-width: 100%; vertical-align: bottom; font-family: var(--mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
-/* New Robot on a home elsewhere: that machine's folders, at one height while they are read, and a field for any other path there */
+/* New Robot on a home elsewhere: that machine's folders, at one height while they are read, a half row showing there are more, and a field for any other path there */
 .new-folder { display: flex; flex-direction: column; gap: var(--sp-xs); min-width: 0; }
-.new-folder-list { display: flex; flex-direction: column; height: 132px; overflow: hidden auto; }
+.new-folder-list { display: flex; flex-direction: column; height: 119px; overflow: hidden auto; }
 .new-folder-list .list-row { flex: none; display: block; overflow: hidden; text-align: start; text-overflow: ellipsis; white-space: nowrap; }
 /* the way to any other folder stays in view at the list's foot, the folders scrolling under it */
-.new-folder-list .new-folder-other { position: sticky; bottom: 0; margin-top: auto; border-top: 1px solid var(--line-soft); background: var(--surface-2); }
+.new-folder-list .new-folder-other { position: sticky; bottom: 0; border-top: 1px solid var(--line-soft); background: var(--surface-2); }
 .new-folder-list .new-folder-other:hover { background: linear-gradient(var(--fill-1), var(--fill-1)), var(--surface-2); }
 .new-folder-list .new-folder-other[aria-selected="true"] { background: linear-gradient(var(--fill-2), var(--fill-2)), var(--surface-2); }
 .new-folder-quiet { display: flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-md); color: var(--ink-3); font-size: var(--text-sm); }

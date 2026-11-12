@@ -7,6 +7,7 @@ import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { shortPath } from './paths.js';
 import { homeName, startsOn, type Via } from './placement.js';
+import { Said } from './Said.js';
 
 // away from its home a worker starts a robot only inside a clone
 const offeredOf = (r: Result<'workspace.clones'>, via: Via) => r.folders.filter((f) => via.online || f.clone);
@@ -30,7 +31,10 @@ export function NewRobot() {
   const [refused, setRefused] = useState<string>();
   // a folder the user chose stands through the list being read again
   const chosen = useRef(false);
+  // Other folder… reached by the arrow keys leaves the focus in the list
+  const keyed = useRef(false);
   const field = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) { setName(''); setNote(''); setLinks(''); setMore(false); setBusy(false); setCwd(''); setOther(false); setListed(undefined); setRefused(undefined); chosen.current = false; return; }
@@ -66,7 +70,7 @@ export function NewRobot() {
   const typing = other || (listed !== undefined && !folders.some((f) => f.path === folder));
 
   const create = async () => {
-    if (busy || (via && !folder)) return;
+    if (busy || (via && (!folder || refused))) return;
     setBusy(true);
     setRefused(undefined);
     const d = deps();
@@ -84,7 +88,20 @@ export function NewRobot() {
       setBusy(false);
     }
   };
-  const choose = (path: string, typed = false) => { chosen.current = true; setOther(typed); setCwd(path); setRefused(undefined); };
+  const choose = (path: string, typed = false) => { chosen.current = true; keyed.current = false; setOther(typed); setCwd(path); setRefused(undefined); };
+  // the arrow keys walk the list, choosing as they go, as a listbox does
+  const walk = (e: React.KeyboardEvent) => {
+    const all = [...list.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? []];
+    const at = all.indexOf(document.activeElement as HTMLButtonElement);
+    const to = ({ ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: all.length - 1 } as Record<string, number>)[e.key];
+    if (to === undefined || !all.length) return;
+    e.preventDefault();
+    const next = all[Math.max(0, Math.min(all.length - 1, to))];
+    next.click();
+    keyed.current = true;
+    next.focus();
+  };
+  const away = on === via?.machine && !via?.online;
 
   return (
     <div className="modal-back" data-testid="new-robot" onPointerDown={close}>
@@ -96,22 +113,24 @@ export function NewRobot() {
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />
         {via && (
           <div className="new-folder">
-            <span className="modal-sub" id="new-robot-where" data-testid="new-robot-where">folder on {where}{on === via.machine && !via.online && `, while ${homeName({ machines }, via)} is not reachable`}</span>
-            <div className="new-folder-list" role="listbox" aria-labelledby="new-robot-where" aria-busy={listed === undefined || undefined} data-testid="new-robot-folders">
+            {away && <div data-testid="new-robot-away"><Said line={`${homeName({ machines }, via)} is not reachable`} fix="This robot starts on this Mac." mark="warn" /></div>}
+            <span className="modal-sub" id="new-robot-where" data-testid="new-robot-where">folder on {where}</span>
+            <div className="new-folder-list" ref={list} role="listbox" aria-labelledby="new-robot-where" aria-busy={listed === undefined || undefined} data-testid="new-robot-folders" onKeyDown={walk}>
               {listed === undefined && <span className="new-folder-quiet"><span className="move-spin" aria-hidden />Reading {where}'s folders…</span>}
-              {listed === null && <span className="new-folder-quiet">Could not read {where}'s folders.</span>}
+              {listed === null && <span className="new-folder-quiet"><Said line={`${where === 'this Mac' ? 'This Mac' : where} did not list its folders`} mark="warn" /></span>}
               {listed && !folders.length && <span className="new-folder-quiet" data-testid="new-robot-none">{via.online ? `No clone or robot folder on ${where} yet.` : 'No clone listed here; type a path inside one.'}</span>}
-              {folders.map((f) => (
-                <button key={f.path} className="list-row sm mono" role="option" aria-selected={!typing && f.path === folder} data-testid={`new-robot-pick-${f.path}`} data-tip={f.path} onClick={() => choose(f.path)}><bdi>{shortPath(f.path)}</bdi></button>
-              ))}
-              {folders.length > 0 && <button className="list-row sm" role="option" aria-selected={typing} data-testid="new-robot-other" onClick={() => choose('', true)}>Other folder…</button>}
+              {folders.map((f) => {
+                const picked = !typing && f.path === folder;
+                return <button key={f.path} className="list-row sm mono" role="option" aria-selected={picked} tabIndex={picked ? 0 : -1} data-testid={`new-robot-pick-${f.path}`} data-tip={f.path} onClick={() => choose(f.path)}><bdi>{shortPath(f.path)}</bdi></button>;
+              })}
+              {folders.length > 0 && <button className="list-row sm new-folder-other" role="option" aria-selected={typing} tabIndex={typing ? 0 : -1} data-testid="new-robot-other" onClick={() => choose('', true)}>Other folder…</button>}
             </div>
             {typing && (
-              <input className="fld mono" placeholder="~/code/project" aria-label="Folder" value={cwd} data-testid="new-robot-folder" {...AS_TYPED} autoFocus={other}
+              <input className="fld mono" placeholder="~/code/project" aria-label="Folder" value={cwd} data-testid="new-robot-folder" {...AS_TYPED} autoFocus={other && !keyed.current}
                 onChange={(e) => choose(e.target.value, true)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />
             )}
-            {refused && <span className="new-folder-refused" role="alert" data-testid="new-robot-refused">{refused}</span>}
+            {refused && <div role="alert" data-testid="new-robot-refused"><Said line={refused} /></div>}
           </div>
         )}
         {!more && (
@@ -126,7 +145,8 @@ export function NewRobot() {
           </>
         )}
         <div className="acts">
-          <button className="btn pri" data-testid="new-robot-create" disabled={busy || (!!via && !folder)} data-tip={via && !folder ? `Choose a folder on ${where}` : undefined} onClick={() => void create()}>Create</button>
+          <button className="btn pri" data-testid="new-robot-create" disabled={busy || (!!via && (!folder || !!refused))}
+            data-tip={via && !folder ? `Choose a folder on ${where}` : via && refused ? `Choose another folder on ${where}` : undefined} onClick={() => void create()}>Create</button>
           <button className="btn" onClick={close}>Cancel</button>
         </div>
       </div>

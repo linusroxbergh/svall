@@ -137,7 +137,8 @@ test('when the home goes the open dialog lists this Mac\'s clones, and says whos
     await page.keyboard.press('Meta+t');
     await expect(page.getByTestId('new-robot-where')).toHaveText('folder on studio');
     await home.close();
-    await expect(page.getByTestId('new-robot-where')).toHaveText('folder on this Mac, while studio is not reachable');
+    await expect(page.getByTestId('new-robot-where')).toHaveText('folder on this Mac');
+    await expect(page.getByTestId('new-robot-away')).toHaveText('studio is not reachableThis robot starts on this Mac.');
     await expect(picks(page)).toHaveText(['/Users/ada/app'].map((p) => p.replace('/Users/ada', '~')));
     await expect(page.getByTestId('new-robot-pick-/Users/ada/app')).toHaveAttribute('aria-selected', 'true');
   } finally {
