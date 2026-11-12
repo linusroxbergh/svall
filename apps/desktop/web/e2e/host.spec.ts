@@ -338,7 +338,7 @@ test('a mirror row shows its key, how it stands, a labelled box and details; tic
   await expect(details).toHaveJSProperty('open', false);
   await details.locator('summary').click();
   await expect(details).toHaveJSProperty('open', true);
-  await expect(details).toHaveText('detailsTick to copy, or set LINEAR_API_KEY on studio: svall worker env LINEAR_API_KEY');
+  await expect(details).toHaveText('detailsOr set LINEAR_API_KEY on studio: svall worker env LINEAR_API_KEY');
 
   await panel.getByTestId('host-tick-mirror:claude:mcp:linear').click();
   await expect.poll(() => asked).toEqual([{ machine: MACHINE, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true }]);

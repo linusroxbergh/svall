@@ -260,8 +260,9 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
   const todo = fix && fix !== said ? fix : command;
   const action = opens ? todo?.replace(SSH_THEN, '') : todo;
   const more = [...new Set([row.raw, told])].filter((m): m is string => !!m && m !== said);
-  // what the command a terminal types is for, where the row's state says it
-  const purpose = /\bnot logged in\b/.test(said ?? '') ? `log in to ${label}` : /\bnot installed\b/.test(said ?? '') ? `install ${label}` : undefined;
+  // what the command a terminal types is for, where the row's state says it; a server's login takes /mcp after it, which its command says
+  const purpose = row.step.startsWith('mirror:oauth:') ? undefined
+    : /\bnot logged in\b/.test(said ?? '') ? `log in to ${label}` : /\bnot installed\b/.test(said ?? '') ? `install ${label}` : undefined;
   const open = (
     <button className="btn sm" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
       onClick={() => terminal!(row.run!, row.forward, row.step, purpose)}>Open terminal</button>
