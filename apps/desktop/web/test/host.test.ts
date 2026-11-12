@@ -171,7 +171,7 @@ describe('a step by name', () => {
     // the checks a machine's own doctor reports, its service by no unit or label, and the port it answers on apart from it
     expect(['systemd', 'launchd', 'svalld', 'daemon env', 'daemon path', 'daemon node', 'gh', 'path', 'codex sandbox', 'opencode plugin', 'linger', 'doctor'].map((s) => stepLabel(s)))
       .toEqual(['Background service', 'Background service', 'Service port', 'Service environment', 'Service path', "Service's Node", 'GitHub CLI', 'PATH', 'Codex sandbox',
-        'OpenCode plugin', 'Keeps running', 'Checks there']);
+        'OpenCode plugin', 'After logout', 'Checks there']);
     expect(stepLabel('weather')).toBe('weather');
   });
 

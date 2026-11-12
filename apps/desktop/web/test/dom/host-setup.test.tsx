@@ -591,7 +591,7 @@ test('a machine not yet in the list has its rows shown but nothing ticked, and t
   const box = screen.getByTestId('host-tick-mirror:claude:mcp:linear') as HTMLInputElement;
   // why, said once at the top of the list rather than in a tip over each box
   expect([box.disabled, box.closest('label')!.hasAttribute('data-tip')]).toEqual([true, false]);
-  expect(screen.getByTestId('host-unlisted').textContent).toBe("Update and the copy boxes wait until this Mac's list of machines names trift.");
+  expect(screen.getByTestId('host-unlisted').textContent).toBe('Check again to list trift here; Update and the copy boxes work after that.');
   const body = document.querySelector('.host-body')!;
   expect(body.contains(screen.getByTestId('host-steps'))).toBe(true);
   expect(body.contains(screen.getByTestId('host-machine'))).toBe(false);
@@ -830,6 +830,28 @@ test('an upgrade whose rollback failed did not finish, and offers the rollback t
   expect(screen.getByTestId('host-outcome').textContent).toBe('Upgrade did not finishRoll back triftClose');
   // in the order they ran, as every run's steps
   expect(screen.queryAllByTestId(/^host-step-/).map((e) => e.getAttribute('data-testid'))).toEqual(['host-step-probe', 'host-step-rollback']);
+});
+
+test("while the background service has failed, its port's own check says nothing more", () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'svalld', status: 'warn', detail: 'not running (no port file in /home/ada/.svall): it starts when Svall opens on this fleet' });
+    store.getState().hostStep('doctor', { step: 'systemd', status: 'fail', detail: 'not running', action: 'svall setup', run: 'svall setup' });
+    store.getState().hostDone('doctor', 1);
+  });
+  expect(screen.queryByTestId('host-notes')).toBeNull();
+  expect(screen.queryByTestId('host-step-svalld')).toBeNull();
+  // with the service up, the same row is a note of its own
+  act(() => {
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'svalld', status: 'warn', detail: 'not running (no port file in /home/ada/.svall): it starts when Svall opens on this fleet' });
+    store.getState().hostStep('doctor', { step: 'systemd', status: 'ok', detail: 'running' });
+    store.getState().hostDone('doctor', 0);
+  });
+  expect(screen.getByTestId('host-notes').textContent).toBe('1 note');
 });
 
 test('the fine checks list a section of one row first, with no heading, and count apart what was not checked', () => {

@@ -140,7 +140,7 @@ export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (
 
 const STEP_LABEL: Record<string, string> = {
   name: 'Name', machine: 'Machine', relay: 'The home', ssh: 'Login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
-  space: 'Free space', linger: 'Keeps running', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
+  space: 'Free space', linger: 'After logout', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
   service: 'Services', identity: 'Release there', enrol: 'Worker', seed: 'Your agent setup', claude: 'Claude Code',
   codex: 'Codex', opencode: 'OpenCode', versions: 'Agent versions', probe: 'Final check', rollback: 'Rollback', registry: 'Listed here',
   systemd: 'Background service', launchd: 'Background service', 'launchd plist': 'Service file', worker: 'Worker', 'daemon env': 'Service environment',

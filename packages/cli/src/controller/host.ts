@@ -89,7 +89,9 @@ export class StepError extends Error {
 }
 
 /** A far daemon that answers, from another release than the one asked for. */
-class OtherRelease extends StepError {}
+class OtherRelease extends StepError {
+  constructor(readonly running: string, asked: string) { super(`answers from ${running}, not ${asked}`); }
+}
 
 type Outcome<T> = {
   value: T; status?: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here']; raw?: string;
@@ -431,7 +433,7 @@ async function endToEnd(master: SshMaster, entry: MachineEntry, { release, anyPr
   const { client, info, forward } = await connectForwarded(master, entry, { ...(fleetHome ? { fleetHome } : { profile: PRIVATE }), anyProtocol });
   try {
     const running = (await client.call('system.info', {})).release;
-    if (release && running !== release) throw new OtherRelease(`answers from ${running}, not ${release}`);
+    if (release && running !== release) throw new OtherRelease(running, release);
     return { value: undefined, detail: 'answers', raw: `${entry.record.name} answers on ${fleetHome ?? `its own ${PRIVATE} fleet`}` };
   } catch (err) {
     if (err instanceof OtherRelease) throw err;
@@ -1055,6 +1057,8 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
         return { value: was, detail: `${companion.version} installed`, raw: out.trim().split('\n').at(-1) };
       });
 
+      // the release a daemon that did not take the new one still answers from
+      let answering: string | undefined;
       const probed = await run.step('probe', async () => {
         try {
           const { env } = farFleet(entry.id, d);
@@ -1062,6 +1066,7 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
           await endToEnd(master, entry, { release: companion.version, ...(fleetHome && { fleetHome }) });
           return { value: true, detail: 'answers' };
         } catch (err) {
+          if (err instanceof OtherRelease) answering = err.running;
           return { value: false, status: 'warn' as const, ...unanswered(err), action: seeWhy(name, d) };
         }
       });
@@ -1081,11 +1086,13 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
         d.runs?.(now);
         // only the release before, put back, is a rollback that did what it was for
         const putBack = !replaced && now === before;
-        const runs = putBack ? `back on ${now}` : !replaced ? `on ${now}; ${before} could not be put back`
+        // one release set and another answering is said once, as both
+        const runs = answering && answering !== now ? `set to ${now}, still answering from ${answering}`
+          : putBack ? `back on ${now}` : !replaced ? `on ${now}; ${before} could not be put back`
           : now === before ? `stays on ${now}: no earlier release is kept there` : `on ${now}, the newest release kept there`;
         const long = `ssh ${entry.record.ssh} and read the service's log; ${rollbackTo(name, d)}`;
         if (out instanceof Error) throw new StepError(runs, seeWhy(name, d), undefined, undefined, `${inFull(out)}\n${long}`);
-        return { value: undefined, status: putBack ? 'ok' as const : 'warn' as const, detail: runs, action: seeWhy(name, d), raw: [out.trim(), long].filter(Boolean).join('\n') };
+        return { value: undefined, status: putBack && !(answering && answering !== now) ? 'ok' as const : 'warn' as const, detail: runs, action: seeWhy(name, d), raw: [out.trim(), long].filter(Boolean).join('\n') };
       });
     } finally {
       await master.close().catch(() => undefined);

@@ -69,7 +69,7 @@ test('the machines panel reads the list as it opens, and reports every step', as
   await expect(page.getByTestId('host-step-claude')).toContainText('Claude Code1.2.3, not logged in');
   // an agent update waits, saying why, until this Mac's list names the machine
   await expect(page.getByTestId('host-update-versions')).toBeDisabled();
-  await expect(page.getByTestId('host-unlisted')).toHaveText("Update and the copy boxes wait until this Mac's list of machines names studio.");
+  await expect(page.getByTestId('host-unlisted')).toHaveText('Check again to list studio here; Update and the copy boxes work after that.');
   await expect(page.getByTestId('host-notes')).toHaveText('1 note');
   await expect(page.getByTestId('host-fine')).toHaveText('4 checks fine');
   await expect(page.getByTestId('host-outcome')).toHaveText('studio has 2 things to fixCheck againDone');
