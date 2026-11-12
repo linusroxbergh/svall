@@ -528,7 +528,7 @@ describe('serveFleet', () => {
     const store = createAppStore(undefined);
     const api = { call: () => Promise.resolve(status({ serving: false, error: 'Tailscale on this Mac is signed out', fix: 'Sign in from the Tailscale app', raw: 'logged out' })) } as unknown as Api;
     await serveFleet({ api, store }, true);
-    expect(store.getState().toast).toEqual({ text: 'Tailscale on this Mac is signed out', fix: 'Sign in from the Tailscale app', run: undefined, raw: 'logged out', tone: 'error' });
+    expect(store.getState().toast).toEqual({ text: 'Tailscale on this Mac is signed out.', fix: 'Sign in from the Tailscale app', run: undefined, raw: 'logged out', tone: 'error' });
     expect(store.getState().mobileOpen).toBe(false);
   });
 

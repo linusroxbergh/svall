@@ -387,14 +387,17 @@ test('a window on a far home adds a machine there, and acts on that home\'s work
   }
 });
 
-test('a window standing in for its home offers no Phone pane, and no Add machine', async () => {
+test('a window standing in for its home keeps its Phone pane, which says the home is away, and offers no Add machine', async () => {
   try {
     act(() => {
       store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: 'bbbbbbbb-0000-4000-8000-000000000000' as never, name: 'studio' });
       store.getState().setStatus('online');
     });
     render(<SettingsCard />);
-    expect(screen.queryByTestId('set-tab-phone')).toBeNull();
+    show('phone');
+    expect(screen.getByTestId('set-mobile-away').textContent).toBe('studio is not reachable; its phone link shows once it is.');
+    expect(call).not.toHaveBeenCalledWith('mobile.get', expect.anything());
+    expect(screen.queryByTestId('set-mobile')).toBeNull();
     show('machines');
     expect(screen.queryByTestId('machine-add')).toBeNull();
   } finally {
@@ -611,10 +614,15 @@ test('a fleet name that will not do is said in a note under its row, and the las
   const failure = screen.getByTestId('set-scribe-error');
   expect(within(failure).getByText('the scribe stopped')).toBeTruthy();
   expect(failure.querySelector('details')!.textContent).toBe('detailsCommand failed: claude -p exited 1');
-  // an agent's own failure says what the agent said, its command behind details
+  // an agent's own failure says what the agent said, its hint under it with the command in it as code, its words behind details
   act(() => store.getState().setFleet({ ...fleet(), scribeError: { message: 'claude -p failed: Not logged in · Please run /login', at: 1 } }));
-  expect(screen.getByTestId('set-scribe-error').querySelector('.said > div > span')!.textContent).toBe('Not logged in · Please run /login');
+  expect(screen.getByTestId('set-scribe-error').querySelector('.said > div > span')!.textContent).toBe('Not logged in');
+  expect(screen.getByTestId('set-scribe-error').querySelector('.set-note code')!.textContent).toBe('/login');
+  expect(screen.getByTestId('set-scribe-error').querySelector('.set-note')!.textContent).toBe('Please run /login');
   expect(screen.getByTestId('set-scribe-error').querySelector('details')!.textContent).toBe('detailsclaude -p failed: Not logged in · Please run /login');
+  // under its row, which says when, not beside it
+  expect(screen.getByTestId('set-scribe-error').closest('.row')).toBeNull();
+  expect(screen.getByTestId('set-scribe-error-at').textContent).toBe(new Date(1).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
   act(() => store.getState().setFleet({ ...fleet(), scribeError: { message: 'codex exec exited 1', at: 1 } }));
   expect(screen.getByTestId('set-scribe-error').querySelector('.said > div > span')!.textContent).toBe('stopped without saying why');
 });
@@ -727,7 +735,7 @@ describe('Phone', () => {
     fireEvent.click(screen.getByTestId('set-mobile'));
     unmount();
     await act(async () => { started(denied); });
-    expect(store.getState().toast).toMatchObject({ text: denied.error, fix: denied.fix, run: denied.run, raw: denied.raw, tone: 'error' });
+    expect(store.getState().toast).toMatchObject({ text: `${denied.error}.`, fix: denied.fix, run: denied.run, raw: denied.raw, tone: 'error' });
   });
 
   test('says nobody can connect yet with no login, and nothing of an address or a QR while off', async () => {
@@ -948,7 +956,7 @@ test('past six rules the rules fold behind one line, and rules that cannot be re
     render(<SettingsCard />);
     show('setup');
     const failed = await screen.findByTestId('setup-rules-failed');
-    expect(failed.querySelector('.said > div > span')!.textContent).toBe('The rules could not be read');
+    expect([failed.className, failed.firstChild!.textContent]).toEqual(['set-note', 'The rules on studio could not be read.']);
     expect(failed.querySelector('.modal-more-body')!.textContent).toBe('ssh: connect to host studio port 22: timed out');
     expect(store.getState().toast).toBeUndefined();
   } finally {
@@ -987,7 +995,9 @@ test('the pane\'s ticks go to this Mac\'s daemon, and the copy to the home, nami
     expect(copy.textContent).toBe('Copy now');
     fireEvent.click(copy);
     expect(call).toHaveBeenCalledWith('machines.copySetupFrom', { machine: FAR_ME });
-    expect((await screen.findByTestId('setup-copied')).textContent).toBe('Copied to studio. Replaced files are in /home/ada/.svall/mirror-backup/2026-11-04 on studio.');
+    const copied = await screen.findByTestId('setup-copied');
+    expect([...copied.children].map((c) => c.textContent)).toEqual(['Copied to studio', `What it replaced is in its backup from ${new Date(2026, 10, 4).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}.`]);
+    expect(copied.querySelector('[data-tip]')!.getAttribute('data-tip')).toBe('/home/ada/.svall/mirror-backup/2026-11-04');
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -1010,11 +1020,13 @@ test('a row of several keys has a switch for each and says when it is partly on,
     expect([a.getAttribute('aria-label'), b.getAttribute('aria-label')]).toEqual(["Send claude:mcp:two's A to studio", "Send claude:mcp:two's B to studio"]);
     expect(a.closest('.row')!.firstChild!.textContent).toBe("claude:mcp:two's A a…1");
     expect(a.closest('.row')!.classList.contains('set-sub')).toBe(true);
-    expect(screen.getByTestId('setup-partial-claude:mcp:two').textContent).toBe('1 of 2 on');
+    // the item's own row names it once and says how many of its keys are on
+    const partial = screen.getByTestId('setup-partial-claude:mcp:two');
+    expect([partial.closest('.row')!.firstChild!.textContent, partial.textContent]).toEqual(['claude:mcp:two', '1 of 2 on']);
     expect(screen.queryByTestId('setup-tick-claude:mcp:two')).toBeNull();
     fireEvent.click(a);
     expect(call).toHaveBeenCalledWith('home.setupConsent', { item: 'claude:mcp:two', fields: ['env.A'], on: false });
-    await waitFor(() => expect(screen.queryByTestId('setup-partial-claude:mcp:two')).toBeNull());
+    await waitFor(() => expect(screen.getByTestId('setup-partial-claude:mcp:two').textContent).toBe('0 of 2 on'));
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -1078,14 +1090,16 @@ test('Copy waits for the rows and for each tick, and stays off with the failure 
   }
 });
 
-test('a push from the home that failed here is said', async () => {
+test('a push from the home that failed here is said under the home, what to expect under it and what went wrong behind details', async () => {
   try {
-    farWindow({ ...SETUP, 'home.setup': () => ({ rows: [], pushFailed: 'config.toml cannot be parsed' }) });
+    farWindow({ ...SETUP, 'home.setup': () => ({ rows: [], pushFailed: "EACCES: permission denied, open '/Users/ada/.claude/settings.json'" }) });
     render(<SettingsCard />);
     show('setup');
     const failed = await screen.findByTestId('setup-push-failed');
-    expect(within(failed).getByText("studio's last push did not land here")).toBeTruthy();
-    expect(within(failed).getByText('config.toml cannot be parsed').className).toBe('set-note');
+    expect(failed.closest('.set-group')!.contains(screen.getByTestId('setup-lives'))).toBe(true);
+    expect(within(failed).getByText('studio\'s last push did not land on this Mac')).toBeTruthy();
+    expect(within(failed).getByText('Svall sends it again the next time this Mac links to studio').className).toBe('set-note');
+    expect(failed.querySelector('.modal-more-body')!.textContent).toBe("EACCES: permission denied, open '/Users/ada/.claude/settings.json'");
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -1109,14 +1123,17 @@ test('until home.setup answers, a line says this Mac\'s agent setup is being rea
   }
 });
 
-test('a home.setup that fails shows why and leaves Copy off', async () => {
+test('a home.setup that fails says this Mac\'s setup could not be read, its words behind details, and leaves Copy off saying why', async () => {
   try {
     farWindow({ ...SETUP, 'home.setup': () => { throw new Error('this Mac\'s daemon did not answer'); } });
     render(<SettingsCard />);
     show('setup');
-    expect((await screen.findByTestId('setup-failed')).textContent).toContain('did not answer');
+    const failed = await screen.findByTestId('setup-failed');
+    expect(failed.querySelector('.said > div > span')!.textContent).toBe("This Mac's agent setup could not be read");
+    expect(failed.querySelector('.modal-more-body')!.textContent).toBe("this Mac's daemon did not answer");
     expect(screen.queryByTestId('setup-reading')).toBeNull();
-    expect((screen.getByTestId('setup-copy') as HTMLButtonElement).disabled).toBe(true);
+    const copy = screen.getByTestId('setup-copy') as HTMLButtonElement;
+    expect([copy.disabled, copy.dataset.tip]).toEqual([true, "This Mac's agent setup could not be read"]);
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -1162,8 +1179,8 @@ test('a copy says what a tick went over on the home and what an untick left ther
     show('setup');
     await screen.findByTestId('setup-tick-claude:mcp:linear');
     fireEvent.click(screen.getByTestId('setup-copy'));
-    const said = (await screen.findByTestId('setup-copied')).textContent;
-    expect(said).toBe("Copied to studio. Replaced files are in /home/ada/.svall/mirror-backup/2026-11-04 on studio. studio's own linear went to its backup folder. odd stays as edited on studio.");
+    const copied = await screen.findByTestId('setup-copied');
+    expect([...copied.children].map((c) => c.textContent)).toEqual(['Copied to studio', `Its own linear is in its backup from ${new Date(2026, 10, 4).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}.`, 'Left as edited there: odd.']);
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -1183,6 +1200,14 @@ test('a refused copy says why, and the pane names the folder the first push kept
     expect(sent).toContainEqual({ type: 'openFolder', path: '/Users/ada/.svall/mirror-backup/2026-11-04', machine: FAR_ME });
     fireEvent.click(screen.getByTestId('setup-copy'));
     expect((await screen.findByTestId('setup-copy-failed')).textContent).toBe('studio is not reachable');
+    // a refusal the daemon gave a fix says it under its sentence
+    call.mockImplementation((m: string) => (m === 'machines.copySetupFrom'
+      ? Promise.reject(Object.assign(new Error('Another copy is landing on studio'), { code: 'busy', data: { fix: 'Try again when it is done' } }))
+      : Promise.resolve(m === 'home.setup' ? { rows: [] } : {})));
+    await waitFor(() => expect((screen.getByTestId('setup-copy') as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByTestId('setup-copy'));
+    await waitFor(() => expect(screen.getByTestId('setup-copy-failed').querySelector('.set-note')?.textContent).toBe('Try again when it is done'));
+    expect(screen.getByTestId('setup-copy-failed').querySelector('.said > div > span')!.textContent).toBe('Another copy is landing on studio');
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -1198,6 +1223,7 @@ test('in fallback the pane opens no file and takes no copy, and keeps this Mac\'
     await screen.findByTestId('setup-backup');
     expect(screen.queryByTestId('setup-files')).toBeNull();
     expect((screen.getByTestId('setup-copy') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('setup-copy').dataset.tip).toBe('studio is not reachable');
     expect(call).not.toHaveBeenCalledWith('resources.get', expect.anything());
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
@@ -1303,12 +1329,13 @@ describe('Fleet config', () => {
     expect(store.getState().toast).toBeUndefined();
   });
 
-  test('a window its daemon serves opens nothing, names the home, and has no phone tab', () => {
+  test('a window its daemon serves opens nothing, names the home, and its Phone pane says there is no route', () => {
     act(() => store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true, served: true }));
     open();
     expect(button().hasAttribute('disabled')).toBe(true);
     expect(button().getAttribute('data-tip')).toBe('This window has no route to studio, where fleet.json is.');
-    expect(screen.queryByTestId('settings-tab-phone')).toBeNull();
+    fireEvent.click(screen.getByTestId('settings-tab-phone'));
+    expect(screen.getByTestId('set-mobile-away').textContent).toBe('This window has no route to studio. Open Svall where it reaches studio to change its phone link.');
   });
 
   test('a refusal is said where the button was', async () => {

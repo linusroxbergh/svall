@@ -7,7 +7,8 @@ import { SETTINGS_KEY } from '../src/store/index.js';
 import { fleet } from '../test/fixtures.js';
 
 const SERVING: MobileStatus = { serving: true, url: 'https://mac.tailnet.ts.net:8443/', port: 8443, logins: [], phones: [] };
-const hhmm = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
+// a time as the page says one, in the page's own locale
+const hhmm = (page: Page, ms: number) => page.evaluate((t) => new Date(t).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }), ms);
 
 // the phone link needs a tailnet, which no test machine is promised, so the daemon behind these is a stand-in
 async function fakeDaemon() {
@@ -61,7 +62,7 @@ test('the phone panel says who is on the page, and hears them arrive and leave',
 
     const since = Date.now() - 3_600_000;
     fake.tell([{ login: 'me@example.com', since }]);
-    await expect(here).toHaveText(`me@example.com connected since ${hhmm(since)}`);
+    await expect(here).toHaveText(`me@example.com connected since ${await hhmm(page, since)}`);
     await expect(here).toHaveAttribute('data-live', 'true');
 
     fake.tell([]);
@@ -234,7 +235,7 @@ test('the settings carry the same answer, and the panel calls out a checkout wit
     await open(page, fake.port);
     await page.getByTestId('settings-open').click();
     await page.getByTestId('settings-tab-phone').click();
-    await expect(page.getByTestId('set-mobile-here')).toHaveText(`me@example.com since ${hhmm(since)}`);
+    await expect(page.getByTestId('set-mobile-here')).toHaveText(`me@example.com since ${await hhmm(page, since)}`);
     fake.tell([]);
     await expect(page.getByTestId('set-mobile-here')).toHaveText('nobody');
 

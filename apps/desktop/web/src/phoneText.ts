@@ -1,15 +1,14 @@
 import type { MobileStatus, PhoneSession } from '@svall/protocol';
 import { splitRaw, withoutTokens } from './host.js';
-import { pad } from './usageText.js';
+
+/** A time of day as the window says one beside a date: the system's hours and minutes. */
+export const clock = (at: number): string => new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
 /** Who has the phone page open right now: the line the corner panel and the settings row both carry, the row's
  *  `labelled` by its label, so it says neither what nor its own word for nobody. */
 export function phonesHere(phones: PhoneSession[] = [], labelled = false): string {
   if (!phones.length) return labelled ? 'nobody' : 'nobody has this open';
-  return phones.map((p) => {
-    const d = new Date(p.since);
-    return `${p.login} ${labelled ? '' : 'connected '}since ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }).join(' · ');
+  return phones.map((p) => `${p.login} ${labelled ? '' : 'connected '}since ${clock(p.since)}`).join(' · ');
 }
 
 // the panes open now that say the phone link's problem, which a toast then need not say again

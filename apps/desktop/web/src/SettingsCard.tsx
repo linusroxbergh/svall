@@ -41,6 +41,22 @@ function Opacity({ label, name, value, info }: { label: string; name: 'cardOpaci
 }
 
 function Phone() {
+  // a window apart from its home reads no phone link, which is the home's to serve
+  const away = useApp((s) => (s.via && (!s.via.online || s.via.served === true) ? homeName(s.fleet, s.via) : undefined));
+  const dialed = useApp((s) => s.via?.served === true);
+  if (away) {
+    return (
+      <Group name="Phone link">
+        <div className="set-note" data-testid="set-mobile-away">
+          {dialed ? `This window has no route to ${away}. Open Svall where it reaches ${away} to change its phone link.` : `${away} is not reachable; its phone link shows once it is.`}
+        </div>
+      </Group>
+    );
+  }
+  return <PhoneRows />;
+}
+
+function PhoneRows() {
   const sw = useMobileSwitch();
   const status = sw.status;
   const home = useApp((s) => s.via && homeName(s.fleet, s.via));
@@ -330,11 +346,16 @@ function RobotPreferences() {
   </>;
 }
 
-// a pass's error starts with the agent's command: what the agent said after it is the line, the whole of it behind details
+// a pass's error starts with the agent's command: what the agent said after it is the line, its hint after ` · ` the fix, with a
+// slash command it names as code, and the whole of it behind details
 const AGENT_RUN = /^(?:claude -p|codex exec|opencode run) (?:failed|exited \d+)(?:: (.+))?$/;
-const passSaid = (message: string): { line: string; raw?: string } => {
+const SLASH = /(?:^|\s)(\/[\w-]+)/;
+const passSaid = (message: string): { line: string; fix?: string; run?: string; raw?: string } => {
   const m = AGENT_RUN.exec(message);
-  return m ? { line: m[1] ?? 'stopped without saying why', raw: withoutTokens(message) } : splitRaw(message);
+  if (!m) return splitRaw(message);
+  const [line, fix] = (m[1] ?? 'stopped without saying why').split(' · ');
+  const run = fix ? SLASH.exec(fix)?.[1] : undefined;
+  return { line, ...(fix && { fix }), ...(run && { run }), raw: withoutTokens(message) };
 };
 
 function Scribe() {
@@ -372,10 +393,13 @@ function Scribe() {
         </div>
         <ScribeModel />
         {error && failure && (
-          <div className="row" data-testid="set-scribe-error">
-            <span>last failure</span>
-            <div className="set-said" data-error data-tip={new Date(error.at).toLocaleString()}><Said line={failure.line} raw={failure.raw} settings /></div>
-          </div>
+          <>
+            <div className="row">
+              <span>last failure</span>
+              <b data-testid="set-scribe-error-at">{when(error.at)}</b>
+            </div>
+            <div className="set-said" data-testid="set-scribe-error" data-error><Said {...failure} settings /></div>
+          </>
         )}
       </Group>
       <Group name="Idle agents">
@@ -590,11 +614,9 @@ export function SettingsCard() {
     tall[on](e);
   }]));
   // banners need the shell, and Updates stands only while one waits; a pane that goes leaves the first in its place
-  const fallback = useApp((st) => !!st.via && (!st.via.online || st.via.served === true));
   // a window on the home holds its agent setup in the Mac's own folders
   const far = useApp((st) => !!st.via);
-  // a worker's daemon holds no phone link, which is its home's to serve
-  const tabs = PANES.filter(([p]) => (p !== 'notifications' || shell) && (p !== 'updates' || update) && (p !== 'phone' || !fallback) && (p !== 'setup' || far));
+  const tabs = PANES.filter(([p]) => (p !== 'notifications' || shell) && (p !== 'updates' || update) && (p !== 'setup' || far));
   const [pane, , Shown] = tabs.find(([p]) => p === picked) ?? tabs[0];
   const step = (e: React.KeyboardEvent) => {
     const at = tabs.findIndex(([p]) => p === pane);

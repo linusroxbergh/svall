@@ -12,8 +12,8 @@
   min-height: clamp(calc(var(--sec-head) + var(--sp-sm)), calc((100cqh - 5 * var(--sp-2xl)) / 6), calc(var(--sec-head) + var(--sp-sm) + 40px)); }
 .side .sec:has(> .sec-body:empty) { min-height: auto; }
 .side .sec[data-fit="true"] { flex-shrink: 1000; }
-/* a placed robot's gaps each carry their way on, so the other fitted sections give way before it */
-.side .sec[data-section="robot.machine"][data-fit="true"] { flex-shrink: 1; }
+/* a placed robot's gaps each carry their way on, and the card ends on its details, so the other fitted sections give way before them */
+.side .sec:is([data-section="robot.machine"], [data-section="robot.details"])[data-fit="true"] { flex-shrink: 1; }
 .sec-body:empty { display: none; }
 .sec-body { flex: 1 1 auto; min-height: 0; overflow: hidden auto; display: flex; flex-direction: column; gap: var(--sp-sm); }
 /* a squeezed section's cut edge fades while more of it lies below */
@@ -212,6 +212,9 @@
 /* one line under the row or group it belongs to */
 .set-note { color: var(--ink-3); font-size: var(--text-sm); line-height: var(--lh); }
 .set-note code { font-family: var(--mono); font-size: var(--text-xs); -webkit-user-select: text; user-select: text; }
+/* a copy that went: that it went, then what it left where */
+.set-done { display: flex; flex-direction: column; gap: var(--sp-2xs); }
+.set-done > span:first-child { color: var(--ink-2); }
 .side .row b.set-slider, .side .row b.set-zoom { display: flex; align-items: center; gap: var(--sp-lg); }
 .set-slider input { width: 132px; accent-color: var(--sand); }
 .set-slider .tnum, .set-zoom .tnum { min-width: 36px; text-align: right; }

@@ -84,7 +84,7 @@ export function MobilePanel({ compact = false }: { compact?: boolean | 'qr' }) {
           <div className="use-note">
             {status.pageMissing && <><b data-testid="mobile-nopage">{NO_PAGE}</b>{' '}</>}
             {status.logins.length ? <>Only {redact ? <i className="mob-mask" /> : status.logins.join(', ')} can connect.</> : 'No login can connect yet.'}
-            {' '}Settings → Phone says how to add a login.
+            {' '}Settings&nbsp;→&nbsp;Phone says how to add a login.
           </div>
           <ol className="mob-steps" data-testid="mobile-steps">
             <li>Scan the code with your phone's camera.</li>

@@ -304,10 +304,13 @@ describe('the phones on the page', () => {
     expect(phonesHere([])).toBe('nobody has this open');
     expect(phonesHere()).toBe('nobody has this open');
     expect(phonesHere([], true)).toBe('nobody');
-    expect(phonesHere([{ login: 'me@example.com', since: at(14, 2) }])).toBe('me@example.com connected since 14:02');
-    expect(phonesHere([{ login: 'me@example.com', since: at(14, 2) }], true)).toBe('me@example.com since 14:02');
+    // the time as the window says one beside a date
+    const clock = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    expect(phonesHere([{ login: 'me@example.com', since: at(14, 2) }])).toBe(`me@example.com connected since ${clock(at(14, 2))}`);
+    expect(phonesHere([{ login: 'me@example.com', since: at(14, 2) }], true)).toBe(`me@example.com since ${clock(at(14, 2))}`);
     expect(phonesHere([{ login: 'me@example.com', since: at(9, 5) }, { login: 'you@example.com', since: at(14, 30) }]))
-      .toBe('me@example.com connected since 09:05 · you@example.com connected since 14:30');
+      .toBe(`me@example.com connected since ${clock(at(9, 5))} · you@example.com connected since ${clock(at(14, 30))}`);
+    expect(clock(at(14, 2))).toBe(new Date(at(14, 2)).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).split(', ').at(-1));
   });
 
   // an off forgets every phone's notifications, so the remedy that turns it off and on says so

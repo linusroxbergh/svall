@@ -25,7 +25,7 @@ async function filesUnder(id: string, dir: string): Promise<string[]> {
 }
 
 // the home's files, opened in the shelf's editor and written there over the API; past six rules, the rules fold
-function HomeFiles({ id, skills }: { id: string; skills: number }) {
+function HomeFiles({ id, skills, home }: { id: string; skills: number; home: string }) {
   const [rules, setRules] = useState<string[]>([]);
   const [unread, setUnread] = useState<string>();
   const [open, setOpen] = useState(false);
@@ -59,7 +59,12 @@ function HomeFiles({ id, skills }: { id: string; skills: number }) {
         </button>
       )}
       {(!folds || open) && rules.map((file) => row(file, file, () => void go(file)))}
-      {unread && <div className="set-said" data-testid="setup-rules-failed"><Said line="The rules could not be read" raw={withoutTokens(unread)} settings mark="warn" /></div>}
+      {unread && (
+        <div className="set-note" data-testid="setup-rules-failed">
+          {`The rules on ${home} could not be read.`}
+          <details className="modal-more"><summary><Caret dir="right" />details</summary><div className="modal-more-body mono">{withoutTokens(unread)}</div></details>
+        </div>
+      )}
     </div>
   );
 }
@@ -83,8 +88,8 @@ export function SetupTicks({ rows, tick }: { rows: SetupRow[]; tick: (r: SetupRo
     }
     return [
       <div className="row" key={r.key}>
-        {label(r)}
-        {t.ticked.length > 0 && !t.on && <b data-testid={`setup-partial-${r.key}`}>{t.ticked.length} of {t.fields.length} on</b>}
+        <span>{r.gap?.name ?? t.name ?? t.item}</span>
+        <b data-testid={`setup-partial-${r.key}`}>{t.ticked.length} of {t.fields.length} on</b>
       </div>,
       ...t.fields.map((f) => (
         <div className="row set-sub" key={`${r.key}#${f}`}>
@@ -97,6 +102,14 @@ export function SetupTicks({ rows, tick }: { rows: SetupRow[]; tick: (r: SetupRo
   return <div data-testid="setup-rows">{rows.map(row)}</div>;
 }
 
+// a problem the daemon said with its fix or a tool's words apart, or one sentence with what a tool said after it
+const saidOf = (e: Error): { line: string; fix?: string; raw?: string } => {
+  const data = (e as Error & { data?: { fix?: unknown; raw?: unknown } }).data;
+  const fix = typeof data?.fix === 'string' ? data.fix : undefined;
+  const raw = typeof data?.raw === 'string' ? withoutTokens(data.raw) : undefined;
+  return fix || raw ? { line: e.message, ...(fix && { fix }), ...(raw && { raw }) } : splitRaw(e.message);
+};
+
 // a backup folder is named for the day it was made, and numbered after the first that day; one named otherwise by its last two parts
 const backupLabel = (dir: string): string => {
   const m = /\/(\d{4})-(\d{2})-(\d{2})(?:-(\d+))?\/?$/.exec(dir);
@@ -104,11 +117,19 @@ const backupLabel = (dir: string): string => {
   return `backup from ${new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}${m[4] ? ` (${m[4]})` : ''}`;
 };
 
-const copied = (home: string, r: Result<'machines.copySetupFrom'>): string => [
-  `Copied to ${home}.`, r.backup && `Replaced files are in ${r.backup} on ${home}.`,
-  r.replaced && `${home}'s own ${r.replaced.join(', ')} went to its backup folder.`,
-  ...(r.left ?? []).map((name) => `${name} stays as edited on ${home}.`),
-].filter(Boolean).join(' ');
+const and = (names: string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
+
+/** What a copy did on the home besides copying: what it replaced, in the home's backup by its day, and what it left as edited there. */
+function Copied({ r }: { r: Result<'machines.copySetupFrom'> }) {
+  const replaced = r.replaced?.length ? `Its own ${and(r.replaced)} ${r.replaced.length > 1 ? 'are' : 'is'}` : 'What it replaced is';
+  return (
+    <>
+      {r.backup ? <span>{replaced} in its <span data-tip={r.backup}>{backupLabel(r.backup)}</span>.</span>
+        : r.replaced?.length ? <span>Its own {and(r.replaced)} went to its backup folder.</span> : null}
+      {!!r.left?.length && <span>Left as edited there: {and(r.left)}.</span>}
+    </>
+  );
+}
 
 /** A window on a worker: the agent setup lives on the fleet's home, whose files open here, and this machine's own goes there only when copied. */
 export function AgentSetup() {
@@ -121,27 +142,33 @@ export function AgentSetup() {
   const [rows, setRows] = useState<SetupRow[]>();
   const [backup, setBackup] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const [said, setSaid] = useState<{ ok: boolean; text: string }>();
+  const [said, setSaid] = useState<{ ok: true; r: Result<'machines.copySetupFrom'> } | { ok: false; e: Error }>();
   // a consent call out, and what the last call about the ticks failed with: a copy waits until the ticks it sends are known
   const [pending, setPending] = useState(0);
-  const [failed, setFailed] = useState<string>();
+  const [failed, setFailed] = useState<{ line: string; raw: string }>();
   const [replaced, setReplaced] = useState<string[]>([]);
   const [pushFailed, setPushFailed] = useState<string>();
   const show = (r: Result<'home.setup'>) => { setRows(r.rows); setBackup(r.backup); setReplaced(r.replaced ?? []); setPushFailed(r.pushFailed); setFailed(undefined); };
-  const fail = (e: Error) => setFailed(e.message);
-  const load = () => { app.api().call('home.setup', {}).then(show, fail); };
+  // what failed in the window's words, and the daemon's behind them
+  const fail = (line: string) => (e: Error) => setFailed({ line, raw: withoutTokens(e.message) });
+  const load = () => { app.api().call('home.setup', {}).then(show, fail("This Mac's agent setup could not be read")); };
   useEffect(load, []);
   useEffect(() => { if (follows) void reloadResources(deps()); }, [follows]);
   const tick = (r: SetupRow, fields: string[], on: boolean) => {
     setPending((n) => n + 1);
-    app.api().call('home.setupConsent', { item: r.tick!.item, fields, on }).then(show, fail).finally(() => setPending((n) => n - 1));
+    app.api().call('home.setupConsent', { item: r.tick!.item, fields, on }).then(show, fail('The key switched was not saved')).finally(() => setPending((n) => n - 1));
   };
+  // why a copy cannot go now, as its button's tip says
+  const off = !follows ? (dialed ? `This window has no route to ${home}` : `${home} is not reachable`)
+    : failed ? failed.line
+    : rows === undefined ? "This Mac's agent setup is still being read"
+    : pending > 0 ? 'A key switched a moment ago is still being saved' : undefined;
   const copy = () => {
     setBusy(true);
     setSaid(undefined);
     app.api().call('machines.copySetupFrom', { machine: me! }).then(
-      (r) => { setSaid({ ok: true, text: copied(home, r) }); void reloadResources(deps()); },
-      (e: Error) => setSaid({ ok: false, text: e.message }),
+      (r) => { setSaid({ ok: true, r }); void reloadResources(deps()); },
+      (e: Error) => setSaid({ ok: false, e }),
     ).finally(() => setBusy(false));
   };
   return (
@@ -153,26 +180,31 @@ export function AgentSetup() {
             {dialed ? `This window has no route to ${home}. Open Svall where it reaches ${home} to edit the setup.` : `${home} is not reachable; its files open once it is.`}
           </div>
         ) : source
-          ? <HomeFiles id={source.rootId} skills={source.groups.find((g) => g.kind === 'skills')?.items.length ?? 0} />
+          ? <HomeFiles id={source.rootId} home={home} skills={source.groups.find((g) => g.kind === 'skills')?.items.length ?? 0} />
           : <div className="set-note"><span className="move-spin" />Reading {home}&apos;s files…</div>}
+        {pushFailed && (
+          <div className="set-said" role="alert" data-testid="setup-push-failed" data-error>
+            <Said line={`${home}'s last push did not land on this Mac`} fix={`Svall sends it again the next time this Mac links to ${home}`} raw={withoutTokens(pushFailed)} settings mark="warn" />
+          </div>
+        )}
       </Group>
       <Group name="Copy from this Mac"
         info={<Info id="setup-copy">Sends what changed on this Mac since the last copy; nothing is removed on {home} except keys you switch off. The first copy replaces same-named files there and keeps the old ones in {home}&apos;s backup folder.</Info>}>
         <div className="row">
           <span>this Mac → {home}</span>
-          <b><button className="btn sm" data-testid="setup-copy" disabled={!follows || busy || rows === undefined || pending > 0 || failed !== undefined}
-            data-tip={`One copy, now, of what is on this Mac; ${home} stays the source after it`} onClick={copy}>{busy ? 'Copying…' : 'Copy now'}</button></b>
+          <b><button className="btn sm" data-testid="setup-copy" disabled={!!off || busy} data-tip={off ?? `One copy, now, of what is on this Mac; ${home} stays the source after it`}
+            onClick={copy}>{busy ? 'Copying…' : 'Copy now'}</button></b>
         </div>
-        {said?.ok && <div className="set-note" role="status" data-testid="setup-copied">{said.text}</div>}
-        {said && !said.ok && <div className="set-said" role="status" data-testid="setup-copy-failed" data-error><Said {...splitRaw(said.text)} settings /></div>}
-        {pushFailed && (
-          <div className="set-said" role="alert" data-testid="setup-push-failed" data-error>
-            <Said line={`${home}'s last push did not land here`} fix={splitRaw(pushFailed).line} raw={splitRaw(pushFailed).raw} settings />
+        {said?.ok && (
+          <div className="set-note set-done" role="status" data-testid="setup-copied">
+            <span>Copied to {home}</span>
+            <Copied r={said.r} />
           </div>
         )}
+        {said && !said.ok && <div className="set-said" role="status" data-testid="setup-copy-failed" data-error><Said {...saidOf(said.e)} settings /></div>}
         {failed && (
           <div className="row" role="alert" data-testid="setup-failed">
-            <div className="set-said" data-error><Said {...splitRaw(failed)} settings /></div>
+            <div className="set-said" data-error><Said {...failed} settings /></div>
             <b><button className="btn sm" data-testid="setup-retry" onClick={load}>Check again</button></b>
           </div>
         )}

@@ -461,6 +461,6 @@ export const serveFleet = (d: ActionDeps, enabled: boolean): Promise<void> =>
       d.store.getState().setMobile(m);
       const problem = m.error ? phoneProblem(m) : undefined;
       // what no open pane says yet: the panel left while the link was starting
-      if (problem && !phoneSaid()) d.store.getState().showToast({ text: problem.line, fix: problem.fix, run: problem.run, raw: problem.raw });
+      if (problem && !phoneSaid()) d.store.getState().showToast({ text: /\w$/.test(problem.line) ? `${problem.line}.` : problem.line, fix: problem.fix, run: problem.run, raw: problem.raw });
     })
     .catch(toast(d));
