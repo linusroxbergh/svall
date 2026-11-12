@@ -852,6 +852,14 @@ test("while the background service has failed, its port's own check says nothing
     store.getState().hostDone('doctor', 0);
   });
   expect(screen.getByTestId('host-notes').textContent).toBe('1 note');
+  // a unit that could not be read says nothing of the service, so the port's check stands
+  act(() => {
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'svalld', status: 'warn', detail: 'not running (no port file in /home/ada/.svall): it starts when Svall opens on this fleet' });
+    store.getState().hostStep('doctor', { step: 'systemd', status: 'fail', detail: 'could not be read', raw: 'systemctl: no systemd user services' });
+    store.getState().hostDone('doctor', 1);
+  });
+  expect(screen.getByTestId('host-notes').textContent).toBe('1 note');
 });
 
 test('the fine checks list a section of one row first, with no heading, and count apart what was not checked', () => {
@@ -888,6 +896,9 @@ test("a key the machine has its own of says so by the machine's name, with no bo
   const row = screen.getByTestId('host-step-mirror:codex:mcp:github');
   expect(row.querySelector('.host-said > span')!.textContent).toBe('trift has its own');
   expect(screen.queryByTestId('host-tick-mirror:codex:mcp:github')).toBeNull();
+  // one with a key ticked keeps its box, so the consent can be taken back or made whole
+  act(() => store.getState().hostRows([{ step: 'mirror:codex:mcp:github', status: 'ok', detail: 'trift has its own', tick: { item: 'codex:mcp:github', name: 'github', fields: ['env.A', 'env.B'], on: false, preview: [], ticked: ['env.A'] } }]));
+  expect(screen.getByTestId('host-tick-mirror:codex:mcp:github')).toBeTruthy();
   fireEvent.click(screen.getByTestId('host-notes'));
   expect(screen.getByTestId('host-step-gh').querySelector('.host-said > span .host-leads')!.textContent).toBe('pull request links stay unresolved');
 });
@@ -927,6 +938,16 @@ test("the ⋯ menu offers no upgrade to the release the machine runs, as its las
     store.getState().hostDone('doctor', 0);
   });
   expect(screen.queryByTestId('machine-upgrade')).toBeNull();
+  // a warning there keeps it, as an agent setup row does not
+  for (const [row, offered] of [[{ step: 'linger', status: 'warn', detail: 'off: the fleet stops when you log out' }, true], [{ step: 'mirror:var:X', status: 'warn', detail: 'not set · ad reads it' }, false]] as const) {
+    act(() => {
+      store.getState().hostStarted('doctor', { name: 'trift' });
+      store.getState().hostStep('doctor', { step: 'release', status: 'ok', detail: '0.9.4, same as this Mac' });
+      store.getState().hostStep('doctor', row);
+      store.getState().hostDone('doctor', 0);
+    });
+    expect(!!screen.queryByTestId('machine-upgrade'), row.step).toBe(offered);
+  }
   // on this release, a machine not yet this fleet's worker still wants the upgrade that makes it one
   act(() => {
     store.getState().hostStarted('doctor', { name: 'trift' });

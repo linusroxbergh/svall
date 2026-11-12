@@ -518,12 +518,14 @@ describe('host list', () => {
       { name: 'trift', id: REMOTE, ssh: 'ada@trift', platform: 'linux-arm64', check },
     ]);
     // a home a join found on the release this one runs says so, as a check of it would
-    const { recordJoined, lastChecks } = await import('../src/commands/host.js');
-    recordJoined(config, REMOTE, '1.2.4');
+    const { keepJoined, lastChecks } = await import('../src/controller/checks.js');
+    keepJoined(config, REMOTE as never, '1.2.4', true);
     expect(machineRows(registry, lastChecks(config), undefined, '1.2.4')[1]).toMatchObject({ current: true, check: { release: '1.2.4', failed: 0 } });
     // a machine last checked on the release this one runs with nothing found says so; with anything left there, or on another release, it does not
     expect(machineRows(registry, { [REMOTE]: { ...check, warned: 0 } }, undefined, '1.2.3')[1]).toMatchObject({ current: true });
     expect(machineRows(registry, { [REMOTE]: check }, undefined, '1.2.3')[1]).not.toHaveProperty('current');
     expect(machineRows(registry, { [REMOTE]: { ...check, warned: 0 } }, undefined, '1.2.4')[1]).not.toHaveProperty('current');
+    // nor one whose last check failed, though it warned of nothing
+    expect(machineRows(registry, { [REMOTE]: { ...check, warned: 0, failed: 1 } }, undefined, '1.2.3')[1]).not.toHaveProperty('current');
   });
 });

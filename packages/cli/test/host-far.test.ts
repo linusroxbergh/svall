@@ -6,7 +6,8 @@ import { enter } from '@svall/svalld/fleet/home-move';
 import { resolvePaths } from '@svall/svalld/paths';
 import { noLoginFix } from '@svall/svalld/placement/workers';
 import { releaseVersion } from '@svall/svalld/release';
-import { hostCommands, recordJoined, setupList, type There } from '../src/commands/host.js';
+import { hostCommands, setupList, type There } from '../src/commands/host.js';
+import { keepJoined } from '../src/controller/checks.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { FLEET, fleet, ssh, useHostWorld, work } from './controller/host-world.js';
 
@@ -56,7 +57,7 @@ describe('host list with a far home', () => {
 
   it('marks the home a join found on this release, with nothing to fix, as current, so its menu offers no upgrade there', async () => {
     ssh.reply(['host', 'list'], { stdout: `${JSON.stringify(rows)}\n` });
-    recordJoined(path.join(work, 'config'), HOME as never, releaseVersion());
+    keepJoined(path.join(work, 'config'), HOME as never, releaseVersion(), true);
     const listed = JSON.parse(await cli(['list'], true)) as { id: string; current?: true }[];
     expect(listed.find((r) => r.id === HOME)).toMatchObject({ current: true });
   });

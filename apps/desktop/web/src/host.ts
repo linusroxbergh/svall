@@ -147,7 +147,7 @@ const STEP_LABEL: Record<string, string> = {
   'daemon path': 'Service path', 'daemon node': "Service's Node", svalld: 'Service port', node: 'Node', path: 'PATH',
   gh: 'GitHub CLI', git: 'Git', hooks: 'Agent hooks', 'codex hooks': 'Codex hooks', 'codex sandbox': 'Codex sandbox', 'opencode plugin': 'OpenCode plugin',
   'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: 'Checks there', svall: 'Svall', keys: 'Keys',
-  mark: 'Hand over', crew: 'Mission control',
+  mark: 'Hand over', crew: 'Mission control', checks: 'Last check',
   fleet: 'This fleet', tailscale: 'Tailscale', snapshot: 'First copy of the fleet', join: 'This Mac joins', adopt: 'Takes over', pause: 'Pause',
   copy: 'Copy the fleet', mission: 'Mission control', phone: 'Phone link', workers: 'Other workers', abort: 'Call off', check: 'Check',
 };

@@ -21,7 +21,7 @@ import { MachineRegistry } from '../controller/registry.js';
 import { SshMaster } from '../controller/ssh.js';
 import { printResult } from '../format.js';
 import { farProfile, type Target } from '../target.js';
-import { ended, interactiveSsh, recordJoined, stepLine, tiered } from './host.js';
+import { ended, interactiveSsh, stepLine, tiered } from './host.js';
 import { parseDuration } from './parse.js';
 import { enrollHere, realEnrol } from './worker.js';
 
@@ -249,10 +249,8 @@ export function fleetCommands(target: () => Target, json: () => boolean): Comman
       const t = target();
       const steps: StepEvent[] = [];
       const emit = flowReporter(json(), steps);
-      const registry = MachineRegistry.load();
-      let release: string | undefined;
       const out = await joinHome({ ssh, ...o }, {
-        emit, openMaster: (destination) => SshMaster.open({ destination }), interactiveSsh, registry, target: t, me: machineId(), svallBase: installPrefix(), runs: (r) => { release = r; },
+        emit, openMaster: (destination) => SshMaster.open({ destination }), interactiveSsh, registry: MachineRegistry.load(), target: t, me: machineId(), svallBase: installPrefix(),
         tailnet: async () => { const m = realMobileDeps(); await tailnetSelf(m, await resolveTailscale(m)); },
         enrol: (e, token) => enrollHere(t, e, { ...realEnrol, token: () => Promise.resolve(token), out: (line) => { if (!json()) process.stdout.write(`${line}\n`); } }),
         state: () => withClient(() => Client.connect(t.home), (c) => c.call('state.get', {})),
@@ -268,8 +266,7 @@ export function fleetCommands(target: () => Target, json: () => boolean): Comman
           }
         },
       });
-      // a join that went through left this fleet a worker of the home, by the name this machine knows it by, whose release it found
-      if (!out.stopped && release) recordJoined(registry.dir, readWorkerFile(resolvePaths(t.home)).homeMachineId, release);
+      // a join that went through left this fleet a worker of the home, by the name this machine knows it by
       finishFlow(out, json(), steps, { done: out.stopped ? '' : joinedLine(readWorkerFile(resolvePaths(t.home)).homeName), stopped: `${thisMachine()} did not join the fleet.` });
     });
   homeMoveCommands(cmd, target, json);

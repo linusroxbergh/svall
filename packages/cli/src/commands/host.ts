@@ -3,9 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Command, Option } from 'commander';
-import { z } from 'zod';
 import { ApiError, aside, asideLine, checksAgain, ellipsis, keyLabel, keyMask, notNeeded, PROTOCOL_VERSION, tierOf, toTick, wayOn, type FleetAgents, type MachineId, type SetupRow } from '@svall/protocol';
-import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@svall/svalld/mobile';
 import { resolvePaths } from '@svall/svalld/paths';
@@ -19,6 +17,7 @@ import { printResult, table } from '../format.js';
 import { addHost, consentHost, dialingFleet, doctorHost, fleetOf, removeHost, rollbackHost, rowStep, sameRelease, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
 import { carriedCompanion } from '../controller/install.js';
 import { byHome, carriedDir, farDocument, relay, relayFor, type FarHome } from '../controller/on-home.js';
+import { forgetCheck, lastChecks, recordCheck, type LastCheck } from '../controller/checks.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { ask } from '../prompt.js';
@@ -238,17 +237,7 @@ export function doctorText(report: HostReport, name: string, there: There, o: { 
   return [`machine ${report.machine}`, ...(o.all ? checkLines(listed) : lines), verdict(name, todo), ...(o.all ? withList(rows, name, there) : setupLine(rows, name, there))].join('\n');
 }
 
-const LastCheck = z.object({ at: z.number(), failed: z.number(), warned: z.number(), release: z.string().optional() });
-/** What the last `host doctor`, add, upgrade or rollback here found: when, how many checks failed and warned, and the release the machine runs. */
-export type LastCheck = z.infer<typeof LastCheck>;
-
-// beside the registry, by machine id, so a renamed machine keeps its check
-const checksFile = (dir: string): string => path.join(dir, 'checks.json');
-
-/** Every machine's last check; a file that cannot be read holds none. */
-export function lastChecks(dir: string): Record<string, LastCheck> {
-  try { return z.record(z.string(), LastCheck).parse(JSON.parse(fs.readFileSync(checksFile(dir), 'utf8'))); } catch { return {}; }
-}
+export { forgetCheck, lastChecks, type LastCheck } from '../controller/checks.js';
 
 // a check that could not reach the machine is one that failed; the agent setup's rows are no warnings
 function checkOf(report: Pick<HostReport, 'release'> & { checks: { name: string; status: string }[] } | undefined): LastCheck {
@@ -256,26 +245,12 @@ function checkOf(report: Pick<HostReport, 'release'> & { checks: { name: string;
   return { at: Date.now(), failed: report ? count('fail') : 1, warned: count('warn'), ...(report?.release && { release: report.release }) };
 }
 
-function recordCheck(dir: string, id: MachineId, check: LastCheck): void {
-  writeDurable(checksFile(dir), { ...lastChecks(dir), [id]: check });
-}
 
 /** What an add, upgrade or rollback that left the machine on `release` keeps as its last check: its steps, and that
  *  release against this Mac's, counted as a doctor's are. */
 export const runCheck = (steps: Map<string, string>, release: string, controller: Pick<HostDeps['controller'], 'release'>): LastCheck => checkOf({
   checks: [...[...steps].map(([name, status]) => ({ name, status })), { name: 'release', status: sameRelease(release, controller) ? 'ok' : 'fail' }], release,
 });
-
-/** What a join found of the home it joined, kept as its last check: the release it runs, against this Mac's. */
-export const recordJoined = (dir: string, home: MachineId, release: string): void => recordCheck(dir, home, runCheck(new Map(), release, { release: releaseVersion() }));
-
-/** Drops a machine's last check, as it leaves the registry; the file goes with the last one. */
-export function forgetCheck(dir: string, id: string): void {
-  const { [id]: gone, ...rest } = lastChecks(dir);
-  if (!gone) return;
-  if (Object.keys(rest).length) writeDurable(checksFile(dir), rest);
-  else fs.rmSync(checksFile(dir), { force: true });
-}
 
 /** One machine as `host list --json` gives it: no ssh for this one, and its last check. */
 // worker: holds this fleet's token here, as a Mac asks of its far home; far: a machine of that home, its `ssh` as that home reaches it

@@ -9,6 +9,7 @@ import { issueToken } from '@svall/svalld/placement/workers';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
 import type { Client } from '../src/client.js';
 import { joinedLine, seedQuestion } from '../src/commands/fleet.js';
+import { lastChecks } from '../src/controller/checks.js';
 import { joinHome, seedHome, thisMachine, type JoinDeps, type SeedAsk } from '../src/controller/home.js';
 import type { StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
@@ -142,13 +143,31 @@ describe('svall fleet join', () => {
   });
 
   it('says what a fleet it takes loses all the same, and names the home by its address and release alone', async () => {
-    const runs = vi.fn();
-    const out = await joinHome({ ssh: 'ada@studio' }, deps({}, { runs }));
-    // the release the home runs, which this Mac keeps as what it last found there
-    expect(runs.mock.calls).toEqual([['1.0.0']]);
+    const d = deps({});
+    fs.rmSync(path.join(d.registry.dir, 'checks.json'), { force: true });
+    const out = await joinHome({ ssh: 'ada@studio' }, d);
+    // a home this Mac never checked is kept as the join found it: the release it runs
+    expect(lastChecks(d.registry.dir)[HOME_ID]).toMatchObject({ release: '1.0.0', warned: 0 });
     expect(out.result).toBe('ready');
     expect(events.find((e) => e.step === 'fleet' && e.status === 'ok')?.detail).toBe("this fleet holds no robot, worker or note; its island names and board columns go with the home's first snapshot");
     expect(events.find((e) => e.step === 'home' && e.status === 'ok')).toEqual({ step: 'home', status: 'ok', detail: "ada@studio is the fleet's home, on release 1.0.0", raw: `machine ${HOME_ID}, fleet ${FLEET}` });
+  });
+
+  it('leaves the last check of a home this Mac checked as it was, and says a check it cannot keep without ending the join on it', async () => {
+    const d = deps({});
+    const dir = d.registry.dir;
+    fs.mkdirSync(dir, { recursive: true });
+    const checked = { at: 1, failed: 0, warned: 1, release: '1.0.0' };
+    fs.writeFileSync(path.join(dir, 'checks.json'), JSON.stringify({ [HOME_ID]: checked }));
+    expect((await joinHome({ ssh: 'ada@studio' }, d)).result).toBe('ready');
+    expect(lastChecks(dir)[HOME_ID]).toEqual(checked);
+    // a file that cannot be written, as a folder in its place
+    fs.rmSync(path.join(dir, 'checks.json'), { force: true });
+    fs.mkdirSync(path.join(dir, 'checks.json', 'held'), { recursive: true });
+    events.length = 0;
+    expect((await joinHome({ ssh: 'ada@studio' }, deps({}))).result).toBe('ready');
+    expect(events.find((e) => e.step === 'checks')).toMatchObject({ status: 'warn', detail: 'not saved', raw: expect.any(String) });
+    fs.rmSync(path.join(dir, 'checks.json'), { recursive: true, force: true });
   });
 
   it('refuses a destination no worker.json can hold before the home issues a token', async () => {

@@ -15,7 +15,7 @@ import { realRun, stopUnit } from '@svall/svalld/linux/service';
 import { serveAsWorker, svalldUnitName, unitDirOf } from '@svall/svalld/linux/setup';
 import { dialSocket, dialSocketTooLong, fleetHomeOfSocket, resolvePaths, type Paths } from '@svall/svalld/paths';
 import { profileLabel } from '@svall/svalld/profile';
-import { installPrefix, svallExe } from '@svall/svalld/release';
+import { installPrefix, releaseVersion, svallExe } from '@svall/svalld/release';
 import { ownRuntime } from '@svall/svalld/runtime';
 import { shq } from '@svall/svalld/text';
 import { heldAsHome, isWorker, readWorkerFile } from '@svall/svalld/worker/mode';
@@ -25,7 +25,8 @@ import type { Enrol } from '../commands/worker.js';
 import { PRIVATE } from '@svall/svalld/profile';
 import { workerProfile } from '@svall/svalld/placement/workers';
 import { farProfile, type Target } from '../target.js';
-import { flow, homeProbe, remoteJson, remotePaths, StepError, tailnetHere, unreached, type HostDeps, type HostOutcome, type Runner } from './host.js';
+import { keepJoined } from './checks.js';
+import { flow, homeProbe, remoteJson, remotePaths, sameRelease, StepError, tailnetHere, unreached, type HostDeps, type HostOutcome, type Runner } from './host.js';
 import type { MachineEntry, MachineRegistry } from './registry.js';
 import { classifySsh, inFull, SshError, type SshMaster } from './ssh.js';
 
@@ -54,7 +55,7 @@ const Enrolled = z.object({
 
 type JoinOptions = { ssh: string; name?: string; homeProfile?: string };
 
-export type JoinDeps = Pick<HostDeps, 'emit' | 'openMaster' | 'interactiveSsh' | 'tailnet' | 'runs'> & {
+export type JoinDeps = Pick<HostDeps, 'emit' | 'openMaster' | 'interactiveSsh' | 'tailnet'> & {
   registry: MachineRegistry;
   target: Target;
   me: MachineId;
@@ -176,7 +177,6 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
         if (served && readWorkerFile(paths).fleetId !== found.fleetId) throw new StepError(`this fleet serves ${served} as a worker, whose robots here this home would close`, `svall -p <new fleet> fleet join ${o.ssh}`);
         return { value: found, detail: `${o.ssh} is the fleet's home, on release ${found.release}`, raw: `machine ${found.id}, fleet ${found.fleetId}` };
       });
-      d.runs?.(home.release);
       const here = d.registry.localMachine();
       const enrolled = await run.step('enrol', async () => {
         const r = await master.run([
@@ -221,6 +221,13 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
         }
         throw new StepError(`${enrolled.homeName} sent no snapshot in ${SNAPSHOT_MS / 1000} s`, `${svallOf(d.target, 'doctor')}, and ${svallOf(d.target, `host doctor ${enrolled.homeName}`)}`);
       });
+      // a home this Mac never checked is kept as the join found it, so its menu offers no upgrade to the release it runs; one it
+      // did check keeps what that check found, and a cache that cannot be written is said, never the join's end
+      try {
+        keepJoined(d.registry.dir, home.id, home.release, sameRelease(home.release, { release: releaseVersion() }));
+      } catch (e) {
+        d.emit({ step: 'checks', status: 'warn', detail: 'not saved', raw: (e as Error).message });
+      }
       await run.step('seed', async () => {
         const name = enrolled.homeName;
         try {

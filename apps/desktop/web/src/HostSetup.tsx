@@ -253,8 +253,8 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
   const label = key ? keyLabel(row) : stepLabel(row.step, home);
   // setup there puts it right: this fleet's, or a named fleet's, which an upgrade from here writes again
   const bySetup = row.run ? SETUP.test(row.run) : !!row.action && UPGRADE.test(row.action);
-  // a key the machine has its own of is nothing to copy over
-  const own = key && row.status === 'ok' && !row.tick?.on;
+  // a key the machine has its own of, with none of its keys ticked, is nothing to copy over
+  const own = key && row.status === 'ok' && !row.tick?.on && !row.tick?.ticked?.length;
   const control = row.tick && !own ? 'tick'
     : (updates || onMac) && idle ? 'update'
     : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && !(row.action && !UPGRADE.test(row.action)) && idle ? 'upgrade'
@@ -390,8 +390,8 @@ function Checklist({ run, terminal, open, unfold }: { run: HostRun; terminal?: T
   const name = run.args.name;
   const steps = run.steps.filter((s) => !isSetup(s));
   const now = run.running ? steps.filter((s) => s.status === 'start').at(-1) : undefined;
-  // a step still under way when the run ended is where it stopped; while the service itself has failed, its port only says so again
-  const down = steps.some((s) => (s.step === 'systemd' || s.step === 'launchd') && s.status === 'fail');
+  // a step still under way when the run ended is where it stopped; while the service is said not to run, its port only says so again
+  const down = steps.some((s) => (s.step === 'systemd' || s.step === 'launchd') && s.status === 'fail' && s.detail !== 'could not be read');
   const ended = (run.running ? steps.filter((s) => s.status !== 'start') : steps).filter((s) => !(down && s.step === 'svalld'));
   // a run that does something to the machine is its steps, in order; an add or a check, the machine's checks by section
   const flow = run.op !== 'add' && run.op !== 'doctor';
