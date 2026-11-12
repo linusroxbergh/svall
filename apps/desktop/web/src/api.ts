@@ -3,8 +3,8 @@ import { ApiError, HelloReply, LOGIN_REFUSED, PROTOCOL_VERSION, UNPAIRED, server
 export { ApiError };
 
 // where svalld answers, the subprotocols the socket offers, and the token to say on arrival; a socket the proxy has
-// already vouched for has none
-type Endpoint = { url: string; protocols?: string[]; token?: string };
+// already vouched for has none. A far home is told what this window calls it and which machine the window is on
+export type Endpoint = { url: string; protocols?: string[]; token?: string; names?: { home: string; me?: string } };
 
 // refused: the proxy brought the page from a tailnet login the fleet does not accept; unpaired: the page holds no pass
 export type Status = 'connecting' | 'online' | 'offline' | 'outdated' | 'refused' | 'unpaired';
@@ -98,8 +98,8 @@ export class Api {
     let answered = false;
     // a socket to a machine that is off can take a minute to fail; given a timeout, one not greeted in time counts as closed
     const late = this.connectTimeout === undefined ? undefined : setTimeout(() => { if (this.ws === ws && !answered) this.drop(ws); }, this.connectTimeout);
-    const token = this.endpoint.token;
-    ws.onopen = () => { if (token !== undefined) ws.send(JSON.stringify({ token })); };
+    const { token, names } = this.endpoint;
+    ws.onopen = () => { if (token !== undefined) ws.send(JSON.stringify({ token, ...names })); };
     // a socket already replaced by a reconnect speaks for nobody: neither its messages nor its close count
     ws.onmessage = (ev) => {
       if (this.ws !== ws) return;

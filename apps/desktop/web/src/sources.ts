@@ -1,5 +1,5 @@
 import type { Event, MethodName, Params, Result } from '@svall/protocol';
-import { Api, ApiError, type Status } from './api.js';
+import { Api, ApiError, type Endpoint, type Status } from './api.js';
 import type { Via } from './placement.js';
 import type { AppStore } from './store/index.js';
 
@@ -20,7 +20,7 @@ export class SourceLeft extends Error {
   constructor() { super('svalld connection closed'); }
 }
 
-type Opts = { makeApi?: (url: string, token: string) => Api; onSwitch?: () => void; onLocalBack?: () => void };
+type Opts = { makeApi?: (endpoint: Endpoint) => Api; onSwitch?: () => void; onLocalBack?: () => void };
 
 const endpoint = (port: number) => `ws://127.0.0.1:${port}`;
 
@@ -166,7 +166,7 @@ export class FollowApi extends Api {
     this.store.getState().setHome({ name, state: stuck ? 'unreachable' : route && !this.homeOnline ? 'connecting' : state, ...(stuck ? { detail: this.stuckDetail(name) } : detail && { detail }), ...(newer && { newer }), ...(release && { release }), ...(master && { master }) });
     if (route) {
       this.setServed(false);
-      this.follow(route, token!);
+      this.follow({ url: route, token: token!, names: { home: name, me: this.me } });
       return;
     }
     // no route is held for a home that gives none, so its old socket stops knocking
@@ -201,12 +201,12 @@ export class FollowApi extends Api {
     this.local.call('home.fallback', { on: !online }).catch(() => {});
   }
 
-  private follow(url: string, token: string): void {
+  private follow(endpoint: Endpoint): void {
     if (this.home) {
-      this.home.setEndpoint({ url, token });
+      this.home.setEndpoint(endpoint);
       return;
     }
-    const home = this.opts.makeApi?.(url, token) ?? new Api({ url, token });
+    const home = this.opts.makeApi?.(endpoint) ?? new Api(endpoint);
     this.home = home;
     home.onEvent = (e) => this.heardFrom(home, e);
     home.onOpen = () => { if (this.home === home) { this.tries = 0; this.failedOpens = 0; this.homeOnline = true; this.pick(); } };
