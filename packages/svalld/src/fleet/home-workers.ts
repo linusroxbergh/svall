@@ -5,13 +5,13 @@ import { enrolLock } from '../kernel-lock.js';
 import { farFleet, FleetMismatch, MachineMismatch } from '../link/connection-info.js';
 import { classifyExit, inFull, SshError, SshMaster } from '../link/ssh.js';
 import type { Logger } from '../log.js';
-import { homeWord, type MachineEntry } from '../machine.js';
+import type { MachineEntry } from '../machine.js';
 import type { Paths } from '../paths.js';
-import { enrollArgv, noLoginFix, tokenFor, workerProfile } from '../placement/workers.js';
+import { enrollArgv, tokenFor, workerProfile } from '../placement/workers.js';
 import { PRIVATE } from '../profile.js';
 import { svallExe } from '../release.js';
 import { shq } from '../text.js';
-import { owedWorkers, readMarker, readWorkersOwed } from './home-move.js';
+import { owedWhy, owedWorkers, readMarker, readWorkersOwed } from './home-move.js';
 
 type Far = Pick<SshMaster, 'run' | 'close'>;
 const openMaster = (destination: string): Promise<Far> => SshMaster.open({ destination });
@@ -66,7 +66,7 @@ export async function reachWorkers(workers: HomeWorker[], o: { fleetId: string; 
 /** The workers a move owes an enrolment, for its install to carry in. */
 export const writeOwed = (p: Pick<Paths, 'workersOwed'>, id: string, workers: string[]): void => writeDurable(p.workersOwed, { id, workers: Object.fromEntries(workers.map((w) => [w, {}])) }, { mode: 0o600 });
 
-function changeOwed(p: Pick<Paths, 'workersOwed'>, machine: string, entry?: { why?: string }): void {
+function changeOwed(p: Pick<Paths, 'workersOwed'>, machine: string, entry?: { why?: string; login?: string }): void {
   const owed = readWorkersOwed(p);
   if (!owed?.workers[machine]) return;
   const { [machine]: _gone, ...rest } = owed.workers;
@@ -113,11 +113,11 @@ export function startRejoins(o: {
   let threw: string | undefined;
 
   // a cause goes on the row and in the log once, however often it comes back; what a tool said goes to the log alone
-  const failed = (machine: string, why: string, raw?: string): false => {
+  const failed = (machine: string, why: string, raw?: string, login?: string): false => {
     const cause = raw ? `${why}: ${raw}` : why;
     if (said.get(machine) === cause) return false;
     said.set(machine, cause);
-    changeOwed(o.paths, machine, { why });
+    changeOwed(o.paths, machine, login ? { login } : { why });
     o.log.error(`${machine} has not joined this home yet: ${cause}`);
     return false;
   };
@@ -128,8 +128,8 @@ export function startRejoins(o: {
     const notTaken = (e: unknown): false => {
       const kind = farKind(e);
       if (STOPS.includes(kind)) refused.add(machine);
-      const login = kind === 'auth' || kind === 'host_key';
-      return failed(machine, login ? `${homeWord()} cannot log in to ${name}; ${noLoginFix(homeWord(), ssh)}` : (e as Error).message, e instanceof SshError ? e.raw : undefined);
+      const login = kind === 'auth' || kind === 'host_key' ? ssh : undefined;
+      return failed(machine, login ? owedWhy({ login }, name) : (e as Error).message, e instanceof SshError ? e.raw : undefined, login);
     };
     const profile = workerProfile(o.paths, machine);
     let master: Far;

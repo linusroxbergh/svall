@@ -9,7 +9,7 @@ import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@svall/svalld/mobile';
 import { resolvePaths } from '@svall/svalld/paths';
-import { owedWorkers } from '@svall/svalld/fleet/home-move';
+import { owedWhy, owedWorkers } from '@svall/svalld/fleet/home-move';
 import { tokenFor } from '@svall/svalld/placement/workers';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
 import { allowedSigners } from '../../../../scripts/install-release.mjs';
@@ -439,7 +439,7 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
       const home = relayFor(target().home, registry);
       const far = home ? await farRows(home, registry) : [];
       const owed = owedWorkers(resolvePaths(target().home));
-      const here = machineRows(registry, lastChecks(dir()), (id) => dialingFleet(id, os.homedir())).map((r) => ({ ...r, ...(o.relayed && heldHere(target(), r.id) && { worker: true as const }), ...(owed[r.id] && { joining: owed[r.id].why ?? '' }) }));
+      const here = machineRows(registry, lastChecks(dir()), (id) => dialingFleet(id, os.homedir())).map((r) => ({ ...r, ...(o.relayed && heldHere(target(), r.id) && { worker: true as const }), ...(owed[r.id] && { joining: owedWhy(owed[r.id], r.name) }) }));
       const rows = [...here.filter((r) => !far.some((f) => f.id === r.id)), ...far];
       printResult(rows, json(), () => table(rows.map((r) => ({
         name: r.name, ssh: r.far ? `${r.ssh ?? '(dials in)'} (from ${home!.name})` : r.ssh ?? (r.id === registry.localId ? '(this machine)' : '(dials in)'), platform: r.platform,

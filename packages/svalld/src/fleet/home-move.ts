@@ -16,14 +16,14 @@ import { HomeCrash as Crash, homePoint } from '../failpoints.js';
 import { sha256Hex } from '../hash.js';
 import { daemonLock, homeMoveLock } from '../kernel-lock.js';
 import { silentLogger } from '../log.js';
-import { putRecord, readRegistry, type MachineEntry } from '../machine.js';
+import { homeWord, putRecord, readRegistry, type MachineEntry } from '../machine.js';
 import { filesIn, HomeDocs } from '../placement/docs-sync.js';
 import { packTar, ustarFits } from '../placement/bundle.js';
 import { carriedConsent } from '../placement/mirror-consent.js';
 import { keysOnly, readState } from '../placement/mirror-state.js';
 import { homeRootOf } from '../placement/repo-key.js';
 import { relocate } from '../placement/relocate.js';
-import { tokenFor, workerIds, workerProfile } from '../placement/workers.js';
+import { noLoginFix, tokenFor, workerIds, workerProfile } from '../placement/workers.js';
 import { expandHome, resolvePaths, type Paths } from '../paths.js';
 import { clean } from '../path-tools.js';
 import { fleetHomes } from '../uninstall.js';
@@ -525,9 +525,13 @@ export function carriedWorkers(p: Paths, entries: MachineEntry[], own: string): 
   return entries.filter((e) => held.includes(e.id) && e.record.ssh && e.record.platform === 'linux').map((e) => ({ id: e.id, record: e.record, profile: workerProfile(p, e.id) ?? own }));
 }
 
-// `tried`: when the last try for that worker ended, by this home's clock
-const WorkersOwed = z.object({ id: z.string(), workers: z.record(z.string(), z.object({ why: z.string().optional(), tried: z.number().optional() })) });
+// `tried`: when the last try for that worker ended, by this home's clock; `login`: the ssh route this home could not log in by
+const WorkersOwed = z.object({ id: z.string(), workers: z.record(z.string(), z.object({ why: z.string().optional(), login: z.string().optional(), tried: z.number().optional() })) });
 export type WorkersOwed = z.infer<typeof WorkersOwed>;
+
+/** Why worker `name` has not joined; a refused login names this home as its reader calls it. */
+export const owedWhy = (owed: WorkersOwed['workers'][string], name: string): string =>
+  (owed.login ? `${homeWord()} cannot log in to ${name}; ${noLoginFix(homeWord(), owed.login)}` : owed.why ?? '');
 
 export const readWorkersOwed = (p: Pick<Paths, 'workersOwed'>): WorkersOwed | undefined => {
   try { return WorkersOwed.parse(JSON.parse(fs.readFileSync(p.workersOwed, 'utf8'))); } catch { return undefined; }

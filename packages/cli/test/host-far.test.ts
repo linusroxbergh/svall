@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { enter } from '@svall/svalld/fleet/home-move';
 import { resolvePaths } from '@svall/svalld/paths';
+import { noLoginFix } from '@svall/svalld/placement/workers';
 import { hostCommands, setupList, type There } from '../src/commands/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { FLEET, fleet, ssh, useHostWorld, work } from './controller/host-world.js';
@@ -60,18 +61,24 @@ describe('host list with a far home', () => {
     expect(out).toContain('has not joined yet: No route to host');
   });
 
-  it('a machine this home owes an enrolment says so on its own list', async () => {
+  it('a machine this home owes an enrolment says so on its own list, a refused login in what the run calls this home', async () => {
     const config = path.join(work, 'config');
     const r = MachineRegistry.load(config);
     r.put(W as never, { name: 'box', ssh: 'ada@box', platform: 'linux', arch: 'arm64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' });
     r.save();
     const p = resolvePaths(fleet);
     enter(p, 'hm_abcdefghij', 'adopted');
-    fs.writeFileSync(p.workersOwed, JSON.stringify({ id: 'hm_abcdefghij', workers: { [W]: { why: 'refused' } } }));
-    let out = '';
-    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((c: unknown) => { out += String(c); return true; });
-    try { await hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => config).parseAsync(['list'], { from: 'user' }); } finally { spy.mockRestore(); }
-    expect((JSON.parse(out) as { id: string; joining?: string }[]).find((m) => m.id === W)?.joining).toBe('refused');
+    const joining = async (owed: object) => {
+      fs.writeFileSync(p.workersOwed, JSON.stringify({ id: 'hm_abcdefghij', workers: { [W]: owed } }));
+      let out = '';
+      const spy = vi.spyOn(process.stdout, 'write').mockImplementation((c: unknown) => { out += String(c); return true; });
+      try { await hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => config).parseAsync(['list'], { from: 'user' }); } finally { spy.mockRestore(); }
+      return (JSON.parse(out) as { id: string; joining?: string }[]).find((m) => m.id === W)?.joining;
+    };
+    expect(await joining({ why: 'refused' })).toBe('refused');
+    vi.stubEnv('SVALL_HOME_WORD', 'studio');
+    onTestFinished(() => { vi.unstubAllEnvs(); });
+    expect(await joining({ login: 'ada@box' })).toBe(`studio cannot log in to box; ${noLoginFix('studio', 'ada@box')}`);
   });
 });
 

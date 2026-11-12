@@ -3,11 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { FleetState, HomeFacts, HomeWorker, MachineId, MachineRecord } from '@svall/protocol';
+import { dispatch, type Ctx } from '../../src/api/methods.js';
 import { homeCheck } from '../../src/fleet/home-freeze.js';
 import { reachWorkers, settleOwed, startRejoins, writeOwed } from '../../src/fleet/home-workers.js';
-import { createMarker, enter, owedWorkers, readMarker, readWorkersOwed } from '../../src/fleet/home-move.js';
+import { createMarker, enter, owedWhy, owedWorkers, readMarker, readWorkersOwed } from '../../src/fleet/home-move.js';
 import { enrolLock, homeMoveLock } from '../../src/kernel-lock.js';
 import { SshError } from '../../src/link/ssh.js';
+import { inCallerNames } from '../../src/machine.js';
 import { resolvePaths } from '../../src/paths.js';
 import { dropToken, issueToken, keyLine, noLoginFix, tokenFor } from '../../src/placement/workers.js';
 import { silentLogger } from '../../src/log.js';
@@ -250,6 +252,8 @@ describe('the workers a new home owes an enrolment', () => {
     return startRejoins({ paths: p, me: ME, name: () => 'studio', platform: 'linux', fleetId: () => FLEET, log: more.log ?? silentLogger, open: open as never, records: more.records ?? (() => [{ id: W, record }]), refresh, frozen: more.frozen ?? (() => false), firstMs: 1, lastMs: 4 });
   };
   const settled = (ms = 40) => new Promise((r) => { setTimeout(r, ms); });
+  // why w1 has not joined, as Machines reads it
+  const reason = (p: ReturnType<typeof resolvePaths>) => { const owed = owedWorkers(p)[W]; return owed && owedWhy(owed, 'box'); };
 
   it('marks when each try ended, the same cause again included, so a check that set one off knows it ended', async () => {
     for (const [what, more] of [['a login that fails', {}], ['no route here', { records: () => [{ id: W, record: { ...record, ssh: undefined } }] }]] as const) {
@@ -261,6 +265,19 @@ describe('the workers a new home owes an enrolment', () => {
       s.stop();
       expect(readWorkersOwed(p)!.workers[W].why, what).toBe(first.why);
     }
+  });
+
+  it('keeps a login refused by its route, which Machines words in what its reader calls this home', async () => {
+    const p = setup('adopted');
+    const s = run(p, () => Promise.reject(new SshError('auth', 'ssh could not log in to ada@box')));
+    await vi.waitFor(() => expect(owedWorkers(p)[W]).toMatchObject({ login: 'ada@box' }));
+    s.stop();
+    const ctx = {
+      store: { state: { machines: { [W]: { name: 'box', reachable: false, since: 0 } }, robots: {} } }, workersOwed: () => owedWorkers(p), viewer: { kind: 'app', send: () => {}, backlog: () => 0 },
+    } as unknown as Ctx;
+    const joining = async () => ((await dispatch({ id: 1, method: 'machines.list', params: {} }, ctx)) as { result: { machines: { joining?: string }[] } }).result.machines[0].joining;
+    expect(await inCallerNames({ home: 'studio' }, joining)).toBe(`studio cannot log in to box; ${noLoginFix('studio', 'ada@box')}`);
+    expect(await joining()).toBe(`this Mac cannot log in to box; ${noLoginFix('this Mac', 'ada@box')}`);
   });
 
   it('touches no worker until the move has gone through', async () => {
@@ -481,16 +498,16 @@ describe('the workers a new home owes an enrolment', () => {
     const p = setup('adopted');
     const error = vi.fn();
     const s = run(p, () => Promise.reject(new SshError(kind as never, 'ssh could not reach ada@box', said)), { log: { ...silentLogger, error } });
-    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toBeDefined());
+    await vi.waitFor(() => expect(reason(p)).toBeTruthy());
     s.stop();
-    expect(owedWorkers(p)[W]?.why).toBe(`this Mac cannot log in to box; ${noLoginFix('this Mac', 'ada@box')}`);
-    expect(owedWorkers(p)[W]?.why).toContain("on this Mac, run test -f ~/.ssh/id_ed25519 || ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519; ssh-copy-id 'ada@box'");
-    expect(owedWorkers(p)[W]?.why).not.toContain(said);
+    expect(reason(p)).toBe(`this Mac cannot log in to box; ${noLoginFix('this Mac', 'ada@box')}`);
+    expect(reason(p)).toContain("on this Mac, run test -f ~/.ssh/id_ed25519 || ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519; ssh-copy-id 'ada@box'");
+    expect(reason(p)).not.toContain(said);
     expect(error.mock.calls.join()).toContain(said);
     const q = setup('adopted');
     const m = masterOf(serving(), { code: 255, stderr: `${said}\n` });
     const again = run(q, () => Promise.resolve(m.master));
-    await vi.waitFor(() => expect(owedWorkers(q)[W]?.why).toContain('ssh-copy-id'));
+    await vi.waitFor(() => expect(reason(q)).toContain('ssh-copy-id'));
     await settled();
     again.stop();
     expect(m.enrols()).toHaveLength(1);
@@ -499,10 +516,10 @@ describe('the workers a new home owes an enrolment', () => {
   it('a login ssh refused says this home\'s fix alone, in the word it goes by, not ssh\'s own of a terminal here', async () => {
     const p = setup('adopted');
     const s = run(p, () => Promise.reject(new SshError('auth', 'ssh could not reach ada@box; run ssh ada@box once in a terminal, then try again', 'ada@box: Permission denied (publickey).')));
-    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toBeDefined());
+    await vi.waitFor(() => expect(reason(p)).toBeTruthy());
     s.stop();
     // the test's word for this home, as a Mac home's is this Mac, not its name
-    expect(owedWorkers(p)[W]?.why).toBe(`this Mac cannot log in to box; ${noLoginFix('this Mac', 'ada@box')}`);
+    expect(reason(p)).toBe(`this Mac cannot log in to box; ${noLoginFix('this Mac', 'ada@box')}`);
   });
 
   it('a cause that comes back once the worker was enrolled is said again', async () => {
@@ -546,7 +563,7 @@ describe('the workers a new home owes an enrolment', () => {
     const p = setup('adopted');
     const open = vi.fn(() => Promise.reject(new SshError('auth', 'refused')));
     const s = run(p, open);
-    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toBeDefined());
+    await vi.waitFor(() => expect(reason(p)).toBeTruthy());
     dropToken(p, W);
     await vi.waitFor(() => expect(owedWorkers(p)).toEqual({}));
     s.stop();
@@ -628,7 +645,7 @@ describe('the workers a new home owes an enrolment', () => {
     const p = setup('adopted');
     const open = vi.fn(() => Promise.reject(new SshError('auth', 'ssh could not reach ada@box', 'Permission denied (publickey)')));
     const s = run(p, open);
-    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toContain('cannot log in to box'));
+    await vi.waitFor(() => expect(reason(p)).toContain('cannot log in to box'));
     await settled();
     expect(open).toHaveBeenCalledTimes(1);
     s.again();
