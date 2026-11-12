@@ -9,10 +9,10 @@ import { Said } from './Said.js';
 const SHORT = 48;
 
 /** A terminal on the machine over its own ssh, `run` typed at its prompt and `forward` the port its login waits on there;
- * `asked` the command as asked for, before a far home wraps it in its own ssh, and `on` the machine it runs on;
+ * `asked` the command as asked for, before a far home wraps it in its own ssh, `why` what it is for, and `on` the machine it runs on;
  * `onEnd` once the user is done with it or its shell exits, `back` when that goes back to the machine's checks. */
-export function MachineTerminal({ name, on = name, ssh, run, asked, forward: port, back, onEnd }: {
-  name: string; on?: string; ssh: string; run?: string; asked?: string; forward?: number; back: boolean; onEnd: () => void;
+export function MachineTerminal({ name, on = name, ssh, run, asked, why, forward: port, back, onEnd }: {
+  name: string; on?: string; ssh: string; run?: string; asked?: string; why?: string; forward?: number; back: boolean; onEnd: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState<string>();
@@ -58,20 +58,24 @@ export function MachineTerminal({ name, on = name, ssh, run, asked, forward: por
 
   return (
     <div className="host-term" data-testid="host-terminal">
-      <div className="host-note" data-testid="host-terminal-note">
-        <span>
-          {!run ? `A shell on ${on}.` : !asked ? `Press Return to open a shell on ${on}.` : dir !== undefined ? `Press Return to open a shell on ${on} in ${dir}.`
-            : <>Press Return to run {asked.length > SHORT ? 'the command' : <code>{asked}</code>} on {on}.</>}
-          {forward && ` Its sign-in comes back through port ${forward} on this Mac.`}
-          {' Click a link to open it in your browser.'}
-        </span>
-        {run && (
-          <details className="modal-more">
-            <summary><Caret dir="right" />command</summary>
-            <code className="modal-more-body mono">{run}</code>
-          </details>
-        )}
-      </div>
+      {/* a shell that quit has nothing to press Return in: its failure stands in for the note */}
+      {!failed && (
+        <div className="host-note" data-testid="host-terminal-note">
+          <span>
+            {!run ? `A shell on ${on}.` : !asked ? `Press Return to open a shell on ${on}.` : dir !== undefined ? `Press Return to open a shell on ${on} in ${dir}.`
+              : why ? `Press Return to ${why} on ${on}.`
+              : <>Press Return to run {asked.length > SHORT ? 'the command' : <code>{asked}</code>} on {on}.</>}
+            {forward && ` Its sign-in comes back through port ${forward} on this Mac.`}
+            {' Click a link to open it in your browser.'}
+          </span>
+          {run && (
+            <details className="modal-more">
+              <summary><Caret dir="right" />details</summary>
+              <code className="modal-more-body mono">{run}</code>
+            </details>
+          )}
+        </div>
+      )}
       {failed && (
         <div className="move-blocker" data-testid="host-terminal-failed">
           <Said line={cut > 0 ? failed.slice(0, cut) : failed} raw={cut > 0 ? failed.slice(cut + 2) : undefined}

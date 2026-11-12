@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError } from '../../src/api.js';
 import type { HostStep } from '../../src/bridge.js';
 import { fleet } from '../fixtures.js';
-import { call, freshStore, sent, store } from './harness.js';
+import { call, freshStore, sent, shell, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
@@ -23,9 +23,9 @@ test('opened to add a machine, the panel asks its name and ssh under their label
   render(<HostSetup />);
   act(() => store.getState().toggleHost(true));
   expect(screen.getByTestId('host-machine').textContent).toBe('Add a machine');
-  expect(screen.getByTestId('host-intro').firstElementChild!.firstChild!.textContent).toBe('Svall installs Svall on a Linux machine over ssh and lists what is left to do.');
+  expect(screen.getByTestId('host-intro').firstElementChild!.firstChild!.textContent).toBe('Installs Svall on a Linux machine over ssh and lists what is left to do.');
   expect(screen.getByRole('tooltip').textContent).toBe('Ubuntu 22.04 LTS or newer with systemd, x86-64 or arm64, and an account you reach over ssh.');
-  for (const [id, label, placeholder] of [['host-name', 'name', 'studio'], ['host-ssh', 'ssh destination', 'linus@studio']]) {
+  for (const [id, label, placeholder] of [['host-name', 'name', 'atlas'], ['host-ssh', 'ssh destination', 'you@atlas']]) {
     const field = screen.getByTestId(id);
     expect(['autocapitalize', 'autocorrect', 'spellcheck', 'autocomplete'].map((a) => field.getAttribute(a)), id).toEqual(['off', 'off', 'false', 'off']);
     expect([field.closest('label')?.firstElementChild?.textContent, field.getAttribute('placeholder')]).toEqual([label, placeholder]);
@@ -50,6 +50,9 @@ test('on a far home the add says that home installs Svall, over an account it re
   act(() => store.getState().toggleHost(true));
   expect(screen.getByTestId('host-intro').firstElementChild!.firstChild!.textContent).toBe('studio installs Svall on a Linux machine over ssh and lists what is left to do.');
   expect(screen.getByRole('tooltip').textContent).toBe('Ubuntu 22.04 LTS or newer with systemd, x86-64 or arm64, and an account studio reaches over ssh.');
+  // its example is never the home
+  act(() => store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: 'bbbbbbbb-0000-4000-8000-000000000000' as never, name: 'atlas', online: true }));
+  expect([screen.getByTestId('host-name').getAttribute('placeholder'), screen.getByTestId('host-ssh').getAttribute('placeholder')]).toEqual(['studio', 'you@studio']);
 });
 
 test('an add that did not go through says where it stopped and asks again with its form filled; one that did is the machine\'s sheet', () => {
@@ -65,11 +68,14 @@ test('an add that did not go through says where it stopped and asks again with i
   // the failed row alone, said once, a tool's words behind details
   expect(screen.queryAllByTestId(/^host-step-/).map((e) => e.getAttribute('data-testid'))).toEqual(['host-step-ssh']);
   const said = screen.getByTestId('host-step-ssh');
+  // a row of the checklist: its name in its column, how it stands, what to do on the line under it
+  expect([said.className, said.querySelector('.host-name')?.textContent, said.querySelector('.modal-sub')?.textContent])
+    .toEqual(['host-step', 'Login', 'run ssh ada@studio once in a terminal and answer what it asks']);
   // the login's fix runs on this Mac, and a terminal on studio would need the login it lacks
   expect(said.textContent).toBe('Loginthis Mac cannot log in to studiorun ssh ada@studio once in a terminal and answer what it asksdetailsPermission denied (publickey).');
   expect(screen.queryByTestId('host-terminal-ssh')).toBeNull();
   expect(screen.queryByTestId('machine-more')).toBeNull();
-  expect(screen.getByTestId('host-outcome').textContent).toBe('Add machine did not finishEdit and try againClose');
+  expect(screen.getByTestId('host-outcome').textContent).toBe('Add machine did not finishTry againClose');
 
   fireEvent.click(screen.getByTestId('host-edit'));
   expect(screen.getByTestId('host-machine').textContent).toBe('Add a machine');
@@ -114,7 +120,7 @@ test('a name the registry would refuse says what a name takes, and Add machine w
   expect((screen.getByTestId('host-add') as HTMLButtonElement).disabled).toBe(false);
   expect(screen.getByTestId('host-add').hasAttribute('data-tip')).toBe(false);
   fireEvent.change(screen.getByTestId('host-ssh'), { target: { value: '' } });
-  expect(screen.getByTestId('host-add').getAttribute('data-tip')).toBe('Needs the ssh destination, such as linus@studio');
+  expect(screen.getByTestId('host-add').getAttribute('data-tip')).toBe('Needs the ssh destination, such as you@atlas');
 });
 
 test('opened on a machine, the panel names it once, its ⋯ beside the ×, and offers Check at its foot', () => {
@@ -290,6 +296,24 @@ test('a remove that took the machine off the list but left copied keys there say
   expect(screen.queryByTestId('machine-more')).toBeNull();
 });
 
+test('a terminal says what its command is for, as the row that opened it says, and gives its note up to a shell that quit', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'gh', status: 'warn', detail: 'not logged in: pull request links stay unresolved', action: 'gh auth login', run: "gh auth login --hostname 'github.com' --git-protocol ssh --scopes 'repo,read:org'" });
+    store.getState().hostDone('doctor', 0);
+  });
+  fireEvent.click(screen.getByTestId('host-notes'));
+  fireEvent.click(screen.getByTestId('host-terminal-gh'));
+  expect(screen.getByTestId('host-terminal-note').firstElementChild!.textContent).toBe('Press Return to log in to GitHub CLI on trift. Click a link to open it in your browser.');
+  act(() => shell({ type: 'term.failed', id: 'machine:trift', reason: 'ssh quit as soon as it started: Could not request local forwarding.' }));
+  expect(screen.queryByTestId('host-terminal-note')).toBeNull();
+  const failed = screen.getByTestId('host-terminal-failed');
+  expect([failed.querySelector('.said')!.getAttribute('data-mark'), failed.querySelector('.said > div > span')!.textContent]).toEqual(['fail', 'ssh quit as soon as it started']);
+});
+
 test('a running check shows what needs the person as found and the step under way; the notes, the fine checks and the agent setup each fold behind one line', () => {
   render(<HostSetup />);
   act(() => {
@@ -336,8 +360,8 @@ test('a running check shows what needs the person as found and the step under wa
   expect(screen.getByTestId('host-details-opencode').textContent).toBe('detailsopencode auth login');
   expect(screen.getByTestId('host-fine').textContent).toBe('3 checks fine');
   fireEvent.click(screen.getByTestId('host-fine'));
-  // the fine checks under the sections they belong to, the only headings
-  expect(screen.getAllByTestId('host-phase').map((e) => e.textContent)).toEqual(['Connection', 'Svall on trift']);
+  // the fine checks under the sections they belong to, the only headings; a section of one row that bears its name has none
+  expect(screen.getAllByTestId('host-phase').map((e) => e.textContent)).toEqual(['Svall on trift']);
   expect(rows()).toEqual(['host-step-linger', 'host-step-opencode', 'host-step-tmux', 'host-step-master', 'host-step-doctor', 'host-step-systemd']);
   expect(screen.getByTestId('host-setup-fold').textContent).toBe('Your agent setup · 1 not on trift yet');
   fireEvent.click(screen.getByTestId('host-setup-fold'));
@@ -345,7 +369,7 @@ test('a running check shows what needs the person as found and the step under wa
   expect(screen.getByTestId('host-outcome').textContent).toBe('trift has 1 thing to fixCheck againDone');
 });
 
-test('a run ends in one line and its foot: Done first once it worked, as the way on, else Check again first', () => {
+test('a run ends in one line and its foot, Done last in every verdict: primary once it worked, and Close once it did not finish', () => {
   render(<HostSetup />);
   act(() => {
     store.getState().setMachines([{ name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64' }]);
@@ -355,7 +379,7 @@ test('a run ends in one line and its foot: Done first once it worked, as the way
     store.getState().hostDone('upgrade', 0);
   });
   expect(screen.getByTestId('host-machine').textContent).toBe('Upgrade trift');
-  expect(screen.getByTestId('host-outcome').textContent).toBe('trift is readyDoneCheck again');
+  expect(screen.getByTestId('host-outcome').textContent).toBe('trift is readyCheck againDone');
   expect([screen.getByTestId('machine-doctor').className, screen.getByTestId('host-done').className]).toEqual(['btn', 'btn pri']);
   fireEvent.click(screen.getByTestId('host-done'));
   expect(store.getState().hostOpen).toBe(false);
@@ -377,6 +401,29 @@ test('a run ends in one line and its foot: Done first once it worked, as the way
   // stopped part way, it says so, with its exit behind details
   act(() => store.getState().hostDone('doctor', 143));
   expect(screen.getByTestId('host-outcome').querySelector('.host-verdict')!.textContent).toBe('Check ended without saying whydetailsexit 143');
+
+  // an upgrade that did not finish closes; one of a name the list does not hold did not finish rather than leave things to fix
+  act(() => {
+    store.getState().hostStarted('upgrade', { name: 'trift' });
+    store.getState().hostStep('upgrade', { step: 'machine', status: 'fail', detail: 'no machine trift in the registry' });
+    store.getState().hostDone('upgrade', 1);
+  });
+  expect(screen.getByTestId('host-outcome').textContent).toBe('Upgrade did not finishCheck againClose');
+});
+
+test('the rows to fix list what failed first, then what warned, as found', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'linger', status: 'warn', detail: 'off: the fleet stops when you log out' });
+    store.getState().hostStep('doctor', { step: 'systemd', status: 'fail', detail: 'not running' });
+    store.getState().hostStep('doctor', { step: 'claude', status: 'warn', detail: '2.1.310, not logged in' });
+    store.getState().hostStep('doctor', { step: 'release', status: 'fail', detail: '0.9.3 there, 0.9.4 on this Mac' });
+    store.getState().hostDone('doctor', 1);
+  });
+  expect(screen.queryAllByTestId(/^host-step-/).map((e) => e.getAttribute('data-testid'))).toEqual(['host-step-systemd', 'host-step-release', 'host-step-linger', 'host-step-claude']);
 });
 
 test('the confirm stands in for the list while it asks, its buttons at the foot', () => {
@@ -432,7 +479,8 @@ test('a key row is named by its key, says how it stands, its box labelled copy; 
   const row = screen.getByTestId('host-step-mirror:claude:mcp:linear');
   expect(row.querySelector('.host-name')?.textContent).toBe("linear's LINEAR_API_KEY");
   expect(row.querySelector('.host-said > span')?.textContent).toBe('not copied');
-  expect(screen.getByTestId('host-details-mirror:claude:mcp:linear').textContent).toBe('detailsTick to copy, or set LINEAR_API_KEY on trift: svall worker env LINEAR_API_KEY');
+  // its details say what else would do, not what its box does
+  expect(screen.getByTestId('host-details-mirror:claude:mcp:linear').textContent).toBe('detailsOr set LINEAR_API_KEY on trift: svall worker env LINEAR_API_KEY');
   // the agent setup holds no robot back: the verdict says ready, and the fold counts what is not there yet
   expect(screen.getByTestId('host-outcome').querySelector('.host-verdict')!.textContent).toBe('trift is ready');
   expect(screen.getByTestId('host-setup-fold').textContent).toBe('Your agent setup · 1 not on trift yet');
@@ -455,7 +503,7 @@ test('a key row is named by its key, says how it stands, its box labelled copy; 
   expect((screen.getByTestId('host-tick-mirror:claude:mcp:linear') as HTMLInputElement).checked).toBe(true);
   expect(screen.queryByTestId('host-details-mirror:claude:mcp:linear')).toBeNull();
   expect(screen.getByTestId('host-setup-fold').textContent).toBe('Your agent setup · all there');
-  expect(screen.getByTestId('host-outcome').textContent).toBe('trift is readyDoneCheck again');
+  expect(screen.getByTestId('host-outcome').textContent).toBe('trift is readyCheck againDone');
 });
 
 test('a tick the worker did not take says why on its row, and the rows are read again as svalld kept them', async () => {
@@ -597,6 +645,17 @@ test("a check row that setup there fixes offers Repair, which installs this Mac'
   fireEvent.click(screen.getByTestId('host-repair-hooks'));
   expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'upgrade', args: { name: 'trift' } });
 
+  // the background service stopped, as the machine's doctor says it: this fleet's setup, or a named fleet's upgrade from here
+  check('ok', [
+    { step: 'systemd', status: 'fail', detail: 'not running', action: 'svall setup', run: 'svall setup', raw: 'svall-svalld@private.service: loaded, inactive (dead), enabled' },
+    { step: 'daemon env', status: 'warn', detail: 'lacks CODEX_HOME', action: 'svall host upgrade <this machine> from the controller' },
+  ]);
+  expect(screen.getByTestId('host-repair-systemd').textContent).toBe('Repair');
+  fireEvent.click(screen.getByTestId('host-notes'));
+  expect(screen.getByTestId('host-repair-daemon env').textContent).toBe('Repair');
+  // what Repair runs there, said as the command it is
+  expect(screen.getByTestId('host-action-systemd').className).toBe('mono');
+
   // another release there is the release row's upgrade to make
   check('fail');
   expect(screen.queryByTestId('host-repair-hooks')).toBeNull();
@@ -648,20 +707,40 @@ test("a machine's Check and Upgrade, off while another run is under way, say so 
   expect(screen.getByTestId('machine-upgrade').getAttribute('data-tip')).toBe('Another run on a machine is under way');
 });
 
-test('a step whose fix is to forget the machine offers Forget, which asks first', () => {
+test('a check row whose fix is to forget the machine offers Forget, which asks first', () => {
   render(<HostSetup />);
   act(() => {
     store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
     store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'master', status: 'fail', detail: 'nothing answers at ada@trift', action: 'svall host remove trift --forget' });
+    store.getState().hostDone('doctor', 1);
+  });
+  fireEvent.click(screen.getByTestId('host-forget-master'));
+  expect(screen.getByTestId('host-confirm').getAttribute('data-op')).toBe('forget');
+  // the confirm stands alone under its title, with no menu beside it
+  expect(screen.queryByTestId('machine-more')).toBeNull();
+});
+
+test('a remove that did not finish offers no button on its row; Forget waits in the ⋯ menu, though the machine answers', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().setFleet({ ...store.getState().fleet, machines: { [MACHINE]: { name: 'trift', reachable: true, since: 0 } } } as never);
+    store.getState().toggleHost(true, 'trift');
     store.getState().hostStarted('remove', { name: 'trift' });
     store.getState().hostStep('remove', {
-      step: 'uninstall', status: 'fail', detail: 'ada@trift could not be reached: ssh: connect to host trift port 22: Operation timed out',
-      action: 'svall host remove trift --forget drops the route and leaves the machine untouched',
+      step: 'uninstall', status: 'fail', detail: 'stopped with an error', raw: 'svall uninstall exited 1 on ada@trift: no',
+      action: 'ssh ada@trift, then svall uninstall and see what stops it; svall host remove trift --forget drops the route and leaves the machine as it is',
     });
     store.getState().hostDone('remove', 1);
   });
-  fireEvent.click(screen.getByTestId('host-forget-uninstall'));
-  expect(screen.getByTestId('host-confirm').getAttribute('data-op')).toBe('forget');
+  const row = screen.getByTestId('host-step-uninstall');
+  expect(row.querySelector('.btn')).toBeNull();
+  expect(screen.getByTestId('host-outcome').textContent).toBe('Remove did not finishTry againClose');
+  fireEvent.click(screen.getByTestId('machine-more'));
+  fireEvent.click(screen.getByTestId('machine-forget'));
+  expect(store.getState().hostConfirm).toEqual({ name: 'trift', forget: true });
 });
 
 test('a check that finds the machine on another release offers its upgrade on that row', () => {
@@ -877,7 +956,7 @@ describe('a terminal for a far worker, wherever it is opened from', () => {
     expect(screen.getByTestId('host-machine').textContent).toBe(title);
     expect(screen.getByTestId('host-terminal-note').firstElementChild!.textContent).toBe(`${note} Click a link to open it in your browser.`);
     const command = screen.getByTestId('host-terminal-note').querySelector('details')!;
-    expect([command.querySelector('summary')!.textContent, command.querySelector('code')!.textContent, command.hasAttribute('open')]).toEqual(['command', typed, false]);
+    expect([command.querySelector('summary')!.textContent, command.querySelector('code')!.textContent, command.hasAttribute('open')]).toEqual(['details', typed, false]);
   });
 
   test('none typed is a shell on the worker', () => {

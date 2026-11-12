@@ -58,6 +58,8 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
     : unread && `Cannot read ${unread}, which may name this machine; fix it`;
   const placed = useApp((s) => Object.values(s.fleet.robots).filter((r) => id && (r.machine === id || r.moving?.to === id)).length);
   const up = useApp((s) => !!id && answers(s.fleet.machines?.[id as MachineId]));
+  // a remove of it that did not finish leaves Forget the way to drop it, as its row's action says
+  const unremoved = useApp((s) => !!s.host && s.host.op === 'remove' && !s.host.running && s.host.args.name === name && !removedBy(s.host));
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<CSSProperties>();
   const box = useRef<HTMLSpanElement>(null);
@@ -123,7 +125,7 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
           {!home && <button role="menuitem" className="menu-item dan" data-testid="machine-remove" disabled={running || placed > 0 || !!stays}
             data-tip={stays || (placed ? `${placed === 1 ? '1 robot is' : `${placed} robots are`} placed there; move ${placed === 1 ? 'it' : 'them'} back first` : 'Uninstall Svall on this machine and drop its route')}
             onClick={item(() => ask(false))}>Remove</button>}
-          {!home && !up && (
+          {!home && (!up || unremoved) && (
             <button role="menuitem" className="menu-item dan" data-testid="machine-forget" disabled={running || !!stays}
               data-tip={stays || 'Drop the route for a machine that cannot be reached, leaving it untouched'} onClick={item(() => ask(true))}>Forget</button>
           )}
@@ -152,18 +154,20 @@ function Outcome({ run, edit }: { run: HostRun; edit(): void }) {
     <button className={pri ? 'btn pri' : 'btn'} data-testid="host-done" onClick={() => app.store.getState().toggleHost(false)}>{label}</button>
   );
   const again = <button className="btn" data-testid="machine-doctor" onClick={() => startHost('doctor', { name, ...farId(run.args) })}>Check again</button>;
-  const acts = run.op === 'add' && !addedBy(run) ? <><button className="btn pri" data-testid="host-edit" onClick={edit}>Edit and try again</button>{close(false, 'Close')}</>
+  // Done after a run that went through, Close after one that did not, always last
+  const end = close(!!o.done, o.failed ? 'Close' : 'Done');
+  const acts = run.op === 'add' && !addedBy(run) ? <><button className="btn pri" data-testid="host-edit" data-tip="Shows the form again, filled in" onClick={edit}>Try again</button>{close(false, 'Close')}</>
     : run.op === 'remove' ? (removedBy(run) ? close(true) : <><button className="btn pri" data-testid="host-again" onClick={() => startHost('remove', run.args)}>Try again</button>{close(false, 'Close')}</>)
     : o.next === 'rollback' ? (
       <>
         <button className="btn pri" data-testid="host-rollback" data-tip="Put back the release the machine ran before"
           onClick={() => startHost('rollback', { name, ...farId(run.args) })}>{OP_TITLE.rollback} {name}</button>
-        {close(false)}
+        {close(false, 'Close')}
       </>
     )
     : run.op === 'add' && o.done ? close(true)
-    : run.op === 'add' || TITLED.has(run.op) ? (o.done ? <>{close(true)}{again}</> : <>{again}{close(false)}</>)
-    : close(!!o.done);
+    : run.op === 'add' || TITLED.has(run.op) ? <>{again}{end}</>
+    : end;
   return (
     <div className="host-foot" data-testid="host-outcome">
       <div className="host-verdict">
@@ -175,7 +179,8 @@ function Outcome({ run, edit }: { run: HostRun; edit(): void }) {
   );
 }
 
-type Terminal = (command: string, forward?: number, step?: string) => void;
+/** Opens a terminal on the machine with `command` typed; `why`, what it is for. */
+type Terminal = (command: string, forward?: number, step?: string, why?: string) => void;
 
 function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; terminal?: Terminal }) {
   const terminal = useLoginTerminal(row.step, opener);
@@ -235,25 +240,31 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
   // a key's row is named by its key, and its box copies it; a program's box says the machine does not need it
   const key = !!row.tick && !notNeeded(row) && row.step !== PHONE;
   const label = key ? keyLabel(row) : stepLabel(row.step, home);
+  // setup there puts it right: this fleet's, or a named fleet's, which an upgrade from here writes again
+  const bySetup = row.run ? SETUP.test(row.run) : !!row.action && UPGRADE.test(row.action);
   const control = row.tick ? 'tick'
     : (updates || onMac) && id && idle ? 'update'
     : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && !(row.action && !UPGRADE.test(row.action)) && idle ? 'upgrade'
     : run.op === 'doctor' && row.step === 'worker' && row.status === 'fail' && !noUpgrade && idle ? 'worker'
-    : run.op === 'doctor' && row.run && SETUP.test(row.run) && run.steps.some((s) => s.step === 'release' && s.status === 'ok') && !noUpgrade && idle ? 'repair'
+    : run.op === 'doctor' && bySetup && run.steps.some((s) => s.step === 'release' && s.status === 'ok') && !noUpgrade && idle ? 'repair'
     : row.step.startsWith('mirror:var:') && row.status === 'warn' && row.action && id && idle ? 'var'
-    : row.status === 'fail' && row.action && FORGET.test(row.action) && id && idle ? 'forget'
+    // a remove that did not finish offers Forget in its ⋯ menu
+    : run.op !== 'remove' && row.status === 'fail' && row.action && FORGET.test(row.action) && id && idle ? 'forget'
     : row.run && terminal && idle ? 'terminal'
     : RUN_AGAIN.has(run.op) && !row.action && row.status === 'fail' && idle ? 'again'
     : undefined;
   // a program row keeps its install command's terminal beside the box that says the machine does not need it
   const opens = control === 'terminal' || (notNeeded(row) && !!row.run && !!terminal && idle);
-  // what to do, as the row says it or its sentence ended in it, less the ssh its terminal opens; then what a tool said
-  const todo = row.action && row.action !== said ? row.action : command;
+  // what to do, as the row says it or its sentence ended in it, less what its box does and the ssh its terminal opens; then what a tool said
+  const fix = key && row.action ? besideBox(row.action) : row.action;
+  const todo = fix && fix !== said ? fix : command;
   const action = opens ? todo?.replace(SSH_THEN, '') : todo;
   const more = [...new Set([row.raw, told])].filter((m): m is string => !!m && m !== said);
+  // what the command a terminal types is for, where the row's state says it
+  const purpose = /\bnot logged in\b/.test(said ?? '') ? `log in to ${label}` : /\bnot installed\b/.test(said ?? '') ? `install ${label}` : undefined;
   const open = (
     <button className="btn sm" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
-      onClick={() => terminal!(row.run!, row.forward, row.step)}>Open terminal</button>
+      onClick={() => terminal!(row.run!, row.forward, row.step, purpose)}>Open terminal</button>
   );
   const box = row.tick && (
     <label className="host-tick">
@@ -295,7 +306,7 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
   };
   return (
     <div className="host-step" data-testid={`host-step-${row.step}`} data-status={row.status}>
-      <span className="host-mark"><Mark status={isSetup(row) && row.status === 'warn' ? 'todo' : row.status} /></span>
+      <span className="host-mark"><Mark status={isSetup(row) && row.status === 'warn' ? 'start' : row.status} /></span>
       <span className="host-name" data-tip={label}>{label}</span>
       <div className="host-said">
         {updating ? <span id={sentence} data-testid={`host-updating-${row.step}`}>updating {[updates && `on ${name}`, onMac && 'on this Mac'].filter(Boolean).join(' and ')}…</span>
@@ -305,7 +316,7 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
           <details className="modal-more" data-testid={`host-details-${row.step}`}>
             <summary><Caret dir="right" />details</summary>
             <div className="modal-more-body">
-              {action && <span data-testid={`host-action-${row.step}`}>{action}</span>}
+              {action && <span data-testid={`host-action-${row.step}`} className={action === row.run ? 'mono' : undefined}>{action}</span>}
               {more.map((m) => <span key={m} className="mono">{m}</span>)}
             </div>
           </details>
@@ -318,6 +329,14 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
 }
 
 const isSetup = (s: HostStep): boolean => s.step.startsWith('mirror:');
+
+/** A key row's action less what its box beside it does: what else would do, or nothing. */
+function besideBox(action: string): string | undefined {
+  const box = /^Tick to copy(?: the whole file, keys included)?(, or |\. |$)/.exec(action);
+  if (!box) return action;
+  const rest = action.slice(box[0].length);
+  return !rest ? undefined : box[1] === ', or ' ? `Or ${rest}` : rest;
+}
 
 // which folded parts of the checklist are open: the notes, the fine checks, the agent setup and its rows already there
 type Open = { notes: boolean; fine: boolean; setup: boolean; there: boolean };
@@ -336,7 +355,8 @@ function Checklist({ run, terminal, open, unfold }: { run: HostRun; terminal?: T
   // a step still under way when the run ended is where it stopped
   const ended = run.running ? steps.filter((s) => s.status !== 'start') : steps;
   const tier = (s: HostStep) => (s.status === 'start' ? 'todo' : stepTier(s, run.op, fleet));
-  const [todo, notes, fine] = (['todo', 'note', 'fine'] as const).map((t) => ended.filter((s) => tier(s) === t));
+  const [found, notes, fine] = (['todo', 'note', 'fine'] as const).map((t) => ended.filter((s) => tier(s) === t));
+  const todo = [...found.filter((s) => s.status === 'fail'), ...found.filter((s) => s.status !== 'fail')];
   const setup = run.steps.filter(isSetup);
   // a row set up from here stays in sight until the machine is checked again: a run's args stay with it as its rows change
   const listed = useRef<{ of?: HostArgs; steps: Set<string> }>({ steps: new Set() });
@@ -359,20 +379,25 @@ function Checklist({ run, terminal, open, unfold }: { run: HostRun; terminal?: T
         </div>
       )}
       {notes.length > 0 && (
-        <div className="host-phase">
+        <div className="host-phase host-notes-rows">
           <Fold open={open.notes} testid="host-notes" flip={flip('notes')}>{plural(notes.length, 'note')}</Fold>
-          {open.notes && notes.map(row)}
+          {open.notes && <div className="host-folded">{notes.map(row)}</div>}
         </div>
       )}
       {fine.length > 0 && (
         <div className="host-phase">
           <Fold open={open.fine} testid="host-fine" flip={flip('fine')}>{plural(fine.length, 'check')} fine</Fold>
-          {open.fine && groupSteps(fine, name).map((group) => (
-            <div key={group.phase} className="host-phase">
-              <div className="kicker" data-testid="host-phase">{group.label}</div>
-              {group.rows.map(row)}
+          {open.fine && (
+            <div className="host-folded">
+              {groupSteps(fine, name).map((group) => (
+                <div key={group.phase} className="host-phase">
+                  {/* a section of one row that bears its name needs no heading over it */}
+                  {!(group.rows.length === 1 && stepLabel(group.rows[0].step) === group.label) && <div className="kicker" data-testid="host-phase">{group.label}</div>}
+                  {group.rows.map(row)}
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       )}
       {setup.length > 0 && (
@@ -381,9 +406,13 @@ function Checklist({ run, terminal, open, unfold }: { run: HostRun; terminal?: T
             <Fold open={open.setup} testid="host-setup-fold" flip={flip('setup')}>Your agent setup · {gaps ? `${gaps} not on ${name} yet` : 'all there'}</Fold>
             <Info id="host-setup">None of this stops a move there. Set it up when a robot there needs it.</Info>
           </div>
-          {open.setup && left.map(row)}
-          {open.setup && there.length > 0 && <Fold open={open.there} testid="host-setup-there" flip={flip('there')}>{there.length} already there</Fold>}
-          {open.setup && open.there && there.map(row)}
+          {open.setup && (
+            <div className="host-folded">
+              {left.map(row)}
+              {there.length > 0 && <Fold open={open.there} testid="host-setup-there" flip={flip('there')}>{there.length} already there</Fold>}
+              {open.there && there.map(row)}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -395,25 +424,27 @@ function AddForm({ from }: { from?: HostArgs }) {
   const home = useApp(homeOf);
   const [name, setName] = useState(from?.name ?? '');
   const [ssh, setSsh] = useState(from?.ssh ?? '');
-  const wanting = !machineName(name) ? 'Needs a name: lowercase letters, digits and dashes' : !sshDestination(ssh) ? 'Needs the ssh destination, such as linus@studio' : undefined;
+  // an example that is never the home
+  const example = home === 'atlas' ? 'studio' : 'atlas';
+  const wanting = !machineName(name) ? 'Needs a name: lowercase letters, digits and dashes' : !sshDestination(ssh) ? `Needs the ssh destination, such as you@${example}` : undefined;
   return (
     <>
       <div className="host-body">
         <div className="host-note" data-testid="host-intro">
           <span>
-            {`${home ?? 'Svall'} installs Svall on a Linux machine over ssh and lists what is left to do.`}
+            {`${home ? `${home} installs` : 'Installs'} Svall on a Linux machine over ssh and lists what is left to do.`}
             <Info id="host-needs">Ubuntu 22.04 LTS or newer with systemd, x86-64 or arm64, and an account {home ? `${home} reaches` : 'you reach'} over ssh.</Info>
           </span>
         </div>
         <div className="host-form">
           <label>
             <span className="modal-sub">name</span>
-            <input className="fld" data-testid="host-name" placeholder="studio" {...AS_TYPED} value={name} onChange={(e) => setName(e.target.value.trim())} />
+            <input className="fld" data-testid="host-name" placeholder={example} {...AS_TYPED} value={name} onChange={(e) => setName(e.target.value.trim())} />
           </label>
           {name && !machineName(name) && <div className="fleet-error" data-testid="host-name-problem">Name the machine with up to 32 lowercase letters, digits and dashes, starting with a letter</div>}
           <label>
             <span className="modal-sub">ssh destination</span>
-            <input className="fld" data-testid="host-ssh" placeholder="linus@studio" {...AS_TYPED} value={ssh} onChange={(e) => setSsh(e.target.value.trim())} />
+            <input className="fld" data-testid="host-ssh" placeholder={`you@${example}`} {...AS_TYPED} value={ssh} onChange={(e) => setSsh(e.target.value.trim())} />
           </label>
         </div>
       </div>
@@ -486,7 +517,7 @@ export function HostSetup() {
     app.store.getState().toggleHost(false);
   };
   // the fix of a home that cannot log in is that home's own
-  const opens: Terminal | undefined = machine && ssh ? (line, port, step) => app.store.getState().openHostTerminal(machine, line, port, step === 'ssh' || step === 'master') : undefined;
+  const opens: Terminal | undefined = machine && ssh ? (line, port, step, why) => app.store.getState().openHostTerminal(machine, line, port, step === 'ssh' || step === 'master', why) : undefined;
   const name = shown?.args.name ?? machine;
   const title = term ? `${terminal.run !== undefined && cdDir(terminal.run) !== undefined ? 'Shell' : 'Terminal'} on ${at}`
     : form ? 'Add a machine'
@@ -495,7 +526,7 @@ export function HostSetup() {
     : adding ? `Add ${name}`
     : TITLED.has(shown.op) ? `${shown.args.forget ? 'Forget' : OP_TITLE[shown.op]} ${name}`
     : name;
-  const menu = !!machine && !term && !form && !adding && !gone && (!shown || shown.args.name === machine);
+  const menu = !!machine && !term && !form && !confirm && !adding && !gone && (!shown || shown.args.name === machine);
   const failed = adding && !running ? shown.steps.find((s) => s.status === 'fail') : undefined;
 
   return (
@@ -508,7 +539,7 @@ export function HostSetup() {
         </div>
         {term ? (
           <div className="host-body">
-            <MachineTerminal name={machine} on={at} ssh={homeSsh ?? ssh} run={typed} asked={terminal.run} forward={forward} back={!!terminal.fromPanel && known} onEnd={ended} />
+            <MachineTerminal name={machine} on={at} ssh={homeSsh ?? ssh} run={typed} asked={terminal.run} why={terminal.why} forward={forward} back={!!terminal.fromPanel && known} onEnd={ended} />
           </div>
         ) : form ? <AddForm key={machine ?? ''} from={editing?.args} /> : confirm ? (
           <>
@@ -551,22 +582,20 @@ export function HostSetup() {
   );
 }
 
-/** Where an add that did not go through stopped: the step, how it stands and what to do, a tool's words behind details. */
+/** Where an add that did not go through stopped, as a row of the checklist: the step, how it stands, what to do under it, a tool's words behind details. */
 function NotAdded({ row, terminal: opener }: { row: HostStep; terminal?: Terminal }) {
   const terminal = useLoginTerminal(row.step, opener);
   const { line, raw } = splitRaw(row.detail ?? row.action ?? '');
   return (
-    <ol className="move-steps" data-testid="host-not-added">
-      <li data-state="failed" data-testid={`host-step-${row.step}`}>
-        <span className="move-mark" aria-hidden><Mark status="fail" /></span>
-        <div>
-          {stepLabel(row.step)}
-          <div className="move-blocker">
-            <Said line={line} fix={row.detail ? row.action : undefined} raw={[raw, row.raw].filter(Boolean).join('\n') || undefined} mark={false} />
-            {row.run && terminal && <button className="btn sm" data-testid={`host-terminal-${row.step}`} onClick={() => terminal(row.run!, row.forward, row.step)}>Open terminal</button>}
-          </div>
+    <div className="host-steps" data-testid="host-not-added">
+      <div className="host-step" data-testid={`host-step-${row.step}`} data-status="fail">
+        <span className="host-mark"><Mark status="fail" /></span>
+        <span className="host-name">{stepLabel(row.step)}</span>
+        <div className="host-said">
+          <Said line={line} fix={row.detail ? row.action : undefined} raw={[raw, row.raw].filter(Boolean).join('\n') || undefined} mark={false} />
         </div>
-      </li>
-    </ol>
+        {row.run && terminal && <button className="btn sm" data-testid={`host-terminal-${row.step}`} onClick={() => terminal(row.run!, row.forward, row.step)}>Open terminal</button>}
+      </div>
+    </div>
   );
 }

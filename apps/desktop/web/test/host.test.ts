@@ -131,8 +131,8 @@ describe('the end of a run', () => {
   });
 
   it('says an add that did not go through did not finish, or ended without saying why with its exit behind details', () => {
-    expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('probe', 'fail', { detail: 'does not answer' })]))).toEqual({ text: 'Add machine did not finish' });
-    expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]))).toEqual({ text: 'Add machine ended without saying why', raw: 'exit 143' });
+    expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('probe', 'fail', { detail: 'does not answer' })]))).toEqual({ text: 'Add machine did not finish', failed: true });
+    expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]))).toEqual({ text: 'Add machine ended without saying why', raw: 'exit 143', failed: true });
     // listed, it is the machine's
     expect(outcomeOf(ended('add', 1, [step('registry', 'ok'), step('linger', 'warn')]))).toEqual({ text: 'box has 1 thing to fix' });
   });
@@ -149,8 +149,8 @@ describe('the end of a run', () => {
     expect(outcomeOf(ended('remove', 0, [step('registry', 'ok')]))).toEqual({ text: 'box is removed', done: true });
     expect(outcomeOf(ended('remove', 0, [step('uninstall', 'skip')], { forget: true }))).toEqual({ text: 'box is forgotten', done: true });
     expect(outcomeOf(ended('rollback', 0, [step('probe', 'ok')]))).toEqual({ text: 'box is rolled back', done: true });
-    expect(outcomeOf(ended('remove', 1, [step('uninstall', 'fail', { detail: 'did not finish' })]))).toEqual({ text: 'Remove did not finish' });
-    expect(outcomeOf(ended('remove', 1, []))).toEqual({ text: 'Remove ended without saying why', raw: 'exit 1' });
+    expect(outcomeOf(ended('remove', 1, [step('uninstall', 'fail', { detail: 'stopped with an error' })]))).toEqual({ text: 'Remove did not finish', failed: true });
+    expect(outcomeOf(ended('remove', 1, []))).toEqual({ text: 'Remove ended without saying why', raw: 'exit 1', failed: true });
   });
 
   it('says a run under way by what it does to the machine', () => {

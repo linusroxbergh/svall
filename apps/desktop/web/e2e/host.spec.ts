@@ -29,7 +29,7 @@ test('the machines panel reads the list as it opens, and reports every step', as
   await expect(panel).toBeVisible();
   // before any run, one line, and what the machine needs behind its Info
   await expect(panel.getByTestId('host-machine')).toHaveText('Add a machine');
-  await expect(page.getByTestId('host-intro')).toContainText('Svall installs Svall on a Linux machine over ssh and lists what is left to do.');
+  await expect(page.getByTestId('host-intro')).toContainText('Installs Svall on a Linux machine over ssh and lists what is left to do.');
   await page.getByTestId('set-info-host-needs').hover();
   await expect(page.locator('#set-tip-host-needs')).toHaveText('Ubuntu 22.04 LTS or newer with systemd, x86-64 or arm64, and an account you reach over ssh.');
 
@@ -53,7 +53,7 @@ test('the machines panel reads the list as it opens, and reports every step', as
   await expect(probe).toContainText('Final checkdoes not answersee why: svall host doctor studio');
   await probe.locator('summary').click();
   await expect(probe.locator('details')).toHaveText('detailsws://127.0.0.1:47800 refused token=…');
-  await expect(page.getByTestId('host-outcome')).toHaveText('Add machine did not finishEdit and try againClose');
+  await expect(page.getByTestId('host-outcome')).toHaveText('Add machine did not finishTry againClose');
 
   // asked again, its form comes back filled
   await page.getByTestId('host-edit').click();
@@ -104,7 +104,7 @@ test('a check says ready, or how many things are left, and Check runs it once mo
   await page.getByTestId('host-fine').click();
   await expect(page.getByTestId('host-phase')).toHaveText(['Svall on studio', 'Agents on studio']);
   await expect(page.getByTestId('host-step-release')).toContainText('0.5.0');
-  await expect(page.getByTestId('host-outcome')).toHaveText('studio is readyDoneCheck again');
+  await expect(page.getByTestId('host-outcome')).toHaveText('studio is readyCheck againDone');
 
   await panel.getByTestId('machine-doctor').click();
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'systemd', status: 'fail', detail: 'not running', raw: 'svall-svalld@private.service is inactive' } });
@@ -121,7 +121,7 @@ test('a check says ready, or how many things are left, and Check runs it once mo
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'probe', status: 'ok', detail: 'answers' } });
   await receive(page, { type: 'host.done', op: 'upgrade', code: 0 });
   await expect(panel.getByTestId('host-machine')).toHaveText('Upgrade studio');
-  await expect(page.getByTestId('host-outcome')).toHaveText('studio is readyDoneCheck again');
+  await expect(page.getByTestId('host-outcome')).toHaveText('studio is readyCheck againDone');
   await expect(page.getByTestId('host-rollback')).toHaveCount(0);
 
   // an upgrade stopped in install leaves no rollback to offer
@@ -138,11 +138,11 @@ test('a check says ready, or how many things are left, and Check runs it once mo
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'probe', status: 'warn', detail: 'does not answer' } });
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'rollback', status: 'fail', detail: 'did not finish', raw: 'svall setup --rollback exited 1' } });
   await receive(page, { type: 'host.done', op: 'upgrade', code: 1 });
-  await expect(page.getByTestId('host-outcome')).toHaveText('studio has 2 things to fixRoll back studioDone');
+  await expect(page.getByTestId('host-outcome')).toHaveText('studio has 2 things to fixRoll back studioClose');
   await page.getByTestId('host-rollback').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'rollback', args: { name: 'studio' } });
   await receive(page, { type: 'host.done', op: 'rollback', code: 0 });
-  await expect(page.getByTestId('host-outcome')).toHaveText('studio is rolled backDoneCheck again');
+  await expect(page.getByTestId('host-outcome')).toHaveText('studio is rolled backCheck againDone');
 });
 
 test('a fix the machine leaves to the user opens a terminal there with its command typed, and the machine is checked again once it closes', async ({ page, svall }) => {
@@ -163,7 +163,7 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
 
   await panel.getByTestId('host-terminal-claude').click();
   await expect(panel.getByTestId('host-machine')).toHaveText('Terminal on studio');
-  await expect(panel.getByTestId('host-terminal-note')).toContainText('Press Return to run claude auth login on studio.');
+  await expect(panel.getByTestId('host-terminal-note')).toContainText('Press Return to log in to Claude Code on studio.');
   await expect(panel.getByTestId('host-steps')).toHaveCount(0);
   const shown = (await sent(page)).filter((m) => m.type === 'term.show');
   expect(shown).toEqual([{ type: 'term.show', id: 'machine:studio', rect: expect.any(Object), machine: { ssh: 'linus@studio', type: 'claude auth login' } }]);
@@ -257,7 +257,7 @@ test('the setup page ends in one line, the agent setup counted on its fold; a lo
   await expect(panel.getByTestId('host-phase')).toHaveCount(0);
   await expect(panel.getByTestId('host-fine')).toHaveText('4 checks fine');
   await expect(panel.getByTestId('host-step-mirror:claude:mcp:linear')).toHaveCount(0);
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is readyDoneCheck again');
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is readyCheck againDone');
   // two servers whose keys are not copied are two parts, each with its own row and box
   await expect(panel.getByTestId('host-setup-fold')).toHaveText('Your agent setup · 2 not on studio yet');
   await panel.getByTestId('host-setup-fold').click();
@@ -269,7 +269,7 @@ test('the setup page ends in one line, the agent setup counted on its fold; a lo
   await panel.getByTestId('machine-doctor').click();
   const vars = Array.from({ length: 40 }, (_, i): HostStep => ({ step: `mirror:var:VAR_${i}`, status: 'ok', detail: 'set' }));
   await doctor(page, [...PASSED, ...vars]);
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is readyDoneCheck again');
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is readyCheck againDone');
   await expect(panel.getByTestId('host-setup-fold')).toHaveText('Your agent setup · all there');
   await panel.getByTestId('host-setup-there').click();
   await expect(panel.getByTestId('host-setup-there')).toHaveText('40 already there');
@@ -282,7 +282,7 @@ test('the setup page ends in one line, the agent setup counted on its fold; a lo
   await panel.getByTestId('machine-more').click();
   await panel.getByTestId('machine-remove').click();
   await page.getByTestId('host-confirm-yes').click();
-  await receive(page, { type: 'host.step', op: 'remove', event: { step: 'uninstall', status: 'fail', detail: 'did not finish', raw: 'svall uninstall exited 1' } });
+  await receive(page, { type: 'host.step', op: 'remove', event: { step: 'uninstall', status: 'fail', detail: 'stopped with an error', raw: 'svall uninstall exited 1' } });
   await receive(page, { type: 'host.done', op: 'remove', code: 1 });
   await expect(panel.getByTestId('host-machine')).toHaveText('Remove studio');
   await expect(panel.getByTestId('host-outcome')).toHaveText('Remove did not finishTry againClose');
@@ -350,7 +350,7 @@ test('a mirror row shows its key, how it stands, a labelled box and details; tic
   await panel.getByTestId('host-setup-there').click();
   expect(await panel.locator('[data-testid^="host-step-"]').evaluateAll((rows) => rows.map((r) => r.getAttribute('data-testid'))))
     .toEqual(['host-step-mirror:claude:mcp:linear', 'host-step-mirror:var:X']);
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is readyDoneCheck again');
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is readyCheck againDone');
   // nothing ran on the machine for it
   expect((await sent(page)).filter((m) => m.type === 'host.start')).toHaveLength(1);
 });

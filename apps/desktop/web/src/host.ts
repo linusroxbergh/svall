@@ -198,8 +198,8 @@ export const runningLine = ({ op, args }: Pick<HostRun, 'op' | 'args'>): string 
   return doing[op] ? `${doing[op]} ${args.name}…` : `${OP_TITLE[op]}: running…`;
 };
 
-/** `done`: the run did what it was for and left nothing to fix; `next`: the one step the sheet offers; `raw`: what the line rests on, behind details. */
-export type RunOutcome = { text: string; raw?: string; done?: true; next?: 'rollback' };
+/** `done`: the run did what it was for and left nothing to fix; `failed`: it did not finish; `next`: the one step the sheet offers; `raw`: what the line rests on, behind details. */
+export type RunOutcome = { text: string; raw?: string; done?: true; failed?: true; next?: 'rollback' };
 
 export const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
@@ -218,13 +218,15 @@ export function outcomeOf(run: HostRun, fleet?: FleetAgents): RunOutcome {
   const todo = run.steps.filter((s) => stepTier(s, run.op, fleet) === 'todo').length;
   // an upgrade puts the release before back on its own; only a rollback that failed leaves one to ask for
   const rollback = run.op === 'upgrade' && run.steps.some((s) => s.step === 'rollback' && s.status === 'fail') ? { next: 'rollback' as const } : {};
-  if ((run.op === 'add' && addedBy(run)) || run.op === 'doctor' || run.op === 'upgrade') {
+  // an upgrade of a name the list does not hold leaves no machine with anything to fix
+  const upgraded = run.op === 'upgrade' && !run.steps.some((s) => s.step === 'machine' && s.status === 'fail');
+  if ((run.op === 'add' && addedBy(run)) || run.op === 'doctor' || upgraded) {
     if (todo) return { text: `${name} has ${plural(todo, 'thing')} to fix`, ...rollback };
     if (run.code === 0) return { text: `${name} is ready`, done: true };
   }
   if (removedBy(run) && todo) return { text: `${name} has ${plural(todo, 'thing')} to fix` };
-  if (run.steps.some((s) => s.status === 'fail')) return { text: `${OP_TITLE[run.op]} did not finish` };
-  if (run.code !== 0) return { text: `${OP_TITLE[run.op]} ended without saying why`, raw: `exit ${run.code}` };
+  if (run.steps.some((s) => s.status === 'fail')) return { text: `${OP_TITLE[run.op]} did not finish`, failed: true };
+  if (run.code !== 0) return { text: `${OP_TITLE[run.op]} ended without saying why`, raw: `exit ${run.code}`, failed: true };
   const done: Partial<Record<HostOp, string>> = { rollback: `${name} is rolled back`, remove: `${name} is ${run.args.forget ? 'forgotten' : 'removed'}` };
   return { text: done[run.op] ?? `${OP_TITLE[run.op]}: done`, done: true };
 }
