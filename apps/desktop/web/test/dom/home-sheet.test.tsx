@@ -404,7 +404,7 @@ describe('the sheet of a home move', () => {
     fireEvent.click(screen.getByTestId('home-go'));
     for (const s of ['check', 'pause', 'phone', 'copy', 'adopt', 'join', 'probe']) step(s, 'ok');
     await act(async () => { store.getState().hostDone('home', 0); store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
-    const failed = await screen.findByTestId('home-phone-failed');
+    const failed = (await screen.findByTestId('mobile-problem')).parentElement!;
     expect(said(failed)).toEqual(['Tailscale on studio does not let Svall share this fleet', 'Run once on studio: sudo tailscale set --operator=$USER']);
     expect(raw(failed)).toBe('Access denied: serve config denied');
     expect(failed.textContent).toContain('Turn it on later in Settings → Phone.');

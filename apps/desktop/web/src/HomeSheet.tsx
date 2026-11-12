@@ -10,7 +10,8 @@ import { startHost } from './hostRun.js';
 import { Caret, Mark } from './icons.js';
 import { Info } from './Info.js';
 import { blockersOf, INTERRUPT_AFTER_MS, interruptOf, KEPT, type Interrupt } from './MoveSheet.js';
-import { MobilePanel } from './PhonePanel.js';
+import { MobilePanel, PhoneProblem } from './PhonePanel.js';
+import { phoneProblem } from './phoneText.js';
 import { Said } from './Said.js';
 
 type Check = Result<'fleet.homeCheck'> | { error: string };
@@ -250,12 +251,11 @@ function PhoneDone({ name, waits }: { name: string; waits: boolean }) {
     return () => window.clearInterval(t);
   }, [settled]);
   if (status?.serving) return <><MobilePanel compact /><span className="modal-sub">Scan once with your phone. Paired phones stay paired.</span></>;
-  const problem = status?.error ?? status?.reason;
+  const problem = !!status && phoneProblem(status) !== undefined;
   if (problem || (waits && late)) {
-    const { line, raw } = problem ? rawOf(problem, status?.raw) : { line: `${name} has not turned its phone link on yet`, raw: undefined };
     return (
-      <div data-testid={problem ? 'home-phone-failed' : 'home-phone-wait'}>
-        <Said line={line} fix={status?.fix} raw={raw} run={status?.run} on={name} />
+      <div data-testid={problem ? undefined : 'home-phone-wait'}>
+        {problem ? <PhoneProblem /> : <Said line={`${name} has not turned its phone link on yet`} />}
         <span className="modal-sub">Turn it on later in Settings → Phone.</span>
       </div>
     );
