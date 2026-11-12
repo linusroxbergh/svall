@@ -395,13 +395,13 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.cancel' });
 });
 
-test('an empty Machines tab explains what a machine is; a machine has Check and a ⋯ menu; Forget is offered for one that is not reachable; Remove waits for its robots', async ({ page, svall }) => {
+test('an empty Machines tab says what a machine can do; a machine has Check and a ⋯ menu; Forget is offered for one that is not reachable; Remove waits for its robots', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await page.getByTestId('settings-open').click();
   await page.getByTestId('settings-tab-machines').click();
   await receive(page, { type: 'host.machines', machines: [] });
-  await expect(page.getByTestId('machines-empty')).toHaveText("A machine is a Linux computer that runs this fleet's robots while this Mac sleeps, or runs the whole fleet while this Mac is off.");
+  await expect(page.getByTestId('machines-empty')).toHaveText("No other machine yet. A Linux machine can run this fleet's robots while this Mac sleeps, or run the whole fleet.");
 
   await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux-x64' }] });
   const row = page.getByTestId('machine-linus-vault');

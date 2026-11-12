@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import fs from 'node:fs';
 import path from 'node:path';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { MachineId } from '@svall/protocol';
 import { fleet } from '../fixtures.js';
 import { bridge, call, freshStore, sent, shell, store } from './harness.js';
@@ -35,9 +35,9 @@ test('the phone tip asks for Tailscale on the home: this Mac on the home, and by
   render(<SettingsCard />);
   show('phone');
   const tip = screen.getByRole('link', { name: 'Tailscale' }).parentElement!;
-  expect(tip.textContent).toContain('Needs Tailscale on this Mac and the phone.');
+  expect(tip.textContent).toContain('needs Tailscale on this Mac and the phone.');
   act(() => store.getState().setVia({ machine: '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId, home: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, name: 'studio', online: true }));
-  expect(tip.textContent).toContain('Needs Tailscale on studio and the phone.');
+  expect(tip.textContent).toContain('needs Tailscale on studio and the phone.');
 });
 
 test('the fleet name saves on Enter and retitles the window, and a name that will not do says why and is not sent', async () => {
@@ -330,8 +330,9 @@ test('a window on a far home adds a machine there, and acts on that home\'s work
     expect(row.querySelector('[data-testid="machine-make-home"]')).toBeNull();
     call.mockImplementation((method: string) => Promise.resolve(method === 'machines.list' ? { machines: [{ id: BOX, name: 'box', role: 'worker', reachable: false, robots: 2, joining: 'No route to host' }] } : {}));
     act(() => store.getState().setFleet({ ...store.getState().fleet, machines: { [BOX]: { name: 'box', reachable: false, since: 1 } } } as never));
-    expect((await screen.findByTestId('machine-joining-box')).textContent).toContain('has not joined yet: No route to host');
-    expect(screen.getByTestId('machine-joining-box').textContent).not.toMatch(/hostnot|hostrelease/);
+    const joining = await screen.findByTestId('machine-joining-box');
+    // a machine still owed its join says so first, though it is not reachable either
+    expect([...joining.children].map((c) => c.textContent)).toEqual(['has not joined yet', 'No route to host']);
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -401,18 +402,21 @@ test('Machines names each machine\'s role from the fleet, the home first and a w
     act(() => store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }] as never));
     const rows = [...screen.getByTestId('machines').querySelectorAll('.machine')];
     expect(rows.map((r) => r.getAttribute('data-role'))).toEqual(['home', 'worker', 'worker', 'worker']);
-    expect(screen.getByTestId('machine-studio').textContent).toContain('home · ada@studio · 7 robots');
-    expect(screen.getByTestId('machine-mac').textContent).toContain('this Mac');
-    expect(screen.getByTestId('machine-mac').textContent).toContain('worker · 3 robots');
-    expect(screen.getByTestId('machine-laptop').textContent).toContain('dials in');
+    const line = (name: string, part: string) => screen.getByTestId(`machine-${name}`).querySelector(part)?.textContent;
+    expect([line('studio', '.badge'), line('studio', '.machine-meta')]).toEqual(['home', 'ada@studio · 7 robots']);
+    expect([line('mac', 'b'), line('mac', '.badge'), line('mac', '.machine-meta')]).toEqual(['this Mac', 'worker', '3 robots']);
+    expect(screen.getByTestId('machine-studio').querySelector('.badge')!.getAttribute('data-tip')).toBe('Holds the fleet and starts new robots.');
+    expect(screen.getByTestId('machine-mac').querySelector('.badge')!.getAttribute('data-tip')).toBe('Runs robots moved to it.');
+    expect(line('laptop', '.machine-meta')).toBe('connects out to studio · 1 robot');
+    expect(screen.getByTestId('machine-laptop').querySelector('.machine-meta')!.getAttribute('data-tip')).toBe('laptop connects to studio; nothing connects in.');
     // no route in this Mac's registry says nothing of who opens the link
-    expect(screen.getByTestId('machine-vault').textContent).not.toContain('dials in');
+    expect(line('vault', '.machine-meta')).toBeUndefined();
     // the far home has its Check and ⋯ from this window; a worker of it is that home's to manage
     expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-doctor"]')).not.toBeNull();
     expect(screen.getByTestId('machine-mac').querySelector('[data-testid="machine-doctor"]')).toBeNull();
     // the home's row by the name this Mac knows it by, as its menu and sheet go
     act(() => store.getState().setMachines([{ id: HOME, name: 'box', ssh: 'ada@studio', platform: 'linux-x64' }] as never));
-    expect(screen.getByTestId('machine-box').textContent).toContain('home · ada@studio');
+    expect(screen.getByTestId('machine-box').querySelector('.machine-meta')!.textContent).toBe('ada@studio · 7 robots');
     expect(screen.queryByTestId('machine-studio')).toBeNull();
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
@@ -469,6 +473,250 @@ test('Machines says when the list could not be read, and offers to read it again
   expect(sent).toEqual([{ type: 'host.list' }]);
 });
 
+const kickers = () => [...document.querySelectorAll('.set-group > .kicker')].map((k) => k.firstChild!.textContent);
+const tipOf = (id: string) => document.getElementById(`set-tip-${id}`)!.textContent;
+
+test('each pane is groups of rows under their names, and an action is a row with its button at the right', () => {
+  store.getState().setNotifyPermission('denied');
+  store.getState().setUpdate('0.2.1');
+  render(<SettingsCard />);
+  expect(kickers()).toEqual(['Display', 'Map', 'Power', 'Config files']);
+  expect([...document.querySelectorAll('.set-group')[1].querySelectorAll('.row > span')].map((r) => r.firstChild!.textContent))
+    .toEqual(['arrange on its own', 'links on cards', 'robot motion', 'usage meter']);
+  for (const [id, label, info] of [['settings-ghostty', 'Ghostty config', 'Terminal font, colours and cursor.'], ['settings-fleet', 'Fleet config', 'Mission control, fleet defaults, scribe and phone logins.']]) {
+    const open = screen.getByTestId(id);
+    expect([open.textContent, open.className, open.closest('.row')!.firstChild!.firstChild!.textContent]).toEqual(['Open', 'btn sm', label]);
+    expect(open.closest('.row')!.querySelector('[role="tooltip"]')!.textContent).toBe(info);
+  }
+  // with a way to the fleet's config, nothing holds the button back to say why
+  expect(screen.getByTestId('settings-fleet').hasAttribute('data-tip')).toBe(false);
+  show('browser');
+  expect(kickers()).toEqual(['Sign-ins']);
+  expect(screen.getByTestId('set-1password-needs').textContent).toBe("Needs the 1Password CLI: brew install 1password-cli, then switch on Integrate with 1Password CLI in 1Password's Developer settings.");
+  expect(screen.getByTestId('settings-cookies').textContent).toBe('Import');
+  act(() => store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: true }));
+  expect(screen.queryByTestId('set-1password-needs')).toBeNull();
+  show('keyboard');
+  expect(kickers()).toEqual(['Shortcuts']);
+  expect(document.querySelector('.set-group .set-note')!.textContent).toContain('Unlisted ⌘ chords go to the terminal.');
+  show('notifications');
+  expect(kickers()).toEqual(['Notifications']);
+  const denied = screen.getByTestId('set-notify-denied');
+  expect([denied.className, denied.firstChild!.textContent, denied.querySelector('b')!.firstChild!.textContent]).toEqual(['row', 'macOS', 'off for Svall']);
+  expect(within(denied).getByTestId('set-notify-settings').textContent).toBe('Open System Settings');
+  show('fleet');
+  expect(kickers()).toEqual(['Fleet', 'New robots', 'Scribe', 'Idle agents']);
+  const permissions = screen.getByRole('switch', { name: 'Let robots run svall without asking' });
+  expect(permissions.closest('.row')!.firstChild!.firstChild!.textContent).toBe('run svall without asking');
+  show('updates');
+  expect(kickers()).toEqual(['Updates']);
+  expect(document.querySelector('.set-win .desc, .set-win .opens')).toBeNull();
+});
+
+test('an Info says what a control is for in two sentences at most', () => {
+  render(<SettingsCard />);
+  expect(tipOf('keep-awake')).toBe('Stops idle sleep while agents work, so they keep running and your phone reaches the fleet. The screen still dims and locks, and nothing is held on battery.');
+  show('fleet');
+  expect(tipOf('dormancy')).toBe('Frees memory. Opening the terminal resumes the conversation; agents with background work stay up.');
+  expect(tipOf('scribe')).toBe('Updates names, notes and links after an agent stops. Each pass is one headless Claude Code call.');
+  expect(tipOf('placing')).toBe("Each scribe pass also picks the robot's board column. A robot moved by hand is left alone.");
+  expect(tipOf('main-agent')).toBe('What mission control, the scribe and new robots start.');
+  expect(tipOf('worktrees')).toBe('Agents in a git repo make a worktree for their task and leave the main checkout alone.');
+  call.mockImplementation(() => Promise.resolve({ serving: false, url: '', port: 0, logins: [], phones: [] }));
+  show('phone');
+  expect(tipOf('phone')).toBe('Reachable only on your tailnet; needs Tailscale on this Mac and the phone. After switching it off, turn notifications on again on each phone.');
+});
+
+test('a fleet name that will not do is said in a note under its row, and the last scribe failure keeps a tool\'s words behind details', () => {
+  act(() => store.getState().setFleet({ ...fleet(), scribeError: { message: 'the scribe stopped: Command failed: claude -p exited 1', at: 1 } }));
+  render(<SettingsCard />);
+  show('fleet');
+  const input = screen.getByTestId('set-fleet-name') as HTMLInputElement;
+  fireEvent.change(input, { target: { value: 'Big Base' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  fireEvent.blur(input);
+  const error = screen.getByTestId('set-fleet-name-error');
+  expect([error.className, error.previousElementSibling!.contains(input)]).toEqual(['set-note fleet-error', true]);
+  const failure = screen.getByTestId('set-scribe-error');
+  expect(within(failure).getByText('the scribe stopped')).toBeTruthy();
+  expect(failure.querySelector('details')!.textContent).toBe('detailsCommand failed: claude -p exited 1');
+});
+
+describe('the window', () => {
+  // a box as wide and tall as its inline size, which is what the browser lays out within its clamps
+  const sized = { offsetWidth: { get(this: HTMLElement) { return parseFloat(this.style.width) || 0; } }, offsetHeight: { get(this: HTMLElement) { return parseFloat(this.style.height) || 0; } } };
+  const was = { w: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')!, h: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')! };
+  beforeEach(() => { Object.defineProperties(HTMLElement.prototype, sized); Element.prototype.setPointerCapture ??= function () {}; });
+  afterEach(() => { Object.defineProperty(HTMLElement.prototype, 'offsetWidth', was.w); Object.defineProperty(HTMLElement.prototype, 'offsetHeight', was.h); });
+
+  test('starts at 760 by 600, grows by twice the drag of its corner as it stays centred, keeps the size on release and goes back on a double-click', () => {
+    render(<SettingsCard />);
+    const win = screen.getByTestId('settings');
+    const grip = screen.getByTestId('settings-grip');
+    expect([win.style.width, win.style.height]).toEqual(['760px', '600px']);
+    fireEvent.pointerDown(grip, { pointerId: 1, clientX: 1000, clientY: 700 });
+    fireEvent.pointerMove(grip, { pointerId: 1, clientX: 1030, clientY: 690, buttons: 1 });
+    expect([win.style.width, win.style.height]).toEqual(['820px', '580px']);
+    expect(store.getState().settings.settingsSize).toBeUndefined();
+    fireEvent.pointerUp(grip, { pointerId: 1 });
+    expect(store.getState().settings.settingsSize).toEqual({ w: 820, h: 580 });
+    // a press that does not move keeps nothing
+    act(() => store.getState().setSettings({ settingsSize: undefined }));
+    fireEvent.pointerDown(grip, { pointerId: 1, clientX: 1000, clientY: 700 });
+    fireEvent.pointerUp(grip, { pointerId: 1 });
+    expect(store.getState().settings.settingsSize).toBeUndefined();
+    act(() => store.getState().setSettings({ settingsSize: { w: 900, h: 500 } }));
+    expect([win.style.width, win.style.height]).toEqual(['900px', '500px']);
+    fireEvent.doubleClick(grip);
+    expect(store.getState().settings.settingsSize).toBeUndefined();
+    expect([win.style.width, win.style.height]).toEqual(['760px', '600px']);
+  });
+});
+
+test('the panes are tabs that Up, Down, Home and End move through, and the panel is labelled by its tab', () => {
+  render(<SettingsCard />);
+  const tab = (p: string) => screen.getByTestId(`settings-tab-${p}`);
+  const tabs = screen.getAllByRole('tab');
+  expect(tabs.map((t) => t.tabIndex)).toEqual(tabs.map((t) => (t === tab('machine') ? 0 : -1)));
+  tab('machine').focus();
+  fireEvent.keyDown(tab('machine'), { key: 'ArrowDown' });
+  expect([tab('browser').getAttribute('aria-selected'), document.activeElement]).toEqual(['true', tab('browser')]);
+  expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(tab('browser').id);
+  expect(tab('browser').tabIndex).toBe(0);
+  fireEvent.keyDown(tab('browser'), { key: 'End' });
+  expect(document.activeElement).toBe(tabs.at(-1));
+  expect(tabs.at(-1)!.getAttribute('aria-selected')).toBe('true');
+  fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+  expect(document.activeElement).toBe(tab('machine'));
+  fireEvent.keyDown(tab('machine'), { key: 'ArrowUp' });
+  expect(document.activeElement).toBe(tabs.at(-1));
+  fireEvent.keyDown(document.activeElement!, { key: 'Home' });
+  expect([document.activeElement, tab('machine').getAttribute('aria-selected')]).toEqual([tab('machine'), 'true']);
+});
+
+describe('Phone', () => {
+  const SERVING = { serving: true, url: 'https://mac.ts.net:8443', pair: 'https://mac.ts.net:8443/#p=x', port: 8443, logins: ['ada@github'], phones: [], qr: 'data:image/png;base64,AA' };
+  const answer = (status: object, set?: () => Promise<unknown>) => call.mockImplementation((m: string) => (m === 'mobile.get' ? Promise.resolve(status) : m === 'mobile.set' && set ? set() : Promise.resolve({})));
+  afterEach(() => { call.mockImplementation(() => Promise.resolve({})); vi.useRealTimers(); });
+
+  test('is rows under Phone link: the switch, the address that copies the pairing link, who is connected and who can be, and the QR alone with how to use it', async () => {
+    answer(SERVING);
+    render(<SettingsCard />);
+    show('phone');
+    const url = await screen.findByTestId('set-mobile-url');
+    expect(kickers()).toEqual(['Phone link']);
+    expect([...document.querySelectorAll('.set-group .row > span')].map((r) => r.firstChild!.textContent)).toEqual(['phone link', 'address', 'connected', 'who can connect']);
+    expect(screen.getByTestId('set-mobile-here').textContent).toBe('nobody');
+    expect(screen.getByTestId('set-mobile-logins').textContent).toBe('ada@github');
+    // the address shows once: the QR beside its note has no link of its own
+    expect(screen.queryByTestId('mobile-url')).toBeNull();
+    expect(document.querySelector('.set-qr img.mob-qr')).not.toBeNull();
+    expect(document.querySelector('.set-qr .set-note')!.textContent).toBe('Scan with your phone. Then: Share → Add to Home Screen, and open Svall from the new icon.');
+    vi.useFakeTimers();
+    fireEvent.click(url);
+    expect(sent).toContainEqual({ type: 'copy', text: 'https://mac.ts.net:8443/#p=x' });
+    expect(url.textContent).toBe('copied');
+    act(() => { vi.advanceTimersByTime(1500); });
+    expect(url.textContent).toBe('https://mac.ts.net:8443');
+  });
+
+  test('says nobody can connect yet with no login, and nothing of an address or a QR while off', async () => {
+    answer({ serving: false, url: '', port: 0, logins: [], phones: [] });
+    render(<SettingsCard />);
+    show('phone');
+    expect((await screen.findByTestId('set-mobile-logins')).textContent).toBe('nobody yet');
+    expect(screen.queryByTestId('set-mobile-url')).toBeNull();
+    expect(document.querySelector('.set-qr')).toBeNull();
+  });
+
+  test('says the first start can take a while only while the switch turns the link on', async () => {
+    let started!: (m: unknown) => void;
+    answer({ serving: false, url: '', port: 0, logins: [], phones: [] }, () => new Promise((r) => { started = r; }));
+    render(<SettingsCard />);
+    show('phone');
+    await screen.findByTestId('set-mobile-logins');
+    expect(screen.queryByTestId('set-mobile-starting')).toBeNull();
+    fireEvent.click(screen.getByTestId('set-mobile'));
+    expect(screen.getByTestId('set-mobile-starting').textContent).toBe('Starting; the first time can take a few minutes.');
+    await act(async () => { started(SERVING); });
+    expect(screen.queryByTestId('set-mobile-starting')).toBeNull();
+  });
+
+  test('a link that cannot start says so in Svall\'s words, with what to do and a tool\'s words behind details', async () => {
+    answer({ serving: false, url: '', port: 0, logins: [], phones: [], error: 'Tailscale on this Mac does not let Svall share this fleet', fix: 'Run once: sudo tailscale set --operator=$USER', raw: 'Access denied: serve config denied' });
+    render(<SettingsCard />);
+    show('phone');
+    const problem = await screen.findByTestId('mobile-problem');
+    expect(screen.getByTestId('set-mobile-blocked').textContent).toBe('unavailable');
+    expect(within(problem).getByText('Tailscale on this Mac does not let Svall share this fleet')).toBeTruthy();
+    expect(within(problem).getByText('Run once: sudo tailscale set --operator=$USER').className).toBe('set-note');
+    expect(problem.querySelector('details')!.textContent).toBe('detailsAccess denied: serve config denied');
+    // under the rows, as the pane's last word
+    expect(problem.closest('.rows')!.lastElementChild).toBe(problem);
+  });
+});
+
+describe('Machines', () => {
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
+  const W = 'cccccccc-0000-4000-8000-000000000000';
+  afterEach(() => call.mockImplementation(() => Promise.resolve({})));
+  const open = async (list: object[], registry: object[]) => {
+    call.mockImplementation((m: string) => Promise.resolve(m === 'machines.list' ? { machines: list } : {}));
+    act(() => { store.getState().setStatus('online'); store.getState().setMachines(registry as never); });
+    render(<SettingsCard />);
+    show('machines');
+    await screen.findByTestId(`machine-${(list[0] as { name: string }).name}`);
+  };
+  const dot = (name: string) => screen.getByTestId(`machine-${name}`).querySelector('.machine-dot');
+  const said = (name: string) => screen.getByTestId(`machine-${name}`).querySelector('.machine-said')?.textContent;
+
+  test('is a group whose heading says what home and worker mean and offers Add machine, with a note when there is no other machine', () => {
+    render(<SettingsCard />);
+    show('machines');
+    const kicker = document.querySelector('.set-group > .kicker')!;
+    expect(kicker.firstChild!.textContent).toBe('Machines');
+    expect(tipOf('machines')).toBe('The home holds the fleet and starts new robots. A worker runs robots moved to it.');
+    expect(kicker.contains(screen.getByTestId('machine-add'))).toBe(true);
+    act(() => store.getState().setMachines([]));
+    const empty = screen.getByTestId('machines-empty');
+    expect([empty.className, empty.textContent]).toEqual(['set-note', "No other machine yet. A Linux machine can run this fleet's robots while this Mac sleeps, or run the whole fleet."]);
+    expect(screen.queryByText('another machine')).toBeNull();
+  });
+
+  test('a machine\'s dot says whether it answers, and its last line the one thing to know: since when it is away, an upgrade, its last check', async () => {
+    const since = Date.UTC(2026, 10, 10, 9, 30);
+    await open([
+      { id: HOME, name: 'mac', role: 'home', reachable: true, robots: 2 },
+      { id: W, name: 'vault', role: 'worker', reachable: false, since, robots: 1 },
+      { id: 'dddddddd-0000-4000-8000-000000000000', name: 'box', role: 'worker', reachable: true, robots: 0 },
+    ], [{ name: 'vault', id: W, ssh: 'ada@vault', platform: 'linux-x64' }, { name: 'box', id: 'dddddddd-0000-4000-8000-000000000000', ssh: 'ada@box', platform: 'linux-x64', check: { at: since, failed: 0, warned: 1, release: '0.9.4' } },
+      { name: 'spare', id: 'eeeeeeee-0000-4000-8000-000000000000', ssh: 'ada@spare', platform: 'linux-x64' }]);
+    expect([dot('mac')!.getAttribute('aria-label'), dot('vault')!.getAttribute('aria-label'), dot('box')!.getAttribute('aria-label')]).toEqual(['reachable', 'not reachable', 'reachable']);
+    // a machine on this Mac's list but not in this fleet has no link to tell of
+    expect(dot('spare')).toBeNull();
+    const at = new Date(since).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    expect(said('vault')).toBe(`not reachable since ${at}Removed it by hand? Forget drops it from this list.`);
+    expect(said('box')).toBe(`checked ${at} · 1 warning`);
+    expect(screen.getByTestId('machine-box').querySelector('.machine-meta')!.textContent).toBe('ada@box · release 0.9.4');
+    expect(said('spare')).toBe('not checked yet');
+    // the home says nothing while all is well
+    expect(said('mac')).toBeUndefined();
+    act(() => store.getState().setFleet({ ...store.getState().fleet, machines: { [W]: { name: 'vault', reachable: false, since, mismatch: true } } } as never));
+    await waitFor(() => expect(dot('vault')!.getAttribute('aria-label')).toBe('needs an upgrade'));
+    expect(said('vault')).toBe('needs an upgrade');
+  });
+
+  test('a list that cannot be read is said, with Read again at the right', () => {
+    render(<SettingsCard />);
+    show('machines');
+    act(() => store.getState().setMachines([], 'svall host list exited 1: ssh: connect to host'));
+    const error = screen.getByTestId('machines-error');
+    expect(within(error).getByText('svall host list')).toBeTruthy();
+    expect(error.querySelector('details')!.textContent).toBe('detailsexited 1: ssh: connect to host');
+    expect(error.lastElementChild!.contains(screen.getByTestId('machines-reload'))).toBe(true);
+  });
+});
+
 const FAR_ME = 'aaaaaaaa-0000-4000-8000-000000000000';
 const FAR_HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
 const CLAUDE = 'r:/home/ada/.claude';
@@ -502,10 +750,10 @@ test('a far home\'s pane opens its files in the shelf, and one it has not as an 
     });
     render(<SettingsCard />);
     show('setup');
-    expect(screen.getByTestId('setup-lives').textContent).toContain('lives on studio');
+    expect(screen.getByTestId('setup-lives').firstChild!.textContent).toBe('On studio');
     expect(screen.queryByTestId('setup-away')).toBeNull();
     expect((await screen.findByTestId('setup-open-skills')).getAttribute('aria-label')).toMatch(/^Open /);
-    expect(screen.getByTestId('setup-files').textContent).toContain('1 skill');
+    expect(screen.getByTestId('setup-files').textContent).toContain('skills · 1');
     await screen.findByTestId('setup-open-rules/style.md');
     await screen.findByTestId('setup-open-rules/deep/more.md');
     fireEvent.click(screen.getByTestId('setup-open-settings.json'));
@@ -528,6 +776,40 @@ test('a far home\'s pane opens its files in the shelf, and one it has not as an 
   }
 });
 
+test('past six rules the rules fold behind one line, and rules that cannot be read are said in the group, not in a toast', async () => {
+  try {
+    const rules = Array.from({ length: 7 }, (_, i) => ({ name: `r${i}.md`, kind: 'file' }));
+    farWindow({ ...SETUP, 'fs.list': () => ({ entries: rules }) });
+    render(<SettingsCard />);
+    show('setup');
+    const fold = await screen.findByTestId('setup-rules-fold');
+    expect([fold.textContent, fold.getAttribute('aria-expanded')]).toEqual(['7 rules', 'false']);
+    expect(screen.queryByTestId('setup-open-rules/r0.md')).toBeNull();
+    fireEvent.click(fold);
+    expect(screen.getByTestId('setup-open-rules/r6.md')).toBeTruthy();
+    cleanup();
+    farWindow({ ...SETUP, 'fs.list': () => { throw new Error('ssh: connect to host studio port 22: timed out'); } });
+    render(<SettingsCard />);
+    show('setup');
+    expect((await screen.findByTestId('setup-rules-failed')).textContent).toBe('The rules could not be read: Something went wrong on the machine');
+    expect(store.getState().toast).toBeUndefined();
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('while the home\'s files are on their way the group says so, in the place they will take', () => {
+  try {
+    farWindow({ ...SETUP, 'resources.get': () => new Promise(() => {}) });
+    render(<SettingsCard />);
+    show('setup');
+    const group = screen.getByTestId('setup-lives').parentElement!;
+    expect(group.querySelector('.rows .move-spin')!.parentElement!.textContent).toBe("Reading studio's files…");
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
 test('the pane\'s ticks go to this Mac\'s daemon, and the copy to the home, naming this Mac and what it replaced there', async () => {
   try {
     farWindow({
@@ -537,16 +819,17 @@ test('the pane\'s ticks go to this Mac\'s daemon, and the copy to the home, nami
     });
     render(<SettingsCard />);
     show('setup');
-    const box = await screen.findByTestId('setup-tick-claude:mcp:linear') as HTMLInputElement;
-    expect(box.checked).toBe(false);
-    fireEvent.click(box);
-    await waitFor(() => expect((screen.getByTestId('setup-tick-claude:mcp:linear') as HTMLInputElement).checked).toBe(true));
+    const sw = await screen.findByTestId('setup-tick-claude:mcp:linear');
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(sw);
+    await waitFor(() => expect(screen.getByTestId('setup-tick-claude:mcp:linear').getAttribute('aria-checked')).toBe('true'));
     expect(call).toHaveBeenCalledWith('home.setupConsent', { item: 'claude:mcp:linear', fields: ['env.KEY'], on: true });
     const copy = screen.getByTestId('setup-copy');
-    expect(copy.textContent).toBe('Copy my agent setup from this Mac to studio');
+    expect(copy.closest('.row')!.firstChild!.textContent).toBe('this Mac → studio');
+    expect(copy.textContent).toBe('Copy now');
     fireEvent.click(copy);
     expect(call).toHaveBeenCalledWith('machines.copySetupFrom', { machine: FAR_ME });
-    expect((await screen.findByTestId('setup-copied')).textContent).toBe('Copied to studio. What it replaced there is in /home/ada/.svall/mirror-backup/2026-11-04.');
+    expect((await screen.findByTestId('setup-copied')).textContent).toBe('Copied to studio. Replaced files are in /home/ada/.svall/mirror-backup/2026-11-04 on studio.');
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -554,7 +837,7 @@ test('the pane\'s ticks go to this Mac\'s daemon, and the copy to the home, nami
 
 const twoKeys = { key: 'claude:mcp:two', status: 'warn', tick: { item: 'claude:mcp:two', fields: ['env.A', 'env.B'], on: false, preview: ['env.A a…1', 'env.B b…2'], ticked: ['env.A'] } };
 
-test('a row of several keys has a box for each and says when it is partly ticked, and each box says only its own field', async () => {
+test('a row of several keys has a switch for each and says when it is partly on, and each switch says only its own field', async () => {
   try {
     farWindow({
       ...SETUP,
@@ -563,10 +846,13 @@ test('a row of several keys has a box for each and says when it is partly ticked
     });
     render(<SettingsCard />);
     show('setup');
-    const a = await screen.findByTestId('setup-tick-claude:mcp:two#env.A') as HTMLInputElement;
-    const b = screen.getByTestId('setup-tick-claude:mcp:two#env.B') as HTMLInputElement;
-    expect([a.checked, b.checked]).toEqual([true, false]);
-    expect(screen.getByTestId('setup-partial-claude:mcp:two').textContent).toContain('1 of 2 keys go');
+    const a = await screen.findByTestId('setup-tick-claude:mcp:two#env.A');
+    const b = screen.getByTestId('setup-tick-claude:mcp:two#env.B');
+    expect([a.getAttribute('aria-checked'), b.getAttribute('aria-checked')]).toEqual(['true', 'false']);
+    expect([a.getAttribute('aria-label'), b.getAttribute('aria-label')]).toEqual(["Send claude:mcp:two's A to studio", "Send claude:mcp:two's B to studio"]);
+    expect(a.closest('.row')!.firstChild!.textContent).toBe("claude:mcp:two's A a…1");
+    expect(a.closest('.row')!.classList.contains('set-sub')).toBe(true);
+    expect(screen.getByTestId('setup-partial-claude:mcp:two').textContent).toBe('1 of 2 on');
     expect(screen.queryByTestId('setup-tick-claude:mcp:two')).toBeNull();
     fireEvent.click(a);
     expect(call).toHaveBeenCalledWith('home.setupConsent', { item: 'claude:mcp:two', fields: ['env.A'], on: false });
@@ -596,9 +882,9 @@ test('a key unticked, and what was ticked whole before a move, are said by the p
     render(<SettingsCard />);
     show('setup');
     fireEvent.click(await screen.findByTestId('setup-tick-claude:mcp:linear'));
-    expect(screen.getByTestId('setup-keys').textContent).toContain('A key you untick stays on studio until the next Copy; a server or a file ticked whole before the fleet moved stays until you remove it on studio.');
+    expect(document.getElementById('set-tip-setup-keys')!.textContent).toBe('A key stays on this Mac unless you switch it on for studio; switched off, it leaves studio at the next copy. A server or file sent whole stays until you remove it on studio.');
     expect(call).not.toHaveBeenCalledWith('machines.copySetupFrom', expect.anything());
-    expect((await screen.findByTestId('setup-replaced')).textContent).toContain('for linear: that is in this folder');
+    expect((await screen.findByTestId('setup-replaced')).textContent).toBe("Also in it: this Mac's own linear.");
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -639,7 +925,9 @@ test('a push from the home that failed here is said', async () => {
     farWindow({ ...SETUP, 'home.setup': () => ({ rows: [], pushFailed: 'config.toml cannot be parsed' }) });
     render(<SettingsCard />);
     show('setup');
-    expect((await screen.findByTestId('setup-push-failed')).textContent).toContain('studio\'s last push here did not land: config.toml cannot be parsed');
+    const failed = await screen.findByTestId('setup-push-failed');
+    expect(within(failed).getByText("studio's last push did not land here")).toBeTruthy();
+    expect(within(failed).getByText('config.toml cannot be parsed').className).toBe('set-note');
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -657,31 +945,30 @@ test('a home.setup that fails shows why and leaves Copy off', async () => {
   }
 });
 
-test('the pane says what a Copy sends: with a backup named, to put back what is wanted first; only what changed; the first Copy\'s exception', async () => {
+test('the pane is four groups, and what a copy sends and a backup holds wait behind their Infos', async () => {
   try {
     farWindow({ ...SETUP, 'home.setup': () => ({ rows: [tickRow], backup: '/Users/ada/.svall/mirror-backup/2026-11-04' }) });
     render(<SettingsCard />);
     show('setup');
     await screen.findByTestId('setup-backup');
-    const says = screen.getByTestId('setup-copy-says').textContent;
-    expect(says).toContain('replaced same-named files on this Mac');
-    expect(says).toContain('Put back what you want from there first');
-    expect(says).toContain('only what changed on this Mac since the last one');
-    expect(says).toContain('The first Copy has no last one');
-    expect(says).toContain('removes nothing on studio');
-    expect(screen.getByTestId('setup-keys').textContent).toContain('anything written in them included');
+    expect([...document.querySelectorAll('.set-group > .kicker')].map((k) => k.firstChild!.textContent)).toEqual(['On studio', 'Copy from this Mac', 'Keys', 'Replaced on this Mac']);
+    expect(document.getElementById('set-tip-setup-copy')!.textContent).toBe("Sends what changed on this Mac since the last copy; nothing is removed on studio except keys you switch off. The first copy replaces same-named files there and keeps the old ones in studio's backup folder.");
+    expect(document.getElementById('set-tip-setup-backup')!.textContent).toContain('Put back what you want before you copy.');
+    const folder = screen.getByTestId('setup-backup-show').closest('.row')!.firstChild as HTMLElement;
+    expect([folder.textContent, folder.getAttribute('data-tip')]).toEqual(['mirror-backup/2026-11-04', '/Users/ada/.svall/mirror-backup/2026-11-04']);
+    expect(document.querySelector('.set-win .desc, .set-win .opens')).toBeNull();
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
 });
 
-test('with no backup named the pane does not speak of one', async () => {
+test('with no backup named the pane has no group for one', async () => {
   try {
     farWindow(SETUP);
     render(<SettingsCard />);
     show('setup');
     await screen.findByTestId('setup-tick-claude:mcp:linear');
-    expect(screen.getByTestId('setup-copy-says').textContent).not.toContain('Put back');
+    expect(screen.queryByTestId('setup-backup')).toBeNull();
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -698,8 +985,7 @@ test('a copy says what a tick went over on the home and what an untick left ther
     await screen.findByTestId('setup-tick-claude:mcp:linear');
     fireEvent.click(screen.getByTestId('setup-copy'));
     const said = (await screen.findByTestId('setup-copied')).textContent;
-    expect(said).toContain('A tick went over what studio held itself for linear: that is in its backup folder.');
-    expect(said).toContain('odd stays as you edited it, with any key the mirror copied in it; remove it yourself.');
+    expect(said).toBe("Copied to studio. Replaced files are in /home/ada/.svall/mirror-backup/2026-11-04 on studio. studio's own linear went to its backup folder. odd stays as edited on studio.");
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -714,7 +1000,7 @@ test('a refused copy says why, and the pane names the folder the first push kept
     });
     render(<SettingsCard />);
     show('setup');
-    expect((await screen.findByTestId('setup-backup')).textContent).toContain('/Users/ada/.svall/mirror-backup/2026-11-04');
+    expect((await screen.findByTestId('setup-backup')).textContent).toContain('Replaced on this Mac');
     fireEvent.click(screen.getByTestId('setup-backup-show'));
     expect(sent).toContainEqual({ type: 'openFolder', path: '/Users/ada/.svall/mirror-backup/2026-11-04', machine: FAR_ME });
     fireEvent.click(screen.getByTestId('setup-copy'));
@@ -729,7 +1015,7 @@ test('in fallback the pane opens no file and takes no copy, and keeps this Mac\'
     farWindow({ ...SETUP, 'home.setup': () => ({ rows: [tickRow], backup: '/Users/ada/.svall/mirror-backup/2026-11-04' }) }, { follows: false });
     render(<SettingsCard />);
     show('setup');
-    expect(screen.getByTestId('setup-away').textContent).toContain('while this window reaches studio');
+    expect(screen.getByTestId('setup-away').textContent).toBe('studio is not reachable; its files open once it is.');
     await screen.findByTestId('setup-tick-claude:mcp:linear');
     await screen.findByTestId('setup-backup');
     expect(screen.queryByTestId('setup-files')).toBeNull();
@@ -746,7 +1032,7 @@ test('a window on a worker the home dials has no route of its own, so it reads n
     act(() => store.getState().setHome({ name: 'studio', state: 'connected' }));
     render(<SettingsCard />);
     show('setup');
-    expect(screen.getByTestId('setup-away').textContent).toContain('studio reaches this Mac over its own link');
+    expect(screen.getByTestId('setup-away').textContent).toBe('This window has no route to studio. Open Svall where it reaches studio to edit the setup.');
     expect((screen.getByTestId('setup-copy') as HTMLButtonElement).disabled).toBe(true);
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
@@ -782,7 +1068,7 @@ test('what went wrong in the pane can be selected, and its button and a Copy tha
 
     fireEvent.click(screen.getByTestId('setup-tick-claude:mcp:linear'));
     const failed = await screen.findByTestId('setup-failed');
-    expect(selectable(within(failed).getByText('the consent file cannot be written'))).toBe(true);
+    expect(selectable(within(failed).getByText('the consent file cannot be written').closest('[data-error="true"]')!)).toBe(true);
     expect(screen.getByTestId('setup-retry').closest('[data-error="true"]')).toBeNull();
   } finally {
     style.remove();
@@ -843,7 +1129,7 @@ describe('Fleet config', () => {
     act(() => store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true, served: true }));
     open();
     expect(button().hasAttribute('disabled')).toBe(true);
-    expect(button().getAttribute('data-tip')).toBe('This window has no route to studio, where its fleet.json is');
+    expect(button().getAttribute('data-tip')).toBe('This window has no route to studio, where fleet.json is.');
     expect(screen.queryByTestId('settings-tab-phone')).toBeNull();
   });
 
@@ -860,7 +1146,7 @@ describe('Fleet config', () => {
     act(() => store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio' }));
     open();
     expect(button().hasAttribute('disabled')).toBe(true);
-    expect(button().getAttribute('data-tip')).toBe('studio is not reachable, and its fleet.json is there');
+    expect(button().getAttribute('data-tip')).toBe('studio is not reachable; its fleet.json is there.');
     fireEvent.click(button());
     expect(sent.filter((m) => m.type === 'openConfig')).toEqual([]);
   });

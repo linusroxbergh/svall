@@ -35,3 +35,13 @@ export function Info({ id, children }: { id: string; children: ReactNode }) {
     </span>
   );
 }
+
+/** A settings pane's group: its name, what it is for behind an Info, a button at its right, then its rows. `testid` names the heading. */
+export function Group({ name, info, end, testid, children }: { name: ReactNode; info?: ReactNode; end?: ReactNode; testid?: string; children: ReactNode }) {
+  return (
+    <section className="set-group">
+      <div className="kicker" data-testid={testid}>{name}{info}{end}</div>
+      <div className="rows">{children}</div>
+    </section>
+  );
+}

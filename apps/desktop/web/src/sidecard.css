@@ -70,6 +70,14 @@
 .side .desc { color: var(--ink-2); font-size: var(--text-md); line-height: var(--lh); }
 .side .fld.inline { width: auto; text-align: right; padding: 0; border: 0; background: none; color: var(--ink); font-size: var(--text-sm); font-weight: var(--w-medium); appearance: none; cursor: pointer; }
 .side .fld.inline:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
+/* in the settings a field and a pick read as controls */
+.set-win select.fld.inline, .set-win input.fld.inline { height: var(--ctl-sm); padding: 0 var(--sp-md); border: 0; border-radius: var(--r-sm); background-color: var(--fill-2);
+  color: var(--ink); font-size: var(--text-sm); font-weight: var(--w-medium); }
+.set-win select.fld.inline:hover, .set-win input.fld.inline:hover { background-color: var(--fill-3); }
+/* the caret is --ink-2, written out: a data URI cannot read a token */
+.set-win select.fld.inline { appearance: none; field-sizing: content; padding-right: calc(var(--sp-2xl) + var(--sp-xs)); background-position: right var(--sp-sm) center; background-repeat: no-repeat;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' width='10' height='10'%3E%3Cpath d='M2 3.5 5 6.5 8 3.5' fill='none' stroke='%23CCC5B1' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.set-win input.fld.inline { width: 16em; text-align: left; }
 .side .opens { display: flex; gap: var(--sp-md); }
 .side .opens .btn { flex: 1; }
 .side .addlink { display: flex; gap: var(--sp-md); }
@@ -134,21 +142,45 @@
 .btn.move svg:last-child { transition: translate var(--dur) var(--ease); }
 .btn.move:hover svg:last-child { translate: 2px 0; }
 .side .sname { display: flex; align-items: center; gap: var(--sp-md); }
-/* the settings window: its panes listed down the left, the one picked beside them in a side card's dress */
+/* the settings window: its panes listed down the left, the one picked beside them in a side card's dress; sized by its grip, inside the window */
 .set-win { position: fixed; inset: 0; margin: auto; z-index: var(--z-settings); box-sizing: border-box; overflow: hidden;
-  width: min(720px, calc(100vw - 40px)); height: min(560px, calc(100vh - 40px)); display: grid; grid-template: auto minmax(0, 1fr) / 180px minmax(0, 1fr);
+  min-width: 640px; min-height: 440px; max-width: calc(100vw - 40px); max-height: calc(100vh - 40px); display: grid; grid-template: auto minmax(0, 1fr) / 180px minmax(0, 1fr);
   transition: opacity var(--dur-slow) var(--ease-out), translate var(--dur-slow) var(--ease-out), scale var(--dur-slow) var(--ease-out); }
+.set-grip { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; touch-action: none;
+  background: linear-gradient(135deg, transparent 55%, var(--line-strong) 55% 60%, transparent 60% 75%, var(--line-strong) 75% 80%, transparent 80%); }
 /* it rises in like a dialog, through transitions so its hole in the surfaces settles with it */
 @starting-style { .set-win { opacity: 0; translate: 0 6px; scale: .98; } }
-.set-bar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: var(--sp-lg) var(--sp-lg) var(--sp-lg) var(--sp-2xl); border-bottom: 1px solid var(--line-soft); }
+.set-bar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line-soft);
+  padding: var(--sp-lg) calc(var(--sp-3xl) - (var(--ctl-sm) - var(--icon-xs)) / 2) var(--sp-lg) var(--sp-2xl); }
+/* the × glyph's right edge on the pane's right edge */
+.set-win .set-bar > .side-x { margin-right: 0; }
 .set-bar h2 { margin: 0; font-size: var(--text-lg); font-weight: var(--w-semibold); color: var(--ink); }
 .set-nav { display: flex; flex-direction: column; gap: var(--sp-2xs); padding: var(--sp-lg) var(--sp-md); overflow: hidden auto; }
 .set-nav button { color: var(--ink-2); font-weight: var(--w-medium); }
 .set-nav button:hover { color: var(--ink); }
 .set-nav button[aria-selected="true"] { color: var(--sand); }
 .set-nav i { width: var(--dot-sm); height: var(--dot-sm); border-radius: var(--r-pill); background: var(--sand); }
-.set-win .side { width: auto; padding: var(--sp-2xl) var(--sp-3xl); }
-.set-win .side > .rows:first-child { border-top: 0; padding-top: 0; }
+.set-win .side { width: auto; padding: var(--sp-2xl) var(--sp-3xl); gap: 0; }
+/* a pane is groups of rows, each named by its kicker, which is the only separator */
+.set-group + .set-group { margin-top: var(--sp-2xl); }
+.set-group > .kicker { gap: var(--sp-xs); margin-bottom: var(--sp-xs); }
+.set-group > .kicker .set-info > .ib { margin-left: 0; }
+/* the first group's name sits on the baseline of the first pane's name in the nav, whose larger type rides lower in its line */
+.set-group:first-child > .kicker { padding-top: calc(var(--sp-sm) / 2); }
+.set-group > .kicker > .btn { margin: calc(-1 * var(--sp-xs)) 0 calc(-1 * var(--sp-xs)) auto; height: var(--ctl-sm); text-transform: none; letter-spacing: normal; }
+.set-win .rows { border-top: 0; padding-top: 0; }
+.set-win .row { box-sizing: border-box; min-height: calc(var(--ctl-md) + var(--sp-xs)); align-items: center; }
+.set-win .row.set-sub { padding-left: var(--sp-2xl); }
+.set-win .row small.mono { font-size: var(--text-xs); color: var(--ink-3); }
+.set-win .row .btn.ghost { padding-block: 0; }
+.set-win .row b.set-pair { display: flex; align-items: center; gap: var(--sp-lg); font-weight: var(--w-regular); color: var(--ink-2); }
+.set-fold { min-height: calc(var(--ctl-md) + var(--sp-xs)); font-size: var(--text-sm); color: var(--ink-3); }
+/* a problem in a pane; in a row beside a label its words sit at the right */
+.set-said { min-width: 0; }
+.row > .set-said { flex: 1 1 auto; }
+.row > span + .set-said .said > div { align-items: flex-end; text-align: right; }
+.set-qr { display: flex; align-items: center; gap: var(--sp-xl); padding: var(--sp-xs) 0; }
+.set-qr .mob-qr { width: 168px; }
 /* the explanation waits behind the mark, so the panel reads as a list of controls rather than a page of prose */
 .side .row:has(.set-info), .side .opens:has(.set-info), .side .kicker:has(.set-info) { position: relative; }
 .side .opens:has(.set-info) { align-items: center; }

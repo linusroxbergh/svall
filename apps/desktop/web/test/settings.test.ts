@@ -41,6 +41,10 @@ describe('settings', () => {
     expect(readSettings({ zoom: 1.1 }).autoArrange).toBe(true);
     expect(readSettings({ autoArrange: false }).autoArrange).toBe(false);
   });
+  it('keeps the settings window\'s dragged size, and drops one that is no size', () => {
+    expect(readSettings({ settingsSize: { w: 900, h: 640 } }).settingsSize).toEqual({ w: 900, h: 640 });
+    for (const bad of [{ w: 900 }, { w: '900', h: 640 }, { w: 0, h: 640 }, { w: Infinity, h: 640 }, 'big']) expect(readSettings({ settingsSize: bad }).settingsSize).toBeUndefined();
+  });
   it('remembers the board toast has shown once it has', () => {
     expect(DEFAULT_SETTINGS.boardToastShown).toBe(false);
     expect(readSettings({ boardToastShown: true }).boardToastShown).toBe(true);

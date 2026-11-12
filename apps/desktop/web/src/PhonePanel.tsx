@@ -9,7 +9,7 @@ import { homeName } from './placement.js';
 import { Said } from './Said.js';
 
 /** Runs mobile.set and keeps the answer, so the switch, the utility dock and the settings row move together. */
-function useMobileSwitch(): { status?: MobileStatus; busy: boolean; flip(): void } {
+export function useMobileSwitch(): { status?: MobileStatus; busy: boolean; flip(): void } {
   const status = useApp((s) => s.mobile);
   const [busy, setBusy] = useState(false);
   const flip = () => {
@@ -20,8 +20,10 @@ function useMobileSwitch(): { status?: MobileStatus; busy: boolean; flip(): void
   return { status, busy, flip };
 }
 
-export function MobileSwitch({ testId }: { testId: string }) {
-  const { status, busy, flip } = useMobileSwitch();
+/** `sw`: the switch's state as its pane holds it, to say what the switch is doing. */
+export function MobileSwitch({ testId, sw }: { testId: string; sw?: ReturnType<typeof useMobileSwitch> }) {
+  const own = useMobileSwitch();
+  const { status, busy, flip } = sw ?? own;
   const on = !!status?.serving;
   return (
     <button className="set-switch" role="switch" aria-checked={on} data-testid={testId} disabled={busy} onClick={flip}>
@@ -39,8 +41,8 @@ export function PhoneProblem({ settings }: { settings?: boolean }) {
   return <div data-testid="mobile-problem"><Said {...problem} on={home} settings={settings} /></div>;
 }
 
-/** Once the fleet is served, the link to reach it by; the panel's title carries the switch. Compact shows the QR and link alone. */
-export function MobilePanel({ compact = false }: { compact?: boolean }) {
+/** Once the fleet is served, the link to reach it by; the panel's title carries the switch. Compact shows the QR and link alone, `'qr'` the QR alone. */
+export function MobilePanel({ compact = false }: { compact?: boolean | 'qr' }) {
   const status = useApp((s) => s.mobile);
   const redact = useApp((s) => s.phoneRedact);
   const [copied, setCopied] = useState(false);
@@ -56,15 +58,16 @@ export function MobilePanel({ compact = false }: { compact?: boolean }) {
   };
 
   if (!status) return null;
+  const qr = status.serving && status.qr && <img className="mob-qr" src={redact ?? status.qr} alt={`QR code for ${status.url}`} />;
   const link = status.serving && (
     <>
-      {status.qr && <img className="mob-qr" src={redact ?? status.qr} alt={`QR code for ${status.url}`} />}
+      {qr}
       <button className="mob-url" data-testid="mobile-url" data-tip={redact ? 'Copy the link' : status.url} onClick={copy}>
         {redact ? <><i className="mob-mask" /><i className="mob-mask" /></> : copied ? 'copied' : status.url}
       </button>
     </>
   );
-  if (compact) return <div className="mob" data-testid="mobile-body">{link}</div>;
+  if (compact) return <div className="mob" data-testid="mobile-body">{compact === 'qr' ? qr : link}</div>;
   return (
     <div className="mob" data-testid="mobile-body">
       {status.serving && (

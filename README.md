@@ -215,7 +215,8 @@ has the steps.
   the map tracks the agent: `working`, `idle`, `blocked` (waiting on you) or
   `done`. An agent idle or done for 12 hours is closed to free its memory and
   resumes when you open its terminal; Settings → close idle agents after
-  changes the wait or turns it off.
+  changes the wait or turns it off. After a quit or restart, agents still
+  inside that wait resume on their own.
 - **Scribe**: about a minute after an agent stops with new work, and every ten
   minutes or so while it keeps working, a headless `claude -p`, `codex exec`
   or `opencode run` writes the robot's name, note and links, and the
@@ -260,6 +261,11 @@ has the steps.
   `~/.claude.json` and `~/.codex/auth.json` hold tokens and never open.
 - **Settings** (Cmd+,): this machine, browser, keyboard, notifications, phone,
   and the fleet's name, main agent, scribe, their models and idle timeout.
+  With keep Mac awake on, a server an agent leaves running keeps the Mac awake
+  up to 30 minutes after an agent last did something, and so does a robot
+  waiting on you or your phone when set to need you; each fleet sets its own.
+  Work in worktrees tells each agent in a git repo to make a worktree for its
+  task and leave the main checkout alone unless you say so.
   `Usage`, next to it, shows the plan limits of your running agents without using any, and the
   login they belong to.
 

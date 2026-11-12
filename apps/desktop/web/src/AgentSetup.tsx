@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react';
 import { type Result, type SetupRow } from '@svall/protocol';
 import { app, deps } from './boot.js';
 import { openFolder } from './bridge.js';
-import { stepLabel } from './host.js';
+import { keyLabel, keyMask, plural, splitRaw } from './host.js';
 import { useApp } from './hooks.js';
+import { Caret } from './icons.js';
 import { openFile } from './ide/files.js';
+import { Group, Info } from './Info.js';
 import { homeName } from './placement.js';
 import { reloadResources } from './resources/load.js';
+import { Said } from './Said.js';
 
 // what an unsaved buffer holds when the home has no such file yet and a person opens it
 const FILES = [['CLAUDE.md', ''], ['settings.json', '{}\n']] as const;
@@ -21,68 +24,84 @@ async function filesUnder(id: string, dir: string): Promise<string[]> {
   return [...entries.filter((e) => e.kind === 'file').map((e) => `${dir}/${e.name}`), ...deeper.flat()];
 }
 
-// the home's files, opened in the shelf's editor and written there over the API
+// the home's files, opened in the shelf's editor and written there over the API; past six rules, the rules fold
 function HomeFiles({ id, skills }: { id: string; skills: number }) {
   const [rules, setRules] = useState<string[]>([]);
+  const [unread, setUnread] = useState<string>();
+  const [open, setOpen] = useState(false);
   useEffect(() => {
     let left = false;
-    void filesUnder(id, 'rules').then((found) => { if (!left) setRules(found); }, (e: Error) => deps().store.getState().showToast(`rules: ${e.message}`, 'error'));
+    void filesUnder(id, 'rules').then((found) => { if (!left) setRules(found); }, (e: Error) => { if (!left) setUnread(splitRaw(e.message).line); });
     return () => { left = true; };
   }, [id]);
   const shelf = (what?: 'skills') => {
     app.store.getState().toggleSettings(false);
     app.store.getState().toggleResources(true, { where: id, ...(what && { what }) });
   };
-  const open = async (path: string, seed?: string) => {
+  const go = async (path: string, seed?: string) => {
     shelf();
     await openFile(deps(), id, path, seed);
   };
-  const row = (key: string, label: string, go: () => void) => (
+  const row = (key: string, label: string, act: () => void) => (
     <div className="row" key={key}>
       <span>{label}</span>
-      <b><button className="btn sm" data-testid={`setup-open-${key}`} aria-label={`Open ${label}`} onClick={go}>Open</button></b>
+      <b><button className="btn sm" data-testid={`setup-open-${key}`} aria-label={`Open ${label}`} onClick={act}>Open</button></b>
     </div>
   );
+  const folds = rules.length > 6;
   return (
-    <div className="rows" data-testid="setup-files">
-      {FILES.map(([file, seed]) => row(file, file, () => void open(file, seed)))}
-      {row('skills', skills === 1 ? '1 skill' : `${skills} skills`, () => shelf('skills'))}
-      {rules.map((file) => row(file, file, () => void open(file)))}
+    <div data-testid="setup-files">
+      {FILES.map(([file, seed]) => row(file, file, () => void go(file, seed)))}
+      {row('skills', `skills · ${skills}`, () => shelf('skills'))}
+      {folds && (
+        <button type="button" className="sec-fold set-fold" data-testid="setup-rules-fold" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <Caret dir={open ? 'down' : 'right'} />{plural(rules.length, 'rule')}
+        </button>
+      )}
+      {(!folds || open) && rules.map((file) => row(file, file, () => void go(file)))}
+      {unread && <div className="set-note" data-testid="setup-rules-failed">The rules could not be read: {unread}</div>}
     </div>
   );
 }
 
-/** What of this machine's agent setup holds a key, each with its box, as Add machine asks it: nothing goes unticked. */
+/** What of this machine's agent setup holds a key, each with its switch for the home: nothing goes switched off. */
 export function SetupTicks({ rows, tick }: { rows: SetupRow[]; tick: (r: SetupRow, fields: string[], on: boolean) => void }) {
-  const box = (r: SetupRow, id: string, label: string, fields: string[], on: boolean) => (
-    <b><input type="checkbox" data-testid={`setup-tick-${id}`} aria-label={label} checked={on} onChange={(e) => tick(r, fields, e.target.checked)} /></b>
+  const home = useApp((s) => (s.via ? homeName(s.fleet, s.via) : 'the home'));
+  const label = (r: SetupRow, field?: string) => {
+    const mask = keyMask(r, field);
+    return <span>{keyLabel(r, field)}{mask && <> <small className="mono">{mask}</small></>}</span>;
+  };
+  const sw = (r: SetupRow, id: string, fields: string[], on: boolean, field?: string) => (
+    <b><button className="set-switch" role="switch" aria-checked={on} aria-label={`Send ${keyLabel(r, field)} to ${home}`} data-testid={`setup-tick-${id}`}
+      onClick={() => tick(r, fields, !on)}>{on ? 'on' : 'off'}</button></b>
   );
   const row = (r: SetupRow) => {
     const t = r.tick!;
-    const label = stepLabel(`mirror:${r.key}`);
-    // a key row with several fields has a box each; what travels whole has one
+    // a key row with several fields has a switch each; what travels whole has one
     if (!t.ticked || t.fields.length < 2) {
-      return (
-        <div className="row" key={r.key}>
-          <span>{label} <small>{t.preview.join(', ')}</small></span>
-          {box(r, r.key, label, t.fields, t.on)}
-        </div>
-      );
+      return <div className="row" key={r.key}>{label(r)}{sw(r, r.key, t.fields, t.on)}</div>;
     }
     return [
       <div className="row" key={r.key}>
-        <span>{label}{t.ticked.length > 0 && !t.on && <small data-testid={`setup-partial-${r.key}`}> partly ticked: {t.ticked.length} of {t.fields.length} keys go</small>}</span>
+        {label(r)}
+        {t.ticked.length > 0 && !t.on && <b data-testid={`setup-partial-${r.key}`}>{t.ticked.length} of {t.fields.length} on</b>}
       </div>,
       ...t.fields.map((f) => (
-        <div className="row" key={`${r.key}#${f}`}>
-          <span><small>{t.preview.filter((p) => p.startsWith(`${f} `)).join(', ') || f}</small></span>
-          {box(r, `${r.key}#${f}`, `${label} ${f}`, [f], t.ticked!.includes(f))}
+        <div className="row set-sub" key={`${r.key}#${f}`}>
+          {label(r, f)}
+          {sw(r, `${r.key}#${f}`, [f], t.ticked!.includes(f), f)}
         </div>
       )),
     ];
   };
-  return <div className="rows" data-testid="setup-rows">{rows.map(row)}</div>;
+  return <div data-testid="setup-rows">{rows.map(row)}</div>;
 }
+
+const copied = (home: string, r: Result<'machines.copySetupFrom'>): string => [
+  `Copied to ${home}.`, r.backup && `Replaced files are in ${r.backup} on ${home}.`,
+  r.replaced && `${home}'s own ${r.replaced.join(', ')} went to its backup folder.`,
+  ...(r.left ?? []).map((name) => `${name} stays as edited on ${home}.`),
+].filter(Boolean).join(' ');
 
 /** A window on a worker: the agent setup lives on the fleet's home, whose files open here, and this machine's own goes there only when copied. */
 export function AgentSetup() {
@@ -114,58 +133,58 @@ export function AgentSetup() {
     setBusy(true);
     setSaid(undefined);
     app.api().call('machines.copySetupFrom', { machine: me! }).then(
-      (r) => {
-        setSaid({
-          ok: true,
-          text: [
-            `Copied to ${home}.`, r.backup && `What it replaced there is in ${r.backup}.`,
-            r.replaced && `A tick went over what ${home} held itself for ${r.replaced.join(', ')}: that is in its backup folder.`,
-            ...(r.left ?? []).map((name) => `${name} stays as you edited it, with any key the mirror copied in it; remove it yourself.`),
-          ].filter(Boolean).join(' '),
-        });
-        void reloadResources(deps());
-      },
+      (r) => { setSaid({ ok: true, text: copied(home, r) }); void reloadResources(deps()); },
       (e: Error) => setSaid({ ok: false, text: e.message }),
     ).finally(() => setBusy(false));
   };
   return (
     <>
-      <div className="desc" data-testid="setup-lives">Your agent setup lives on {home}. Every worker takes it from there, this Mac included.</div>
-      {follows && source
-        ? <HomeFiles id={source.rootId} skills={source.groups.find((g) => g.kind === 'skills')?.items.length ?? 0} />
-        : !follows && (
-          <div className="desc" data-testid="setup-away">
-            {dialed ? `${home} reaches this Mac over its own link, so this window has no way to ${home}: its files and the copy open only where a window reaches it.` : `Its files open here while this window reaches ${home}.`}
+      <Group name={`On ${home}`} testid="setup-lives"
+        info={<Info id="setup-lives">Your agent setup lives on the fleet&apos;s home. Every worker takes it from there, this Mac included.</Info>}>
+        {!follows ? (
+          <div className="set-note" data-testid="setup-away">
+            {dialed ? `This window has no route to ${home}. Open Svall where it reaches ${home} to edit the setup.` : `${home} is not reachable; its files open once it is.`}
+          </div>
+        ) : source
+          ? <HomeFiles id={source.rootId} skills={source.groups.find((g) => g.kind === 'skills')?.items.length ?? 0} />
+          : <div className="set-note"><span className="move-spin" />Reading {home}&apos;s files…</div>}
+      </Group>
+      <Group name="Copy from this Mac"
+        info={<Info id="setup-copy">Sends what changed on this Mac since the last copy; nothing is removed on {home} except keys you switch off. The first copy replaces same-named files there and keeps the old ones in {home}&apos;s backup folder.</Info>}>
+        <div className="row">
+          <span>this Mac → {home}</span>
+          <b><button className="btn sm" data-testid="setup-copy" disabled={!follows || busy || rows === undefined || pending > 0 || failed !== undefined}
+            data-tip={`One copy, now, of what is on this Mac; ${home} stays the source after it`} onClick={copy}>{busy ? 'Copying…' : 'Copy now'}</button></b>
+        </div>
+        {said?.ok && <div className="set-note" role="status" data-testid="setup-copied">{said.text}</div>}
+        {said && !said.ok && <div className="set-said" role="status" data-testid="setup-copy-failed" data-error><Said {...splitRaw(said.text)} settings /></div>}
+        {pushFailed && (
+          <div className="set-said" role="alert" data-testid="setup-push-failed" data-error>
+            <Said line={`${home}'s last push did not land here`} fix={splitRaw(pushFailed).line} raw={splitRaw(pushFailed).raw} settings />
           </div>
         )}
+        {failed && (
+          <div className="row" role="alert" data-testid="setup-failed">
+            <div className="set-said" data-error><Said {...splitRaw(failed)} settings /></div>
+            <b><button className="btn sm" data-testid="setup-retry" onClick={load}>Check again</button></b>
+          </div>
+        )}
+      </Group>
       {!!rows?.length && (
-        <>
-          <div className="desc" data-testid="setup-keys">Keys in config files stay on this Mac unless you tick them for {home}. CLAUDE.md, AGENTS.md, keybindings.json, rules, skills, commands, agents, plugins and agent profiles go as they are, anything written in them included. A key you untick stays on {home} until the next Copy; a server or a file ticked whole before the fleet moved stays until you remove it on {home}.</div>
+        <Group name="Keys" testid="setup-keys"
+          info={<Info id="setup-keys">A key stays on this Mac unless you switch it on for {home}; switched off, it leaves {home} at the next copy. A server or file sent whole stays until you remove it on {home}.</Info>}>
           <SetupTicks rows={rows} tick={tick} />
-        </>
+        </Group>
       )}
-      {pushFailed && <div className="desc" role="alert" data-testid="setup-push-failed" data-error>{home}&apos;s last push here did not land: {pushFailed}</div>}
-      {failed && (
-        <div className="desc" role="alert" data-testid="setup-failed">
-          <span data-error>{failed}</span> <button className="btn sm" data-testid="setup-retry" onClick={load}>Check again</button>
-        </div>
-      )}
-      <div className="desc" data-testid="setup-copy-says">
-        {backup && <>A push from {home} replaced same-named files on this Mac; they are in the folder below. Put back what you want from there first, as a Copy sends what is on this Mac now. </>}
-        A Copy sends only what changed on this Mac since the last one, so a file edited on {home} since stays unless it changed here too. The first Copy has no last one: it replaces same-named files on {home}, edits there included, and keeps what it replaced in {home}&apos;s own backup folder. A Copy removes nothing on {home} but what you unticked, while it is still the copy, and Svall&apos;s rollback copies that hold a key you unticked or changed. A whole item you edited there since stays, with any key in it. A second Mac&apos;s Copy works against the same history: it skips what the first sent and replaces edits made since.
-      </div>
-      <div className="opens">
-        <button className="btn sm" data-testid="setup-copy" disabled={!follows || busy || rows === undefined || pending > 0 || failed !== undefined} data-tip={`One copy, now, of what is on this Mac; ${home} stays the source after it`} onClick={copy}>
-          {busy ? 'Copying…' : `Copy my agent setup from this Mac to ${home}`}
-        </button>
-      </div>
-      {said && <div className="desc" role="status" data-testid={said.ok ? 'setup-copied' : 'setup-copy-failed'} data-error={!said.ok}>{said.text}</div>}
       {backup && (
-        <div className="desc" data-testid="setup-backup">
-          A push from {home} kept what it replaced on this Mac in <code>{backup}</code>.{' '}
-          {replaced.length > 0 && <span data-testid="setup-replaced">A tick went over what this Mac held itself for {replaced.join(', ')}: that is in this folder. </span>}
-          <button className="btn sm" data-testid="setup-backup-show" onClick={() => openFolder(app.bridge, backup, me)}>Show in Finder</button>
-        </div>
+        <Group name="Replaced on this Mac" testid="setup-backup"
+          info={<Info id="setup-backup">A push from {home} replaced same-named files here and kept the old ones in this folder. Put back what you want before you copy.</Info>}>
+          <div className="row">
+            <span data-tip={backup}>{backup.split('/').filter(Boolean).slice(-2).join('/')}</span>
+            <b><button className="btn sm" data-testid="setup-backup-show" onClick={() => openFolder(app.bridge, backup, me)}>Show in Finder</button></b>
+          </div>
+          {replaced.length > 0 && <div className="set-note" data-testid="setup-replaced">Also in it: this Mac&apos;s own {replaced.join(', ')}.</div>}
+        </Group>
       )}
     </>
   );
