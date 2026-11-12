@@ -241,7 +241,7 @@ export function restCheck(name: string, mine: Pick<Classified, 'class'>[], chose
 
 /** The first failure's sentence and action, with every other in `more`, and every failure's details behind the first's. */
 export function refusalOf([first, ...rest]: Failure[]): Refusal {
-  const blocker = ({ reason, action, run }: Failure): Blocker => ({ reason, action, ...(run && { run }) });
+  const blocker = ({ reason, action, run, raw }: Failure): Blocker => ({ reason, action, ...(run && { run }), ...(raw && { raw }) });
   return { ...blocker(first), details: [...first.details ?? [], ...rest.flatMap((f) => f.details ?? [])], ...(rest.length && { more: rest.map(blocker) }) };
 }
 

@@ -79,6 +79,10 @@ export const MobileStatus = z.object({
   pair: z.string().optional(),
   qr: z.string().optional(),
   error: z.string().optional(),
+  // what to do about the error, the command that does it there, and what the tool said, word for word
+  fix: z.string().optional(),
+  run: z.string().optional(),
+  raw: z.string().optional(),
   // why a home move's try left the link off here, until a person's own switch
   reason: z.string().optional(),
 });

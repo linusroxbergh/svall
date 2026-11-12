@@ -3,10 +3,10 @@ import type { SetupRow } from '@svall/protocol';
 
 /**
  * One thing a doctor checked, and what it found; `run`: a next command toward the fix, for the user to run on that machine;
- * `action`, `forward`, `tick` and `gap`: a setup row's, as its step carries them.
+ * `action`, `forward`, `tick` and `gap`: a setup row's, as its step carries them; `raw`: what a tool said, word for word.
  */
 export type Check = {
-  name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string; run?: string; action?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap'];
+  name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string; run?: string; action?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; raw?: string;
 };
 
 export const tickMark = (tick?: SetupRow['tick']): string => (tick ? (tick.on ? '[x] ' : '[ ] ') : '');
@@ -31,6 +31,9 @@ export const grouped = (checks: Check[]): { title: string; checks: Check[] }[] =
 // the installer reads this through a file, so it passes its own terminal's answer in FORCE_COLOR
 export const useColor = (): boolean =>
   process.env.FORCE_COLOR !== undefined ? process.env.FORCE_COLOR !== '0' : !process.env.NO_COLOR && process.stdout.isTTY === true;
+
+/** Text a terminal shows dim, as what a tool said under the sentence it backs. */
+export const dim = (text: string): string => (useColor() ? styleText('dim', text, { validateStream: false }) : text);
 
 export function renderGroups(groups: { title: string; checks: Check[] }[], color: boolean): string {
   const paint = (style: Parameters<typeof styleText>[0], text: string) => (color ? styleText(style, text, { validateStream: false }) : text);

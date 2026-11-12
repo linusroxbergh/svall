@@ -12,9 +12,9 @@ export type CardSize = 'half' | 'full';
 export type Terminal = { id: string; rect: Rect };
 // one native browser view the shell holds for a tab, and what it last reported about the page
 export type Webview = { tab: string; rect: Rect; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string };
-// a toast either reports a refusal or confirms something the user set going; an action is the one thing it offers to take back,
-// and dismiss puts a Dismiss beside it
-export type Toast = { text: string; tone: 'error' | 'ok'; action?: { label: string; run(): void }; dismiss?: boolean };
+// a toast reports a refusal, confirms something the user set going, or tells a fact (info); an action is the one thing it
+// offers to take back, and dismiss puts a Dismiss beside it
+export type Toast = { text: string; tone: 'error' | 'ok' | 'info'; action?: { label: string; run(): void }; dismiss?: boolean };
 // a link waiting by the pointer for the user to say where it should open; one from a terminal names the surface the keys go back to
 export type LinkAsk = { url: string; robotId: string; x: number; y: number; surface?: string };
 // an entry with items opens them beside it, one with neither run nor items shows greyed out, and sep rules it off from those above

@@ -433,12 +433,12 @@ describe('a move nothing is driving', () => {
     expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-abort', args: { name: '' } });
   });
 
-  it('a machine whose daemon has not started again says so', async () => {
+  it('a machine whose background service has not started again says so', async () => {
     online();
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, answer: 'its daemon did not start again: failed to connect to bus', phase: 'stopping' } } });
     render(<HomeMoveBanner />);
     const said = await screen.findByTestId('home-move-answer');
-    expect(said.textContent).toBe(' studio went back as it was, and its daemon has not started again.');
+    expect(said.textContent).toBe(' studio went back as it was and has not started again.');
     expect(said.getAttribute('data-tip')).toMatch(/failed to connect to bus/);
   });
 

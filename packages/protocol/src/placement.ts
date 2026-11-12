@@ -5,8 +5,8 @@ export const MoveId = z.string().regex(/^mv_[0-9a-z]{10}$/);
 export const MovePhase = z.enum(['rest', 'bundle', 'prepare', 'commit', 'activate', 'release', 'done', 'aborted']);
 export type MovePhase = z.infer<typeof MovePhase>;
 
-/** One check a move fails: its sentence, its action and the command the action runs there. */
-export const Blocker = z.object({ reason: z.string(), action: z.string(), run: z.string().optional() });
+/** One check a move fails: its sentence, its action, the command the action runs there, and what a tool said, word for word. */
+export const Blocker = z.object({ reason: z.string(), action: z.string(), run: z.string().optional(), raw: z.string().optional() });
 export type Blocker = z.infer<typeof Blocker>;
 /** Why a move cannot happen: the first check that failed, with `more` every other, each with its own action. */
 export const Refusal = Blocker.extend({ details: z.array(z.string()), more: z.array(Blocker).optional() });
@@ -20,6 +20,9 @@ export const WORKTREE_ACTION = 'give it its own worktree';
 
 /** The action of the refusal a move clears by upgrading the machine to this Mac's release. */
 export const UPGRADE_ACTION = 'upgrade it under Machines';
+
+/** A path of fleet.json a home move writes anew, in a person's words; a key not named here goes by itself. */
+export const CONFIG_WORD: Record<string, string> = { defaultCwd: "new robots' folder", 'home.cwd': "mission control's folder", 'onboarding.firstProject': 'first project folder' };
 
 // stays holds the sheet's phrases for what is left on this Mac: ".env stays here", "node_modules is not carried";
 // converts.keep, that the main checkout keeps its `changed` files
@@ -106,14 +109,34 @@ export type WorkerFile = z.infer<typeof WorkerFile>;
 /**
  * One line of a machine's setup: how a thing stands there, and what to do when it is not right; `tick` the consent it
  * toggles, whose `item` and `fields` a tick hands to `machines.consent`; `gap` what will not work there yet, by name;
- * `here`, on a variable's row, that this Mac has the variable to copy from.
+ * `here`, on a variable's row, that this Mac has the variable to copy from; `raw`, what a tool said, word for word.
  */
 export const SetupRow = z.object({
-  key: z.string(), status: z.enum(['ok', 'warn', 'skip']), detail: z.string(), action: z.string().optional(), run: z.string().optional(),
+  key: z.string(), status: z.enum(['ok', 'warn', 'skip']), detail: z.string(), action: z.string().optional(), run: z.string().optional(), raw: z.string().optional(),
   forward: z.number().int().optional(), tick: z.object({ item: z.string(), name: z.string().optional(), fields: z.array(z.string()), on: z.boolean(), preview: z.array(z.string()), ticked: z.array(z.string()).optional() }).optional(),
   gap: z.object({ name: z.string(), what: z.string() }).optional(), here: z.literal(true).optional(),
 });
 export type SetupRow = z.infer<typeof SetupRow>;
+
+type Keyed = Pick<SetupRow, 'tick' | 'gap'>;
+const fieldsOf = (r: Keyed, field?: string): string[] => (field ? [field] : r.tick?.fields ?? []);
+/** What a key row sends, by name: a server's or file's keys, `env.` left out ("rb's RB_API_KEY"), or what travels whole ("rb, whole, keys included"); `field`, one of its keys alone. */
+export function keyLabel(r: Keyed, field?: string): string {
+  const name = r.gap?.name ?? r.tick?.name ?? r.tick?.item ?? '';
+  // a key row's tick lists the fields ticked so far; what travels whole lists none
+  if (!r.tick?.ticked) return `${name}, whole, keys included`;
+  return `${name}'s ${fieldsOf(r, field).map((f) => f.replace(/^env\./, '')).join(', ')}`;
+}
+/** A key row's values as its preview masks them, without their field names ("rb_…90"); `field`, one of its keys alone; none for what travels whole. */
+export function keyMask(r: Keyed, field?: string): string | undefined {
+  if (!r.tick?.ticked) return undefined;
+  const fields = fieldsOf(r, field);
+  const masks = r.tick.preview.flatMap((p) => {
+    const f = fields.find((x) => p.startsWith(`${x} `));
+    return f ? [p.slice(f.length + 1)] : [];
+  });
+  return masks.length ? masks.join(', ') : undefined;
+}
 
 type WayOn = Pick<SetupRow, 'tick' | 'run' | 'action'>;
 /** Whether a setup row asks for the machine to be checked again, as one holding a copy it should not still does. */

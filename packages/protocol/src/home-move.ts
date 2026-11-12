@@ -91,6 +91,21 @@ export const HomeSheet = z.object({
 });
 export type HomeSheet = z.infer<typeof HomeSheet>;
 
+// where the machine taking the fleet says a move stands, for a person who has not followed it
+const STANDS: Record<string, (name: string) => string> = {
+  unreachable: (n) => `${n} does not answer; the move waits until it does.`,
+  unknown: (n) => `${n} cannot say how the move went; the move waits until it can.`,
+  staging: (n) => `${n} has not received the fleet's files yet.`,
+  staged: (n) => `${n} holds the fleet's files and has not taken over.`,
+  installed: (n) => `${n} has the fleet's files in place and is starting as its home.`,
+  stopping: (n) => `${n} went back as it was and has not started again.`,
+  rolledback: (n) => `${n} tried to take over and went back as it was.`,
+  adopted: (n) => `${n} has taken over.`,
+  done: (n) => `${n} has taken over.`,
+};
+/** Where a home move stands at `phase`, as a sentence on `name`, the machine taking the fleet. */
+export const homeMoveStands = (phase: string, name: string): string => (Object.hasOwn(STANDS, phase) ? STANDS[phase](name) : `${name} is at work on the move.`);
+
 /** Mission control's robots a home move sent ahead that stopped, and left away from the home. */
 export const crewAway = (s: Pick<FleetState, 'robots' | 'islands'>): FleetState['robots'][string][] => Object.values(s.robots).filter((r) => s.islands[r.islandId]?.kind === 'home' && r.machine !== undefined && r.sentAhead !== undefined);
 

@@ -1,12 +1,25 @@
 import { aside, asideLine, MachineRecord, wayOn, type SetupRow } from '@svall/protocol';
 import type { HostArgs, HostOp, HostStep, MachineRow } from './bridge.js';
 
+export { keyLabel, keyMask } from '@svall/protocol';
+
 // a value the shell said was a token is never shown, kept or logged, whatever step carried it
 const TOKEN = /(token["']?\s*[:=]\s*["']?)[^\s"'&,;}]+/gi;
 const TOKEN_FLAG = /(--token[ =])[^\s"']+/gi;
 
 export function withoutTokens(text: string): string {
   return text.replace(TOKEN, '$1…').replace(TOKEN_FLAG, '$1…');
+}
+
+// where a sentence ends and what a tool said of it begins
+const RAW_AT = /: Command failed:|Command failed:| exited \d+:|: ssh could not reach|\bssh: |within \d+ms:/;
+
+/** A text that carries no `raw` of its own, cut where a tool's words begin: the sentence before them, and them behind it. */
+export function splitRaw(text: string): { line: string; raw?: string } {
+  const at = RAW_AT.exec(text);
+  if (!at) return { line: withoutTokens(text) };
+  const line = text.slice(0, at.index).replace(/[\s:]+$/, '');
+  return { line: line ? withoutTokens(line) : 'Something went wrong on the machine', raw: withoutTokens(text.slice(at.index).replace(/^[\s:]+/, '')) };
 }
 
 /** The machines this Mac knows: each one's name by its id. */
@@ -45,6 +58,7 @@ const plainRow = (event: HostStep, names: MachineNames): HostStep => ({
   ...(event.tick ? { tick: event.tick } : {}),
   ...(event.gap ? { gap: event.gap } : {}),
   ...(event.here ? { here: event.here } : {}),
+  ...(event.raw ? { raw: withoutTokens(event.raw) } : {}),
 });
 
 /** The phases the setup page shows, in its order, and the steps `svall host …` and a machine's own doctor emit inside each. */

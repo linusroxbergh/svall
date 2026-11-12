@@ -7,7 +7,7 @@ import { agentAdapters, agentProber, type AgentProbe } from '../../src/sessions/
 import type { CliRun } from '../../src/sessions/types.js';
 import { hooklessGit } from '../../src/links/git.js';
 import { BUNDLE_MAX } from '../../src/placement/bundle.js';
-import { moveChecks, probeRepo, type CheckDeps, type RepoProbe } from '../../src/placement/checks.js';
+import { moveChecks, probeRepo, refusalOf, type CheckDeps, type RepoProbe } from '../../src/placement/checks.js';
 import { git, hasGit } from '../git-fixture.js';
 import { makeHome } from '../helpers.js';
 import { H, W, island, robot, stopWorlds, world } from './world.js';
@@ -763,5 +763,12 @@ describe.skipIf(!hasGit)('repo.probe', () => {
     await w.link();
     expect(await w.home.links.call(W, 'repo.probe', { path: '/nonexistent/svall' })).toEqual({ state: 'none', refs: [] });
     await expect(w.home.links.call(W, 'repo.probe', { path: 'svall' })).rejects.toSatisfy((e) => e instanceof ApiError && e.code === 'invalid_params');
+  });
+});
+
+describe('refusalOf', () => {
+  it('keeps what a tool said with the failure it backs, the first and the rest alike', () => {
+    expect(refusalOf([{ reason: 'a', action: 'x', raw: 'exit 1' }, { reason: 'b', action: 'y', run: 'z', raw: 'exit 2' }]))
+      .toEqual({ reason: 'a', action: 'x', raw: 'exit 1', details: [], more: [{ reason: 'b', action: 'y', run: 'z', raw: 'exit 2' }] });
   });
 });

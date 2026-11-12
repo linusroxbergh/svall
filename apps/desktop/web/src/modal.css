@@ -25,6 +25,11 @@
 .modal-more > summary:hover { color: var(--ink); }
 .modal-more-body { display: flex; flex-direction: column; gap: var(--sp-xs); margin-top: var(--sp-xs); color: var(--ink-2); }
 .modal-more-body > span { display: block; }
+.modal-more-body.mono { font-family: var(--mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+/* a problem said once: its line, what to do under it and a tool's words behind details, with its one button at the right */
+.said { display: flex; align-items: center; gap: var(--sp-md); min-width: 0; }
+.said > div { flex: 1; display: flex; flex-direction: column; gap: var(--sp-2xs); min-width: 0; color: var(--ink); font-size: var(--text-md); line-height: var(--lh); overflow-wrap: anywhere; }
+.said > .btn { flex: none; }
 /* New Robot on a home elsewhere: that machine's folders under a field that takes any path there */
 .new-folder { display: flex; flex-direction: column; gap: var(--sp-xs); min-width: 0; }
 .new-folder-list { display: flex; flex-direction: column; max-height: 148px; overflow: hidden auto; }

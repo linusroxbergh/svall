@@ -37,6 +37,7 @@
 .toast { position: absolute; z-index: var(--z-toast); padding: var(--sp-lg) var(--sp-2xl); border-radius: var(--r-md); background: color-mix(in srgb, var(--blocked) 95%, transparent); color: var(--ink-on-blocked); font-weight: var(--w-semibold); font-size: var(--text-md); max-width: 340px; pointer-events: none; border: 0; opacity: 1; transition: opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease); }
 /* a confirmation wears the colour of the button that set it going, so only a refusal reads as alarm */
 .toast[data-tone="ok"] { background: color-mix(in srgb, var(--sand) 95%, transparent); color: var(--ink-sand); }
+.toast[data-tone="info"] { background: var(--panel-hi); color: var(--ink); border: 1px solid var(--line); backdrop-filter: blur(var(--blur-panel)); }
 @starting-style { .toast { opacity: 0; transform: translateY(8px); } }
 .toast[data-corner$="left"] { left: var(--map-inset); }
 .toast[data-corner$="right"] { right: var(--map-inset); }

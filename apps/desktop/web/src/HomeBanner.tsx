@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { crewAway } from '@svall/protocol';
+import { crewAway, homeMoveStands } from '@svall/protocol';
 import { app } from './boot.js';
 import type { HostStep } from './bridge.js';
 import { useApp } from './hooks.js';
@@ -18,20 +18,6 @@ function said(name: string, state: string, detail?: string): string {
 }
 
 const WAIT_MS = 5000;
-
-// where the machine holding the fleet says the move stands, for a person who has not followed it
-const STANDS: Record<string, (name: string) => string> = {
-  unreachable: (n) => `${n} does not answer; the move waits until it does.`,
-  unknown: (n) => `${n} cannot say how the move went; the move waits until it can.`,
-  staging: (n) => `${n} has not received the fleet's files yet.`,
-  staged: (n) => `${n} holds the fleet's files and has not taken over.`,
-  installed: (n) => `${n} has the fleet's files in place and is starting as its home.`,
-  stopping: (n) => `${n} went back as it was, and its daemon has not started again.`,
-  rolledback: (n) => `${n} tried to take over and went back as it was.`,
-  adopted: (n) => `${n} has taken over.`,
-  done: (n) => `${n} has taken over.`,
-};
-const stands = (phase: string, name: string): string => STANDS[phase]?.(name) ?? `${name} is at work on the move.`;
 
 // a run that failed, in the window's words: why, then what to do here; the sheet's own says why alone, as what it says to do was for the sheet
 const failedLine = (s: HostStep, sheet: boolean): string => onThisMac([s.detail ?? s.step, !sheet && (s.say ?? s.action)].filter(Boolean).join('. '));
@@ -63,7 +49,7 @@ export function HomeMoveBanner() {
         {moving.unmarked ? `A move of the fleet to this Mac has not taken hold, and ${moving.from ?? 'its old home'} is still the home. Abort clears it, which a new move needs.`
           : here ? `The fleet is moving to this Mac, and ${moving.from ?? 'its old home'} takes no changes until the move ends; robots keep running.`
             : `The fleet is moving to ${moving.name}, and this Mac takes no changes until the move ends; robots keep running.`}
-        {moving.phase && <small data-testid="home-move-answer" data-tip={moving.answer}> {stands(moving.phase, moving.name)}</small>}
+        {moving.phase && <small data-testid="home-move-answer" data-tip={moving.answer}> {homeMoveStands(moving.phase, moving.name)}</small>}
         {failed && <small data-testid="home-move-failed"> {failedLine(failed, run?.op === 'home')}</small>}
       </span>
       {!moving.unmarked && <button className="btn sm" data-testid="home-move-retry" disabled={running} onClick={() => startHost('home-retry', { name: '' })}>{run?.op === 'home-retry' && running ? 'Finishing…' : 'Finish the move'}</button>}

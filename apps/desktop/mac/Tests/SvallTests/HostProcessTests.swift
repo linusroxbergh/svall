@@ -226,16 +226,24 @@ final class HostProcessTests: XCTestCase {
         XCTAssertEqual(code, 1)
     }
 
-    func testATickRowDecodesAndReachesThePageWithItsItemFieldsPreviewAndGap() throws {
-        let row = #"{"step":"mirror:claude:mcp:linear","status":"warn","detail":"mirrored without env.LINEAR_API_KEY lin…90","action":"copy linear's keys to studio","forward":3334,"tick":{"item":"claude:mcp:linear","fields":["env.LINEAR_API_KEY"],"on":false,"preview":["env.LINEAR_API_KEY lin…90"]},"gap":{"name":"linear","what":"keys not copied (env.LINEAR_API_KEY)"}}"#
+    func testATickRowDecodesAndReachesThePageWithItsItemFieldsPreviewNameTickedAndGap() throws {
+        let row = #"{"step":"mirror:claude:mcp:linear","status":"warn","detail":"mirrored without env.LINEAR_API_KEY lin…90","action":"copy linear's keys to studio","forward":3334,"tick":{"item":"claude:mcp:linear","name":"linear","fields":["env.LINEAR_API_KEY"],"on":false,"preview":["env.LINEAR_API_KEY lin…90"],"ticked":[]},"gap":{"name":"linear","what":"keys not copied (env.LINEAR_API_KEY)"}}"#
         let step = try JSONDecoder().decode(HostProcess.Step.self, from: Data(row.utf8))
-        XCTAssertEqual(step.tick, HostProcess.Tick(item: "claude:mcp:linear", fields: ["env.LINEAR_API_KEY"], on: false, preview: ["env.LINEAR_API_KEY lin…90"]))
+        XCTAssertEqual(step.tick, HostProcess.Tick(item: "claude:mcp:linear", fields: ["env.LINEAR_API_KEY"], on: false, preview: ["env.LINEAR_API_KEY lin…90"], name: "linear", ticked: []))
         XCTAssertEqual(step.forward, 3334)
         XCTAssertEqual(step.gap, HostProcess.Gap(name: "linear", what: "keys not copied (env.LINEAR_API_KEY)"))
         let event = FromShell.hostStep(op: "add", step: step).json["event"] as? [String: Any]
-        XCTAssertEqual(event?["tick"] as? NSDictionary, ["item": "claude:mcp:linear", "fields": ["env.LINEAR_API_KEY"], "on": false, "preview": ["env.LINEAR_API_KEY lin…90"]])
+        XCTAssertEqual(event?["tick"] as? NSDictionary, ["item": "claude:mcp:linear", "name": "linear", "fields": ["env.LINEAR_API_KEY"], "on": false, "preview": ["env.LINEAR_API_KEY lin…90"], "ticked": [String]()])
         XCTAssertEqual(event?["forward"] as? Int, 3334)
         XCTAssertEqual(event?["gap"] as? NSDictionary, ["name": "linear", "what": "keys not copied (env.LINEAR_API_KEY)"])
+    }
+
+    func testWhatAToolSaidReachesThePageWithItsStep() throws {
+        let row = #"{"step":"tailscale","status":"fail","detail":"Tailscale is not running on studio","raw":"Command failed: tailscale status --json"}"#
+        let step = try JSONDecoder().decode(HostProcess.Step.self, from: Data(row.utf8))
+        XCTAssertEqual(step.raw, "Command failed: tailscale status --json")
+        let event = FromShell.hostStep(op: "add", step: step).json["event"] as? [String: Any]
+        XCTAssertEqual(event?["raw"] as? String, "Command failed: tailscale status --json")
     }
 
     func testAVariableRowCarriesThatThisMacHasItToThePage() throws {

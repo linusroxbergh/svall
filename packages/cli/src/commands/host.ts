@@ -23,7 +23,7 @@ import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { ask } from '../prompt.js';
 import { farProfile, type Target } from '../target.js';
-import { MARK, tickMark, type Check } from '../checks-view.js';
+import { dim, MARK, tickMark, type Check } from '../checks-view.js';
 import { checkLines } from './doctor.js';
 
 /**
@@ -88,9 +88,10 @@ function realDeps(emit: (e: StepEvent) => void, dir: string, fleet: Target): Hos
   };
 }
 
-/** A step as a run prints it; a detail of several lines, as a command there can print, lists them under the step. */
+/** A step as a run prints it; a detail of several lines, as a command there can print, lists them under the step, and what a tool said of one that failed or warned, dim under that. */
 export const stepLine = (e: StepEvent): string =>
-  `${MARK[e.status as keyof typeof MARK] ?? ' '} ${e.step}  ${tickMark(e.tick)}${[e.detail, e.action].filter(Boolean).join(' -> ')}`.trimEnd().replaceAll('\n', '\n    ');
+  `${MARK[e.status as keyof typeof MARK] ?? ' '} ${e.step}  ${tickMark(e.tick)}${[e.detail, e.action].filter(Boolean).join(' -> ')}`.trimEnd().replaceAll('\n', '\n    ')
+  + (e.raw && (e.status === 'fail' || e.status === 'warn') ? `\n${dim(e.raw.replace(/^/gm, '  '))}` : '');
 
 type Op = 'add' | 'upgrade' | 'rollback' | 'remove';
 const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;

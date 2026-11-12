@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { AdoptAnswer, ApiError, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId, MachineRecord, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeFacts, type HomeManifest, type HomeMoveId, type HomeMoving, type HomeSheet, type Refusal, type SetupRow } from '@svall/protocol';
+import { AdoptAnswer, ApiError, CONFIG_WORD, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId, MachineRecord, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeFacts, type HomeManifest, type HomeMoveId, type HomeMoving, type HomeSheet, type Refusal, type SetupRow } from '@svall/protocol';
 import { readFleetConfig } from '@svall/svalld/config';
 import { HomeCrash, homePoint } from '@svall/svalld/failpoints';
 import { markedThere } from '@svall/svalld/fleet/home-far';
@@ -311,7 +311,7 @@ const refuse = (run: Runner, why: string, action?: string, say?: string): Promis
 const refusalStep = (refusal: Refusal): StepError => new StepError([refusal.reason, ...(refusal.more ?? []).map((m) => m.reason)].join('; '), refusal.action);
 
 // a terminal's word for what the sheet says of a path the machine taking the fleet does not have yet
-const lacking = (sheet: HomeSheet, name: string): string => sheet.rewrites.filter((r) => r.lacks).map((r) => `; ${r.key} ${r.kept ? 'is' : 'becomes'} ${r.to}, which ${name} does not have yet`).join('');
+const lacking = (sheet: HomeSheet, name: string): string => sheet.rewrites.filter((r) => r.lacks).map((r) => `; ${CONFIG_WORD[r.key] ?? r.key} ${r.kept ? 'is' : 'becomes'} ${r.to}, which ${name} does not have yet`).join('');
 /** This machine, as its own terminal and window say it. */
 export const thisMachine = (platform: NodeJS.Platform = process.platform): string => (platform === 'darwin' ? 'this Mac' : 'this machine');
 // the workers that do not answer, in the sheet's words

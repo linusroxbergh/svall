@@ -40,9 +40,10 @@ export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain; forward: the
 // port its terminal forwards from this Mac; tick: the consent a mirror row toggles; gap: what will not work there yet;
 // here: that this Mac has the variable a row is about
-// say: what a window shows in place of `action`, where a button stands for the command
+// say: what a window shows in place of `action`, where a button stands for the command; raw: what a tool said, word for word
 export type StepEvent = {
   step: string; status: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'];
+  raw?: string;
 };
 // actions: the things to fix there; stopped: the step a run failed at, past which nothing ran; setup: the mirror rows of
 // what will not work there yet, which never stop a robot moving there
@@ -83,10 +84,12 @@ export type AddOptions = { name: string; ssh: string; release?: string; allowUns
 
 /** A step that could not finish, with the one thing the user can do about it. */
 export class StepError extends Error {
-  constructor(readonly detail: string, readonly action?: string, readonly run?: string, readonly say?: string) { super(detail); }
+  constructor(readonly detail: string, readonly action?: string, readonly run?: string, readonly say?: string, readonly raw?: string) { super(detail); }
 }
 
-type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'] };
+type Outcome<T> = {
+  value: T; status?: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here']; raw?: string;
+};
 
 /** The step events a host command emits, the actions they leave the user with, and the mirror rows of what will not work there. */
 export class Runner {
@@ -110,13 +113,14 @@ export class Runner {
       const e = err instanceof StepError ? err : new StepError((err as Error).message);
       this.failed = step;
       this.todo(e.action ?? e.detail);
-      this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}), ...(e.run ? { run: e.run } : {}), ...(e.say ? { say: e.say } : {}) });
+      this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}), ...(e.run ? { run: e.run } : {}), ...(e.say ? { say: e.say } : {}), ...(e.raw ? { raw: e.raw } : {}) });
       throw e;
     }
     const event: StepEvent = {
       step, status: r.status ?? 'ok',
       ...(r.detail ? { detail: r.detail } : {}), ...(r.action ? { action: r.action } : {}), ...(r.run ? { run: r.run } : {}), ...(r.say ? { say: r.say } : {}),
       ...(r.forward !== undefined ? { forward: r.forward } : {}), ...(r.tick ? { tick: r.tick } : {}), ...(r.gap ? { gap: r.gap } : {}), ...(r.here ? { here: r.here } : {}),
+      ...(r.raw ? { raw: r.raw } : {}),
     };
     if (step.startsWith('mirror:')) {
       if (r.gap) this.setup.push(event);

@@ -158,6 +158,8 @@
   padding: var(--sp-lg) var(--sp-lg); color: var(--ink-2); font-size: var(--text-sm); font-weight: var(--w-regular); line-height: var(--lh); text-align: left; text-transform: none; letter-spacing: normal; }
 .set-tip[data-open="true"] { display: block; }
 .set-tip[data-place="up"] { top: auto; bottom: calc(100% + 5px); }
+/* one line under the row or group it belongs to */
+.set-note { color: var(--ink-3); font-size: var(--text-sm); line-height: var(--lh); }
 .side .row b.set-slider, .side .row b.set-zoom { display: flex; align-items: center; gap: var(--sp-lg); }
 .set-slider input { width: 132px; accent-color: var(--sand); }
 .set-slider .tnum, .set-zoom .tnum { min-width: 36px; text-align: right; }

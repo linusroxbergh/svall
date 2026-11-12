@@ -108,18 +108,18 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     expect(started()).toBe(1);
   });
 
-  it('says of a rewritten path that the machine taking the fleet does not have it, and goes on', async () => {
+  it('says of a rewritten path, in its own words, that the machine taking the fleet does not have it, and goes on', async () => {
     const { deps } = outDeps(happy, { rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }, { key: 'home.cwd', to: '~/crew' }, { key: 'onboarding.firstProject', to: '~/first', kept: true, lacks: true }] });
     expect((await moveHomeOut('studio', deps)).result).toBe('ready');
     expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail)
-      .toBe('2 robots stay here, 1 on studio; defaultCwd becomes ~/code, which studio does not have yet; onboarding.firstProject is ~/first, which studio does not have yet');
+      .toBe("2 robots stay here, 1 on studio; new robots' folder becomes ~/code, which studio does not have yet; first project folder is ~/first, which studio does not have yet");
   });
 
   it('names at its check a worker that does not answer, in the sheet\'s words, before anything moves', async () => {
     const { deps } = outDeps(happy, { rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }], waits: [{ id: crypto.randomUUID(), name: 'albumap' }] });
     await moveHomeOut('studio', deps);
     expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail)
-      .toBe('2 robots stay here, 1 on studio; defaultCwd becomes ~/code, which studio does not have yet; albumap does not answer; it joins studio when it does');
+      .toBe("2 robots stay here, 1 on studio; new robots' folder becomes ~/code, which studio does not have yet; albumap does not answer; it joins studio when it does");
   });
 
   it('names a worker that has not joined the new home, and the move stands', async () => {
@@ -686,7 +686,7 @@ describe('fleet home set local', () => {
     const stop = telling(w, master);
     await moveHomeBack(deps);
     stop();
-    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe(`2 robots stay on studio, 1 here; defaultCwd becomes ~/code, which ${thisMachine()} does not have yet`);
+    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe(`2 robots stay on studio, 1 here; new robots' folder becomes ~/code, which ${thisMachine()} does not have yet`);
   }, 30_000);
 
   it('names at its check a worker that does not answer, as joining the machine that takes the fleet back', async () => {

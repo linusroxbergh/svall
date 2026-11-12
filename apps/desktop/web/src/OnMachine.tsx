@@ -2,19 +2,29 @@ import { useEffect, useState } from 'react';
 import { aside, asideLine, notNeeded, toTick, type MachineId, type SetupRow } from '@svall/protocol';
 import { app } from './boot.js';
 import { useApp } from './hooks.js';
+import type { AppState } from './store/index.js';
 import { terminalOn } from './MoveSheet.js';
 import { Section } from './Section.js';
 import { VarField } from './VarField.js';
 
 export const cdLine = (dir: string): string => `cd '${dir.replaceAll("'", "'\\''")}'`;
 
+/** Whether this Mac has an ssh route to the machine `name`, as far as its list says: a list not read, or not readable, says nothing against one. */
+export const hasRoute = (s: Pick<AppState, 'machines' | 'machinesError'>, name: string): boolean =>
+  s.machines === undefined || !!s.machinesError || !!s.machines.find((m) => m.name === name)?.ssh;
+
+/** Whether a terminal on `name` can be offered from this Mac; none for no machine. */
+export function useRoute(name: string | undefined): boolean {
+  const route = useApp((s) => name !== undefined && hasRoute(s, name));
+  const known = useApp((s) => !!s.machines && !s.machinesError && s.machines.some((m) => m.name === name));
+  // a machine added since the list was read is missing from it, so the list is asked for once more
+  useEffect(() => { if (name !== undefined && !known) app.bridge.send({ type: 'host.list' }); }, [name]);
+  return route;
+}
+
 /** A terminal on the machine for what only it can reach, with a `cd` to `dir` typed there; a machine this Mac has no ssh to, such as another Mac, offers none. */
 export function TerminalThere({ name, dir, className = 'btn sm', testid }: { name: string; dir: string; className?: string; testid: string }) {
-  const listed = useApp((s) => s.machines !== undefined && !s.machinesError);
-  const row = useApp((s) => s.machines?.find((m) => m.name === name));
-  // a machine added since the list was read is missing from it, so the list is asked for once more
-  useEffect(() => { if (!listed || !row) app.bridge.send({ type: 'host.list' }); }, [name]);
-  if (listed && !row?.ssh) return null;
+  if (!useRoute(name)) return null;
   return <button className={className} data-testid={testid} data-tip={`A terminal on ${name} in ${dir}`} onClick={() => terminalOn(name, cdLine(dir))}>Terminal there</button>;
 }
 

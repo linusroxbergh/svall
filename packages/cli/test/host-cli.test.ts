@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { MachineId, type SetupRow } from '@svall/protocol';
 import { shq } from '@svall/svalld/text';
-import { removeHost, rowCheck, rowStep } from '../src/controller/host.js';
+import { flow, removeHost, rowCheck, rowStep, StepError, type StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { SshMaster } from '../src/controller/ssh.js';
 import { waitFor } from '../../svalld/test/helpers.js';
@@ -281,6 +281,23 @@ describe('the last line a run prints', () => {
     const { stepLine } = await import('../src/commands/host.js');
     expect(stepLine({ step: 'install', status: 'fail', detail: 'svall setup exited 1: one line\nanother line' }))
       .toBe('✗ install  svall setup exited 1: one line\n    another line');
+  });
+
+  it('prints what a tool said of a step that failed or warned dim under it, two spaces in, and of one that went well nothing', async () => {
+    const { stepLine } = await import('../src/commands/host.js');
+    expect(stepLine({ step: 'tailscale', status: 'fail', detail: 'Tailscale is not running on studio', raw: 'Command failed: tailscale status --json\ntailscale is stopped' }))
+      .toBe('✗ tailscale  Tailscale is not running on studio\n  Command failed: tailscale status --json\n  tailscale is stopped');
+    expect(stepLine({ step: 'tmux', status: 'warn', detail: '3.4', raw: 'tmux 3.4' })).toBe('! tmux  3.4\n  tmux 3.4');
+    expect(stepLine({ step: 'ssh', status: 'ok', detail: 'logs in', raw: 'OpenSSH_9.6' })).toBe('✓ ssh  logs in');
+  });
+
+  it('a step carries what a tool said, from what it found and from what stopped it', async () => {
+    const events: StepEvent[] = [];
+    await flow((e) => events.push(e), async (run) => {
+      await run.step('space', async () => ({ value: undefined, status: 'warn' as const, detail: '2 GB free: low', raw: 'df: 2097152' }));
+      await run.step('install', () => Promise.reject(new StepError('did not finish', undefined, undefined, undefined, 'svall setup exited 1: no space')));
+    });
+    expect(events.filter((e) => e.status !== 'start').map((e) => [e.step, e.raw])).toEqual([['space', 'df: 2097152'], ['install', 'svall setup exited 1: no space']]);
   });
 
   it('stepLine prints [ ] before an unticked row and [x] before a ticked one', async () => {

@@ -122,12 +122,15 @@ enum HostCommand {
 
 /// One run of the bundled `svall host …`, killed when the page cancels or the window goes.
 final class HostProcess {
-    /// A setup row's consent checkbox: the item's fields, whether they are ticked, and what ticking copies.
+    /// A setup row's consent checkbox: the item's fields, whether they are ticked, and what ticking copies; a key row's
+    /// name and the fields ticked so far, none where the item travels whole.
     struct Tick: Decodable, Equatable {
         let item: String
         let fields: [String]
         let on: Bool
         let preview: [String]
+        var name: String? = nil
+        var ticked: [String]? = nil
     }
 
     /// What will not work on the machine yet, by name.
@@ -149,6 +152,8 @@ final class HostProcess {
         var gap: Gap? = nil
         // that this Mac has the variable the row is about, to copy from
         var here: Bool? = nil
+        // what a tool said, word for word
+        var raw: String? = nil
     }
 
     private let child: LineChild

@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import {
   applyStep, beginRun, endRun, groupSteps, loginForward, machineName, outcomeOf, overHome,
-  plainStep, replaceRows, rowToStep, runActions, sshDestination, stepLabel, stepSaid, withoutTokens,
+  plainStep, replaceRows, rowToStep, runActions, splitRaw, sshDestination, stepLabel, stepSaid, withoutTokens,
 } from '../src/host.js';
 import type { HostStep } from '../src/bridge.js';
 
@@ -56,6 +56,14 @@ describe('host run', () => {
     expect(run.steps[0].detail).toBe('ws://127.0.0.1:47800 refused token=…');
     expect(run.steps[0].action).toBe('retry with --token …');
     expect(JSON.stringify(run)).not.toContain('s3cr3t');
+  });
+
+  it('keeps what a tool said with its step, word for word but for a token, its machine ids and all', () => {
+    const id = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+    let run = applyStep(beginRun('doctor', { name: 'box' }), step('probe', 'fail', { detail: 'does not answer', raw: `machine ${id} refused token=s3cr3t-value` }));
+    expect(run.steps[0].raw).toBe(`machine ${id} refused token=…`);
+    run = replaceRows(run, [rowToStep({ key: 'var:X', status: 'warn', detail: 'not set', raw: 'svall worker env X exited 1: --token s3cr3t' })]);
+    expect(run.steps.at(-1)?.raw).toBe('svall worker env X exited 1: --token …');
   });
 
   it('names no machine by its id, and keeps an id that names a file', () => {
@@ -305,5 +313,39 @@ describe('what the page may ask for', () => {
     expect(loginForward('MCP_OAUTH_CALLBACK_PORT=3118 claude', 3118)).toBe(3118);
     expect(loginForward('MCP_OAUTH_CALLBACK_PORT=3118 claude')).toBeUndefined();
     expect(loginForward('claude')).toBeUndefined();
+  });
+});
+
+describe('a sentence and what a tool said after it', () => {
+  it('cuts at each of the places a tool\'s words begin, the sentence before them without its colon', () => {
+    expect(splitRaw('studio has no Tailscale: Command failed: tailscale status --json\ntailscale is stopped'))
+      .toEqual({ line: 'studio has no Tailscale', raw: 'Command failed: tailscale status --json\ntailscale is stopped' });
+    expect(splitRaw('the phone link could not start, Command failed: tailscale serve --bg 8443'))
+      .toEqual({ line: 'the phone link could not start,', raw: 'Command failed: tailscale serve --bg 8443' });
+    expect(splitRaw('svall setup exited 1: one line')).toEqual({ line: 'svall setup', raw: 'exited 1: one line' });
+    expect(splitRaw('the home: ssh could not reach studio: Connection refused')).toEqual({ line: 'the home', raw: 'ssh could not reach studio: Connection refused' });
+    expect(splitRaw('could not open a master to ada@studio: ssh: connect to host studio port 22: Connection refused'))
+      .toEqual({ line: 'could not open a master to ada@studio', raw: 'ssh: connect to host studio port 22: Connection refused' });
+    expect(splitRaw('studio did not answer within 20000ms: timed out')).toEqual({ line: 'studio did not answer', raw: 'within 20000ms: timed out' });
+  });
+
+  it('cuts at the first of them, and not inside a word', () => {
+    expect(splitRaw('relay  svall host doctor there exited 1: ssh: connect to host')).toEqual({ line: 'relay  svall host doctor there', raw: 'exited 1: ssh: connect to host' });
+    expect(splitRaw('openssh: 9.6 is installed')).toEqual({ line: 'openssh: 9.6 is installed' });
+  });
+
+  it('says something went wrong on the machine when nothing stands before the tool\'s words', () => {
+    expect(splitRaw('Command failed: tailscale status --json')).toEqual({ line: 'Something went wrong on the machine', raw: 'Command failed: tailscale status --json' });
+    expect(splitRaw(': ssh could not reach studio')).toEqual({ line: 'Something went wrong on the machine', raw: 'ssh could not reach studio' });
+  });
+
+  it('leaves a sentence with no tool\'s words whole', () => {
+    expect(splitRaw('studio is not reachable')).toEqual({ line: 'studio is not reachable' });
+  });
+
+  it('keeps no token in either part', () => {
+    expect(splitRaw('GET /?token=abc123 failed: Command failed: svall status --token def456'))
+      .toEqual({ line: 'GET /?token=… failed', raw: 'Command failed: svall status --token …' });
+    expect(splitRaw('SVALL_TOKEN=abc123 svall status')).toEqual({ line: 'SVALL_TOKEN=… svall status' });
   });
 });

@@ -189,9 +189,15 @@ enum FromShell {
             if let run = step.run { event["run"] = run }
             if let say = step.say { event["say"] = say }
             if let forward = step.forward { event["forward"] = forward }
-            if let tick = step.tick { event["tick"] = ["item": tick.item, "fields": tick.fields, "on": tick.on, "preview": tick.preview] as [String: Any] }
+            if let tick = step.tick {
+                var box: [String: Any] = ["item": tick.item, "fields": tick.fields, "on": tick.on, "preview": tick.preview]
+                if let name = tick.name { box["name"] = name }
+                if let ticked = tick.ticked { box["ticked"] = ticked }
+                event["tick"] = box
+            }
             if let gap = step.gap { event["gap"] = ["name": gap.name, "what": gap.what] }
             if let here = step.here { event["here"] = here }
+            if let raw = step.raw { event["raw"] = raw }
             return ["type": "host.step", "op": op, "event": event]
         case .hostDone(let op, let code): return ["type": "host.done", "op": op, "code": Int(code)]
         case .hostMachines(let machines, let error):

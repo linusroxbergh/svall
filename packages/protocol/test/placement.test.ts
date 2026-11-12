@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Mutation } from '../src/journal.js';
-import { aside, asideLine, convertLine, notNeeded, toTick, wayOn } from '../src/placement.js';
+import { aside, asideLine, CONFIG_WORD, convertLine, keyLabel, keyMask, notNeeded, toTick, wayOn, type SetupRow } from '../src/placement.js';
 import { Robot } from '../src/state.js';
 
 const minimalRobot = {
@@ -48,5 +48,38 @@ describe('setup rows that stand aside', () => {
     expect(asideLine([chrome], true)).toBe('chrome runs only on a Mac');
     expect(asideLine([skip(true)])).toBe('1 is not needed there');
     expect(asideLine([linear, skip(false)])).toBeUndefined();
+  });
+});
+
+describe('keyLabel and keyMask', () => {
+  // as the mirror's report words a server's keys, two of them, and an item that travels whole
+  const rb: Pick<SetupRow, 'tick' | 'gap'> = { tick: { item: 'claude:mcp:rb', name: 'rb', fields: ['env.RB_API_KEY'], on: false, preview: ['env.RB_API_KEY rb_…90'], ticked: [] } };
+  const linear: Pick<SetupRow, 'tick' | 'gap'> = {
+    tick: { item: 'claude:mcp:linear', name: 'linear', fields: ['env.LINEAR_API_KEY', 'headers.Authorization'], on: false, preview: ['env.LINEAR_API_KEY lin…90', 'headers.Authorization ••••'], ticked: ['env.LINEAR_API_KEY'] },
+    gap: { name: 'linear (codex)', what: 'keys not copied (headers.Authorization)' },
+  };
+  const whole: Pick<SetupRow, 'tick' | 'gap'> = { tick: { item: 'claude:plugin:adlc', name: 'adlc', fields: ['env', 'command'], on: false, preview: ['env', 'command'] } };
+
+  it('a key by its server and field, env. left out, and its masked value without the field', () => {
+    expect(keyLabel(rb)).toBe("rb's RB_API_KEY");
+    expect(keyMask(rb)).toBe('rb_…90');
+  });
+
+  it('a row of several keys names each, or one alone, by the name its row tells it apart by', () => {
+    expect(keyLabel(linear)).toBe("linear (codex)'s LINEAR_API_KEY, headers.Authorization");
+    expect(keyLabel(linear, 'env.LINEAR_API_KEY')).toBe("linear (codex)'s LINEAR_API_KEY");
+    expect(keyMask(linear)).toBe('lin…90, ••••');
+    expect(keyMask(linear, 'headers.Authorization')).toBe('••••');
+  });
+
+  it('what travels whole says so, with no mask', () => {
+    expect(keyLabel(whole)).toBe('adlc, whole, keys included');
+    expect(keyMask(whole)).toBeUndefined();
+  });
+});
+
+describe('CONFIG_WORD', () => {
+  it('names the paths a home move writes anew in a person\'s words', () => {
+    expect([CONFIG_WORD.defaultCwd, CONFIG_WORD['home.cwd'], CONFIG_WORD['onboarding.firstProject']]).toEqual(["new robots' folder", "mission control's folder", 'first project folder']);
   });
 });
