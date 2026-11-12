@@ -565,8 +565,8 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
 test('a robot on a worker this Mac cannot reach says so under its machine line, and Check opens the Machines panel on a check of it', () => {
   withVault(false, { machine: VAULT, cwd: '/home/ada/svall' });
   render(<Side />);
-  // the robot's status in the board's word, and why under it
-  expect(document.querySelector('.side > .kicker')?.textContent).toBe('unknown');
+  // the robot's status in the words its machine's line says, and why under it
+  expect(document.querySelector('.side > .kicker')?.textContent).toBe('not reachable');
   expect(screen.getByTestId('side-away').textContent).toBe('linus-vault is not reachableCheck linus-vault');
   // its terminal, a shell there and the move's check, which asks the machine, open onto nothing, so they wait, saying why
   const button = (t: string) => screen.getByTestId(t) as HTMLButtonElement;
@@ -689,10 +689,10 @@ test('a window standing in for its home offers its move disabled, saying why, as
   expect([move().disabled, move().dataset.tip]).toEqual([true, 'studio is not reachable']);
 });
 
-test('the summary counts far robots as unknown in a window standing in for its home', () => {
+test('the summary counts far robots as not reachable in a window standing in for its home', () => {
   act(() => store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId, home: 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId, name: 'studio' }));
   render(<FleetSummary />);
-  const row = [...document.querySelectorAll('.rows .row')].find((r) => r.textContent?.startsWith('unknown'));
+  const row = [...document.querySelectorAll('.rows .row')].find((r) => r.textContent?.startsWith('not reachable'));
   expect(Number(row?.querySelector('b')?.textContent)).toBe(Object.keys(store.getState().fleet.robots).length);
 });
 

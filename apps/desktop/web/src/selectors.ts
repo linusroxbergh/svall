@@ -106,6 +106,9 @@ export const statusOf = (c: Robot, f?: Pick<FleetState, 'machines'>, via?: Via):
   return URGENCY.find((s) => all.includes(s)) ?? 'shell';
 };
 
+/** A status as the window says it: a robot whose machine does not answer is not reachable, as its machine is. */
+export const statusName = (s: DisplayStatus): string => (s === 'unknown' ? 'not reachable' : s);
+
 export const isUnread = (c: Robot): boolean => c.unread || !!c.second?.unread;
 
 export { contextPctOf } from '@svall/protocol';

@@ -100,7 +100,7 @@ test.each([
 
 // what the home answered; the words of the card, pane, toast and tip; the card's read-only line; its kicker
 const STATES: [Record<string, string>, string, string, string, string][] = [
-  [{ state: 'unreachable' }, 'linus-vault is not reachable', 'is not reachable; you can change it once it answers.', 'Read-only until it answers.', 'unknown'],
+  [{ state: 'unreachable' }, 'linus-vault is not reachable', 'is not reachable; you can change it once it answers.', 'Read-only until it answers.', 'not reachable'],
   [{ state: 'version', release: '0.27.0' }, 'linus-vault runs another version of Svall', 'runs another version of Svall; you can change it once both run the same.', 'Read-only until both run the same.', 'read-only'],
   [{ state: 'version', detail: 'linus-vault answered with protocol 7, not 8' }, 'linus-vault cannot run this Mac\'s Svall', 'cannot run this Mac\'s Svall; you can change it once it runs this Mac\'s Svall.', 'Read-only until it runs this Mac\'s Svall.', 'read-only'],
   [{ state: 'version' }, 'linus-vault runs another version of Svall', 'runs another version of Svall; you can change it once both run the same.', 'Read-only until both run the same.', 'read-only'],

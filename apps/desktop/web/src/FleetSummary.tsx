@@ -1,5 +1,5 @@
 import { useApp, usePanelWidth } from './hooks.js';
-import { robotsOf, countsByStatus, DISPLAY_STATUSES, islandsSorted, isUnread, statusOf } from './selectors.js';
+import { robotsOf, countsByStatus, DISPLAY_STATUSES, islandsSorted, isUnread, statusName, statusOf } from './selectors.js';
 
 export function FleetSummary() {
   const fleet = useApp((s) => s.fleet);
@@ -18,7 +18,7 @@ export function FleetSummary() {
       <div className="rows">
         {[...DISPLAY_STATUSES, ...(['moving', 'unknown'] as const).filter((s) => counts[s] > 0)].map((s) => (
           <div key={s} className="row">
-            <span className="sname"><i className="sdot" data-status={s} />{s}</span>
+            <span className="sname"><i className="sdot" data-status={s} />{statusName(s)}</span>
             <b className="tnum">{counts[s]}</b>
           </div>
         ))}

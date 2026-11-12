@@ -21,7 +21,7 @@ import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
 import { Said } from './Said.js';
 import { Section } from './Section.js';
-import { contextPctOf, islandsSorted, isUnread, resumeErrorOf, statusOf } from './selectors.js';
+import { contextPctOf, islandsSorted, isUnread, resumeErrorOf, statusName, statusOf } from './selectors.js';
 
 type Patch = Omit<Params<'robot.update'>, 'id'>;
 
@@ -109,7 +109,7 @@ export function SideCard({ id }: { id: string }) {
   return (
     <aside className="side" style={width} data-testid="side-card" data-drop={`robot:${id}`} data-drop-hover={hover}>
       <div className="kicker" style={{ color: accent }}>
-        <i className="sdot" data-status={status} />{status === 'unknown' && readOnly && homeState && homeState !== 'unreachable' && homeState !== 'connecting' ? 'read-only' : status}{isUnread(c) ? ' · unread' : ''}
+        <i className="sdot" data-status={status} />{status === 'unknown' && readOnly && homeState && homeState !== 'unreachable' && homeState !== 'connecting' ? 'read-only' : statusName(status)}{isUnread(c) ? ' · unread' : ''}
       </div>
       <div className="side-id">
         <div className="side-head">
@@ -220,7 +220,7 @@ function StartedRow({ id, machines }: { id: string; machines: FleetState['machin
   const status = statusOf(c, { machines }, via);
   return (
     <div className="row"><b><RobotLink c={c} /></b>
-      <span className="side-started-status"><i className="sdot" data-status={status} />{status}{c.report ? ' · reports back' : ''}</span>
+      <span className="side-started-status"><i className="sdot" data-status={status} />{statusName(status)}{c.report ? ' · reports back' : ''}</span>
     </div>
   );
 }

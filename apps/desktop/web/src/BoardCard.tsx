@@ -4,7 +4,7 @@ import { memoByValue, stop } from './hooks.js';
 import { Eye, Hand, Pr } from './icons.js';
 import { MachineLine, MONITORING, reviewText } from './indicators.js';
 import { figureOf, figureUrl } from './portraits.js';
-import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, type DisplayStatus } from './selectors.js';
+import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, statusName, type DisplayStatus } from './selectors.js';
 
 // the context ring's circumference, at the radius its SVG draws
 const RING = 2 * Math.PI * 5;
@@ -62,7 +62,7 @@ export const BoardCard = memoByValue(function BoardCard({ c, status, machine, is
         : <span className="kc-nm">{c.name}</span>}
       <span className="kc-note">{c.note}</span>
       <span className="kc-ft">
-        <span className="kc-st"><i />{status}</span>
+        <span className="kc-st"><i />{statusName(status)}</span>
         {unread && <span className="kc-un">unread</span>}
         <span className="kc-sp" />
         {island && <span className="kc-isl" data-tip={island} data-testid={`kc-island-${c.id}`}>{island}</span>}

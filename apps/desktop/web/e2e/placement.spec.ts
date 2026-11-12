@@ -21,7 +21,7 @@ test('a placed robot names its machine on its card, row, panes and token, offers
   expect((await sent(page)).some((m) => m.type === 'term.show' && m.id === id)).toBe(false);
 
   const card = page.getByTestId('side-card');
-  await expect(card.locator('.kicker').first()).toContainText('unknown');
+  await expect(card.locator('.kicker').first()).toContainText('not reachable');
   await expect(card.getByTestId('side-machine')).toHaveText('Runs on linus-vault');
   await expect(card.getByTestId('side-away')).toHaveText('linus-vault is not reachableCheck linus-vault');
   await expect(card.getByTestId('side-move-home')).toHaveText('Move to this Mac');
