@@ -162,7 +162,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       <h1>Svall is set up</h1>
       <section>
         <h2>Before you start</h2>
-        <ul className="setup-list">{warnings.map((w) => <li key={w} className="setup-note">{w}</li>)}</ul>
+        {warnings.map((w) => <Said key={w} {...splitRaw(w)} mark="warn" />)}
       </section>
       <div className="setup-acts"><button type="button" className="btn pri" onClick={() => window.location.replace('/')}>Continue</button></div>
     </Page>
@@ -375,8 +375,8 @@ const Preference = ({ title, text, value, set }: { title: string; text: string; 
 const Review = ({ writes }: { writes: { what: string; path: string }[] }) => (
   <section className="setup-review">
     <p>Svall adds agent hooks, a background service and the svall command. The hooks only act inside Svall.</p>
-    <details>
-      <summary>Review changes <span>{writes.length} locations</span></summary>
+    <details className="modal-more">
+      <summary><Caret dir="right" />Review changes <span>{writes.length} locations</span></summary>
       {/* a launchd job reads by what it does, not by its label */}
       <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-write"><span>{w.what}</span>
         {w.path.endsWith('.plist') ? <small>runs your robots while Svall is open</small> : <code>{shortPath(w.path)}</code>}</li>)}</ul>
@@ -394,12 +394,18 @@ const HERE = 'Svall on this Mac';
 // the join's `home` step finds the fleet's home, where an add's looks at the home folder
 const labelOf = (r: FarRow): string => (!r.op ? HERE : r.op === 'join' && r.step === 'home' ? 'The home' : stepLabel(r.step));
 const STATE = { start: 'doing', ok: 'done', skip: 'done', warn: 'warned', fail: 'failed' } as const;
+const SSH_THEN = /^ssh \S+, then /;
 
 function FarStep({ row }: { row: FarRow }) {
   const plain = (text: string) => onThisMac(plainStep(text, {}));
+  const action = row.action && plain(row.action);
+  // this window opens no terminal on the server, so a command to run there waits behind details, ahead of what a tool said
+  const command = action && (row.run || SSH_THEN.test(action)) ? action : undefined;
+  const said = row.detail && (row.raw ? { line: plain(row.detail), raw: withoutTokens(row.raw) } : splitRaw(plain(row.detail)));
   const told = row.status === 'ok' || row.status === 'skip' ? undefined
-    : row.detail ? { ...(row.raw ? { line: plain(row.detail), raw: withoutTokens(row.raw) } : splitRaw(plain(row.detail))), ...(row.action && { fix: plain(row.action) }) }
-    : row.action ? { line: plain(row.action) } : undefined;
+    : said && command ? { line: said.line, raw: [command, said.raw].filter(Boolean).join('\n') }
+    : said ? { ...said, ...(action && { fix: action }) }
+    : action ? { line: action } : undefined;
   return (
     <li data-state={STATE[row.status]} data-step={row.step} data-status={row.status}>
       <span className="move-mark" aria-hidden><Mark status={row.status} /></span>
@@ -409,8 +415,8 @@ function FarStep({ row }: { row: FarRow }) {
 }
 
 /**
- * A server path's run as a machine's checks show one: what needs a person, the step under way, then its notes and its done
- * steps each folded behind a line. `code`: a run that ended short with no failed row; `stopped`: a Stop ended it.
+ * A server path's run as a flow: its done steps folded behind a line, then what needs a person and the step under way, then
+ * its notes folded. `code`: a run that ended short with no failed row; `stopped`: a Stop ended it.
  */
 function FarSteps({ rows, running, code, stopped }: { rows: FarRow[]; running: boolean; code?: number; stopped: boolean }) {
   const [open, setOpen] = useState({ notes: false, done: false });
@@ -424,6 +430,12 @@ function FarSteps({ rows, running, code, stopped }: { rows: FarRow[]; running: b
   const short = !running && (stopped || code !== undefined);
   return (
     <section data-testid="fork-steps">
+      {done.length > 0 && (
+        <button type="button" className="sec-fold host-fine" data-testid="fork-done" aria-expanded={open.done} onClick={() => setOpen({ ...open, done: !open.done })}>
+          <Caret dir={open.done ? 'down' : 'right'} />{plural(done.length, 'step')} done
+        </button>
+      )}
+      {open.done && <ol className="move-steps">{done.map(step)}</ol>}
       {(todo.length > 0 || running) && (
         <ol className="move-steps" aria-live="polite">
           {todo.map(step)}
@@ -441,12 +453,6 @@ function FarSteps({ rows, running, code, stopped }: { rows: FarRow[]; running: b
         </button>
       )}
       {open.notes && <ol className="move-steps">{notes.map(step)}</ol>}
-      {done.length > 0 && (
-        <button type="button" className="sec-fold host-fine" data-testid="fork-done" aria-expanded={open.done} onClick={() => setOpen({ ...open, done: !open.done })}>
-          <Caret dir={open.done ? 'down' : 'right'} />{plural(done.length, 'step')} done
-        </button>
-      )}
-      {open.done && <ol className="move-steps">{done.map(step)}</ol>}
     </section>
   );
 }
@@ -466,7 +472,7 @@ function Command({ bridge, text }: { bridge: Bridge; text: string }) {
   );
 }
 
-// the column sits in the middle of the window, and scrolls from its top once it is taller
+// the column hangs at one height on every page, so a step's heading stays put, and scrolls once taller
 const Page = ({ children }: { children: ReactNode }) => (
   <div className="setup" data-testid="setup"><div className="setup-body">{children}</div></div>
 );

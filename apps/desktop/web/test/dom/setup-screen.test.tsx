@@ -54,6 +54,8 @@ test('file changes are available on demand and follow the selected agents', () =
   next(); next();
   const details = screen.getByText(/Review changes/).closest('details')!;
   expect(details.open).toBe(false);
+  // folded as the app's other folds, behind a caret
+  expect([details.className, !!details.querySelector('summary > svg')]).toEqual(['modal-more', true]);
   expect(screen.queryByText('Codex: hooks')).toBeNull();
   expect(screen.getByText('2 locations')).toBeTruthy();
   fireEvent.click(screen.getByText(/Review changes/));
@@ -149,13 +151,13 @@ test('a check or a setup that fails says the CLI\'s sentence, and what a tool sa
   expect(said()).toEqual(['svall: hooks could not be written', 'detailsCommand failed: chmod 600 /u/.claude']);
 });
 
-test('successful setup retains actionable warnings before continuing', () => {
+test('successful setup retains actionable warnings before continuing, each a row with a warning mark', () => {
   const s = shell(ready);
   next(); next();
   fireEvent.click(screen.getByRole('button', { name: 'Set up Svall' }));
   s.receive({ type: 'setup.result', step: 'run', ok: true, json: JSON.stringify({ warnings: ['Trust the Codex hooks once.'] }) });
   expect(screen.getByText('Svall is set up')).toBeTruthy();
-  expect(screen.getByText('Trust the Codex hooks once.')).toBeTruthy();
+  expect(screen.getByText('Trust the Codex hooks once.').closest('.said')!.getAttribute('data-mark')).toBe('warn');
   expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
 });
 
@@ -338,6 +340,20 @@ describe('the first run forks three ways', () => {
     expect(hosts(sent)).toHaveLength(1);
   });
 
+  test('a failed step whose fix is a command for the server keeps it behind details, ahead of what a tool said', () => {
+    const { receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-join'));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive(FAR);
+    receive({ type: 'host.step', op: 'join', event: { step: 'home', status: 'fail', detail: 'Tailscale is not running on ada@studio', action: 'start it: sudo systemctl start tailscaled', run: 'sudo systemctl start tailscaled', raw: 'tailscaled is stopped' } });
+    receive({ type: 'host.done', op: 'join', code: 1 });
+    const failed = screen.getByTestId('fork-steps').querySelector('li[data-status="fail"]')!;
+    expect(failed.querySelector('.said > div > span')!.textContent).toBe('Tailscale is not running on ada@studio');
+    expect(failed.querySelector('.modal-sub')).toBeNull();
+    expect(failed.querySelector('.modal-more-body.mono')!.textContent).toBe('start it: sudo systemctl start tailscaled\ntailscaled is stopped');
+  });
+
   test('installing on a server adds it as a home, then joins it', () => {
     const { sent, receive } = shell(ready, { fork: false });
     fireEvent.click(screen.getByTestId('fork-server'));
@@ -490,7 +506,10 @@ describe('the first run forks three ways', () => {
     step('add', { step: 'os', status: 'start' });
     const list = screen.getByTestId('fork-steps');
     expect([...list.querySelectorAll('li')].map((li) => li.getAttribute('data-step') ?? li.getAttribute('data-testid'))).toEqual(['linger', 'fork-now']);
-    expect(list.querySelector('[data-step="linger"] .said')!.textContent).toBe('off: the fleet stops when you log outssh ada@studio, then loginctl enable-linger');
+    // the command to run on the server waits behind details, in mono, as this window opens no terminal there
+    expect(list.querySelector('[data-step="linger"] .said > div > span')!.textContent).toBe('off: the fleet stops when you log out');
+    expect(list.querySelector('[data-step="linger"] .modal-sub')).toBeNull();
+    expect(list.querySelector('[data-step="linger"] .modal-more-body.mono')!.textContent).toBe('ssh ada@studio, then loginctl enable-linger');
     expect(screen.getByTestId('fork-now').textContent).toBe(`${stepLabel('os')}…`);
     expect(screen.getByTestId('fork-notes').textContent).toBe('1 note');
     expect(screen.getByTestId('fork-done').textContent).toBe('2 steps done');
@@ -506,8 +525,9 @@ describe('the first run forks three ways', () => {
     expect([...list.querySelectorAll('ol')[0]!.querySelectorAll('li')].map((li) => li.getAttribute('data-step') ?? li.getAttribute('data-testid'))).toEqual(['linger', 'tailscale', 'fork-now']);
     expect(screen.getByTestId('fork-notes').textContent).toBe('2 notes');
     fireEvent.click(screen.getByTestId('fork-done'));
-    // a done step says its name alone; the join's home is the fleet's, the add's the home folder
-    const done = [...list.querySelectorAll('ol')].at(-1)!;
+    // a done step says its name alone; the join's home is the fleet's, the add's the home folder. A flow's done steps come first
+    expect(list.firstElementChild).toBe(screen.getByTestId('fork-done'));
+    const done = list.querySelectorAll('ol')[0];
     expect(done.querySelector('.said')).toBeNull();
     expect([...done.querySelectorAll('li')].map((li) => li.textContent)).toEqual([stepLabel('ssh'), stepLabel('home'), stepLabel('os'), stepLabel('registry'), 'The home']);
   });

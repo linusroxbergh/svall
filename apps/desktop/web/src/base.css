@@ -23,7 +23,7 @@ textarea { overflow-x: hidden; }
 .connect-log + .btn, .connect small + .btn { margin-top: var(--sp-xl); }
 .connect-log { max-width: min(90vw, 900px); max-height: 40vh; overflow: auto; margin-top: var(--sp-xl); padding: var(--sp-md) var(--sp-xl); text-align: left; font: var(--text-sm)/var(--lh) var(--mono); background: var(--shade-1); border: 1px solid var(--line); border-radius: var(--r-sm); white-space: pre-wrap; }
 .setup { display: flex; height: 100%; overflow: auto; color: var(--ink); font-size: var(--text-lg); }
-.setup-body { display: flex; flex-direction: column; gap: var(--sp-3xl); width: min(90vw, 600px); margin: auto; padding: calc(var(--sp-3xl) * 2) 0; }
+.setup-body { display: flex; flex-direction: column; gap: var(--sp-3xl); width: min(90vw, 600px); margin: 0 auto; padding: clamp(calc(var(--sp-3xl) * 2), 16vh, 160px) 0 calc(var(--sp-3xl) * 2); }
 .setup-intro { display: flex; flex-direction: column; gap: var(--sp-md); }
 .setup-fields { display: flex; flex-direction: column; gap: var(--sp-3xl); min-width: 0; margin: 0; padding: 0; border: 0; }
 .setup h1 { margin: 0; font-size: var(--text-3xl); font-weight: var(--w-semibold); letter-spacing: var(--track-tight); }
@@ -32,9 +32,9 @@ textarea { overflow-x: hidden; }
 .setup p { margin: 0; color: var(--ink-2); font-size: var(--text-lg); }
 .setup code { font: var(--text-sm)/var(--lh) var(--mono); color: var(--ink-2); }
 .setup-list { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--fill-1); }
-.setup-row, .setup-note { grid-column: 1 / -1; padding: var(--sp-md) var(--sp-xl); }
+.setup-row { grid-column: 1 / -1; padding: var(--sp-md) var(--sp-xl); }
 .setup-row { display: grid; grid-template-columns: subgrid; column-gap: var(--sp-3xl); align-items: center; }
-.setup-row + .setup-row, .setup-note + .setup-note { border-top: 1px solid var(--line-soft); }
+.setup-row + .setup-row { border-top: 1px solid var(--line-soft); }
 .setup-row > span { display: flex; align-items: center; gap: var(--sp-md); min-width: 0; }
 .setup-row input { margin: 0; accent-color: var(--sand); }
 .setup-row .setup-agent-name, .setup-row .setup-agent-status { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2xs); min-width: 0; }
@@ -51,7 +51,7 @@ button.setup-row > svg { color: var(--ink-3); }
 .setup-agent-choice label { display: flex; align-items: center; gap: var(--sp-md); }
 .setup-agent-choice input { margin: 0; accent-color: var(--sand); }
 .setup-review { border-top: 1px solid var(--line); padding-top: var(--sp-3xl); }
-.setup-review summary { cursor: pointer; padding: var(--sp-lg) 0; color: var(--ink); font-size: var(--text-md); }
+.setup-review .modal-more > summary { gap: var(--sp-xs); padding: var(--sp-lg) 0; color: var(--ink); font-size: var(--text-md); }
 .setup-review summary span { color: var(--ink-2); margin-left: var(--sp-md); }
 .setup-write { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--sp-xs); padding: var(--sp-md) var(--sp-xl); }
 .setup-write + .setup-write { border-top: 1px solid var(--line-soft); }
@@ -87,11 +87,13 @@ button.setup-row > svg { color: var(--ink-3); }
 @media (max-width: 550px) { .setup-row { grid-template-columns: minmax(0, 1fr); gap: var(--sp-md); } .setup-row .setup-agent-actions { justify-content: flex-start; flex-wrap: wrap; } .setup-folder { flex-wrap: wrap; } }
 .setup-code { display: flex; align-items: center; gap: var(--sp-md); padding: var(--sp-xs) var(--sp-xs) var(--sp-xs) var(--sp-xl); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--fill-1); }
 .setup-code code { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.setup p, .setup-code code, .setup-note { user-select: text; }
+.setup p, .setup-code code { user-select: text; }
 .setup-install { display: flex; flex-direction: column; gap: var(--sp-sm); }
 .setup-install-head { display: flex; justify-content: space-between; align-items: baseline; font-size: var(--text-md); font-weight: var(--w-medium); }
 .setup-install-head a { color: var(--ink-3); font-size: var(--text-sm); font-weight: var(--w-regular); }
-.setup-acts { display: flex; gap: var(--sp-md); }
+/* the buttons stay in sight over a page taller than the window, the page fading under them */
+.setup-acts { position: sticky; bottom: 0; z-index: 1; display: flex; gap: var(--sp-md); margin-block: calc(-1 * var(--sp-xl)); padding-block: var(--sp-xl);
+  background: var(--surface-1); box-shadow: 0 calc(-1 * var(--sp-xl)) var(--sp-xl) var(--surface-1); }
 .setup-acts .btn { padding-inline: var(--sp-3xl); }
 .setup .setup-blocker, .setup .setup-error { color: var(--danger); font-size: var(--text-lg); }
 /* banners: a strip over what it is about, its words and then its buttons, in the tone of what it reports */
