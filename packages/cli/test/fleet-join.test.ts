@@ -174,10 +174,10 @@ describe('svall fleet join', () => {
     expect(failure()?.detail).toMatch(/1 worker/);
   });
 
-  it('a login the control master is refused asks for one login in a terminal, with what ssh said apart', async () => {
+  it('a login the control master is refused names how to give it a key, with what ssh said apart', async () => {
     const out = await joinHome({ ssh: 'ada@studio' }, deps({}, { openMaster: () => Promise.reject(new SshError('auth', 'ssh could not reach ada@studio', 'Permission denied (publickey).')) }));
     expect(out.stopped).toBe('master');
-    expect(failure()).toMatchObject({ detail: `${thisMachine()} cannot log in to ada@studio`, action: 'run ssh ada@studio once in a terminal and answer what it asks', raw: 'Permission denied (publickey).' });
+    expect(failure()).toMatchObject({ detail: `${thisMachine()} cannot log in to ada@studio`, action: 'install a key there with ssh-copy-id ada@studio, then join again', raw: 'Permission denied (publickey).' });
   });
 
   it('asks for Tailscale on this machine first', async () => {

@@ -728,7 +728,10 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         opened = await d.openMaster(o.ssh);
       } catch (err) {
         if (batch && err instanceof SshError) throw noLogin(o.ssh, err.raw ?? err.message);
-        throw unreached(err, o.name, o.ssh, homeWord());
+        // the login above asked its questions; every step from here logs in without a prompt
+        const keychain = process.platform === 'darwin'
+          ? ', keep its passphrase in the keychain with ssh-add --apple-use-keychain and add UseKeychain yes and AddKeysToAgent yes to ~/.ssh/config so ssh still finds it after a restart' : '';
+        throw unreached(err, o.name, o.ssh, homeWord(), `install a key there with ssh-copy-id ${o.ssh}${keychain}, then add the machine again`);
       }
       if (held) await sameMachine(opened, held, d).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
       return { value: opened, detail: 'connected' };

@@ -165,7 +165,8 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
       try {
         return { value: await d.openMaster(o.ssh), detail: 'connected' };
       } catch (e) {
-        throw unreached(e, o.ssh, o.ssh, thisMachine());
+        // the login above asked its questions; this fleet's own logins there ask none
+        throw unreached(e, o.ssh, o.ssh, thisMachine(), `install a key there with ssh-copy-id ${o.ssh}, then join again`);
       }
     });
     try {
