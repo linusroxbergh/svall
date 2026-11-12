@@ -258,7 +258,7 @@ export function HomeSheet() {
             <div className="acts"><button className="btn pri" data-testid="home-finish" autoFocus onClick={close}>Done</button></div>
           </div>
         )}
-        {ended && !done && !failed && <div data-testid="home-ended"><Said line="The move stopped without saying why." raw={`exit ${run.code}`} /></div>}
+        {ended && !done && !failed && <div data-testid="home-ended"><Said line="The move stopped without saying why" raw={`exit ${run.code}`} /></div>}
         {ended && !done && typeof told === 'string' && <div data-testid="home-move-unread"><Said line="This Mac could not tell whether the move still stands" raw={told} /></div>}
         {ended && !done && told !== false && (
           <div className="acts">

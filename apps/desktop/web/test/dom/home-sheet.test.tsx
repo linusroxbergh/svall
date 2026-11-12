@@ -274,7 +274,7 @@ describe('the sheet of a home move', () => {
     fireEvent.click(screen.getByTestId('home-go'));
     step('check', 'ok');
     act(() => { store.getState().hostDone('home', 143); });
-    expect(said(screen.getByTestId('home-ended'))).toEqual(['The move stopped without saying why.']);
+    expect(said(screen.getByTestId('home-ended'))).toEqual(['The move stopped without saying why']);
     expect(raw(screen.getByTestId('home-ended'))).toBe('exit 143');
     // the steps it got to, none it never reached
     expect([...screen.getByTestId('home-steps').querySelectorAll('li')].map((li) => li.dataset.state)).toEqual(['done']);
