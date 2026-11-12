@@ -1,7 +1,7 @@
 import { useRef, type ReactNode } from 'react';
 import { app } from './boot.js';
 import { commitFocused } from './Field.js';
-import { useApp } from './hooks.js';
+import { useApp, useMore } from './hooks.js';
 import { Caret } from './icons.js';
 import type { Section as Fold } from './store/index.js';
 import { useWidthGrip } from './widthGrip.js';
@@ -18,6 +18,13 @@ function room(sec: HTMLElement): number {
   const used = kids.reduce((n, k) => n + k.offsetHeight, 0) + parseFloat(getComputedStyle(secs).rowGap) * (kids.length - 1);
   const give = kids.filter((k) => k !== sec && k.dataset.fit === 'true').reduce((n, k) => n + k.offsetHeight - floor(k), 0);
   return sec.offsetHeight + Math.max(0, secs.clientHeight - used) + give;
+}
+
+/** A section's contents, which scroll inside it under a fade while more of them lie below. */
+function Body({ opened, children }: { opened?: true; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [more, read] = useMore(ref, 'y');
+  return <div ref={ref} className="sec-body" data-opened={opened} data-more={more} onScroll={read}>{children}</div>;
 }
 
 /**
@@ -51,7 +58,7 @@ export function Section({ name, title, head, testid, shut, children }: { name: s
           onClick={() => { commitFocused(); set({ ...fold, shut: open }); }}><Caret dir={open ? 'down' : 'right'} />{title}</button>
         {head}
       </div>
-      {open && <div className="sec-body" data-opened={wasShut.current || undefined}>{children}</div>}
+      {open && <Body opened={wasShut.current || undefined}>{children}</Body>}
       {open && (
         <i className="sec-grip" data-testid={`sec-grip-${name}`} role="separator" aria-orientation="horizontal" aria-label={`Resize ${title}`}
           data-tip="Drag to resize, double-click to fit" {...grip} onDoubleClick={() => set({ ...fold, height: undefined })} />

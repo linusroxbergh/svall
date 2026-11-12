@@ -231,14 +231,26 @@ test('a robot that lands on a machine says what of its agent setup is not there 
   await expect(card.getByTestId('side-gap-claude:mcp:linear')).toHaveCount(0);
   await card.getByTestId('sec-fold-robot.machine').click();
   await expect(card.getByTestId('side-gap-claude:mcp:linear')).toHaveText("linear's LINEAR_API_KEY not copiedCopy key");
-  // every row whole: none runs under the section's edge, so nothing in it waits on a scroll
+  // with room, every row is whole: the other sections give way first
   const body = card.locator('[data-section="robot.machine"] .sec-body');
   const under = () => body.evaluate((el) => {
     const edge = el.getBoundingClientRect().bottom;
     return Math.max(...[...el.querySelectorAll('.side-gap')].map((r) => r.getBoundingClientRect().bottom - edge));
   });
   await expect.poll(under).toBeLessThanOrEqual(0.5);
-  expect(await body.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(0);
+  await expect(body).not.toHaveAttribute('data-more', 'true');
+  // squeezed, it scrolls inside under a fade, and the sections below it stay in the card
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await expect.poll(under).toBeGreaterThan(0.5);
+  await expect(body).toHaveAttribute('data-more', 'true');
+  expect(await body.evaluate((el) => getComputedStyle(el).maskImage)).toContain('gradient');
+  await expect(card.getByTestId('sec-fold-robot.details')).toBeInViewport({ ratio: 1 });
+  const secs = (await card.locator('.side-secs').boundingBox())!;
+  const details = (await card.locator('[data-section="robot.details"]').boundingBox())!;
+  expect(details.y + details.height).toBeLessThanOrEqual(secs.y + secs.height + 0.5);
+  await body.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await expect(body).not.toHaveAttribute('data-more', 'true');
+  await page.setViewportSize({ width: 1280, height: 800 });
   await card.getByTestId('side-gap-terminal-oauth:claude:mcp:notion').click();
   await expect.poll(async () => (await sent(page)).some((m) => m.type === 'host.list')).toBe(true);
   await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux' }] });

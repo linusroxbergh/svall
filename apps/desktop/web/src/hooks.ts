@@ -67,3 +67,23 @@ export const dialogKeys = (close: () => void) => (e: KeyboardEvent): void => {
   if (e.key === 'Enter') e.stopPropagation();
   if (e.key === 'Escape') { e.stopPropagation(); close(); }
 };
+
+// whether more of an element's content lies below it, or past its right edge, the read its scroll calls, and whether it is scrolled from the start
+export function useMore(ref: RefObject<HTMLElement | null>, axis: 'x' | 'y'): [boolean, () => void, boolean] {
+  const [more, setMore] = useState(false);
+  const [back, setBack] = useState(false);
+  const read = () => {
+    const el = ref.current;
+    if (!el) return;
+    setMore(axis === 'y' ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    setBack((axis === 'y' ? el.scrollTop : el.scrollLeft) > 1);
+  };
+  // new content redraws it; the element changing size does not
+  useLayoutEffect(read);
+  useLayoutEffect(() => {
+    const ro = new ResizeObserver(read);
+    if (ref.current) ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, []);
+  return [more, read, back];
+}

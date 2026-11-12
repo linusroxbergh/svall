@@ -3,7 +3,7 @@ import { placingOn, type FleetState, type Robot } from '@svall/protocol';
 import { addColumn, newRobotOn, newRobotTarget, placeRobot, renameColumn, reorderColumn, saveRobot, setPlacing } from './actions.js';
 import { app, deps } from './boot.js';
 import { BoardCard, NameInput } from './BoardCard.js';
-import { useApp } from './hooks.js';
+import { useApp, useMore } from './hooks.js';
 import { Caret, Grip, More, Place, Plus } from './icons.js';
 import { cardRect } from './map/card.js';
 import { useHover } from './map/hover.js';
@@ -89,26 +89,6 @@ function useSize(ref: React.RefObject<HTMLElement | null>): { w: number; h: numb
 // a robot the board has just dropped somewhere sits there before the fleet says so
 const placed = (f: FleetState, p: { id: string; column: string } | undefined): FleetState =>
   (p && f.robots[p.id] ? { ...f, robots: { ...f.robots, [p.id]: { ...f.robots[p.id], column: p.column } } } : f);
-
-// whether more of an element's content lies below it, or past its right edge, the read its scroll calls, and whether it is scrolled from the start
-function useMore(ref: React.RefObject<HTMLElement | null>, axis: 'x' | 'y'): [boolean, () => void, boolean] {
-  const [more, setMore] = useState(false);
-  const [back, setBack] = useState(false);
-  const read = () => {
-    const el = ref.current;
-    if (!el) return;
-    setMore(axis === 'y' ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
-    setBack((axis === 'y' ? el.scrollTop : el.scrollLeft) > 1);
-  };
-  // a robot or an island coming or going redraws it; the window changing size does not
-  useLayoutEffect(read);
-  useLayoutEffect(() => {
-    const ro = new ResizeObserver(read);
-    if (ref.current) ro.observe(ref.current);
-    return () => ro.disconnect();
-  }, []);
-  return [more, read, back];
-}
 
 /** A column's robots scroll under a fade that shows only while more of them lie below. */
 function Body({ children, onScroll }: { children: React.ReactNode; onScroll(): void }) {
