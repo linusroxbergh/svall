@@ -38,13 +38,14 @@ function SourceNode({ s, count, on, qualifier }: { s: ResourceSource; count: num
 export function Where() {
   const sources = useApp((s) => s.resources);
   const fleet = useApp((s) => s.fleet);
+  const me = useApp((s) => s.via?.machine);
   const resourcesWhere = useApp((s) => s.resourcesWhere);
   const open = useApp((s) => s.resourceGroups);
   const [query, setQuery] = useState('');
   // the tier or the source picked; the first source stands picked when nothing is, as the list shows it
   const where = resourcesWhere ?? sources[0]?.rootId;
   const tier = whereTier(where);
-  const groups = whereGroups(sources, fleet, query);
+  const groups = whereGroups(sources, fleet, query, me);
   // every row shows what its own source holds, card included, read once for the whole tree
   const counts = useMemo(() => countsBySource(sources, fleet), [sources, fleet]);
   return (
@@ -59,7 +60,7 @@ export function Where() {
             {shown && g.sections.map((sec) => (
               <div key={sec.id ?? g.tier}>
                 {sec.heading && <div className="res-subh">{sec.heading}</div>}
-                {sec.sources.map((s) => <SourceNode key={s.rootId} s={s} count={counts.get(s.rootId) ?? 0} on={s.rootId === where} qualifier={qualifierOf(s, fleet)} />)}
+                {sec.sources.map((s) => <SourceNode key={s.rootId} s={s} count={counts.get(s.rootId) ?? 0} on={s.rootId === where} qualifier={qualifierOf(s, fleet, me)} />)}
               </div>
             ))}
           </section>

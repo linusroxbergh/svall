@@ -135,9 +135,12 @@ describe('qualifierOf', () => {
     expect(qualifierOf(ours, f)).toBe('this window only');
     expect(qualifierOf(roles, f)).toBe('read only by a robot given one');
   });
-  it('names the worker a clone is on', () => {
+  it('names the worker a clone is on, and this Mac\'s own clone, which a far home lists as a worker\'s, as this Mac', () => {
     const onVault = { ...f, machines: { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } } };
-    expect(qualifierOf(src('repo', 'app', '/home/ada/app', { rootId: farRootId(VAULT, '/home/ada/app') }), onVault)).toBe('~/app on linus-vault');
+    const clone = src('repo', 'app', '/home/ada/app', { rootId: farRootId(VAULT, '/home/ada/app') });
+    expect(qualifierOf(clone, onVault)).toBe('~/app on linus-vault');
+    expect(qualifierOf(clone, onVault, VAULT)).toBe('~/app on this Mac');
+    expect(whereGroups([clone], onVault, 'this mac', VAULT).find((g) => g.tier === 'repo')?.count).toBe(1);
   });
 });
 

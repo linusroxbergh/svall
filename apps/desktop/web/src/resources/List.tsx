@@ -138,7 +138,8 @@ function Kinds({ source, what }: { source: Source; what: What }) {
 function TierRows({ tier, query }: { tier: Tier; query: string }) {
   const sources = useApp((s) => s.resources);
   const fleet = useApp((s) => s.fleet);
-  const group = whereGroups(sources, fleet, query).find((g) => g.tier === tier);
+  const me = useApp((s) => s.via?.machine);
+  const group = whereGroups(sources, fleet, query, me).find((g) => g.tier === tier);
   const counts = useMemo(() => countsBySource(sources, fleet), [sources, fleet]);
   const t = tierOf(tier);
   if (!group || group.count === 0) return <div className="res-none">Nothing here.</div>;
@@ -149,7 +150,7 @@ function TierRows({ tier, query }: { tier: Tier; query: string }) {
         <button key={s.rootId} className="res-item list-row" data-testid={`resources-list-source-${s.rootId}`} data-opens="false" data-tip={s.root}
           onClick={() => app.store.getState().setResourcesFilter({ where: s.rootId })}>
           <b><i className="res-glyph" style={{ color: `var(${t.colour})` }}>{t.glyph}</i>{s.name}<em className="res-tag">{counts.get(s.rootId) ?? 0}</em></b>
-          <span>{qualifierOf(s, fleet)}</span>
+          <span>{qualifierOf(s, fleet, me)}</span>
         </button>
       ))}
     </section>

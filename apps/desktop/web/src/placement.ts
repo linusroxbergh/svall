@@ -49,10 +49,10 @@ export const machineOf = (f: Machines, c: Pick<Robot, 'machine'>, via?: Via): st
 /** A worker that answers: linked, or on a build this Mac cannot read, whose move check says which side to upgrade. */
 export const answers = (m: MachineLink | undefined): boolean => !!m && (m.reachable || m.mismatch === true);
 
-/** The machine a workspace id's files are on, by name, when they are not here: a robot's, or a worker clone's on the shelf. */
+/** The machine a workspace id's files are on, by name, when they are not read in place: a robot's, or a worker clone's on the shelf, which may be this Mac's. */
 export const readsOn = (f: Pick<FleetState, 'robots' | 'machines'>, id: string, via?: Via): string | undefined => {
   const far = farRootOf(id);
-  if (far) return machineName(f, far.machine);
+  if (far) return far.machine === via?.machine ? 'this Mac' : machineName(f, far.machine);
   return Object.hasOwn(f.robots, id) ? machineOf(f, f.robots[id], via) : undefined;
 };
 
