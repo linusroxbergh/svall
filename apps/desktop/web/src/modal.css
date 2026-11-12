@@ -56,5 +56,6 @@
 .new-folder-list .new-folder-other { position: sticky; bottom: 0; overflow: visible; border-top: 1px solid var(--line-soft); background: var(--surface-2); }
 .new-folder-list .new-folder-other:hover { background: linear-gradient(var(--fill-1), var(--fill-1)), var(--surface-2); }
 .new-folder-list .new-folder-other[aria-selected="true"] { background: linear-gradient(var(--fill-2), var(--fill-2)), var(--surface-2); }
-.new-folder-list[data-more] .new-folder-other::before { content: ''; position: absolute; inset-inline: 0; bottom: 100%; height: 12px; background: linear-gradient(transparent, var(--surface-2)); pointer-events: none; }
+/* while more folders lie below, the last whole row fades into Other folder… */
+.new-folder-list[data-more] .new-folder-other::before { content: ''; position: absolute; inset-inline: 0; bottom: 100%; height: calc(var(--lh) * var(--text-md) + 2 * var(--sp-xs)); background: linear-gradient(transparent, var(--surface-2) 90%); pointer-events: none; }
 .new-folder-quiet { display: flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-md); color: var(--ink-3); font-size: var(--text-sm); }
