@@ -309,7 +309,7 @@ function doctor(rel, label) {
   for (const name of ['systemd', 'worker', 'linger', 'svalld', 'release', 'home']) {
     check(`${label} doctor ${name}`, checks[name]?.status === 'ok', () => brief(checks[name]));
   }
-  check(`${label} doctor release`, checks.release?.detail?.startsWith(`${rel.version}, as on `), () => brief(checks.release));
+  check(`${label} doctor release`, checks.release?.detail === `${rel.version}, same as this Mac`, () => brief(checks.release));
 }
 
 function upgrade(b) {
@@ -325,7 +325,8 @@ function upgrade(b) {
   check('host upgrade steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(['machine', 'master', 'os', 'release', 'upload', 'install', 'probe', 'enrol', 'mirror:unchecked']),
     () => brief(steps.map((s) => s.step)));
   check('host upgrade result', events.at(-1)?.result === 'ready' && r.code === 0, () => brief(events.at(-1)));
-  check('host upgrade release', steps.find((s) => s.step === 'release')?.detail === from(b), () => brief(steps.find((s) => s.step === 'release')));
+  const rel = steps.find((s) => s.step === 'release');
+  check('host upgrade release', rel?.detail === b.version && rel.raw === from(b), () => brief(rel));
   downloaded(b, 'host upgrade');
 }
 
