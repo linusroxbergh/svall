@@ -134,7 +134,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
       </header>
       {moved && <p className="empty" data-testid="phone-moved">This fleet runs on {moved} now. Scan its new QR code: on your Mac, Settings&nbsp;→&nbsp;Phone.</p>}
       {status === 'refused' && <p className="empty">This tailnet login can't open this fleet. On the Mac, add it to mobile.logins in fleet.json, then quit and reopen Svall.</p>}
-      {status === 'unpaired' && <p className="empty">This phone is not paired with the fleet. Scan the QR code in Settings&nbsp;→&nbsp;Phone on your Mac. A Home Screen icon has to be removed and added again from that link.</p>}
+      {status === 'unpaired' && <p className="empty">This phone is not paired with the fleet: scan the QR code in Settings&nbsp;→&nbsp;Phone on your Mac. A Home Screen icon has to be removed and added again after scanning it.</p>}
       {loaded && !moved && groups.length === 0 && <p className="empty">No islands yet. Tap + to make one.</p>}
       {!moved && starred.length > 0 && (
         <section aria-label="Starred">
