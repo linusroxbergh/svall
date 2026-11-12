@@ -357,7 +357,7 @@ describe('the first run forks three ways', () => {
     expect(hosts(sent)).toHaveLength(1);
   });
 
-  test('a failed step\'s fix shows, its command whole in mono and the words around it as they are, what a tool said behind details', () => {
+  test('a failed step\'s fix shows, its command whole in mono with Copy beside it, what a tool said behind details', () => {
     const { receive } = shell(ready, { fork: false });
     fireEvent.click(screen.getByTestId('fork-join'));
     toSsh('ada@studio');
@@ -368,12 +368,13 @@ describe('the first run forks three ways', () => {
     const failed = screen.getByTestId('fork-steps').querySelector('li[data-status="fail"]')!;
     expect(failed.querySelector('.said > div > span')!.textContent).toBe('Tailscale is not running on ada@studio');
     const fix = failed.querySelector('.modal-sub')!;
-    expect([fix.textContent, [...fix.querySelectorAll('code')].map((c) => c.textContent)]).toEqual(['Start it: ssh ada@studio, then sudo systemctl start tailscaled', ['ssh ada@studio', 'sudo systemctl start tailscaled']]);
+    expect([fix.textContent, [...failed.querySelectorAll('.said-run')].map((c) => c.textContent)]).toEqual(['Start it: ssh ada@studio, then sudo systemctl start tailscaled', ['sudo systemctl start tailscaled']]);
     expect(failed.querySelector('.modal-more-body.mono')!.textContent).toBe('tailscaled is stopped');
+    expect(screen.getByTestId('said-copy').textContent).toBe('Copy');
   });
 
-  test('a failed step the CLI words for the window says what to do in a line, its command behind details', () => {
-    const { receive } = shell(ready, { fork: false });
+  test('a failed step the CLI words for the window says what to do in a line, its command on a line of its own with Copy', () => {
+    const { sent, receive } = shell(ready, { fork: false });
     fireEvent.click(screen.getByTestId('fork-server'));
     toSsh('ada@studio');
     fireEvent.click(screen.getByTestId('fork-go'));
@@ -382,7 +383,12 @@ describe('the first run forks three ways', () => {
     receive({ type: 'host.done', op: 'add', code: 1 });
     const failed = screen.getByTestId('fork-steps').querySelector('li[data-status="fail"]')!;
     expect([failed.querySelector('.said > div > span')!.textContent, failed.querySelector('.modal-sub')!.textContent]).toEqual(['git missing', 'Install git on ada@studio']);
-    expect(failed.querySelector('.modal-more-body.mono')!.textContent).toBe('sudo apt install git');
+    // the command stands under the fix, as a problem's does, and this page's own bridge copies it
+    expect(failed.querySelector('.said > div > code.said-run')!.textContent).toBe('sudo apt install git');
+    expect(failed.querySelector('details')).toBeNull();
+    fireEvent.click(screen.getByTestId('said-copy'));
+    expect(sent).toContainEqual({ type: 'copy', text: 'sudo apt install git' });
+    expect(screen.getByTestId('said-copy').textContent).toBe('Copied');
   });
 
   test('a failed step\'s fix says its link in mono', () => {
@@ -549,9 +555,10 @@ describe('the first run forks three ways', () => {
     step('add', { step: 'os', status: 'start' });
     const list = screen.getByTestId('fork-steps');
     expect([...list.querySelectorAll('li')].map((li) => li.getAttribute('data-step') ?? li.getAttribute('data-testid'))).toEqual(['linger', 'fork-now']);
-    // the fix's commands in mono, each whole, the word between them as it is
+    // the fix's command in mono, whole, with Copy
     expect(list.querySelector('[data-step="linger"] .said > div > span')!.textContent).toBe('off: the fleet stops when you log out');
-    expect([...list.querySelectorAll('[data-step="linger"] .modal-sub code')].map((c) => c.textContent)).toEqual(['ssh ada@studio', 'sudo loginctl enable-linger ada']);
+    expect([...list.querySelectorAll('[data-step="linger"] .said-run')].map((c) => c.textContent)).toEqual(['sudo loginctl enable-linger ada']);
+    expect(list.querySelector('[data-step="linger"] [data-testid="said-copy"]')).toBeTruthy();
     expect(list.querySelector('[data-step="linger"] .modal-more')).toBeNull();
     expect(screen.getByTestId('fork-now').textContent).toBe(`${stepLabel('os')}…`);
     expect(screen.getByTestId('fork-notes').textContent).toBe('1 note');

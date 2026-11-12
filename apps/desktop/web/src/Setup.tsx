@@ -228,7 +228,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
           <p>{farSteps ? ssh.trim() : 'Needs Tailscale on this Mac and on the server.'}</p>
         </header>
         {blockers.map((b) => <p key={b} className="setup-blocker">{b}</p>)}
-        {farSteps ? <FarSteps rows={farSteps} running={running} code={farCode} stopped={stopped} /> : (
+        {farSteps ? <FarSteps rows={farSteps} running={running} code={farCode} stopped={stopped} bridge={bridge} /> : (
           <>
             <fieldset className="setup-fields" aria-busy={busy}>
               <label className="setup-field">
@@ -397,13 +397,9 @@ const labelOf = (r: FarRow): string => (!r.op ? HERE : r.op === 'join' && r.step
 const STATE = { start: 'doing', ok: 'done', skip: 'done', warn: 'warned', fail: 'failed' } as const;
 // a command the CLI sets in backticks, and a link, in mono
 const MONO = /`([^`]+)`|(https?:\/\/\S+?)(?=[.,;)]?(?:\s|$))/g;
-/** `text` with what the CLI marks as a command or link, and each of `commands`, in mono, the prose between them as it is. */
-function inMono(text: string, commands: string[] = []): ReactNode {
+/** `text` with what the CLI marks as a command or link in mono, the prose between them as it is. */
+function inMono(text: string): ReactNode {
   const spans = [...text.matchAll(MONO)].map((m) => ({ at: m.index, end: m.index + m[0].length, code: m[1] ?? m[2] }));
-  for (const code of commands) {
-    const at = text.indexOf(code);
-    if (at >= 0 && !spans.some((s) => at < s.end && s.at < at + code.length)) spans.push({ at, end: at + code.length, code });
-  }
   const parts: ReactNode[] = [];
   let from = 0;
   for (const { at, end, code } of spans.sort((a, b) => a.at - b.at)) {
@@ -415,23 +411,20 @@ function inMono(text: string, commands: string[] = []): ReactNode {
   }
   return parts.length ? [...parts, text.slice(from)] : text;
 }
-// the ssh a server's fix names ahead of what to run there
-const SSH_THEN = /\b(ssh \S+), then /;
-
-function FarStep({ row }: { row: FarRow }) {
+function FarStep({ row, bridge }: { row: FarRow; bridge: Bridge }) {
   const plain = (text: string) => onThisMac(plainStep(text, {}));
   const action = row.action && plain(row.action);
   const said = row.detail && (row.raw ? { line: plain(row.detail), raw: withoutTokens(row.raw) } : splitRaw(plain(row.detail)));
-  // what to do: the window's own words where the CLI gives them, its command behind details; else the CLI's, its commands in mono
-  const fix = row.say ? plain(row.say) : action && inMono(action, [SSH_THEN.exec(action)?.[1], row.run].filter((c): c is string => !!c));
-  const raw = [row.say && row.run, said && said.raw].filter(Boolean).join('\n') || undefined;
+  // what to do: the window's own words where the CLI gives them, else the CLI's; a command to run stands as a problem's does,
+  // with Copy, as this page opens no terminal
+  const fix = row.say ? plain(row.say) : action && (row.run ? action : inMono(action));
   const told = row.status === 'ok' || row.status === 'skip' ? undefined
-    : said ? { line: inMono(said.line), raw, fix }
-    : fix ? { line: fix, raw } : undefined;
+    : said ? { line: inMono(said.line), raw: said.raw, fix }
+    : fix ? { line: fix } : undefined;
   return (
     <li data-state={STATE[row.status]} data-step={row.step} data-status={row.status}>
       <span className="move-mark" aria-hidden><Mark status={row.status} /></span>
-      <div>{labelOf(row)}{told && <Said {...told} mark={false} />}</div>
+      <div>{labelOf(row)}{told && <Said {...told} run={row.run} copy={(text) => copyText(bridge, text)} mark={false} />}</div>
     </li>
   );
 }
@@ -440,7 +433,7 @@ function FarStep({ row }: { row: FarRow }) {
  * A server path's run as a flow: its done steps folded behind a line, then what needs a person and the step under way, then
  * its notes folded. `code`: a run that ended short with no failed row; `stopped`: a Stop ended it.
  */
-function FarSteps({ rows, running, code, stopped }: { rows: FarRow[]; running: boolean; code?: number; stopped: boolean }) {
+function FarSteps({ rows, running, code, stopped, bridge }: { rows: FarRow[]; running: boolean; code?: number; stopped: boolean; bridge: Bridge }) {
   const [open, setOpen] = useState({ notes: false, done: false });
   const ended = rows.filter((r) => r.status !== 'start');
   // an add checks a machine, so a warning it may live with is a note; a join is a flow, whose warnings all need a person
@@ -448,7 +441,7 @@ function FarSteps({ rows, running, code, stopped }: { rows: FarRow[]; running: b
   const [todo, notes, done] = [tiered('todo'), tiered('note'), tiered('fine')];
   // a step is named as it starts and again as it ends; between two, and while the next run starts, the spinner stays on the last
   const now = rows.at(-1);
-  const step = (r: FarRow) => <FarStep key={rows.indexOf(r)} row={r} />;
+  const step = (r: FarRow) => <FarStep key={rows.indexOf(r)} row={r} bridge={bridge} />;
   const short = !running && (stopped || code !== undefined);
   return (
     <section data-testid="fork-steps">
