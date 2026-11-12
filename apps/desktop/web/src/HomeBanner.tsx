@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { crewAway, homeMoveStands } from '@svall/protocol';
 import { app } from './boot.js';
-import type { HostStep } from './bridge.js';
+import { copyText, type HostStep } from './bridge.js';
 import { useApp } from './hooks.js';
 import { startHost } from './hostRun.js';
 import { machineNames, onThisMac, plainStep, splitRaw } from './host.js';
@@ -51,12 +51,14 @@ export function HomeMoveBanner() {
       <span>
         <b>{fact}</b>
         {' '}
-        <span className="banner-sub">
-          {stands && <span data-testid="home-move-answer" data-tip={moving.answer}>{stands}</span>}
-          {stands && rest && ' '}
-          {rest}
-        </span>
-        {failed && <>{' '}<Failed step={failed} alone={run?.op === 'home'} testid="home-move-failed" /></>}
+        {/* a press that failed is the news, in place of how the move stands */}
+        {failed ? <Failed step={failed} alone={run?.op === 'home'} testid="home-move-failed" /> : (
+          <span className="banner-sub">
+            {stands && <span data-testid="home-move-answer" data-tip={moving.answer}>{stands}</span>}
+            {stands && rest && ' '}
+            {rest}
+          </span>
+        )}
       </span>
       {!moving.unmarked && <button className="btn sm" data-testid="home-move-retry" disabled={running} onClick={() => startHost('home-retry', { name: '' })}>{run?.op === 'home-retry' && running ? 'Finishing…' : 'Finish the move'}</button>}
       <button className="btn sm" data-testid="home-move-abort" disabled={running} data-tip={moving.unmarked ? undefined : 'Works once the machine that holds the move says it was not taken'} onClick={() => startHost('home-abort', { name: '' })}>
@@ -85,11 +87,10 @@ export function CrewAwayBanner() {
       <span>
         <b>Mission control's {names} {one ? 'is' : 'are'} still on {where}.</b>
         {' '}
-        <span className="banner-sub">A move that stopped left {one ? 'it' : 'them'} there.</span>
-        {failed && <>{' '}<Failed step={failed} alone={chosen !== undefined} testid="crew-away-failed" /></>}
+        {failed ? <Failed step={failed} alone={chosen !== undefined} testid="crew-away-failed" /> : <span className="banner-sub">A move that stopped left {one ? 'it' : 'them'} there.</span>}
       </span>
       <button className="btn sm" data-testid="crew-away-back" disabled={running} onClick={() => startHost('home-crew', { name: '', ...(chosen && { interrupt: true }) })}>
-        {running ? 'Bringing them back…' : chosen ? KEPT[chosen] : 'Bring them back'}
+        {running ? `Bringing ${one ? 'it' : 'them'} back…` : chosen ? KEPT[chosen] : `Bring ${one ? 'it' : 'them'} back`}
       </button>
     </div>
   );
@@ -97,6 +98,17 @@ export function CrewAwayBanner() {
 
 // a sentence the daemon gives in lower case, as the line under a banner's fact
 const sentence = (t: string): string => ended(`${t[0].toUpperCase()}${t.slice(1)}`);
+
+// the ssh a line tells a person to run, in mono, which a press copies
+function withCommand(t: string): ReactNode {
+  const ssh = /\bssh \S+/.exec(t);
+  if (!ssh) return t;
+  const copy = () => { copyText(app.bridge, ssh[0]); app.store.getState().showToast('Copied', 'ok'); };
+  return <>{t.slice(0, ssh.index)}<button className="copy mono" data-testid="home-command" data-tip={`Copy ${ssh[0]}`} onClick={copy}>{ssh[0]}</button>{t.slice(ssh.index + ssh[0].length)}</>;
+}
+
+// a sentence the daemon ends on the ids it compared, which the window keeps to a tip
+const ids = (t: string): [string, string?] => { const m = / \(([^()]+ there, [^()]+ here)\)$/.exec(t); return m ? [t.slice(0, m.index), m[1]] : [t]; };
 
 /** How this window stands with a fleet's home on another machine; nothing while it follows one, or has yet to hear. */
 export function HomeBanner() {
@@ -127,16 +139,17 @@ export function HomeBanner() {
   const upgrades = state === 'version' && !newer;
   const failed = running ? undefined : run?.steps.filter((s) => s.status === 'fail').at(-1);
   const age = copied !== undefined && copiedAt(copied);
-  const [fact, sub] = state === 'auth' ? [`This Mac cannot log in to ${name}.`, detail && sentence(detail)]
+  const [fact, sub] = state === 'auth' ? [`This Mac cannot log in to ${name}.`, detail && withCommand(sentence(detail))]
     : state === 'version' && release ? [`${name} runs ${newer ? 'a newer' : 'an older'} Svall than this Mac.`, `${release} there${mine ? `, ${mine} here` : ''}.`]
       : state === 'version' ? [detail ?? `${name} runs another version of Svall`, undefined]
         : state === 'mismatch' ? [detail ?? `${name} holds a different fleet than this Mac expects`, undefined]
           : state === 'machine' ? [detail ?? `${name} is a different machine than this Mac expects`, undefined]
             : [`${name} is not reachable.`, `${age ? `Showing the fleet as of ${age}; robots` : 'Robots'} on this Mac keep working.`];
+  const [said, compared] = ids(fact);
   return (
     <div className="banner warn" data-testid="home-banner" data-state={state}>
       <span>
-        <b>{fact}</b>
+        <b data-tip={compared}>{ended(said)}</b>
         {sub && <>{' '}<span className="banner-sub" data-testid={state === 'auth' ? 'home-detail' : 'home-age'} data-tip={state === 'unreachable' ? detail : undefined}>{sub}</span></>}
         {failed && <>{' '}<Failed step={failed} alone plain={(t) => plainStep(t, machineNames(machines))} testid="home-upgrade-failed" /></>}
       </span>

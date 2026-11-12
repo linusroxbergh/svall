@@ -602,6 +602,8 @@ describe('a move nothing is driving', () => {
     act(() => { store.getState().hostDone('home-abort', 1); });
     expect(screen.getByTestId('home-move-failed').textContent).toBe('studio has not let go of it: staged. Call it off again once it answers, or finish the move.');
     expect(screen.getByTestId('home-move-failed').className).toBe('banner-sub');
+    // the failure stands in place of how the move stands, so the banner ends on it
+    expect(screen.getByTestId('home-move-banner').querySelector('span')!.textContent).toBe('The fleet is moving to studio. studio has not let go of it: staged. Call it off again once it answers, or finish the move.');
   });
 
   it('while Call it off runs, neither button takes a press', async () => {
@@ -651,7 +653,7 @@ describe('mission control left away by a move that stopped', () => {
   it('names them and where they are, and offers to bring them back', () => {
     crew(STUDIO);
     render(<CrewAwayBanner />);
-    expect(screen.getByTestId('crew-away-banner').textContent).toBe('Mission control\'s golden heron is still on studio. A move that stopped left it there.Bring them back');
+    expect(screen.getByTestId('crew-away-banner').textContent).toBe('Mission control\'s golden heron is still on studio. A move that stopped left it there.Bring it back');
     fireEvent.click(screen.getByTestId('crew-away-back'));
     expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-crew', args: { name: '' } });
   });
@@ -674,6 +676,7 @@ describe('mission control left away by a move that stopped', () => {
     act(() => { store.getState().hostStep('home-crew', { step: 'crew', status: 'fail', detail: 'these cannot come back: golden heron: dirty' } as never); store.getState().hostDone('home-crew', 1); });
     rerender(<CrewAwayBanner />);
     expect(screen.getByTestId('crew-away-failed').textContent).toContain('dirty');
+    expect(screen.getByTestId('crew-away-banner').textContent).not.toContain('A move that stopped');
     act(() => { store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: false }); });
     rerender(<CrewAwayBanner />);
     expect(screen.queryByTestId('crew-away-banner')).toBeNull();

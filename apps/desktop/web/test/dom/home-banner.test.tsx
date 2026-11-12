@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MachineId } from '@svall/protocol';
 import type { HomeLink } from '../../src/store/fleet.js';
-import { call, freshStore, retryHome, sent, store } from './harness.js';
+import { bridge, call, freshStore, retryHome, sent, store } from './harness.js';
 import { HomeBanner } from '../../src/HomeBanner.js';
 import { TerminalArea } from '../../src/TerminalArea.js';
 
@@ -51,12 +51,13 @@ describe('the banner of a home this window cannot follow', () => {
   });
 
   it.each([
-    ['another fleet', 'mismatch', 'studio holds a different fleet than this Mac expects (x… there, y… here)'],
-    ['another machine', 'machine', 'studio answered with machineId x, not y'],
-  ] as const)('shows %s in the words the daemon gives, and goes to no other home', (_what, state, detail) => {
+    ['another fleet', 'mismatch', 'studio holds a different fleet than this Mac expects (x… there, y… here)', 'studio holds a different fleet than this Mac expects.', 'x… there, y… here'],
+    ['another machine', 'machine', 'studio answered with machineId x, not y', 'studio answered with machineId x, not y.', undefined],
+  ] as const)('shows %s in the words the daemon gives, the ids it compared in a tip, and goes to no other home', (_what, state, detail, said, tip) => {
     standingIn({ state, detail });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toBe(`${detail}Try again`);
+    expect(screen.getByTestId('home-banner').textContent).toBe(`${said}Try again`);
+    expect(screen.getByTestId('home-banner').querySelector('b')!.dataset.tip).toBe(tip);
     expect(screen.queryByTestId('home-detail')).toBeNull();
     expect(screen.queryByTestId('home-upgrade')).toBeNull();
   });
@@ -65,6 +66,12 @@ describe('the banner of a home this window cannot follow', () => {
     standingIn({ state: 'auth', detail: 'run ssh ada@studio once in a terminal, then try again' });
     render(<HomeBanner />);
     expect(screen.getByTestId('home-banner').textContent).toBe('This Mac cannot log in to studio. Run ssh ada@studio once in a terminal, then try again.Try again');
+    // the command to run is mono, and a press copies it
+    const command = screen.getByTestId('home-command');
+    expect([command.textContent, command.className]).toEqual(['ssh ada@studio', 'copy mono']);
+    bridge.present = true;
+    try { fireEvent.click(command); } finally { bridge.present = false; }
+    expect(sent).toContainEqual({ type: 'copy', text: 'ssh ada@studio' });
     expect(screen.getByTestId('home-retry')).toBeTruthy();
     expect(screen.queryByTestId('home-upgrade')).toBeNull();
   });
@@ -122,7 +129,7 @@ describe('the banner of a home this window cannot follow', () => {
   it('says why it cannot run there in the daemon\'s words when there is no release to name', () => {
     standingIn({ state: 'version', detail: 'this Mac does not know where svall is on studio; enrol it again with svall fleet enroll-worker there' });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toBe('this Mac does not know where svall is on studio; enrol it again with svall fleet enroll-worker thereUpgrade studioTry again');
+    expect(screen.getByTestId('home-banner').textContent).toBe('this Mac does not know where svall is on studio; enrol it again with svall fleet enroll-worker there.Upgrade studioTry again');
     expect(call).not.toHaveBeenCalledWith('system.info', {});
   });
 });
