@@ -190,10 +190,10 @@ final class HostProcess {
     }
 
     /// The end of the run, after its last line: a run that failed with nothing to show for it leaves the user what the
-    /// command itself said.
+    /// command itself said, behind a sentence of its own.
     private func finish(_ status: Int32, said: [String]) {
         if status != 0, !sawFailure, !said.isEmpty {
-            onStep(Step(step: "svall", status: "fail", detail: said.joined(separator: "\n"), action: nil))
+            onStep(Step(step: "svall", status: "fail", detail: "svall stopped without saying why", action: nil, raw: said.joined(separator: "\n")))
         }
         onExit(status)
     }

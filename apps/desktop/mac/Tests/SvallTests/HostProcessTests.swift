@@ -266,10 +266,10 @@ final class HostProcessTests: XCTestCase {
         ].joined(separator: "\n")
         let helper = try fakeHelper(prints: [], then: tail)
         let (steps, _) = try run(HostProcess(executable: helper, arguments: ["host", "doctor", "studio", "--json"]))
-        XCTAssertEqual(steps, [HostProcess.Step(step: "svall", status: "fail", detail: [
+        XCTAssertEqual(steps, [HostProcess.Step(step: "svall", status: "fail", detail: "svall stopped without saying why", action: nil, raw: [
             "Warning: Permanently added studio to the list of known hosts.",
             "svall: could not open a master to linus@studio: Permission denied (publickey).",
-        ].joined(separator: "\n"), action: nil)])
+        ].joined(separator: "\n"))])
     }
 
     func testTheStderrTailIsBounded() {
@@ -290,8 +290,8 @@ final class HostProcessTests: XCTestCase {
         process.onExit = { _ in done.fulfill() }
         try process.start()
         wait(for: [done], timeout: 5)
-        XCTAssertEqual(steps.last, HostProcess.Step(step: "svall", status: "fail",
-                                                    detail: "svall: no registry at ~/.config/svall", action: nil))
+        XCTAssertEqual(steps.last, HostProcess.Step(step: "svall", status: "fail", detail: "svall stopped without saying why",
+                                                    action: nil, raw: "svall: no registry at ~/.config/svall"))
     }
 
     func testTheStepsAndTheEndOfARunAreWhatThePageIsSent() {
