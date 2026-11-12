@@ -56,7 +56,8 @@ describe('the banner of a home this window cannot follow', () => {
   ] as const)('shows %s in the words the daemon gives, the ids it compared in a tip, and goes to no other home', (_what, state, detail, said, tip) => {
     standingIn({ state, detail });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toBe(`${said}Try again`);
+    // a fact and what the window shows meanwhile, as the other banners
+    expect(screen.getByTestId('home-banner').textContent).toBe(`${said} Robots on this Mac keep working.Try again`);
     expect(screen.getByTestId('home-banner').querySelector('b')!.dataset.tip).toBe(tip);
     expect(screen.queryByTestId('home-detail')).toBeNull();
     expect(screen.queryByTestId('home-upgrade')).toBeNull();

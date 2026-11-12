@@ -142,12 +142,14 @@ export function HomeBanner() {
   const upgrades = state === 'version' && !newer;
   const failed = running ? undefined : run?.steps.filter((s) => s.status === 'fail').at(-1);
   const age = copied !== undefined && copiedAt(copied);
+  // what the window shows meanwhile: this Mac's copy of the fleet
+  const meanwhile = `${age ? `Showing the fleet as of ${age}; robots` : 'Robots'} on this Mac keep working.`;
   const [fact, sub] = state === 'auth' ? [`This Mac cannot log in to ${name}.`, detail && withCommand(sentence(detail))]
     : state === 'version' && release ? [`${name} runs ${newer ? 'a newer' : 'an older'} Svall than this Mac.`, `${release} there${mine ? `, ${mine} here` : ''}.`]
       : state === 'version' ? [detail ?? `${name} runs another version of Svall`, undefined]
-        : state === 'mismatch' ? [detail ?? `${name} holds a different fleet than this Mac expects`, undefined]
-          : state === 'machine' ? [detail ?? `${name} is a different machine than this Mac expects`, undefined]
-            : [`${name} is not reachable.`, `${age ? `Showing the fleet as of ${age}; robots` : 'Robots'} on this Mac keep working.`];
+        : state === 'mismatch' ? [detail ?? `${name} holds a different fleet than this Mac expects`, meanwhile]
+          : state === 'machine' ? [detail ?? `${name} is a different machine than this Mac expects`, meanwhile]
+            : [`${name} is not reachable.`, meanwhile];
   const [said, compared] = ids(fact);
   return (
     <div className="banner warn" data-testid="home-banner" data-state={state}>
