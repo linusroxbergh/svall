@@ -386,7 +386,7 @@ that already holds a limit is shown it and not asked. A Mac has no limit.
 | `svall host limits <name> --cpus 4 --memory 8G` | the same | Sets it; either flag alone limits that part only. `--none` removes it. |
 | `svall fleet limits`, `svall fleet limits set …` | the Linux machine | The same, there. |
 
-The limit is two lines, `CPUQuota` and `MemoryMax`, in the fleet's own `svall-svalld@<fleet>.service`, from `limits` in
+The limit is `CPUQuota`, and `MemoryMax` with `MemorySwapMax=0`, in the fleet's own `svall-svalld@<fleet>.service`, from `limits` in
 the fleet home's `node.json` on that machine. Setting it reloads systemd and restarts nothing: robots keep running.
 `svall setup`, an upgrade, a re-enrol and a home move write the unit with it. Each fleet on a machine has its own unit
 and its own limit, so two fleets with the default may together ask for more than the machine has.
@@ -396,8 +396,8 @@ A limit is refused when it is more than the machine has, when its memory is unde
 control of them, as on an older systemd; the refusal names the root drop-in that gives it. A limit systemd does not
 put on the unit is taken back.
 
-At the limit on cores the fleet's processes run slower. At the limit on memory the kernel first swaps the fleet out,
-where the machine has swap, then stops one process of the fleet: the robot's terminal says `Killed`, the agent can be
+At the limit on cores the fleet's processes run slower. A fleet with a memory limit uses no swap, so at
+that limit the machine's disk is left alone and the kernel stops one process of the fleet at once: the robot's terminal says `Killed`, the agent can be
 revived, and every other robot runs on. The daemon marks each robot's processes as the ones to stop first, so it is
 not tmux or the daemon. `svall host doctor` and the daemon's log say how often it happened; which robot lost a
 process only root's kernel log says.

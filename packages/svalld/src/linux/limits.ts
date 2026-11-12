@@ -57,7 +57,9 @@ export async function limitsState(limits: Limits, o: Probe): Promise<Pick<Limits
   if (limits.memoryMb && can && !can.includes('memory')) return { state: 'no_memory', ...held };
   if (limits.cpus && can && !can.includes('cpu')) return { state: 'no_cpu', ...held };
   const [quota, period] = (read(path.join(dir, 'cpu.max')) ?? '').split(' ').map(Number);
-  const holds = (!limits.memoryMb || Number(read(path.join(dir, 'memory.max'))) === limits.memoryMb * MIB)
+  // a kernel with no swap accounting has no such file, and no swap to give
+  const swap = read(path.join(dir, 'memory.swap.max'));
+  const holds = (!limits.memoryMb || (Number(read(path.join(dir, 'memory.max'))) === limits.memoryMb * MIB && (swap === undefined || swap === '0')))
     && (!limits.cpus || quota / period === limits.cpus);
   if (!holds) return { state: 'unapplied', ...held };
   const tmux = await o.tmuxPid?.();
@@ -80,7 +82,7 @@ export async function readLimits(o: LimitsTarget): Promise<LimitsReport> {
 
 /** A rendered unit's text with `limits` for its limit lines. */
 export const withLimits = (unit: string, limits: Limits): string =>
-  unit.replace(/(\nOOMPolicy=continue)(\nCPUQuota=[^\n]*)?(\nMemoryMax=[^\n]*)?/, (_, at: string) => `${at}${unitLimits(limits)}`);
+  unit.replace(/(\nOOMPolicy=continue)(\nCPUQuota=[^\n]*)?(\nMemoryMax=[^\n]*)?(\nMemorySwapMax=[^\n]*)?/, (_, at: string) => `${at}${unitLimits(limits)}`);
 
 export const WHY: Record<LimitsReport['state'], string | undefined> = {
   none: undefined,

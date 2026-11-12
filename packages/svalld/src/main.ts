@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { HomeReach, HomeWorker, Limits, MachineId, type HomeFacts, type HomeMoving, type ParsedParams, type Robot } from '@svall/protocol';
+import { HomeReach, HomeWorker, LimitHit, Limits, MachineId, type HomeFacts, type HomeMoving, type ParsedParams, type Robot } from '@svall/protocol';
 import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
@@ -255,6 +255,9 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   // while the fleet moves, what a worker sends but its running fields stays in its outbox
   let holding = false;
   let rejoins: Rejoins | undefined;
+  // the windows this daemon serves, once its API is up
+  let tellWindows: (hit: LimitHit) => void = () => {};
+  const limitHit = (hit: LimitHit): void => tellWindows(hit);
   const links = worker ? undefined : new HomeLinks({
     paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log, profileOf: profileOn }), dialIn: socketTransport({ paths }),
     onReport: (r, machine) => { if (applyReport(store, r, machine) === 'applied') replay?.reported(r.robotId); },
@@ -267,6 +270,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     onInventory: (inv, machine) => router.reconcileWorker(inv, machine),
     onCall: (method, params, machine) => answer!(method, params, machine),
     onNotify: (kind, data, machine) => {
+      // the link says which machine it is; the worker says only how often
+      if (kind === 'limit.hit') return limitHit({ ...LimitHit.pick({ hits: true, at: true }).parse(data), machine, name: store.state.machines?.[machine]?.name ?? machine });
       if (kind === 'screen') {
         const s = ScreenNotice.parse(data);
         if (terminals.sawScreen(s.id, s.text, s.at, machine)) relayScreen(links!, s, machine);
@@ -373,7 +378,14 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   });
   // what a worker's agent CLIs are, which the home reads before it moves a robot there
   if (connection) calls['system.info'] = info;
-  const memoryHits = process.platform === 'linux' ? watchMemoryHits({ onHit: (n) => log.error(`the fleet reached its memory limit: the kernel stopped one of its processes (${n} since this daemon started)`) }) : undefined;
+  const memoryHits = process.platform === 'linux' ? watchMemoryHits({
+    onHit: (hits) => {
+      log.error(`the fleet reached its memory limit: the kernel stopped one of its processes (${hits} since this daemon started)`);
+      // a worker's home tells the windows; a home tells its own
+      if (connection) connection.notify('limit.hit', { hits, at: Date.now() });
+      else limitHit({ machine: me, name: ownName(), hits, at: Date.now() });
+    },
+  }) : undefined;
   const limitsTarget = { fleet: profile, home: paths.home, unitDir: unitDirOf(os.homedir()), run: realRun, tmuxPid: () => tmux.serverPid() };
   const limits = memoryHits && {
     read: async () => ({ ...await readLimits(limitsTarget), ...memoryHits.hits() }),
@@ -530,7 +542,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: (m) => (profileOn(m) === PRIVATE ? '' : `-p ${isProfileName(profileOn(m)) ? profileOn(m) : shq(profileOn(m))} `),
-      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(limits && { limits }), ...(ownSetup && { workerSetup: ownSetup }), fleetHome, workersOwed: () => (worker ? {} : owedWorkers(paths)), rejoinsAgain: () => rejoins?.again(),
+      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(limits && { limits }), onLimitHit: (tell: (hit: LimitHit) => void) => { tellWindows = tell; }, ...(ownSetup && { workerSetup: ownSetup }), fleetHome, workersOwed: () => (worker ? {} : owedWorkers(paths)), rejoinsAgain: () => rejoins?.again(),
       ...(!worker && { fleetConfig: fleetConfigFile(paths, log, refused) }), freeze, homeChecks, homeWaits,
       registered: () => new Map(registered().map((m) => [m.id, m.record])),
     });

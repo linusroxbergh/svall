@@ -1,7 +1,7 @@
 import type { Operation } from 'fast-json-patch';
 import { z } from 'zod';
 import { Enrolment, HomeMoveId, HomeMoving, HomeSheet } from './home-move.js';
-import { FleetId, LimitsReport, MachineId, SystemInfo } from './machines.js';
+import { FleetId, LimitsReport, MachineId, SystemInfo, type LimitHit } from './machines.js';
 import { HomeState, MoveId, MoveSheet, Refusal, SetupRow } from './placement.js';
 import { DismissReason, RetroPlan, RetroReport, RetroSpan, RetroStatus } from './retro.js';
 import { AgentKind, AgentStatus, BrowserTab, Cell, Column, Robot, ContextItem, FleetState, Island, Size } from './state.js';
@@ -565,7 +565,8 @@ export type Event =
   | { event: 'term.resync'; data: { id: string; screen: string } }
   | { event: 'repo.changed'; data: { id: string } }
   | { event: 'mobile.phones'; data: { phones: PhoneSession[] } }
-  | { event: 'app.show'; data: AppShow };
+  | { event: 'app.show'; data: AppShow }
+  | { event: 'machines.limitHit'; data: LimitHit };
 
 // a caller from another machine says what it calls this home and which machine it is on, for the words the daemon makes for its calls
 export const Hello = z.object({ token: z.string(), home: z.string().optional(), me: MachineId.optional() });

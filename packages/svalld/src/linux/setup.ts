@@ -106,9 +106,9 @@ const logFile = (o: UnitOptions, unit: string): string =>
 
 export type Unit = { name: string; text: string };
 
-/** The unit's lines for what node.json lets the fleet use, each led by a newline. */
+/** The unit's lines for what node.json lets the fleet use, each led by a newline; a memory limit takes swap away, so it is the kernel's kill and never the machine's disk that ends a fleet past it. */
 export const unitLimits = (limits: Limits | undefined): string =>
-  `${limits?.cpus ? `\nCPUQuota=${limits.cpus * 100}%` : ''}${limits?.memoryMb ? `\nMemoryMax=${limits.memoryMb}M` : ''}`;
+  `${limits?.cpus ? `\nCPUQuota=${limits.cpus * 100}%` : ''}${limits?.memoryMb ? `\nMemoryMax=${limits.memoryMb}M\nMemorySwapMax=0` : ''}`;
 
 // a node.json that does not parse is the daemon's to report, and limits nothing
 const limitsOf = (home: string): Limits | undefined => { try { return peekConfig(resolvePaths(home)).limits; } catch { return undefined; } };

@@ -628,6 +628,7 @@ function limitsHold(when) {
   const { limits } = JSON.parse(sh(R, 'svall --json fleet limits').stdout);
   check(`limits ${when}: saved`, limits.cpus > 0 && limits.memoryMb > 0, () => brief(limits));
   check(`limits ${when}: memory.max`, cgroupOf(R, 'memory.max') === String(limits.memoryMb * 1024 * 1024), () => cgroupOf(R, 'memory.max'));
+  check(`limits ${when}: no swap`, cgroupOf(R, 'memory.swap.max') === '0', () => cgroupOf(R, 'memory.swap.max'));
   check(`limits ${when}: cpu.max`, cgroupOf(R, 'cpu.max') === `${limits.cpus * 100000} 100000`, () => cgroupOf(R, 'cpu.max'));
 }
 
@@ -642,8 +643,9 @@ function limits(ids, fx) {
   check('limit set', set.report?.state === 'applied' && set.report.limits.memoryMb === 1024, () => `${brief(set.report)} ${set.stderr}`);
   check('memory.max', cgroupOf(R, 'memory.max') === String(1024 * 1024 * 1024), () => cgroupOf(R, 'memory.max'));
   check('cpu.max', cgroupOf(R, 'cpu.max') === '100000 100000', () => cgroupOf(R, 'cpu.max'));
+  check('no swap', cgroupOf(R, 'memory.swap.max') === '0', () => cgroupOf(R, 'memory.swap.max'));
   check('nothing restarted', main() === daemon, () => `${daemon} -> ${main()}`);
-  check('unit text', /OOMPolicy=continue\nCPUQuota=100%\nMemoryMax=1024M\n/.test(sh(R, `cat ~/.config/systemd/user/${UNIT}`).stdout), 'the unit file lacks the limit lines');
+  check('unit text', /OOMPolicy=continue\nCPUQuota=100%\nMemoryMax=1024M\nMemorySwapMax=0\n/.test(sh(R, `cat ~/.config/systemd/user/${UNIT}`).stdout), 'the unit file lacks the limit lines');
 
   // a robot's process that takes more than the fleet may is stopped; the daemon, tmux and the fleet's other robots run on
   const id = JSON.parse(sh(R, `svall --json robot new --island ${fx.island} --cwd ${HOMES[R]} --name hog --command bash`).stdout).id;
@@ -653,6 +655,10 @@ function limits(ids, fx) {
   check('pane marked', sh(R, `cat /proc/${panePid}/oom_score_adj`).stdout.trim() === '500', () => sh(R, `cat /proc/${panePid}/oom_score_adj`, { ok: false }).stdout);
   check('daemon and tmux not marked', [daemon, tmux].every((p) => Number(sh(R, `cat /proc/${p}/oom_score_adj`).stdout) < 500), 'the daemon or tmux carries the pane mark');
   const before = sh(R, `${TMUX_R} list-panes -a -F '#{pane_pid}' | sort`).stdout;
+  // a window on the home, which hears of the hit as it happens
+  sh(L, 'rm -f /tmp/it-limit.ndjson');
+  if (docker(['exec', '-d', '-u', 'svall', '-e', `HOME=${HOMES[L]}`, L, '/opt/it/node/bin/node', '/opt/it/machine.mjs', 'watch', id, '--out', '/tmp/it-limit.ndjson', '--for', '240']).code !== 0) throw new Error('the watcher did not start');
+  for (let i = 0; i < 40 && !/connected/.test(sh(L, 'cat /tmp/it-limit.ndjson', { ok: false }).stdout); i++) sh(L, 'sleep 0.5');
   sh(R, `${TMUX_R} send-keys -t '${paneId}' -l "/opt/it/node/bin/node -e 'const a=[];for(;;)a.push(Buffer.alloc(32<<20,1))'; echo hog-ended-\\$?" && ${TMUX_R} send-keys -t '${paneId}' Enter`);
   let ended = '';
   for (let i = 0; i < 180 && !/hog-ended-\d+/.test(ended); i++) { sh(R, 'sleep 1'); ended = sh(R, `${TMUX_R} capture-pane -p -t '${paneId}'`, { ok: false }).stdout; }
@@ -662,6 +668,9 @@ function limits(ids, fx) {
   let hits = 0;
   for (let i = 0; i < 20 && !hits; i++) { sh(R, 'sleep 1'); hits = farLimits().report?.hits ?? 0; }
   check('hit counted', hits >= 1, () => brief(farLimits().report));
+  const told = sh(L, 'cat /tmp/it-limit.ndjson').stdout.trim().split('\n').map((l) => JSON.parse(l).limitHit).filter(Boolean);
+  check('the window heard', told.length === 1 && told[0].machine === ids.remote && told[0].name === 'remote' && told[0].hits === 1 && told[0].at > 0, () => brief(told));
+  sh(L, 'pkill -f "^/opt/it/node/bin/node /opt/it/machine.mjs watch" || true');
   check('doctor warns', /limits .*reached its memory limit/.test(sh(R, 'svall doctor', { ok: false }).stdout), 'svall doctor on remote does not say the limit was reached');
   sh(L, `svall robot close ${id}`, { ok: false });
   // each daemon answers for its own machine: the worker asked there, and the home, a Linux machine too

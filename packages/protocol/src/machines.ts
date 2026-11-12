@@ -83,6 +83,10 @@ export const LimitsReport = z.object({
 });
 export type LimitsReport = z.infer<typeof LimitsReport>;
 
+/** A fleet reached its memory limit on `machine`, where the kernel stopped one of its processes: the `hits`th since that machine's daemon started. */
+export const LimitHit = z.object({ machine: MachineId, name: z.string(), hits: z.number().int(), at: z.number() });
+export type LimitHit = z.infer<typeof LimitHit>;
+
 /** node.json: what belongs to this machine. */
 export const NodeConfig = z.object({
   port: z.number().int().default(47800),
