@@ -131,7 +131,7 @@ export function SideCard({ id }: { id: string }) {
         {c.relayed?.held && <Held id={id} n={c.relayed.n} promptId={c.relayed.held} refuse={refuse} />}
       </div>
       <div className="side-secs">
-        {placed && c.machine && !onHome && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} />}
+        {placed && c.machine && !onHome && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} away={away} />}
         <Section name="robot.note" title="Note" head={<Info id="robot-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
           <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} {...fieldTry(refuse)} maxLength={ROBOT_NOTE_MAX} data-testid="side-note"
             onSave={(v) => (v !== c.note ? save({ note: v }) : undefined)} />

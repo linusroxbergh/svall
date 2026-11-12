@@ -8,10 +8,10 @@ import { homeName } from './placement.js';
 /**
  * A variable row's way on: its value typed here and sent to the machine's .env, or copied from the home when it has one.
  * The value lives in this field alone, shown to no one, and is gone once sent; `take`, asked at the send, says where the
- * rows that come back go.
+ * rows that come back go; `away`, why the machine cannot take it now.
  */
-export function VarField({ machine, name, varName, here, take, failed, testid }: {
-  machine: MachineId; name: string; varName: string; here?: boolean; take(): (rows: SetupRow[]) => void; failed(message: string): void; testid: string;
+export function VarField({ machine, name, varName, here, take, failed, testid, away }: {
+  machine: MachineId; name: string; varName: string; here?: boolean; take(): (rows: SetupRow[]) => void; failed(message: string): void; testid: string; away?: string;
 }) {
   const home = useApp((s) => s.via && homeName(s.fleet, s.via));
   const [value, setValue] = useState('');
@@ -25,14 +25,14 @@ export function VarField({ machine, name, varName, here, take, failed, testid }:
       .finally(() => setBusy(false));
   };
   return (
-    <form className="var-field" data-testid={testid} onSubmit={(e) => { e.preventDefault(); if (value) send({ value }); }}>
+    <form className="var-field" data-testid={testid} onSubmit={(e) => { e.preventDefault(); if (value && !away) send({ value }); }}>
       <input type="password" className="fld" {...AS_TYPED} data-testid={`${testid}-value`} aria-label={`value for ${varName} on ${name}`} placeholder={`value for ${varName}`}
         value={value} disabled={busy} onChange={(e) => setValue(e.target.value)} />
-      <button type="submit" className="btn sm" data-testid={`${testid}-set`} disabled={busy || !value} data-tip={`Sets ${varName} in the fleet's .env on ${name}; robots started there from then on have it`}>
+      <button type="submit" className="btn sm" data-testid={`${testid}-set`} disabled={busy || !value || !!away} data-tip={away ?? `Sets ${varName} in the fleet's .env on ${name}; robots started there from then on have it`}>
         Set on {name}
       </button>
       {here && (
-        <button type="button" className="btn sm" data-testid={`${testid}-copy`} disabled={busy} data-tip={`${home ?? 'This Mac'} has ${varName}; its value goes to ${name} without being shown`}
+        <button type="button" className="btn sm" data-testid={`${testid}-copy`} disabled={busy || !!away} data-tip={away ?? `${home ?? 'This Mac'} has ${varName}; its value goes to ${name} without being shown`}
           onClick={() => send({ fromMac: true })}>Copy from {home ?? 'this Mac'}</button>
       )}
     </form>

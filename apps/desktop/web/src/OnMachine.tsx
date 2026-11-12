@@ -79,11 +79,15 @@ function gapWords(r: SetupRow): ReactNode {
   return <><b>{name}</b> {r.gap!.what}{!r.run && r.action && <em>{r.action}</em>}</>;
 }
 
+// a gap's terminal on the card, named apart from the robot's own: what it is opened to do
+const TERMINAL_FOR: [string, string][] = [['oauth:', 'Log in'], ['runtime:', 'Install']];
+
 /**
  * What of a placed robot's agent setup will not work on its machine, each with its one way on: copy its keys, a terminal
- * there, or what to do; what runs only on a Mac, or you ticked as not needed there, in one line under them.
+ * there, or what to do; what runs only on a Mac, or you ticked as not needed there, in one line under them. `away`: why
+ * the machine is out of reach, which holds a terminal or a variable there; a tick is saved for when it answers.
  */
-export function OnMachine({ id, machine, name }: { id: string; machine: MachineId; name: string }) {
+export function OnMachine({ id, machine, name, away }: { id: string; machine: MachineId; name: string; away?: string }) {
   const [rows, setRows] = useState<SetupRow[]>([]);
   const read = () => app.api().call('machines.setup', { machine, robot: id }).then((r) => setRows(r.rows.filter((x) => x.gap)), () => {});
   // read again once the Machines panel closes, as a login in a terminal there changes the rows
@@ -102,13 +106,13 @@ export function OnMachine({ id, machine, name }: { id: string; machine: MachineI
             {toTick(r) && !notNeeded(r) ? (
               <button className="btn sm" data-testid={`side-gap-copy-${r.key}`} onClick={() => void tick(r.tick!)}>Copy key</button>
             ) : r.key.startsWith('var:') && r.action ? (
-              <VarField machine={machine} name={name} varName={r.key.slice('var:'.length)} here={r.here} testid={`side-gap-var-${r.key}`}
+              <VarField machine={machine} name={name} varName={r.key.slice('var:'.length)} here={r.here} testid={`side-gap-var-${r.key}`} away={away}
                 take={() => () => void read()} failed={(m) => app.store.getState().showToast(m, 'error')} />
             ) : (
               <>
                 {r.run && (
-                  <button className="btn sm" data-testid={`side-gap-terminal-${r.key}`} data-tip={`Opens a terminal on ${name} with ${r.run} typed, for you to run`}
-                    onClick={() => terminalOn(name, r.run, r.forward)}>Open terminal</button>
+                  <button className="btn sm" data-testid={`side-gap-terminal-${r.key}`} disabled={!!away} data-tip={away ?? `Opens a terminal on ${name} with ${r.run} typed, for you to run`}
+                    onClick={() => terminalOn(name, r.run, r.forward)}>{TERMINAL_FOR.find(([k]) => r.key.startsWith(k))?.[1] ?? 'Open terminal'}</button>
                 )}
                 {toTick(r) && (
                   <button className="btn sm" data-testid={`side-gap-skip-${r.key}`} data-tip={`${name} does not need it; the row then stands aside`} onClick={() => void tick(r.tick!)}>Not needed</button>

@@ -594,6 +594,19 @@ test('a robot on a worker this Mac cannot reach says so under its machine line, 
   expect(screen.queryByTestId('side-away')).toBeNull();
 });
 
+test('a placed robot\'s login on the card is named for what it opens a terminal to do, and waits while its machine is not reachable', async () => {
+  const login = { key: 'oauth:claude:mcp:notion', status: 'warn', detail: 'not logged in', run: 'claude', gap: { name: 'notion', what: 'not logged in' } };
+  const was = call.getMockImplementation()!;
+  call.mockImplementation((method: string, params?: unknown) => (method === 'machines.setup' ? Promise.resolve({ rows: [login] }) : was(method, params)));
+  try {
+    withVault(false, { machine: VAULT, cwd: '/home/ada/svall' });
+    await act(async () => { render(<Side />); });
+    fireEvent.click(screen.getByTestId('sec-fold-robot.machine'));
+    const button = screen.getByTestId('side-gap-terminal-oauth:claude:mcp:notion') as HTMLButtonElement;
+    expect([button.textContent, button.disabled, button.dataset.tip]).toEqual(['Log in', true, 'linus-vault is not reachable']);
+  } finally { call.mockImplementation(was); }
+});
+
 test('Check of a far worker this Mac names as it names its home goes by the worker\'s id', () => {
   withVault(false, { machine: VAULT, cwd: '/home/ada/svall' });
   act(() => store.getState().setMachines([
