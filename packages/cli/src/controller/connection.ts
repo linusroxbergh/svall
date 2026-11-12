@@ -49,7 +49,7 @@ const alive = (pid: number): boolean => {
 
 /**
  * That this machine's daemon is not running, and what to do about it: start it here, or on a server, which no one sits at, the
- * check the Mac runs on it; the files and the unit behind it in parentheses.
+ * check the Mac runs on it; the files and the unit behind it as what was said.
  */
 function notRunning(paths: ReturnType<typeof resolvePaths>, platform: NodeJS.Platform, raw: string): SshError {
   // on Linux the daemon is a systemd unit, which says why it is down
@@ -57,7 +57,7 @@ function notRunning(paths: ReturnType<typeof resolvePaths>, platform: NodeJS.Pla
   const said = platform === 'linux'
     ? ` on ${homeWord()}; svall host doctor ${homeWord()} says why`
     : `; start it: ${SHIM} setup${SHIM === 'svall-dev' ? ' or pnpm svalld' : ''}`;
-  return new SshError('daemon_down', `Svall's background service is not running${said} (${raw}${unit})`);
+  return new SshError('daemon_down', `Svall's background service is not running${said}`, `${raw}${unit}`);
 }
 
 /** What this machine's own daemon answers about the fleet it runs. */
