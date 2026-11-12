@@ -1086,13 +1086,16 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
         d.runs?.(now);
         // only the release before, put back, is a rollback that did what it was for
         const putBack = !replaced && now === before;
+        // a daemon that answered from another release than the one set is asked again, after the rollback, which one it answers from
+        const after = answering && await endToEnd(master, entry, { release: now, anyProtocol: true, ...(fleetHome && { fleetHome }) })
+          .then(() => now, (err: unknown) => (err instanceof OtherRelease ? err.running : undefined));
         // one release set and another answering is said once, as both
-        const runs = answering && answering !== now ? `set to ${now}, still answering from ${answering}`
+        const runs = after && after !== now ? `set to ${now}, still answering from ${after}`
           : putBack ? `back on ${now}` : !replaced ? `on ${now}; ${before} could not be put back`
           : now === before ? `stays on ${now}: no earlier release is kept there` : `on ${now}, the newest release kept there`;
         const long = `ssh ${entry.record.ssh} and read the service's log; ${rollbackTo(name, d)}`;
         if (out instanceof Error) throw new StepError(runs, seeWhy(name, d), undefined, undefined, `${inFull(out)}\n${long}`);
-        return { value: undefined, status: putBack && !(answering && answering !== now) ? 'ok' as const : 'warn' as const, detail: runs, action: seeWhy(name, d), raw: [out.trim(), long].filter(Boolean).join('\n') };
+        return { value: undefined, status: putBack && !(after && after !== now) ? 'ok' as const : 'warn' as const, detail: runs, action: seeWhy(name, d), raw: [out.trim(), long].filter(Boolean).join('\n') };
       });
     } finally {
       await master.close().catch(() => undefined);

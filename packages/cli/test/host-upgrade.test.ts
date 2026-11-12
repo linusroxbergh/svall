@@ -36,12 +36,12 @@ describe('host upgrade', () => {
    * Its setup keeps a new release only if its daemon comes up (no `down-<release>` file) and speaks this client's protocol,
    * else goes back to the release it replaced (after a reinstall, the newest other kept), as a real setup does.
    */
-  async function farMachine(o: { releases: [string, number, (number | null)?][]; accepts?: (release: string) => boolean; pins?: string; answers?: string }) {
+  async function farMachine(o: { releases: [string, number, (number | null)?][]; accepts?: (release: string) => boolean; pins?: string; answers?: string | (() => string) }) {
     const home = path.join(work, 'far');
     const base = `${home}/.local/share/svall`;
     const now = () => path.basename(fs.readlinkSync(`${base}/current`));
     // `answers`: a daemon left running from that release, whatever current names
-    const d = await daemon({ release: () => o.answers ?? now(), accepts: () => o.accepts?.(now()) ?? true });
+    const d = await daemon({ release: () => (typeof o.answers === 'function' ? o.answers() : o.answers) ?? now(), accepts: () => o.accepts?.(now()) ?? true });
     const svall = (version: string, protocol: number, schema: number | null = STATE_SCHEMA_VERSION) => `#!/bin/sh
 base='${base}'
 now() { basename "$(readlink "$base/current")"; }
@@ -56,6 +56,7 @@ case "$1" in
   worker) printf '%s\\n' "$@" > '${home}/.svall/worker-args' && cat > '${home}/.svall/worker-token' ;;
   setup)
     if [ "$2" = --rollback ]; then
+      touch "$base/rolled"
       to=\${3:-$(ls -t "$base/releases" | grep -vx "$(now)" | head -1)}
       [ -n "$to" ] || { echo "no release under $base/releases to go back to" >&2; exit 1; }
       [ -d "$base/releases/$to" ] || { echo "no release at $base/releases/$to to go back to" >&2; exit 1; }
@@ -388,13 +389,15 @@ esac
   it('says once that the machine is set to one release and answers from another, when going back did not finish', async () => {
     let base = '';
     // the new release is set, the daemon of the one before still answers, and the one before is gone to go back to
-    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], answers: '1.2.2', accepts: (r) => { if (r === '1.2.3') fs.rmSync(`${base}/releases/1.2.2`, { recursive: true, force: true }); return true; } });
+    // and once the rollback has run, a daemon answering from yet another, which is the one named
+    const answers = () => (fs.existsSync(`${base}/rolled`) ? '1.2.1' : '1.2.2');
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], answers, accepts: (r) => { if (r === '1.2.3') fs.rmSync(`${base}/releases/1.2.2`, { recursive: true, force: true }); return true; } });
     base = far.base;
     await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
     expect(far.now()).toBe('1.2.3');
     expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: 'answers from 1.2.2, not 1.2.3' });
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', detail: 'set to 1.2.3, still answering from 1.2.2' });
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', detail: 'set to 1.2.3, still answering from 1.2.1' });
   });
 
   it('after a reinstall under the only name it had, says no other release is kept to go back to', async () => {
