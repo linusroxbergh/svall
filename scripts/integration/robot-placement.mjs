@@ -1988,9 +1988,10 @@ function moveWithWorker(ids) {
   check('a third move stands', leaving.some((e) => e.step === 'workers' && e.status === 'warn'), () => brief(leaving));
   sh(B, ': > ~/.ssh/authorized_keys');
   sh(B, open, { root: true, ok: false });
-  let said;
-  for (let i = 0; i < 120 && !/denied|cannot log in|refused/i.test(said ?? ''); i++) { if (i) sh(L, 'sleep 1'); said = call(L, 'machines.list').machines.find((m) => m.id === ids.box)?.joining; }
-  check('its row names the refused login', /denied|refused/i.test(said ?? ''), () => brief(said));
+  // the row says the login was refused, and what ssh said waits behind it
+  let listed;
+  for (let i = 0; i < 120 && !/cannot log in/.test(listed?.joining ?? ''); i++) { if (i) sh(L, 'sleep 1'); listed = call(L, 'machines.list').machines.find((m) => m.id === ids.box); }
+  check('its row names the refused login', /cannot log in to box;/.test(listed?.joining ?? '') && /denied|refused/i.test(listed?.raw ?? ''), () => brief(listed));
   sh(B, 'cat >> ~/.ssh/authorized_keys', { input: keys });
   sh(L, 'svall --json host doctor box </dev/null >/dev/null', { ok: false });
   boxFollows('the key back, and a Check', ids);
