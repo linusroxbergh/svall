@@ -45,7 +45,7 @@ export const SETTINGS_SIZE = { w: 760, h: 600 };
 export const canFill = (s: { settings: Settings; shell?: { op: boolean } }): boolean => s.settings.onePassword && !!s.shell?.op;
 
 // the gap CSS leaves between a settings row and the tip that belongs to it
-const TIP_GAP = 5;
+export const TIP_GAP = 5;
 
 type Box = { top: number; bottom: number };
 

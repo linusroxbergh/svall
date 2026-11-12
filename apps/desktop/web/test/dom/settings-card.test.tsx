@@ -605,6 +605,27 @@ test('an Info tip that would reach the next group\'s heading opens upward over i
   } finally { rect.mockRestore(); }
 });
 
+test('an Info tip that would cut a row covers it whole, so no control shows half', () => {
+  render(<SettingsCard />);
+  const mark = screen.getByTestId('set-info-keep-awake');
+  const row = mark.closest('.row') as HTMLElement;
+  const above = screen.getByTestId('set-usage-tab').closest('.row') as HTMLElement;
+  const tip = document.getElementById('set-tip-keep-awake')!;
+  const next = row.closest('.set-group')!.nextElementSibling!;
+  const box = (top: number, bottom: number) => ({ top, bottom, left: 0, right: 600, width: 600, height: bottom - top, x: 0, y: top, toJSON() {} }) as DOMRect;
+  // the tip opens up from 300 and, 60 tall, would end at 235, inside the row from 220 to 250
+  const rect = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    return this === row ? box(300, 330) : this === above ? box(220, 250) : this === next ? box(340, 420) : this.classList.contains('side') ? box(0, 600) : box(0, 0);
+  });
+  Object.defineProperty(tip, 'offsetParent', { configurable: true, get: () => row });
+  Object.defineProperty(tip, 'scrollHeight', { configurable: true, get: () => 60 });
+  try {
+    act(() => { fireEvent.focus(mark); });
+    expect(tip.dataset.place).toBe('up');
+    expect(tip.style.height).toBe('75px');
+  } finally { rect.mockRestore(); }
+});
+
 test('an Info says what a control is for in two sentences at most', async () => {
   render(<SettingsCard />);
   expect(tipOf('keep-awake')).toBe('Stops idle sleep while agents work, so they keep running and your phone reaches the fleet. The screen still dims and locks, and nothing is held on battery.');
