@@ -121,23 +121,25 @@ export function NewRobot() {
           <div className="new-folder">
             {away && <div data-testid="new-robot-away"><Said line={`${homeName({ machines }, via)} is not reachable`} fix="This robot starts on this Mac." mark="warn" /></div>}
             <span className="modal-sub" id="new-robot-where" data-testid="new-robot-where">folder on {where}</span>
-            <div className="new-folder-list" ref={list} role="listbox" aria-labelledby="new-robot-where" aria-busy={listed === undefined || undefined} data-testid="new-robot-folders"
-              data-empty={(listed !== undefined && !folders.length) || undefined} data-more={below || undefined} onKeyDown={walk} onScroll={measure}>
-              {listed === undefined && <span className="new-folder-quiet"><span className="move-spin" aria-hidden />Reading {where}'s folders…</span>}
-              {listed === null && <span className="new-folder-quiet"><Said line={`${where === 'this Mac' ? 'This Mac' : where} did not list its folders`} mark="warn" /></span>}
-              {listed && !folders.length && <span className="new-folder-quiet" data-testid="new-robot-none">{via.online ? `No clone or robot folder on ${where} yet.` : 'No clone listed here; type a path inside one.'}</span>}
-              {folders.map((f) => {
-                const picked = !typing && f.path === folder;
-                return <button key={f.path} className="list-row sm mono" role="option" aria-selected={picked} tabIndex={picked ? 0 : -1} data-testid={`new-robot-pick-${f.path}`} data-tip={f.path} onClick={() => choose(f.path)}><bdi>{shortPath(f.path)}</bdi></button>;
-              })}
-              {folders.length > 0 && <button className="list-row sm new-folder-other" role="option" aria-selected={typing} tabIndex={typing ? 0 : -1} data-testid="new-robot-other" onClick={() => choose('', true)}>Other folder…</button>}
+            <div className="new-folder-pick">
+              <div className="new-folder-list" ref={list} role="listbox" aria-labelledby="new-robot-where" aria-busy={listed === undefined || undefined} data-testid="new-robot-folders"
+                data-empty={(listed !== undefined && !folders.length) || undefined} data-more={below || undefined} onKeyDown={walk} onScroll={measure}>
+                {listed === undefined && <span className="new-folder-quiet"><span className="move-spin" aria-hidden />Reading {where}'s folders…</span>}
+                {listed === null && <span className="new-folder-quiet"><Said line={`${where === 'this Mac' ? 'This Mac' : where} did not list its folders`} mark="warn" /></span>}
+                {listed && !folders.length && !folder && <span className="new-folder-quiet" data-testid="new-robot-none">{via.online ? `No clone or robot folder on ${where} yet.` : 'No clone listed here; type a path inside one.'}</span>}
+                {folders.map((f) => {
+                  const picked = !typing && f.path === folder;
+                  return <button key={f.path} className="list-row sm mono" role="option" aria-selected={picked} tabIndex={picked ? 0 : -1} data-testid={`new-robot-pick-${f.path}`} data-tip={f.path} onClick={() => choose(f.path)}><bdi>{shortPath(f.path)}</bdi></button>;
+                })}
+                {folders.length > 0 && <button className="list-row sm new-folder-other" role="option" aria-selected={typing} tabIndex={typing ? 0 : -1} data-testid="new-robot-other" onClick={() => choose('', true)}>Other folder…</button>}
+              </div>
+              {typing && (
+                <input className="fld mono" placeholder="~/code/project" aria-label="Folder" value={cwd} data-testid="new-robot-folder" {...AS_TYPED} autoFocus={other && !keyed.current}
+                  onChange={(e) => choose(e.target.value, true)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />
+              )}
+              {refused && <div role="alert" data-testid="new-robot-refused"><Said line={refused} /></div>}
             </div>
-            {typing && (
-              <input className="fld mono" placeholder="~/code/project" aria-label="Folder" value={cwd} data-testid="new-robot-folder" {...AS_TYPED} autoFocus={other && !keyed.current}
-                onChange={(e) => choose(e.target.value, true)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />
-            )}
-            {refused && <div role="alert" data-testid="new-robot-refused"><Said line={refused} /></div>}
           </div>
         )}
         {!more && (

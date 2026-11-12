@@ -149,8 +149,9 @@ export function HomeSheet() {
     const todo = said && (said.say ?? said.action);
     // mission control left away is said once, as the row itself, its button at the foot
     const left = step === 'crew' && said ? onThisMac(said.say ?? said.detail ?? '') : undefined;
-    // why, and what to do under it; a row that says only what to do says that
-    const why = left === undefined && (said?.detail ? { ...rawOf(onThisMac(said.detail), said.raw), fix: todo && onThisMac(todo) } : todo ? { line: onThisMac(todo) } : undefined);
+    // why, and what to do under it, unless a move that stands says that at the foot; a row that says only what to do says that
+    const fix = todo && !stands ? onThisMac(todo) : undefined;
+    const why = left === undefined && (said?.detail ? { ...rawOf(onThisMac(said.detail), said.raw), fix } : todo ? { line: onThisMac(todo) } : undefined);
     return (
       <li key={step} data-state={now} data-testid={`home-step-${step}`}>
         <span className="move-mark" aria-hidden>{now === 'doing' ? <span className="move-spin" /> : <Mark status={({ done: 'ok', failed: 'fail', warned: 'warn', todo: 'todo' } as const)[now]} />}</span>
@@ -215,7 +216,7 @@ export function HomeSheet() {
             ))}
           </div>
         )}
-        {!run && sheet?.waits?.map((w) => <div key={w.id} data-testid="home-waits"><Said line={`${w.name} is not answering`} fix={`It joins ${dest} when it does.`} mark="warn" /></div>)}
+        {!run && sheet?.waits?.map((w) => <div key={w.id} data-testid="home-waits"><Said line={`${w.name} is not answering`} fix={`It joins ${dest} when it does`} mark="warn" /></div>)}
         {!run && interrupt && (
           <label className="move-pick" data-testid="home-interrupt"><input type="checkbox" checked onChange={() => setInterrupt(false)} /><span>{KEPT[interrupt]}{working && <span className="modal-sub">{working}</span>}</span></label>
         )}
@@ -302,7 +303,7 @@ function PhoneDone({ name, waits }: { name: string; waits: boolean }) {
     return (
       <div data-testid={problem ? undefined : 'home-phone-wait'}>
         {problem ? <PhoneProblem /> : <Said line={`${name} has not turned its phone link on yet`} mark="warn" />}
-        <span className="modal-sub home-later">Turn it on later in Settings → Phone.</span>
+        <span className="modal-sub home-later">Turn the phone link on later in Settings → Phone.</span>
       </div>
     );
   }

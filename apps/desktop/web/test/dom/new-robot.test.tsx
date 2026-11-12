@@ -153,6 +153,8 @@ test('with no folder there is nothing to create until one is typed, and the list
   await act(async () => {});
   expect(creates()).toEqual([]);
   fireEvent.change(folder(), { target: { value: '/srv/app' } });
+  // a path typed says what the empty line said
+  expect(screen.queryByTestId('new-robot-none')).toBeNull();
   expect(screen.getByTestId('new-robot-create').dataset.tip).toBeUndefined();
   fireEvent.keyDown(folder(), { key: 'Enter' });
   await act(async () => {});

@@ -54,7 +54,7 @@ const Enrolled = z.object({
 
 type JoinOptions = { ssh: string; name?: string; homeProfile?: string };
 
-export type JoinDeps = Pick<HostDeps, 'emit' | 'openMaster' | 'interactiveSsh' | 'tailnet'> & {
+export type JoinDeps = Pick<HostDeps, 'emit' | 'openMaster' | 'interactiveSsh' | 'tailnet' | 'runs'> & {
   registry: MachineRegistry;
   target: Target;
   me: MachineId;
@@ -176,6 +176,7 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
         if (served && readWorkerFile(paths).fleetId !== found.fleetId) throw new StepError(`this fleet serves ${served} as a worker, whose robots here this home would close`, `svall -p <new fleet> fleet join ${o.ssh}`);
         return { value: found, detail: `${o.ssh} is the fleet's home, on release ${found.release}`, raw: `machine ${found.id}, fleet ${found.fleetId}` };
       });
+      d.runs?.(home.release);
       const here = d.registry.localMachine();
       const enrolled = await run.step('enrol', async () => {
         const r = await master.run([

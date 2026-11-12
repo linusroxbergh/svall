@@ -103,7 +103,7 @@ describe('the sheet of a home move', () => {
   it('names a worker that does not answer, which joins the new home when it does', async () => {
     answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, waits: [{ id: 'cccccccc-0000-4000-8000-000000000000', name: 'box' }] } } });
     await open();
-    expect(said(screen.getByTestId('home-waits'))).toEqual(['box is not answering', 'It joins studio when it does.']);
+    expect(said(screen.getByTestId('home-waits'))).toEqual(['box is not answering', 'It joins studio when it does']);
     expect(screen.getByTestId('home-waits').querySelector('.said')!.getAttribute('data-mark')).toBe('warn');
     expect(screen.getByTestId('home-ready')).toBeTruthy();
   });
@@ -222,7 +222,7 @@ describe('the sheet of a home move', () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(31_000); });
       if (!served) { expect(screen.queryByTestId('home-phone-wait')).toBeNull(); expect(screen.getByTestId('home-done').textContent).not.toContain('phone link'); return; }
       expect(said(screen.getByTestId('home-phone-wait'))).toEqual(['studio has not turned its phone link on yet']);
-      expect(screen.getByTestId('home-phone-wait').textContent).toContain('Turn it on later in Settings → Phone.');
+      expect(screen.getByTestId('home-phone-wait').textContent).toContain('Turn the phone link on later in Settings → Phone.');
       const asked = call.mock.calls.filter(([m]) => m === 'mobile.get').length;
       await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
       expect(call.mock.calls.filter(([m]) => m === 'mobile.get').length).toBe(asked);
@@ -473,6 +473,8 @@ describe('the sheet of a home move', () => {
     answer({ 'fleet.homeCheck': { ok: true, sheet: SHEET }, 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } } });
     act(() => { store.getState().hostDone('home', 1); });
     await screen.findByTestId('home-retry');
+    // the foot says what a standing move needs, so its failed row says only why
+    expect(said(screen.getByTestId('home-failed'))).toEqual(['studio did not take the fleet: rolledback']);
     expect([...document.querySelectorAll('.modal .acts button')].map((b) => [b.textContent, b.className])).toEqual([['Finish the move', 'btn pri'], ['Call it off', 'btn']]);
     expect(screen.getByTestId('home-close')).toBeTruthy();
     fireEvent.click(screen.getByTestId(testid));
@@ -494,7 +496,7 @@ describe('the sheet of a home move', () => {
     const failed = (await screen.findByTestId('mobile-problem')).parentElement!;
     expect(said(failed)).toEqual(['Tailscale on studio does not let Svall share this fleet', 'Run once on studio: sudo tailscale set --operator=$USER']);
     expect(raw(failed)).toBe('Access denied: serve config denied');
-    expect(failed.textContent).toContain('Turn it on later in Settings → Phone.');
+    expect(failed.textContent).toContain('Turn the phone link on later in Settings → Phone.');
     fireEvent.click(within(failed).getByRole('button', { name: 'Open terminal' }));
     expect(store.getState().hostTerminal).toEqual({ run: 'sudo tailscale set --operator=$USER' });
   });
