@@ -37,8 +37,8 @@ export type HostStep = {
 };
 // one machine as `svall host list --json` gives it: no ssh for this Mac, and its last check
 export type MachineRow = {
-  // far: a machine of the far home this fleet follows, `ssh` as that home reaches it
-  name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string; far?: true;
+  // far: a machine of the far home this fleet follows, `ssh` as that home reaches it; current: its last check found it on the release `svall` runs here
+  name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string; far?: true; current?: true;
   check?: { at: number; failed: number; warned: number; release?: string };
 };
 

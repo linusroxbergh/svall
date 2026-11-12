@@ -210,8 +210,9 @@ describe('doctor', () => {
     expect(c.agents).toMatchObject({ status: 'fail', detail: expect.stringContaining('no agent CLI (claude, codex or opencode) is on PATH') });
     expect(c.gh).toMatchObject({ status: 'warn', detail: 'not logged in: pull request links stay unresolved', action: 'gh auth login', run: 'gh auth login' });
     expect(c.svalld).toMatchObject({ status: 'warn', detail: expect.stringMatching(/not running .*: it starts when Svall opens on this fleet$/) });
-    expect(c['hook receiver']).toMatchObject({ status: 'skip', detail: "Svall's background service is not running" });
-    expect(c.launchd).toMatchObject({ status: 'fail', detail: 'not loaded', action: 'svall setup' });
+    // what waits on the daemon is not checked, and says nothing of it again
+    expect(c['hook receiver']).toEqual({ name: 'hook receiver', status: 'skip', detail: 'not checked', raw: "it waits for Svall's background service" });
+    expect(c.launchd).toMatchObject({ status: 'fail', detail: 'not loaded', action: 'svall setup', run: 'svall setup' });
     expect(c.hooks).toMatchObject({ status: 'fail', detail: expect.stringMatching(/svall setup/) });
     expect(r.log.lines).toEqual([]);
   });
@@ -256,7 +257,7 @@ describe('doctor', () => {
     const r = await doctor(priv, f.deps);
     const c = byName(r);
     expect(c.svalld.status).toBe('warn');
-    expect(c['hook receiver']).toMatchObject({ status: 'skip', detail: "Svall's background service is not running" });
+    expect(c['hook receiver']).toMatchObject({ status: 'skip', detail: 'not checked' });
     expect(c.launchd).toMatchObject({ status: 'ok', detail: 'loaded' });
     expect(r.checks.filter((x) => x.status === 'fail')).toEqual([]);
   });
@@ -460,6 +461,8 @@ describe('doctor on Linux', () => {
     expect(c.gateway).toBeUndefined();
     const stopped = byName(await doctor(priv, linux({ [show]: 'LoadState=loaded\nActiveState=inactive\nSubState=dead\nUnitFileState=disabled\n' }).deps));
     expect(stopped.systemd).toEqual({ name: 'systemd', status: 'fail', detail: 'not running', action: 'svall setup', raw: `${unit}: loaded, inactive (dead), disabled`, run: 'svall setup' });
+    // the unit is the cause: what waits on it is not checked, rather than said to be down again
+    for (const name of ['svalld', 'hook receiver']) expect(stopped[name]).toMatchObject({ status: 'skip', detail: 'not checked' });
     const work = 'svall-svalld@work.service';
     const named = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, linux({ [showOf(work)]: 'LoadState=loaded\nActiveState=failed\nSubState=failed\nUnitFileState=enabled\n' }).deps));
     expect(named.systemd).toMatchObject({ status: 'fail', detail: 'not running', action: 'svall host upgrade <this machine> from the controller' });

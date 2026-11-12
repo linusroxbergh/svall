@@ -384,7 +384,7 @@ esac
     await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
     expect(step('rollback').at(-1)).toMatchObject({
-      status: 'fail', detail: 'did not finish; stays on 1.2.3: no earlier release is kept there', action: 'see why: svall host doctor trift',
+      status: 'fail', detail: 'stays on 1.2.3: no earlier release is kept there', action: 'see why: svall host doctor trift',
       raw: expect.stringMatching(/svall host upgrade trift --rollback <release> puts back a release kept there$/),
     });
   });
@@ -397,7 +397,7 @@ esac
     await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
     expect(step('rollback').at(-1)).toMatchObject({
-      status: 'fail', detail: 'did not finish; on 1.2.3; 1.2.2 could not be put back', action: 'see why: svall host doctor trift',
+      status: 'fail', detail: 'on 1.2.3; 1.2.2 could not be put back', action: 'see why: svall host doctor trift',
       raw: expect.stringContaining(`svall setup --rollback 1.2.2 exited 1: no release at ${base}/releases/1.2.2 to go back to`),
     });
   });
@@ -408,9 +408,10 @@ esac
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
     expect(out.result).toBe('actions');
-    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: 'does not answer', raw: expect.stringContaining('1.2.2') });
+    // each row it leaves to fix says what to do
+    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: 'does not answer', action: 'see why: svall host doctor trift', raw: expect.stringContaining('1.2.2') });
     expect(far.now()).toBe('1.2.2');
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', detail: 'back on 1.2.2' });
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', detail: 'back on 1.2.2', action: 'see why: svall host doctor trift' });
   });
 
   it('keeps what the far machine said when its new release does not answer', async () => {
@@ -852,7 +853,7 @@ esac
     expect(silent.result).toBe('actions');
     expect(step('probe')[0]).toMatchObject({ status: 'fail', action: 'see why: svall host doctor trift', raw: expect.stringContaining('trift runs release 1.2.2') });
     expect(none.result).toBe('actions');
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', detail: 'did not finish; on 1.2.2', action: 'see why: svall host doctor trift', raw: expect.stringContaining('trift runs release 1.2.2') });
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', detail: 'still on 1.2.2', action: 'see why: svall host doctor trift', raw: expect.stringContaining('trift runs release 1.2.2') });
     expect(step('rollback').at(-1)?.raw).toContain('svall host upgrade trift --rollback <release>');
   });
 

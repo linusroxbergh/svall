@@ -159,9 +159,8 @@ describe('the last line a run prints', () => {
     const failed: StepEvent = { step: 'install', status: 'fail', detail: 'did not finish', raw: 'svall setup exited 1: no space' };
     expect(outcomeText({ result: 'actions', actions: ['did not finish'], stopped: 'install' }, 'add', 'trift', { ...work, steps: [failed] }).split('\n'))
       .toEqual(['✗ install  did not finish', '  svall setup exited 1: no space', 'Add machine did not finish']);
-    // a run that stopped ends as the window's verdict on it: a machine still listed has things to fix, else the run did not finish
-    expect(outcomeText({ result: 'actions', actions: [], stopped: 'install' }, 'upgrade', 'trift', { ...work, steps: [failed] }).split('\n').at(-1)).toBe('trift has 1 thing to fix');
-    // an upgrade of a name the list does not hold left no machine with anything to fix
+    // a run that stopped ends as the window's verdict on it: a machine an add listed has things to fix, any other run did not finish
+    expect(outcomeText({ result: 'actions', actions: [], stopped: 'install' }, 'upgrade', 'trift', { ...work, steps: [failed] }).split('\n').at(-1)).toBe('Upgrade did not finish');
     const unknown: StepEvent = { step: 'machine', status: 'fail', detail: 'no machine trift in the registry' };
     expect(outcomeText({ result: 'actions', actions: [unknown.detail!], stopped: 'machine' }, 'upgrade', 'trift', { ...work, steps: [unknown] }).split('\n').at(-1)).toBe('Upgrade did not finish');
     const listed: StepEvent = { step: 'registry', status: 'ok', detail: 'listed' };

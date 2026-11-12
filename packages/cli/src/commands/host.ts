@@ -181,9 +181,8 @@ export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forge
   const setup = op === 'add' || op === 'upgrade';
   // an add's rows are the machine's checks; every other op's are a step flow's
   const { lines, todo } = tiered(ended(flags.steps ?? []), flags.fleet, op !== 'add');
-  // a machine left in the list by a run that stopped has things to fix, as its window says; an upgrade of a name not listed has none
-  const steps = flags.steps ?? [];
-  const listed = op === 'upgrade' ? !steps.some((s) => s.step === 'machine' && s.status === 'fail') : op === 'add' && steps.some((s) => s.step === 'registry' && s.status === 'ok');
+  // a machine an add listed before it stopped has things to fix, as its window says; any other run that stopped did not finish
+  const listed = op === 'add' && (flags.steps ?? []).some((s) => s.step === 'registry' && s.status === 'ok');
   const last = o.stopped ? (listed && todo ? verdict(name, todo) : `${TITLE[op]} did not finish`) : setup ? verdict(name, todo) : doneLine(op, name, flags);
   return [...lines, last, ...(setup ? setupLine((o.setup ?? []).map(asRow), name, flags.there!) : [])].join('\n');
 }
@@ -271,15 +270,16 @@ export function forgetCheck(dir: string, id: string): void {
 
 /** One machine as `host list --json` gives it: no ssh for this one, and its last check. */
 // worker: holds this fleet's token here, as a Mac asks of its far home; far: a machine of that home, its `ssh` as that home reaches it
-// joining: a move left this fleet owing it an enrolment, and why the last try failed
-export type MachineRow = { name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string; check?: LastCheck; worker?: true; far?: true; joining?: string };
+// joining: a move left this fleet owing it an enrolment, and why the last try failed; current: its last check found it on this release
+export type MachineRow = { name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string; check?: LastCheck; current?: true; worker?: true; far?: true; joining?: string };
 
 const dialRow = (d: ReturnType<typeof dialingFleet>): Pick<MachineRow, 'dialedBy' | 'unreadWorker'> =>
   (!d ? {} : d.unreadable ? { unreadWorker: resolvePaths(d.home).workerFile } : { dialedBy: d.home });
 
-export function machineRows(registry: MachineRegistry, checks: Record<string, LastCheck>, dialedBy: (id: string) => ReturnType<typeof dialingFleet> = () => undefined): MachineRow[] {
+export function machineRows(registry: MachineRegistry, checks: Record<string, LastCheck>, dialedBy: (id: string) => ReturnType<typeof dialingFleet> = () => undefined, release?: string): MachineRow[] {
   return registry.list().map(({ id, record }) => ({
     name: record.name, id, ...(record.ssh && { ssh: record.ssh }), platform: `${record.platform}-${record.arch}`, ...dialRow(dialedBy(id)), ...(checks[id] && { check: checks[id] }),
+    ...(release && checks[id]?.release === release && { current: true as const }),
   }));
 }
 
@@ -440,7 +440,7 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
       const home = relayFor(target().home, registry);
       const far = home ? await farRows(home, registry) : [];
       const owed = owedWorkers(resolvePaths(target().home));
-      const here = machineRows(registry, lastChecks(dir()), (id) => dialingFleet(id, os.homedir())).map((r) => ({ ...r, ...(o.relayed && heldHere(target(), r.id) && { worker: true as const }), ...(owed[r.id] && { joining: owedWhy(owed[r.id], r.name) }) }));
+      const here = machineRows(registry, lastChecks(dir()), (id) => dialingFleet(id, os.homedir()), releaseVersion()).map((r) => ({ ...r, ...(o.relayed && heldHere(target(), r.id) && { worker: true as const }), ...(owed[r.id] && { joining: owedWhy(owed[r.id], r.name) }) }));
       const rows = [...here.filter((r) => !far.some((f) => f.id === r.id)), ...far];
       printResult(rows, json(), () => table(rows.map((r) => ({
         name: r.name, ssh: r.far ? `${r.ssh ?? '(dials in)'} (from ${home!.name})` : r.ssh ?? (r.id === registry.localId ? '(this machine)' : '(dials in)'), platform: r.platform,

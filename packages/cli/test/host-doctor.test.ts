@@ -517,5 +517,8 @@ describe('host list', () => {
       { name: registry.localMachine().name, id: registry.localId, platform: `${process.platform === 'linux' ? 'linux' : 'darwin'}-${process.arch}` },
       { name: 'trift', id: REMOTE, ssh: 'ada@trift', platform: 'linux-arm64', check },
     ]);
+    // a machine last checked on the release this one runs says so, and on any other does not
+    expect(machineRows(registry, { [REMOTE]: check }, undefined, '1.2.3')[1]).toMatchObject({ current: true });
+    expect(machineRows(registry, { [REMOTE]: check }, undefined, '1.2.4')[1]).not.toHaveProperty('current');
   });
 });

@@ -149,12 +149,12 @@ export async function tailnetHere(d: Pick<HostDeps, 'tailnet'>, platform: NodeJS
     const raw = e instanceof LinkProblem ? e.said.raw : e.message;
     const state = e instanceof TailscaleDown ? e.state : 'missing';
     if (state === 'stopped') {
-      throw new StepError(`Tailscale is not running on ${here}`, mac ? 'open the Tailscale app' : 'start it: sudo systemctl start tailscaled', mac ? undefined : 'sudo systemctl start tailscaled', undefined, raw);
+      throw new StepError(`Tailscale is not running on ${here}`, mac ? 'Open the Tailscale app' : 'Start it: sudo systemctl start tailscaled', mac ? undefined : 'sudo systemctl start tailscaled', undefined, raw);
     }
     if (state === 'signedOut') {
-      throw new StepError(`Tailscale on ${here} is signed out`, mac ? 'sign in from the Tailscale app' : 'sign in: sudo tailscale up', mac ? undefined : 'sudo tailscale up', undefined, raw);
+      throw new StepError(`Tailscale on ${here} is signed out`, mac ? 'Sign in from the Tailscale app' : 'Sign in: sudo tailscale up', mac ? undefined : 'sudo tailscale up', undefined, raw);
     }
-    throw new StepError(`${here} has no Tailscale`, 'install it from https://tailscale.com/download and sign in', undefined, undefined, raw);
+    throw new StepError(`${here} has no Tailscale`, 'Install it from https://tailscale.com/download and sign in', undefined, undefined, raw);
   });
   return { value: undefined, detail: 'connected' };
 }
@@ -445,7 +445,7 @@ const TMUX_PROBE = 'sock="${TMPDIR:-/tmp}/svall-probe-$$"; tmux -S "$sock" new-s
 async function addProbe(master: SshMaster, entry: MachineEntry, o: { home: string; release: string; asHome?: boolean }, d: HostDeps): Promise<Outcome<void>> {
   await endToEnd(master, entry, { release: o.release });
   if (!o.asHome && !servesUs(await farHome(master, entry.record.svallBase, d, entry.id), d)) {
-    throw new StepError('answers, but not as a worker of this fleet', 'add the machine again, which enrols it anew', undefined, undefined, `${entry.record.name}'s fleet home there holds no worker.json naming it`);
+    throw new StepError('answers, but not as a worker of this fleet', 'Add the machine again, which enrols it anew', undefined, undefined, `${entry.record.name}'s fleet home there holds no worker.json naming it`);
   }
   const r = await master.run(['env', shq(`PATH=${unitPathOf(o.home, entry.record.svallBase)}`), ...sh('svall-tmux', TMUX_PROBE)], { timeoutMs: PROBE_TIMEOUT });
   if (r.code !== 0) throw new StepError('tmux could not open a window there', undefined, undefined, undefined, `exit ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
@@ -1056,7 +1056,7 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
           await endToEnd(master, entry, { release: companion.version, ...(fleetHome && { fleetHome }) });
           return { value: true, detail: 'answers' };
         } catch (err) {
-          return { value: false, status: 'warn' as const, detail: 'does not answer', raw: thrown(err) };
+          return { value: false, status: 'warn' as const, detail: 'does not answer', action: seeWhy(name, d), raw: thrown(err) };
         }
       });
       if (probed) {
@@ -1076,7 +1076,7 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
         const runs = !replaced ? (now === before ? `back on ${now}` : `on ${now}; ${before} could not be put back`)
           : now === before ? `stays on ${now}: no earlier release is kept there` : `on ${now}, the newest release kept there`;
         const long = `ssh ${entry.record.ssh} and read the service's log; ${rollbackTo(name, d)}`;
-        if (out instanceof Error) throw new StepError(`did not finish; ${runs}`, seeWhy(name, d), undefined, undefined, `${inFull(out)}\n${long}`);
+        if (out instanceof Error) throw new StepError(runs, seeWhy(name, d), undefined, undefined, `${inFull(out)}\n${long}`);
         return { value: undefined, status: 'warn' as const, detail: runs, action: seeWhy(name, d), raw: [out.trim().split('\n').at(-1), long].filter(Boolean).join('\n') };
       });
     } finally {
@@ -1129,7 +1129,7 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
           .catch(async (err: Error) => {
             const now = await currentRelease(master, base);
             d.runs?.(now);
-            throw new StepError(`did not finish; on ${now}`, seeWhy(name, d), undefined, undefined, `${inFull(err)}\n${long(now)}`);
+            throw new StepError(`still on ${now}`, seeWhy(name, d), undefined, undefined, `${inFull(err)}\n${long(now)}`);
           });
         const now = await currentRelease(master, base);
         return { value: now, detail: `back on ${now}`, raw: out.trim() };

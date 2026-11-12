@@ -168,10 +168,13 @@ async function svalld(t: Target, d: DoctorDeps): Promise<Check> {
   }
 }
 
+// a check of what the daemon serves, while the daemon does not run, would say only that again
+const unchecked = (name: string): Check => ({ name, status: 'skip', detail: 'not checked', raw: "it waits for Svall's background service" });
+
 async function hookReceiver(t: Target, d: DoctorDeps): Promise<Check> {
   const paths = resolvePaths(t.home);
   // the daemon listens only while Svall is open on the fleet, as the svalld check says
-  if (!d.read(paths.port)?.trim()) return { name: 'hook receiver', status: 'skip', detail: "Svall's background service is not running" };
+  if (!d.read(paths.port)?.trim()) return unchecked('hook receiver');
   const path = paths.hooksSock;
   try {
     await d.connectHook(path);
@@ -195,7 +198,7 @@ async function launchd(t: Target, d: DoctorDeps): Promise<Check> {
     const raw = `${label}: ${fields.join(', ') || 'loaded'}`;
     return failed ? { name: 'launchd', status: 'fail', detail: 'stopped with an error', raw } : { name: 'launchd', status: 'ok', detail: fields.includes('state = running') ? 'running' : 'loaded', raw };
   } catch {
-    return { name: 'launchd', status: 'fail', detail: 'not loaded', action: `${SHIM} ${t.name === PRIVATE ? 'setup' : t.name}`, raw: label };
+    return { name: 'launchd', status: 'fail', detail: 'not loaded', action: `${SHIM} ${t.name === PRIVATE ? 'setup' : t.name}`, raw: label, ...(t.name === PRIVATE && { run: `${SHIM} setup` }) };
   }
 }
 
@@ -390,15 +393,18 @@ function plistCheck(t: Target, d: DoctorDeps): Check {
 export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
   const paths = resolvePaths(t.home);
   const linux = d.platform === 'linux';
+  // a unit that is not running is the cause, and what waits on it is not checked
+  const unit = linux ? await systemd(t, d) : undefined;
+  const down = unit?.status === 'fail';
   const checks = [
     ...await preflight(d),
     await gh(d),
     config(t, d),
     machine(d),
-    await svalld(t, d),
-    await hookReceiver(t, d),
-    ...(linux
-      ? [await systemd(t, d), daemonEnv(t, d), unitDaemonPath(t, d), await linger(d)]
+    down ? unchecked('svalld') : await svalld(t, d),
+    down ? unchecked('hook receiver') : await hookReceiver(t, d),
+    ...(unit
+      ? [unit, daemonEnv(t, d), unitDaemonPath(t, d), await linger(d)]
       : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d)]),
     hooks(d),
     await codexCheck(d),
