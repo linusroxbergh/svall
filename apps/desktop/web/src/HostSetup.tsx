@@ -75,13 +75,16 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
     window.addEventListener('keydown', key, true);
     return () => { document.removeEventListener('pointerdown', away); window.removeEventListener('keydown', key, true); };
   }, [open]);
-  // fixed to the window under ⋯, or over it where the window has more room there, so the panel scrolling it does not clip it
+  // fixed to the window under ⋯, or over it where the window has more room there, so the panel scrolling it does not clip it;
+  // from ⋯'s left edge, or from its right edge where the sheet or settings window it is in would end before the menu
   useMeasure(open, () => {
     const at = more.current?.getBoundingClientRect();
     const el = menu.current;
     if (!at || !el) return;
     const { above, maxHeight } = placeTip(at, el.scrollHeight, { top: 0, bottom: window.innerHeight });
-    setPlace({ left: Math.max(0, Math.min(at.left, window.innerWidth - el.offsetWidth)), maxHeight: maxHeight || undefined,
+    const edge = Math.min(window.innerWidth, more.current!.closest('.modal, .set-win')?.getBoundingClientRect().right ?? Infinity);
+    const left = at.left + el.offsetWidth <= edge ? at.left : at.right - el.offsetWidth;
+    setPlace({ left: Math.max(0, left), maxHeight: maxHeight || undefined,
       ...(above ? { bottom: window.innerHeight - at.top + 4 } : { top: at.bottom + 4 }) });
   });
   const store = () => app.store.getState();

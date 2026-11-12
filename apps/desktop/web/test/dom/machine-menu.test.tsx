@@ -135,3 +135,22 @@ test('Open terminal is off for a machine this Mac has no ssh route to, and says 
   const terminal = screen.getByTestId('machine-terminal');
   expect([terminal.hasAttribute('disabled'), terminal.getAttribute('data-tip')]).toEqual([true, 'This Mac has no ssh route to studio']);
 });
+
+test.each([
+  ['hangs from the left edge of ⋯ where it fits in its window', 100, '100px'],
+  ['hangs from the right edge of ⋯ where its window ends first', 700, '540px'],
+])('the menu %s', (_name, x, left) => {
+  freshStore();
+  store.getState().setFleet(fleet());
+  act(() => store.getState().setMachines([{ name: 'vault', id: VAULT, ssh: 'ada@vault', platform: 'linux-x64' }]));
+  const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    const [l, r] = this.classList.contains('set-win') ? [0, 760] : this.dataset.testid === 'machine-more' ? [x, x + 40] : [0, 0];
+    return { left: l, right: r, top: 100, bottom: 128, width: r - l, height: 28, x: l, y: 100, toJSON() {} } as DOMRect;
+  });
+  const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('machine-menu') ? 200 : 0; });
+  try {
+    render(<div className="set-win"><MachineActions name="vault" /></div>);
+    fireEvent.click(more());
+    expect(document.querySelector<HTMLElement>('.machine-menu')!.style.left).toBe(left);
+  } finally { rect.mockRestore(); width.mockRestore(); }
+});
