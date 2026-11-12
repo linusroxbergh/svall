@@ -104,7 +104,7 @@ test('a check says ready, or how many things are left, and Check runs it once mo
   await page.getByTestId('host-fine').click();
   await expect(page.getByTestId('host-phase')).toHaveText(['Svall on studio', 'Agents on studio']);
   await expect(page.getByTestId('host-step-release')).toContainText('0.5.0');
-  await expect(page.getByTestId('host-outcome')).toHaveText('studio is readyCheck againDone');
+  await expect(page.getByTestId('host-outcome')).toHaveText('studio is readyDoneCheck again');
 
   await panel.getByTestId('machine-doctor').click();
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'systemd', status: 'fail', detail: 'not running', raw: 'svall-svalld@private.service is inactive' } });
@@ -121,7 +121,7 @@ test('a check says ready, or how many things are left, and Check runs it once mo
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'probe', status: 'ok', detail: 'answers' } });
   await receive(page, { type: 'host.done', op: 'upgrade', code: 0 });
   await expect(panel.getByTestId('host-machine')).toHaveText('Upgrade studio');
-  await expect(page.getByTestId('host-outcome')).toHaveText('studio is readyCheck againDone');
+  await expect(page.getByTestId('host-outcome')).toHaveText('studio is readyDoneCheck again');
   await expect(page.getByTestId('host-rollback')).toHaveCount(0);
 
   // an upgrade stopped in install leaves no rollback to offer
@@ -142,7 +142,7 @@ test('a check says ready, or how many things are left, and Check runs it once mo
   await page.getByTestId('host-rollback').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'rollback', args: { name: 'studio' } });
   await receive(page, { type: 'host.done', op: 'rollback', code: 0 });
-  await expect(page.getByTestId('host-outcome')).toHaveText('studio is rolled backCheck againDone');
+  await expect(page.getByTestId('host-outcome')).toHaveText('studio is rolled backDoneCheck again');
 });
 
 test('a fix the machine leaves to the user opens a terminal there with its command typed, and the machine is checked again once it closes', async ({ page, svall }) => {
@@ -257,7 +257,7 @@ test('the setup page ends in one line, the agent setup counted on its fold; a lo
   await expect(panel.getByTestId('host-phase')).toHaveCount(0);
   await expect(panel.getByTestId('host-fine')).toHaveText('4 checks fine');
   await expect(panel.getByTestId('host-step-mirror:claude:mcp:linear')).toHaveCount(0);
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is readyCheck againDone');
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is readyDoneCheck again');
   // two servers whose keys are not copied are two parts, each with its own row and box
   await expect(panel.getByTestId('host-setup-fold')).toHaveText('Your agent setup · 2 not on studio yet');
   await panel.getByTestId('host-setup-fold').click();
@@ -269,7 +269,7 @@ test('the setup page ends in one line, the agent setup counted on its fold; a lo
   await panel.getByTestId('machine-doctor').click();
   const vars = Array.from({ length: 40 }, (_, i): HostStep => ({ step: `mirror:var:VAR_${i}`, status: 'ok', detail: 'set' }));
   await doctor(page, [...PASSED, ...vars]);
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is readyCheck againDone');
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is readyDoneCheck again');
   await expect(panel.getByTestId('host-setup-fold')).toHaveText('Your agent setup · all there');
   await panel.getByTestId('host-setup-there').click();
   await expect(panel.getByTestId('host-setup-there')).toHaveText('40 already there');
@@ -350,7 +350,7 @@ test('a mirror row shows its key, how it stands, a labelled box and details; tic
   await panel.getByTestId('host-setup-there').click();
   expect(await panel.locator('[data-testid^="host-step-"]').evaluateAll((rows) => rows.map((r) => r.getAttribute('data-testid'))))
     .toEqual(['host-step-mirror:claude:mcp:linear', 'host-step-mirror:var:X']);
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is readyCheck againDone');
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is readyDoneCheck again');
   // nothing ran on the machine for it
   expect((await sent(page)).filter((m) => m.type === 'host.start')).toHaveLength(1);
 });

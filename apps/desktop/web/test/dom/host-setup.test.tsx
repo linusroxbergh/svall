@@ -330,7 +330,7 @@ test('a running check shows what needs the person as found and the step under wa
   expect(screen.getByTestId('host-outcome').textContent).toBe('trift has 1 thing to fixCheck againDone');
 });
 
-test('a run ends in one line and its foot: Check again, and Done, the way on once it worked', () => {
+test('a run ends in one line and its foot: Done first once it worked, as the way on, else Check again first', () => {
   render(<HostSetup />);
   act(() => {
     store.getState().setMachines([{ name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64' }]);
@@ -340,7 +340,7 @@ test('a run ends in one line and its foot: Check again, and Done, the way on onc
     store.getState().hostDone('upgrade', 0);
   });
   expect(screen.getByTestId('host-machine').textContent).toBe('Upgrade trift');
-  expect(screen.getByTestId('host-outcome').textContent).toBe('trift is readyCheck againDone');
+  expect(screen.getByTestId('host-outcome').textContent).toBe('trift is readyDoneCheck again');
   expect([screen.getByTestId('machine-doctor').className, screen.getByTestId('host-done').className]).toEqual(['btn', 'btn pri']);
   fireEvent.click(screen.getByTestId('host-done'));
   expect(store.getState().hostOpen).toBe(false);
@@ -440,7 +440,7 @@ test('a key row is named by its key, says how it stands, its box labelled copy; 
   expect((screen.getByTestId('host-tick-mirror:claude:mcp:linear') as HTMLInputElement).checked).toBe(true);
   expect(screen.queryByTestId('host-details-mirror:claude:mcp:linear')).toBeNull();
   expect(screen.getByTestId('host-setup-fold').textContent).toBe('Your agent setup · all there');
-  expect(screen.getByTestId('host-outcome').textContent).toBe('trift is readyCheck againDone');
+  expect(screen.getByTestId('host-outcome').textContent).toBe('trift is readyDoneCheck again');
 });
 
 test('a tick the worker did not take says why on its row, and the rows are read again as svalld kept them', async () => {

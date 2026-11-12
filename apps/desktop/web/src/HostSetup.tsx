@@ -143,6 +143,7 @@ function Outcome({ run, edit }: { run: HostRun; edit(): void }) {
   const close = (pri: boolean, label = 'Done') => (
     <button className={pri ? 'btn pri' : 'btn'} data-testid="host-done" onClick={() => app.store.getState().toggleHost(false)}>{label}</button>
   );
+  const again = <button className="btn" data-testid="machine-doctor" onClick={() => startHost('doctor', { name, ...farId(run.args) })}>Check again</button>;
   const acts = run.op === 'add' && !addedBy(run) ? <><button className="btn pri" data-testid="host-edit" onClick={edit}>Edit and try again</button>{close(false, 'Close')}</>
     : run.op === 'remove' ? (o.done ? close(true) : <><button className="btn pri" data-testid="host-again" onClick={() => startHost('remove', run.args)}>Try again</button>{close(false, 'Close')}</>)
     : o.next === 'rollback' ? (
@@ -153,7 +154,7 @@ function Outcome({ run, edit }: { run: HostRun; edit(): void }) {
       </>
     )
     : run.op === 'add' && o.done ? close(true)
-    : run.op === 'add' || TITLED.has(run.op) ? <><button className="btn" data-testid="machine-doctor" onClick={() => startHost('doctor', { name, ...farId(run.args) })}>Check again</button>{close(!!o.done)}</>
+    : run.op === 'add' || TITLED.has(run.op) ? (o.done ? <>{close(true)}{again}</> : <>{again}{close(false)}</>)
     : close(!!o.done);
   return (
     <div className="host-foot" data-testid="host-outcome">
