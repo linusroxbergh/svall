@@ -20,12 +20,15 @@ function room(sec: HTMLElement): number {
   return sec.offsetHeight + Math.max(0, secs.clientHeight - used) + give;
 }
 
+// a section's rows: its children, or a list's rows inside it
+const rowsOf = (el: HTMLElement): Element[] => [...el.children].flatMap((c) => (c.classList.contains('rows') ? [...c.children] : [c]));
+
 // how far a squeezed section's rows show whole: to the top of the first row whose words its edge cuts, when a whole one stands
 // above it, or all when the edge cuts no words
 function wholeTo(el: HTMLElement): number | 'all' | undefined {
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 1) return undefined;
   const box = el.getBoundingClientRect();
-  const rows = [...el.children].flatMap((c) => (c.classList.contains('rows') ? [...c.children] : [c]));
+  const rows = rowsOf(el);
   const cut = rows.find((r) => r.getBoundingClientRect().bottom - parseFloat(getComputedStyle(r).paddingBottom || '0') > box.bottom + 0.5);
   if (!cut) return 'all';
   const at = cut.getBoundingClientRect().top - box.top;
@@ -38,12 +41,15 @@ function Body({ opened, children }: { opened?: true; children: ReactNode }) {
   const [more, read] = useMore(ref, 'y');
   const [whole, setWhole] = useState<number | 'all'>();
   const measure = () => { if (ref.current) setWhole(wholeTo(ref.current)); };
-  useLayoutEffect(measure);
+  // the body and each of its rows, as a row that grows, its details opened, moves where the edge cuts
   useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    measure();
     const ro = new ResizeObserver(measure);
-    if (ref.current) ro.observe(ref.current);
+    for (const e of [el, ...rowsOf(el)]) ro.observe(e);
     return () => ro.disconnect();
-  }, []);
+  });
   return (
     <div ref={ref} className="sec-body" data-opened={opened} data-more={more} data-whole={whole === undefined ? undefined : whole === 'all' ? 'all' : 'cut'}
       style={typeof whole === 'number' ? { '--whole': `${whole}px` } as CSSProperties : undefined} onScroll={() => { read(); measure(); }}>{children}</div>
