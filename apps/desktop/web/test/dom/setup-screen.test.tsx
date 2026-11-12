@@ -3,6 +3,7 @@ import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { SetupPlan } from '@svall/protocol';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { stepLabel } from '../../src/host.js';
 import { setAppStore } from '../../src/hooks.js';
 import { Setup } from '../../src/Setup.js';
 import { createAppStore, localAppStorage } from '../../src/store/index.js';
@@ -142,6 +143,14 @@ test('Help\'s Send Feedback… opens the form on the setup page, and Esc closes 
 });
 
 
+test('step 1 says whether each agent is logged in, and offers to log in where it is not or cannot tell', () => {
+  shell({ ...ready, agents: [{ ...ready.agents[0]!, signedIn: true }, { ...ready.agents[1]!, signedIn: false }, { kind: 'opencode', path: '/usr/local/bin/opencode' }] });
+  expect(screen.getByText('Logged in')).toBeTruthy();
+  expect(screen.getByText('Not logged in')).toBeTruthy();
+  expect(screen.getByText('Could not tell')).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: 'Log in…' })).toHaveLength(2);
+});
+
 test('skips only a single definitely signed-in CLI and keeps sign-in unknown visible', () => {
   shell({ ...ready, agents: [{ ...ready.agents[0]!, signedIn: true }] });
   expect(screen.getByRole('heading', { name: 'Choose where you work' })).toBeTruthy();
@@ -203,12 +212,32 @@ describe('the first run forks three ways', () => {
   afterEach(() => vi.unstubAllGlobals());
   const toSsh = (dest: string) => fireEvent.change(screen.getByTestId('fork-ssh'), { target: { value: dest } });
 
-  test('offers running here, installing on a server and connecting, and nothing starts until one is picked', () => {
+  test('offers running here, setting a server up and connecting to one, each with its line, and nothing starts until one is picked', () => {
     const { sent } = shell(ready, { fork: false });
-    expect(screen.getByTestId('fork-here').textContent).toBe('Run the fleet on this Mac');
-    expect(screen.getByTestId('fork-server').textContent).toBe('Install Svall on a server and connect this Mac');
-    expect(screen.getByTestId('fork-join').textContent).toBe('Connect to a fleet already on a server');
+    expect(screen.getByRole('heading', { name: 'Where should your fleet run?' })).toBeTruthy();
+    expect(screen.getByText('The machine that runs the fleet is its home. You can change it later in Settings → Machines.')).toBeTruthy();
+    expect(screen.getByTestId('fork-here').textContent).toBe('This MacRobots run here and rest while this Mac sleeps.');
+    expect(screen.getByTestId('fork-server').textContent).toBe('A server, set up nowrecommendedSvall installs itself on a Linux server over ssh. The fleet runs all day; this Mac connects to it.');
+    expect(screen.getByTestId('fork-server').querySelector('.badge')?.textContent).toBe('recommended');
+    expect(screen.getByTestId('fork-join').textContent).toBe('A server that already runs your fleetThis Mac joins it.');
     expect(sent.some((m) => m.type === 'setup.run')).toBe(false);
+  });
+
+  test('a server path asks for the server under its own label, says what it needs, and offers to set it up or connect', () => {
+    shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-server'));
+    expect(screen.getByRole('heading', { name: 'Set up a server' })).toBeTruthy();
+    expect(screen.getByText('Needs Tailscale on this Mac and on the server.')).toBeTruthy();
+    const field = screen.getByLabelText(/^server/);
+    expect(field).toBe(screen.getByTestId('fork-ssh'));
+    expect(field.className).toBe('fld mono');
+    expect(field.closest('label')!.textContent).toContain('What you type after ssh, such as you@studio.');
+    expect(screen.getByRole('checkbox', { name: 'Notify me when an agent needs me' }).closest('.setup-list')).toBe(screen.getByRole('checkbox', { name: 'Let robots run svall without asking' }).closest('.setup-list'));
+    expect(screen.getByTestId('fork-go').textContent).toBe('Set up and connect');
+    fireEvent.click(screen.getByTestId('fork-back'));
+    fireEvent.click(screen.getByTestId('fork-join'));
+    expect(screen.getByRole('heading', { name: 'Connect to your server' })).toBeTruthy();
+    expect(screen.getByTestId('fork-go').textContent).toBe('Connect');
   });
 
   test('running here is today\'s three steps', () => {
@@ -250,18 +279,23 @@ describe('the first run forks three ways', () => {
     expect(replaced).not.toHaveBeenCalled();
   });
 
-  test('a join that fails stays here, says why, and tries again; going back forgets it', () => {
+  test('a join that fails stays here, says why, and tries again; Back gives the form back filled, and Back again forgets it', () => {
     const { sent, receive } = shell(ready, { fork: false });
     fireEvent.click(screen.getByTestId('fork-join'));
     toSsh('ada@studio');
     fireEvent.click(screen.getByTestId('fork-go'));
     receive(FAR);
-    receive({ type: 'host.step', op: 'join', event: { step: 'ssh', status: 'fail', detail: 'ssh ada@studio exited 255 to this machine', action: 'run ssh ada@studio once from this machine' } });
+    receive({ type: 'host.step', op: 'join', event: { step: 'ssh', status: 'fail', detail: 'this machine cannot log in to ada@studio', action: 'run ssh ada@studio once from this machine', raw: 'ssh ada@studio exited 255: Permission denied' } });
     receive({ type: 'host.done', op: 'join', code: 1 });
     expect(replaced).not.toHaveBeenCalled();
-    expect(screen.getByTestId('fork-steps').textContent).toContain('ssh ada@studio exited 255 to this Mac');
-    expect(screen.getByTestId('fork-steps').textContent).toContain('once from this Mac');
+    const failed = screen.getByTestId('fork-steps').querySelector('li[data-status="fail"]')!;
+    expect(failed.querySelector('.said span')!.textContent).toBe('this Mac cannot log in to ada@studio');
+    expect(failed.querySelector('.modal-sub')!.textContent).toBe('run ssh ada@studio once from this Mac');
+    expect(failed.querySelector('details')!.textContent).toContain('Permission denied');
     expect(screen.getByTestId('fork-go').textContent).toBe('Try again');
+    fireEvent.click(screen.getByTestId('fork-back'));
+    expect((screen.getByTestId('fork-ssh') as HTMLInputElement).value).toBe('ada@studio');
+    expect(screen.queryByTestId('fork-steps')).toBeNull();
     fireEvent.click(screen.getByTestId('fork-back'));
     expect(screen.getByTestId('setup-fork')).toBeTruthy();
     expect(hosts(sent)).toHaveLength(1);
@@ -346,7 +380,7 @@ describe('the first run forks three ways', () => {
     expect(screen.getByTestId('fork-go').hasAttribute('disabled')).toBe(false);
   });
 
-  test('a recheck while the machine runs are under way asks nothing and leaves Go and Back off, so the add ends in its join', () => {
+  test('a recheck while the machine runs are under way asks nothing, and only Stop shows, so the add ends in its join', () => {
     const { sent, receive } = shell(ready, { fork: false });
     fireEvent.click(screen.getByTestId('fork-server'));
     toSsh('ada@studio');
@@ -355,9 +389,9 @@ describe('the first run forks three ways', () => {
     fireEvent.focus(window);
     receive({ type: 'app.active', active: true });
     expect(sent.filter((m) => m.type === 'setup.plan')).toHaveLength(1);
-    expect(screen.getByTestId('fork-go').hasAttribute('disabled')).toBe(true);
-    expect(screen.getByTestId('fork-back').hasAttribute('disabled')).toBe(true);
-    fireEvent.click(screen.getByTestId('fork-back'));
+    expect(screen.queryByTestId('fork-go')).toBeNull();
+    expect(screen.queryByTestId('fork-back')).toBeNull();
+    expect(screen.getByTestId('fork-stop')).toBeTruthy();
     receive({ type: 'host.done', op: 'add', code: 0 });
     expect(hosts(sent).map(([op]) => op)).toEqual(['add', 'join']);
     receive({ type: 'host.step', op: 'join', event: { step: 'ssh', status: 'fail', detail: 'ssh ada@studio exited 255' } });
@@ -398,6 +432,113 @@ describe('the first run forks three ways', () => {
     expect(replaced).not.toHaveBeenCalled();
   });
 
+  test('a run shows what needs a person and the step under way, and folds its notes and its done steps, by the tiers of an add and of a join', () => {
+    const { receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-server'));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    expect(screen.getByRole('heading', { name: 'Set up a server' })).toBeTruthy();
+    expect(screen.getByText('ada@studio')).toBeTruthy();
+    expect(screen.queryByTestId('fork-ssh')).toBeNull();
+    expect(screen.queryByText(/Review changes/)).toBeNull();
+    expect(screen.getByTestId('fork-now').textContent).toBe('Svall on this Mac…');
+    receive(FAR);
+    const step = (op: string, event: object) => receive({ type: 'host.step', op, event });
+    step('add', { step: 'ssh', status: 'start' });
+    expect(screen.getByTestId('fork-now').textContent).toBe(`${stepLabel('ssh')}…`);
+    step('add', { step: 'ssh', status: 'ok', detail: 'logs in' });
+    step('add', { step: 'home', status: 'ok', detail: '/home/ada' });
+    step('add', { step: 'tmux', status: 'warn', detail: '3.4: Shift+Enter needs 3.5' });
+    step('add', { step: 'linger', status: 'warn', detail: 'off: the fleet stops when you log out', action: 'ssh ada@studio, then loginctl enable-linger' });
+    step('add', { step: 'os', status: 'start' });
+    const list = screen.getByTestId('fork-steps');
+    expect([...list.querySelectorAll('li')].map((li) => li.getAttribute('data-step') ?? li.getAttribute('data-testid'))).toEqual(['linger', 'fork-now']);
+    expect(list.querySelector('[data-step="linger"] .said')!.textContent).toBe('off: the fleet stops when you log outssh ada@studio, then loginctl enable-linger');
+    expect(screen.getByTestId('fork-now').textContent).toBe(`${stepLabel('os')}…`);
+    expect(screen.getByTestId('fork-notes').textContent).toBe('1 note');
+    expect(screen.getByTestId('fork-done').textContent).toBe('2 steps done');
+    fireEvent.click(screen.getByTestId('fork-notes'));
+    expect(list.querySelector('[data-step="tmux"]')!.textContent).toBe(`${stepLabel('tmux')}3.4: Shift+Enter needs 3.5`);
+    step('add', { step: 'os', status: 'ok', detail: 'Ubuntu 24.04 LTS, x86-64' });
+    step('add', { step: 'registry', status: 'ok', detail: 'listed' });
+    receive({ type: 'host.done', op: 'add', code: 1 });
+    // a join is a flow: its warning needs a person, but for the offer to copy the agent setup
+    step('join', { step: 'home', status: 'ok', detail: 'ada@studio is the fleet\'s home, on release 0.9.4' });
+    step('join', { step: 'tailscale', status: 'warn', detail: 'Tailscale on this Mac is signed out' });
+    step('join', { step: 'seed', status: 'warn', detail: 'this Mac\'s agent setup was not copied to studio' });
+    expect([...list.querySelectorAll('ol')[0]!.querySelectorAll('li')].map((li) => li.getAttribute('data-step') ?? li.getAttribute('data-testid'))).toEqual(['linger', 'tailscale', 'fork-now']);
+    expect(screen.getByTestId('fork-notes').textContent).toBe('2 notes');
+    fireEvent.click(screen.getByTestId('fork-done'));
+    // a done step says its name alone; the join's home is the fleet's, the add's the home folder
+    const done = [...list.querySelectorAll('ol')].at(-1)!;
+    expect(done.querySelector('.said')).toBeNull();
+    expect([...done.querySelectorAll('li')].map((li) => li.textContent)).toEqual([stepLabel('ssh'), stepLabel('home'), stepLabel('os'), stepLabel('registry'), 'The home']);
+  });
+
+  test('Stop cancels the machine run, and a run it stopped joins nothing and ends on Try again and Back', () => {
+    const { sent, receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-server'));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive(FAR);
+    receive({ type: 'host.step', op: 'add', event: { step: 'upload', status: 'start' } });
+    fireEvent.click(screen.getByTestId('fork-stop'));
+    expect(sent.at(-1)).toEqual({ type: 'host.cancel' });
+    expect(screen.getByTestId('fork-stop').textContent).toBe('Stopping…');
+    expect(screen.getByTestId('fork-stop').hasAttribute('disabled')).toBe(true);
+    // the add ran through as the Stop went out
+    receive({ type: 'host.done', op: 'add', code: 0 });
+    expect(hosts(sent)).toHaveLength(1);
+    expect(screen.getByTestId('fork-ended').textContent).toBe('Stopped');
+    expect(screen.getByTestId('fork-go').textContent).toBe('Try again');
+    expect(screen.getByTestId('fork-back')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive(FAR);
+    expect(hosts(sent)).toHaveLength(2);
+    expect(screen.queryByTestId('fork-ended')).toBeNull();
+  });
+
+  test('a join that ends well as Stop goes out has joined, and opens the window', () => {
+    const { receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-join'));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive(FAR);
+    fireEvent.click(screen.getByTestId('fork-stop'));
+    receive({ type: 'host.done', op: 'join', code: 0 });
+    expect(replaced).toHaveBeenCalledWith('/');
+  });
+
+  test('Stop while this Mac is set up starts no machine run', () => {
+    const { sent, receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-join'));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    fireEvent.click(screen.getByTestId('fork-stop'));
+    receive(FAR);
+    expect(hosts(sent)).toEqual([]);
+    expect(screen.getByTestId('fork-ended').textContent).toBe('Stopped');
+    expect(screen.getByTestId('fork-go').hasAttribute('disabled')).toBe(false);
+  });
+
+  test('this Mac\'s setup failing on a server path is its run\'s failed row, the tool\'s words behind details, and a recheck leaves it', () => {
+    const { sent, receive, reply } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-join'));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive({ type: 'setup.result', step: 'run', ok: false, json: 'svall: hooks could not be written: Command failed: chmod 600 /u/.claude' });
+    const row = () => screen.getByTestId('fork-steps').querySelector('li[data-step="setup"]')!;
+    expect(row().querySelector('.said span')!.textContent).toBe('svall: hooks could not be written');
+    expect(row().textContent).toMatch(/^Svall on this Mac/);
+    expect(row().querySelector('details')!.textContent).toContain('chmod 600');
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.focus(window);
+    expect(sent.filter((m) => m.type === 'setup.plan')).toHaveLength(2);
+    reply();
+    expect(row()).toBeTruthy();
+    expect(hosts(sent)).toEqual([]);
+  });
+
   test('the add\'s rows and the join\'s show apart, though they share step names', () => {
     const said = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
@@ -409,6 +550,7 @@ describe('the first run forks three ways', () => {
       receive({ type: 'host.step', op: 'add', event: { step: 'ssh', status: 'ok', detail: 'ada@studio accepted an interactive login' } });
       receive({ type: 'host.done', op: 'add', code: 0 });
       receive({ type: 'host.step', op: 'join', event: { step: 'ssh', status: 'ok', detail: 'ada@studio accepted an interactive login' } });
+      fireEvent.click(screen.getByTestId('fork-done'));
       expect(screen.getByTestId('fork-steps').querySelectorAll('[data-step="ssh"]')).toHaveLength(2);
       expect(said.mock.calls.flat().join(' ')).not.toMatch(/same key/);
     } finally { said.mockRestore(); }

@@ -44,10 +44,9 @@ waiting on you or done.
 
 The way to run Svall all day is on an always-on Linux server, with your Mac
 connected to it: robots keep working there while the Mac sleeps. The first run
-asks where your fleet should run. **Install Svall on a server and connect this
-Mac** needs Tailscale on both machines; see
-[a fleet whose home is a server](docs/remote-machines/home.md). **Run the fleet
-on this Mac** needs no server, and is what the steps below go on to, and a fleet
+asks where your fleet should run. **A server, set up now** needs Tailscale on
+both machines; see [a fleet whose home is a server](docs/remote-machines/home.md).
+**This Mac** needs no server, and is what the steps below go on to, and a fleet
 there can move to a server later.
 
 You need an Apple Silicon Mac on macOS 15 or newer, and the Claude Code CLI,

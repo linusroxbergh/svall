@@ -39,6 +39,12 @@ textarea { overflow-x: hidden; }
 .setup-row input { margin: 0; accent-color: var(--sand); }
 .setup-row .setup-agent-name, .setup-row .setup-agent-status { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2xs); min-width: 0; }
 .setup-agent-name small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); font: var(--text-sm)/var(--lh) var(--mono); }
+/* a choice of where the fleet runs: a row of the list, its title and its line, that goes on */
+button.setup-row { display: grid; width: 100%; background: none; border-radius: 0; font-size: inherit; font-weight: var(--w-regular); text-align: left; }
+button.setup-row:hover { background: var(--fill-1); }
+button.setup-row > svg { color: var(--ink-3); }
+.setup-row .setup-agent-name small.plain { font-family: var(--sans); white-space: normal; }
+.setup-field { display: flex; flex-direction: column; gap: var(--sp-sm); }
 .setup-row .setup-agent-status { align-items: flex-end; color: var(--ink); font-size: var(--text-md); }
 .setup-agent-status small { color: var(--ink-2); font-size: var(--text-sm); text-align: right; overflow-wrap: anywhere; }
 .setup-agent-choice { display: flex; flex-wrap: wrap; gap: var(--sp-3xl); margin-bottom: var(--sp-md); }

@@ -4,8 +4,8 @@ A fleet has one home, which runs its islands, map, notes, mission control, scrib
 an always-on Linux machine, with a Mac as its [worker that dials in](setup.md#a-worker-that-dials-its-home). The app on that Mac
 then opens on the fleet as the server holds it, and robots keep working with the lid closed. This page uses `studio` for the server.
 
-To run a fleet this way, install Svall on the server and connect your Mac: **Install Svall on a server and connect this Mac** in the first
-run does both ([Starting on a server](#starting-on-a-server)). A fleet already on your Mac goes there with **Make studio this fleet's
+To run a fleet this way, install Svall on the server and connect your Mac: **A server, set up now** in the first run does both
+([Starting on a server](#starting-on-a-server)). A fleet already on your Mac goes there with **Make studio this fleet's
 home…** ([Changing home](#changing-home)).
 
 On this page "this Mac" is the machine the window runs on, and every other machine goes by name, the home included. A Mac
@@ -130,11 +130,11 @@ and that "studio's 7 robots keep running". Nothing on studio is touched.
 
 ## Starting on a server
 
-The first run offers three things. **Run the fleet on this Mac** is what it always was. **Install Svall on a server and connect
-this Mac** installs the companion as `svall host add` does and leaves the server a fleet's home, then joins it. **Connect to a
-fleet already on a server** joins one a server already runs. Both server paths need Tailscale on both machines, and both join
-before this Mac's fleet has ever started, so nothing here holds anything to lose. A server with no agent setup yet is offered
-this Mac's as soon as the window reaches it ([your agent setup](#your-agent-setup)).
+The first run offers three things. **This Mac** runs the fleet here. **A server, set up now** installs the companion as
+`svall host add` does and leaves the server a fleet's home, then joins it. **A server that already runs your fleet** joins one a
+server already runs. Both server paths need Tailscale on both machines, and both join before this Mac's fleet has ever started,
+so nothing here holds anything to lose. A server with no agent setup yet is offered this Mac's as soon as the window reaches it
+([your agent setup](#your-agent-setup)).
 
 From a terminal, `svall fleet join <ssh>` makes a fleet that holds nothing a worker of the home there: it checks the home,
 takes that fleet's id and a token the home issues, restarts as its worker and ends on the first snapshot. It refuses a fleet

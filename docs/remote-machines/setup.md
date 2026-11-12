@@ -332,7 +332,7 @@ The worker's `worker.json` names the home and its platform, so it calls a Linux 
 
 `svall host add <name> --ssh <destination> --as-home` installs the companion as above and enrols nothing, so the machine runs a
 fleet of its own, as its home. `svall fleet join <destination>` on the Mac then makes the Mac its worker. The first run does both,
-under **Install Svall on a server and connect this Mac**. A worker that is already there becomes the home with `svall fleet home
+under **A server, set up now**. A worker that is already there becomes the home with `svall fleet home
 set <name>`: see [Changing home](home.md#changing-home).
 
 `host add` refuses the fleet's own home but with `--as-home`, which installs it again, `host remove` keeps it until the fleet is back, and `host upgrade` restarts it as the home it is.

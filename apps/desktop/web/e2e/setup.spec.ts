@@ -6,9 +6,9 @@ const PLAN: Plan = { agents: [{ kind: 'claude', path: '/u/.local/bin/claude', ve
     { what: 'Service that keeps fleets running', path: '/u/Library/LaunchAgents/x.plist' }, { what: 'The svall command', path: '/u/.local/bin/svall' },
     { what: 'Your fleet', path: '/u/.svall' }], pathFile: '/u/.zshrc', shimDir: '/u/.local/bin', shimOnPath: false, blockers: [], projects: '~/Developer' };
 
-// the shell's side of the bridge: answers the page's setup asks with `plan`, and keeps what it was sent
-async function fakeShell(page: Page, plan: Plan, failFirst = false, warnings: string[] = []): Promise<void> {
-  await page.addInitScript(([p, failFirst, warnings]) => {
+// the shell's side of the bridge: answers the page's setup asks with `plan`, and keeps what it was sent; a machine run plays `steps`
+async function fakeShell(page: Page, plan: Plan, failFirst = false, warnings: string[] = [], steps: { op: string; event: object; code?: number }[] = []): Promise<void> {
+  await page.addInitScript(([p, failFirst, warnings, steps]) => {
     const w = window as unknown as { __sent: { type: string; agents?: string[] }[]; webkit: unknown; __svall: { receive(j: string): void } };
     w.__sent = [];
     let asks = 0;
@@ -19,8 +19,14 @@ async function fakeShell(page: Page, plan: Plan, failFirst = false, warnings: st
       if (msg.type === 'setup.plan') reply(failFirst && asks++ === 0 ? { type: 'setup.result', step: 'plan', ok: false, json: 'svall: something went wrong' } : { type: 'setup.result', step: 'plan', ok: true, json: JSON.stringify(p) });
       if (msg.type === 'setup.run') reply({ type: 'setup.result', step: 'run', ok: true, json: JSON.stringify({ done: [], warnings }) });
       if (msg.type === 'folder.pick') reply({ type: 'folder.picked', path: '~/code' });
+      if (msg.type === 'setup.join') reply({ type: 'setup.result', step: 'run', ok: true, json: JSON.stringify({ done: [], warnings: [] }) });
+      if (msg.type === 'host.start') {
+        // each step a beat apart, so a page caught between two shows the run under way; a step with a code ends the run there
+        steps.filter((s) => s.op === msg.op).forEach((s, i) => setTimeout(() => w.__svall.receive(JSON.stringify(s.code === undefined
+          ? { type: 'host.step', op: s.op, event: s.event } : { type: 'host.done', op: s.op, code: s.code })), 100 * (i + 1)));
+      }
     } } } };
-  }, [plan, failFirst, warnings] as const);
+  }, [plan, failFirst, warnings, steps] as const);
 }
 
 const sent = (page: Page) => page.evaluate(() => (window as unknown as { __sent: { type: string; agents?: string[]; text?: string; url?: string }[] }).__sent);
@@ -69,7 +75,7 @@ test('skips a single signed-in agent, but shows uncertain sign-in and the login 
   await here(page);
   await expect(page.getByRole('heading', { name: 'Choose where you work' })).toBeVisible();
   await page.getByRole('button', { name: 'Back' }).click();
-  await expect(page.getByText('Signed in')).toBeVisible();
+  await expect(page.getByText('Logged in')).toBeVisible();
 });
 
 test('says what to install when no agent is found, and asks again', async ({ page }) => {
@@ -133,11 +139,58 @@ test('shows a failed first ask inline and retries it', async ({ page }) => {
 test('forks three ways before anything is written', async ({ page }) => {
   await fakeShell(page, { agents: [{ kind: 'claude', path: '/usr/local/bin/claude', version: '2.0' }], projects: '~/Developer', blockers: [], shimDir: '/Users/test/.local/bin', shimOnPath: true, writes: [] } as Plan);
   await page.goto('/?setup=1');
-  await expect(page.getByTestId('setup-fork').getByRole('button')).toHaveText(['Run the fleet on this Mac', 'Install Svall on a server and connect this Mac', 'Connect to a fleet already on a server']);
+  await expect(page.getByTestId('setup-fork').getByRole('button')).toHaveText([/^This Mac/, /^A server, set up nowrecommended/, /^A server that already runs your fleet/]);
+  // each choice reads from the row's left edge, its caret at the right end
+  const lefts = await page.locator('[data-testid="setup-fork"] .setup-agent-name').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)));
+  expect(new Set(lefts).size).toBe(1);
+  await page.screenshot({ path: test.info().outputPath('setup-fork.png') });
   await page.getByTestId('fork-join').click();
+  await expect(page.getByRole('heading', { name: 'Connect to your server' })).toBeVisible();
   await expect(page.getByTestId('fork-go')).toBeDisabled();
   await page.getByTestId('fork-ssh').fill('ada@studio');
   await expect(page.getByTestId('fork-go')).toBeEnabled();
   await page.getByTestId('fork-back').click();
   await expect(page.getByTestId('setup-fork')).toBeVisible();
+});
+
+test('a server path shows only its run while it runs, and after a failed step its row, Try again and the form back filled', async ({ page }) => {
+  const SERVER: Plan = { agents: [{ kind: 'claude', path: '/usr/local/bin/claude', version: '2.0' }], projects: '~/Developer', blockers: [], shimDir: '/Users/test/.local/bin', shimOnPath: true, writes: [] };
+  const add = (event: object) => ({ op: 'add', event });
+  await fakeShell(page, SERVER, false, [], [
+    add({ step: 'ssh', status: 'start' }), add({ step: 'ssh', status: 'ok', detail: 'logs in' }),
+    add({ step: 'os', status: 'start' }), add({ step: 'os', status: 'ok', detail: 'Ubuntu 24.04 LTS, x86-64' }),
+    add({ step: 'tmux', status: 'warn', detail: '3.4: Shift+Enter needs 3.5' }),
+    add({ step: 'install', status: 'start' }), add({ step: 'install', status: 'ok', detail: '0.9.4 installed' }),
+    add({ step: 'master', status: 'start' }),
+    // the run waits here a beat, for the capture of a run under way
+    ...Array.from({ length: 30 }, () => add({ step: 'master', status: 'start' })),
+    add({ step: 'master', status: 'fail', detail: 'studio has no Tailscale', action: 'ssh ada@studio, install Tailscale and run tailscale up, then try again', raw: 'tailscale status --json exited 1: tailscale: command not found' }),
+    { op: 'add', event: {}, code: 1 },
+  ]);
+  await page.goto('/?setup=1');
+  await page.getByTestId('fork-server').click();
+  await expect(page.getByRole('heading', { name: 'Set up a server' })).toBeVisible();
+  await page.getByTestId('fork-ssh').fill('ada@studio');
+  await page.screenshot({ path: test.info().outputPath('setup-server-form.png') });
+  await page.getByTestId('fork-go').click();
+  await expect(page.getByTestId('fork-now')).toBeVisible();
+  await expect(page.getByTestId('fork-ssh')).toHaveCount(0);
+  await expect(page.getByText('Review changes')).toHaveCount(0);
+  await expect(page.locator('.setup-intro p')).toHaveText('ada@studio');
+  await expect(page.getByTestId('fork-done')).toHaveText('3 steps done');
+  await expect(page.getByTestId('fork-now')).toHaveText('Connection…');
+  await page.screenshot({ path: test.info().outputPath('setup-server-running.png') });
+  await expect(page.getByTestId('fork-stop')).toBeVisible();
+  const failed = page.locator('[data-testid="fork-steps"] li[data-status="fail"]');
+  await expect(failed).toContainText('studio has no Tailscale');
+  await expect(failed.locator('.modal-sub')).toHaveText('ssh ada@studio, install Tailscale and run tailscale up, then try again');
+  await expect(failed.getByText('tailscale: command not found')).toBeHidden();
+  await expect(page.getByTestId('fork-notes')).toHaveText('1 note');
+  await expect(page.getByTestId('fork-now')).toHaveCount(0);
+  await expect(page.locator('.setup-acts .btn')).toHaveText(['Try again', 'Back']);
+  await failed.getByText('details').click();
+  await expect(failed.getByText('tailscale: command not found')).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('setup-server-failed.png') });
+  await page.getByTestId('fork-back').click();
+  await expect(page.getByTestId('fork-ssh')).toHaveValue('ada@studio');
 });
