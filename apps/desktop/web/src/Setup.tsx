@@ -375,7 +375,8 @@ const Preference = ({ title, text, value, set }: { title: string; text: string; 
 const Review = ({ writes }: { writes: { what: string; path: string }[] }) => (
   <section className="setup-review">
     <p>Svall adds agent hooks, a background service and the svall command. The hooks only act inside Svall.</p>
-    <details className="modal-more">
+    {/* opened, the list comes into view above the pinned buttons */}
+    <details className="modal-more" onToggle={(e) => { if (e.currentTarget.open) e.currentTarget.scrollIntoView({ block: 'nearest' }); }}>
       <summary><Caret dir="right" />Review changes <span>{writes.length} locations</span></summary>
       {/* a launchd job reads by what it does, not by its label */}
       <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-write"><span>{w.what}</span>

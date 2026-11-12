@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import './setup.js';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { SetupPlan } from '@svall/protocol';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stepLabel } from '../../src/host.js';
@@ -48,7 +48,7 @@ function shell(plan: SetupPlan, opts: { fork?: false } = {}) {
 
 const next = () => fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
-test('file changes are available on demand and follow the selected agents', () => {
+test('file changes are available on demand and follow the selected agents', async () => {
   shell(ready);
   fireEvent.click(screen.getByLabelText('Codex'));
   next(); next();
@@ -58,9 +58,12 @@ test('file changes are available on demand and follow the selected agents', () =
   expect([details.className, !!details.querySelector('summary > svg')]).toEqual(['modal-more', true]);
   expect(screen.queryByText('Codex: hooks')).toBeNull();
   expect(screen.getByText('2 locations')).toBeTruthy();
+  const shown = vi.spyOn(details, 'scrollIntoView');
   fireEvent.click(screen.getByText(/Review changes/));
   expect(details.open).toBe(true);
   expect(screen.getByText('~/.claude/settings.json')).toBeTruthy();
+  // the list comes into view, above the buttons pinned at the window's foot
+  await waitFor(() => expect(shown).toHaveBeenCalledWith({ block: 'nearest' }));
 });
 
 test('the background service is listed by what it does, its launchd file nowhere in the window', () => {
