@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { z } from 'zod';
-import { ApiError, aside, asideLine, checksAgain, ellipsis, notNeeded, PROTOCOL_VERSION, tierOf, toTick, wayOn, type FleetAgents, type MachineId, type SetupRow } from '@svall/protocol';
+import { ApiError, aside, asideLine, checksAgain, ellipsis, keyLabel, keyMask, notNeeded, PROTOCOL_VERSION, tierOf, toTick, wayOn, type FleetAgents, type MachineId, type SetupRow } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@svall/svalld/mobile';
@@ -206,7 +206,7 @@ export async function setUpNow(steps: StepEvent[], o: { name: string; machine: M
   const rows = steps.map(asRow);
   for (const r of rows.filter(asked)) {
     const { item, fields, preview } = r.tick!;
-    if (!/^y(es)?$/i.test((await io.ask(`${r.action![0].toUpperCase()}${r.action!.slice(1)}? ${preview.join(', ')} [y/N] `)).trim())) continue;
+    if (!/^y(es)?$/i.test((await io.ask(`Copy ${keyLabel(r)} to ${o.name}? ${keyMask(r) ?? preview.join(', ')} [y/N] `)).trim())) continue;
     try {
       const now = (await io.consent(o.machine, item, fields, true)).find((x) => x.key === r.key);
       io.write(`  ${now?.status === 'ok' ? MARK.ok : MARK.warn} ${r.gap!.name}: ${now?.detail ?? 'ticked'}\n`);

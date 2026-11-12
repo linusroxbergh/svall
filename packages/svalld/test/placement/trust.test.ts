@@ -146,7 +146,7 @@ describe('seedTrust', () => {
     const unlock = await lockAgentFiles(w.base);
     try {
       await expect(seedTrust('claude', w.clone, { agentHome: w.agentHome, homedir: w.base, agentRunning: async () => false, waitMs: 300 }))
-        .rejects.toThrow(`a mirror held the agent files in ${w.base} for 0.3s`);
+        .rejects.toThrow(`a copy of the agent setup held the agent files in ${w.base} for 0.3s`);
     } finally {
       unlock();
     }

@@ -175,7 +175,7 @@ describe('the mirror on what a person holds, by its guards', () => {
       if (file.startsWith(backups) && written) throw new Error('killed');
       return write.call(this, file, data, mode);
     });
-    await expect(call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true })).rejects.toThrow('did not take it');
+    await expect(call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true })).rejects.toThrow('Saved; w1 has not taken it yet');
     expect(json(mac.claudeJson).mcpServers.linear.env.LINEAR_API_KEY).toBe(K1);
   });
 

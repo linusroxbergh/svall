@@ -183,7 +183,7 @@ function docIn(file: string, text: string | undefined, parse: (text: string) => 
   if (text === undefined) return undefined;
   let doc: unknown;
   try { doc = parse(text); } catch { /* named below */ }
-  if (!isDoc(doc)) throw new Error(`${file} cannot be parsed, so the mirror left this machine's agent configuration as it was`);
+  if (!isDoc(doc)) throw new Error(`${file} cannot be parsed, so Svall left this machine's agent setup as it was`);
   return doc;
 }
 
@@ -768,7 +768,7 @@ export function dropBlobs(stage: string): number {
 export async function takeBackCopies(o: Homes & { stateFile: string }): Promise<string[]> {
   const state = readState(o.stateFile);
   const done: string[] = [];
-  const what = (keys: number, servers: number): string => [keys && `${keys} ${keys === 1 ? 'key' : 'keys'} the mirror copied`, servers && `${servers} ${servers === 1 ? 'server' : 'servers'} the mirror copied whole`]
+  const what = (keys: number, servers: number): string => [keys && `${keys} ${keys === 1 ? 'key' : 'keys'} Svall copied`, servers && `${servers} ${servers === 1 ? 'server' : 'servers'} Svall copied whole`]
     .filter(Boolean).join(' and ');
   // a value there that is neither copy nor bare form counts as changed only where the record keeps a bare form
   const takeBack = (doc: unknown, k: string, at: Place, one: boolean, server?: Place): 'took' | 'changed' | undefined => {
@@ -786,7 +786,7 @@ export async function takeBackCopies(o: Homes & { stateFile: string }): Promise<
     if (!keys.length && !whole.length) continue;
     let doc: Doc | undefined;
     try { doc = readDocFile(d.at(o), d.parse); } catch (e) {
-      done.push(`could not take the mirror's keys back from ${d.at(o)}: ${(e as Error).message}`);
+      done.push(`could not take the keys Svall copied back from ${d.at(o)}: ${(e as Error).message}`);
       continue;
     }
     if (!doc) continue;
@@ -853,7 +853,7 @@ export async function takeBackCopies(o: Homes & { stateFile: string }): Promise<
       put(file, Buffer.from(doc.write(doc.value)), (statOf(realPath(file))?.mode ?? 0o600) & 0o777);
       done.push(`took ${what(n, 0)} out of ${file}`);
     }
-    if (left) done.push(`left ${file}, which holds keys the mirror copied and changed there since`);
+    if (left) done.push(`left ${file}, which holds keys Svall copied and changed there since`);
   }
   // another file the mirror wrote holding a ticked key, a plugin's under Claude's folder, goes while it is the copy
   for (const [to, h] of Object.entries(state.keyed ?? {})) {
@@ -862,20 +862,20 @@ export async function takeBackCopies(o: Homes & { stateFile: string }): Promise<
     let bytes: Buffer;
     try { bytes = fs.readFileSync(realPath(file)); } catch { continue; }
     if (!isCopyOf(h, sha256Hex(bytes))) {
-      done.push(`left ${file}, which holds keys the mirror copied and changed there since`);
+      done.push(`left ${file}, which holds keys Svall copied and changed there since`);
       continue;
     }
     try {
       fs.rmSync(realPath(file), { force: true });
-      done.push(`removed ${file}, which held keys the mirror copied`);
+      done.push(`removed ${file}, which held keys Svall copied`);
     } catch (e) {
-      done.push(`could not remove ${file}, which holds keys the mirror copied: ${(e as Error).message}`);
+      done.push(`could not remove ${file}, which holds keys Svall copied: ${(e as Error).message}`);
     }
   }
   sweepTemps(o);
-  const dropped = await dropRollbacks([state], o, (f, e) => done.push(`could not remove ${f}, a rollback copy that holds keys the mirror copied: ${e.message}`));
-  for (const f of dropped) done.push(`removed ${f}, a rollback copy that held keys the mirror copied`);
+  const dropped = await dropRollbacks([state], o, (f, e) => done.push(`could not remove ${f}, a rollback copy that holds keys Svall copied: ${e.message}`));
+  for (const f of dropped) done.push(`removed ${f}, a rollback copy that held keys Svall copied`);
   const blobs = dropBlobs(path.dirname(o.stateFile));
-  if (blobs) done.push(`removed ${blobs} mirror ${blobs === 1 ? 'blob' : 'blobs'} left in ${path.dirname(o.stateFile)}`);
+  if (blobs) done.push(`removed ${blobs} unapplied ${blobs === 1 ? 'copy' : 'copies'} of the agent setup left in ${path.dirname(o.stateFile)}`);
   return done;
 }

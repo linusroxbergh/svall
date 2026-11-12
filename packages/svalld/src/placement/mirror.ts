@@ -116,10 +116,11 @@ export class Mirror {
     const plan = mirrorPlan(this.o, readConsent(this.o.consent, machine), facts);
     // a worker that did not answer the first is not asked again
     const report = facts && await ask('config.report', reportAsk(plan), ConfigReport);
-    const unchecked = link?.mismatch() ? `not checked: ${o.name} runs another release; upgrade it` : `not checked: ${o.name} is not reachable`;
+    const stale = link?.mismatch() !== undefined;
+    const unchecked = stale ? `not checked: ${o.name} runs another release` : `not checked: ${o.name} is not reachable`;
     const r = o.robot;
     const shown = r ? forRobot(plan, { agents: r.agents, folders: r.folders.map((f) => (r.home ? relocate(f, { from: r.home, to: this.o.homedir }) : f)) }) : plan;
-    return setupRows(shown, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, overrides: this.o.overridesThere?.(machine) ?? '~/.svall/mirror-overrides', here: this.hereHas(), apt: facts?.platform === 'linux', mac: facts?.platform === 'darwin' });
+    return setupRows(shown, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, stale, overrides: this.o.overridesThere?.(machine) ?? '~/.svall/mirror-overrides', here: this.hereHas(), apt: facts?.platform === 'linux', mac: facts?.platform === 'darwin' });
   }
 
   /** Whether this Mac has a variable to copy to a worker: in the daemon's own environment, or the fleet's .env here. */
@@ -210,22 +211,22 @@ export function mirrorCalls(o: MirrorHomes & {
     'config.apply': async (raw) => {
       const { id, seq } = parse(Apply, raw);
       const b = blobs.get(id);
-      if (!b) throw new ApiError('not_found', `no agent configuration ${id} came here`);
+      if (!b) throw new ApiError('not_found', `no agent setup ${id} came here`);
       b.applying = true;
       // the home stops waiting after APPLY_MS
-      const late = setTimeout(() => b.abandon.abort(new ApiError('abandoned', 'the home gave up on this agent configuration before it was applied')), APPLY_MS);
+      const late = setTimeout(() => b.abandon.abort(new ApiError('abandoned', 'the home gave up on this agent setup before it was applied')), APPLY_MS);
       try {
-        if ((await b.got).sha256 !== b.sha256) throw new Error('the agent configuration did not arrive as it left');
+        if ((await b.got).sha256 !== b.sha256) throw new Error('the agent setup did not arrive as it left');
         await unpack(path.join(b.dir, 'mirror.tar'), path.join(b.dir, 'blob'));
         const unlock = await lockAgentFiles(o.homedir, b.abandon.signal);
         let done: Awaited<ReturnType<typeof applyMirror>>;
         try {
           // an older push would put back what a later one took away
           const last = readState(o.stateFile).applied;
-          if (last !== undefined && seq <= last) throw new ApiError('stale', `push ${seq} of the agent configuration came after push ${last}, which this machine applied`);
+          if (last !== undefined && seq <= last) throw new ApiError('stale', `push ${seq} of the agent setup came after push ${last}, which this machine applied`);
           done = await applyMirror(path.join(b.dir, 'blob'), { ...o, seq });
         } finally { unlock(); }
-        if (done.written.length || done.removed.length) o.log.info(`mirror: ${done.written.length} files of the home's agent configuration written, ${done.removed.length} removed`);
+        if (done.written.length || done.removed.length) o.log.info(`mirror: ${done.written.length} files of the home's agent setup written, ${done.removed.length} removed`);
         failed = undefined;
         return done;
       } catch (e) {
@@ -242,7 +243,7 @@ export function mirrorCalls(o: MirrorHomes & {
   // one being applied is given up unless it holds the agent files already, and goes once it ends
   const linkLost = (): void => {
     for (const [id, b] of blobs) {
-      if (b.applying) b.abandon.abort(new ApiError('abandoned', 'the link closed before this agent configuration was applied'));
+      if (b.applying) b.abandon.abort(new ApiError('abandoned', 'the link closed before this agent setup was applied'));
       else drop(id);
     }
   };

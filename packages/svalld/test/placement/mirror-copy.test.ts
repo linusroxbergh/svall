@@ -83,7 +83,7 @@ describe('the rows of a Mac', () => {
       const { rows } = await call<{ rows: SetupRow[] }>(w.home.ctx, 'machines.setup', { machine: W });
       vi.unstubAllEnvs();
       const row = rows.find((r) => r.key === 'runtime:npx');
-      expect([row?.action, row?.run]).toEqual(['install npx on w1', run]);
+      expect([row?.action, row?.run]).toEqual([run ?? 'Install npx on w1', run]);
     }
   });
 
@@ -93,7 +93,7 @@ describe('the rows of a Mac', () => {
       await w.link();
       const { rows } = await call<{ rows: SetupRow[] }>(w.home.ctx, 'machines.setup', { machine: W });
       const row = rows.find((r) => r.key === 'maconly:claude:chrome');
-      expect(row?.detail.includes('only runs on a Mac;')).toBe(platform === 'linux');
+      expect(row?.detail).toBe(platform === 'linux' ? 'runs only on a Mac' : 'stays on this Mac');
     }
   });
 
@@ -471,7 +471,7 @@ describe('an untick reaches Svall\'s rollback copies', () => {
     await consent(LINEAR, true);
     fs.writeFileSync(`${worker.claudeJson}${STAMP}`, read(worker.claudeJson));
     const said = await takeBackCopies({ ...worker, stateFile: w.worker.paths.mirrorState });
-    expect(said).toContain(`removed ${worker.claudeJson}${STAMP}, a rollback copy that held keys the mirror copied`);
+    expect(said).toContain(`removed ${worker.claudeJson}${STAMP}, a rollback copy that held keys Svall copied`);
     expect(holding(worker.homedir, KEY)).toEqual([]);
   });
 
@@ -709,9 +709,9 @@ describe('a key the target holds itself', () => {
       expect(holding(backups, KEY)).toEqual([]);
       expect(read(w.worker.paths.mirrorState)).not.toContain(K1);
       expect(said.join('\n')).not.toContain(K1);
-      expect(rows.find((r) => r.key === 'claude:mcp:linear')?.detail).toContain('what w1 held itself is in its mirror-backup');
+      expect(rows.find((r) => r.key === 'claude:mcp:linear')?.action).toMatch(/^Tick to copy, .*\. w1's own copy is in its backup folder$/);
       expect((await call<{ replaced?: string[] }>(w.worker.ctx, 'home.setup', {})).replaced).toEqual(['linear']);
-      expect(rows.find((r) => r.key === 'claude:mcp:other')?.detail).not.toContain('mirror-backup');
+      expect(rows.find((r) => r.key === 'claude:mcp:other')?.action ?? '').not.toContain('backup folder');
       // no restore, and no copy again
       await w.home.links.pushMirror(W);
       expect(live(worker)).toBe('${LINEAR_API_KEY}');
@@ -744,7 +744,7 @@ describe('a key the target holds itself', () => {
         if (file === stop) throw new Error('killed');
         return write.call(this, file, data, mode);
       });
-      await expect(linear(true)).rejects.toThrow('did not take it');
+      await expect(linear(true)).rejects.toThrow('has not taken it yet');
       expect(live(worker)).toBe(K1);
       const kept = holding(backups, K1);
       expect(kept).toHaveLength(1);
@@ -783,7 +783,7 @@ describe('a key the target holds itself', () => {
       const { rows } = await consent('claude:mcp:odd', ['command', 'sandbox'], true);
       expect(json(worker.claudeJson).mcpServers.odd.sandbox.token).toBe('home_token_1234567890');
       expect(holding(backups, 'mac_token_1234567890')).toHaveLength(1);
-      expect(rows.find((r) => r.key === 'claude:mcp:odd')?.detail).toContain('in its mirror-backup');
+      expect(rows.find((r) => r.key === 'claude:mcp:odd')).toMatchObject({ action: "w1's own copy is in its backup folder" });
     });
 
     it('its copy failing stops the tick, with K1 where it was', async () => {
@@ -796,7 +796,7 @@ describe('a key the target holds itself', () => {
         if (file.startsWith(backups)) throw new Error('killed');
         return write.call(this, file, data, mode);
       });
-      await expect(linear(true)).rejects.toThrow('did not take it');
+      await expect(linear(true)).rejects.toThrow('has not taken it yet');
       expect(live(worker)).toBe(K1);
       expect(readState(w.worker.paths.mirrorState).secrets).toEqual({});
     });
@@ -1543,11 +1543,11 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
     };
     const claude = (m: any) => m.servers.find((x: any) => x.doc === '.claude.json');
     const cases: [string, (dir: string, m: any) => void, string][] = [
-      ['ssh', (dir) => put(path.join(dir, 'home/.ssh/authorized_keys'), 'ssh-ed25519 AAAA\n'), 'does not carry'],
-      ['login', (dir) => put(path.join(dir, 'claude/.credentials.json'), '{}'), 'does not carry'],
-      ['named', (dir) => put(path.join(dir, 'claude/skills/x/auth.json'), '{}'), 'does not carry'],
-      ['keep', (_d, m) => { m.keep.push('home/.ssh/config'); }, 'does not carry'],
-      ['keyed', (_d, m) => { m.keyed.push('home/.ssh/config'); }, 'does not carry'],
+      ['ssh', (dir) => put(path.join(dir, 'home/.ssh/authorized_keys'), 'ssh-ed25519 AAAA\n'), 'which Svall does not copy'],
+      ['login', (dir) => put(path.join(dir, 'claude/.credentials.json'), '{}'), 'which Svall does not copy'],
+      ['named', (dir) => put(path.join(dir, 'claude/skills/x/auth.json'), '{}'), 'which Svall does not copy'],
+      ['keep', (_d, m) => { m.keep.push('home/.ssh/config'); }, 'which Svall does not copy'],
+      ['keyed', (_d, m) => { m.keyed.push('home/.ssh/config'); }, 'which Svall does not copy'],
       ['hooks', (_d, m) => { claude(m).place = ['hooks']; }, 'places a claude server'],
       ['other doc', (_d, m) => { claude(m).doc = 'settings.json'; }, 'places a claude server'],
       ['proto', (_d, m) => { claude(m).place = ['mcpServers', '__proto__']; }, 'places a claude server'],
@@ -1579,7 +1579,7 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
     const c = w.worker.connection;
     await c.call('config.blob', { id: 'mirror_forged', sha256: await fileSha(tar) });
     await c.sendBlob('mirror_forged', tar);
-    await expect(c.call('config.apply', { id: 'mirror_forged', seq: 1 })).rejects.toThrow('does not carry');
+    await expect(c.call('config.apply', { id: 'mirror_forged', seq: 1 })).rejects.toThrow('which Svall does not copy');
     expect(read(path.join(home.claudeDir, 'CLAUDE.md'))).toBe(before);
   });
 

@@ -82,7 +82,7 @@ export async function seedTrust(
   if (kind === 'opencode') return 'seeded';
   const signal = AbortSignal.timeout(o.waitMs);
   const unlock = await lockAgentFiles(o.homedir, signal).catch((e: unknown) => {
-    throw signal.aborted ? new Error(`a mirror held the agent files in ${o.homedir} for ${o.waitMs / 1000}s`) : e;
+    throw signal.aborted ? new Error(`a copy of the agent setup held the agent files in ${o.homedir} for ${o.waitMs / 1000}s`) : e;
   });
   try {
     if (await o.agentRunning()) return 'skipped';

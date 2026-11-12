@@ -1205,7 +1205,7 @@ export async function consentHost(name: string, o: { item: string; on: boolean; 
 }
 
 // a line of the far uninstall that says what it did with the keys the mirror or the phone link copied there, and one that leaves some there
-const TAKE_BACK = /the mirror copied|the mirror's keys|mirror blobs? left|the phone keys/;
+const TAKE_BACK = /(the mirror|Svall) copied|the mirror's keys|copies? of the agent setup left|mirror blobs? left|the phone keys/;
 const KEYS_LEFT = /^(could not|left) /;
 
 // $1 the far home: each fleet home's worker.json there on a line of its own, after the home's folder and a tab

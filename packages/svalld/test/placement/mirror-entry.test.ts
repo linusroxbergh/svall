@@ -327,7 +327,7 @@ describe('a server copied whole that the person edits', () => {
     expect(read(s.w.claudeJson)).toContain(K);
     const plan = mirrorPlan(s.home, s.consent);
     const rows = setupRows(plan, configReport(reportAsk(plan), { ...s.options, overrides: s.w.overrides, envFile: path.join(s.w.homedir, '.svall/.env') }), { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' });
-    expect(rows.find((r) => r.key === 'edited:claude:mcp:odd')).toMatchObject({ status: 'warn', action: 'remove odd on m', detail: 'odd stays as you edited it, with any key the mirror copied in it; remove it yourself' });
+    expect(rows.find((r) => r.key === 'edited:claude:mcp:odd')).toMatchObject({ status: 'warn', action: 'Remove it on m if the copied key should go', detail: 'edited on m; stays as it is' });
     expect(rows.find((r) => r.key === 'claude:mcp:odd')?.detail).not.toContain('has its own');
   });
 
@@ -359,7 +359,7 @@ describe('a server copied whole that the person edits', () => {
     await s.push();
     const plan = mirrorPlan(s.home, s.consent);
     const row = setupRows(plan, configReport(reportAsk(plan), { ...s.options, overrides: s.w.overrides, envFile: path.join(s.w.homedir, '.svall/.env') }), { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((x) => x.key === 'claude:mcp:odd');
-    expect(row).toMatchObject({ status: 'skip', detail: 'odd stays as you edited it' });
+    expect(row).toMatchObject({ status: 'skip', detail: 'edited on m; stays as it is', action: 'Remove it on m if the copied key should go' });
   });
 
   it('edited, deleted by the person, is done with: its record goes and a tick writes it anew', async () => {
@@ -504,7 +504,7 @@ describe('a server of a shape the mirror cannot read', () => {
     expect(json(s.w.claudeJson).mcpServers.linear.timeout).toBeUndefined();
     const plan = mirrorPlan(s.home, s.consent);
     const report = configReport(reportAsk(plan), { ...s.options, overrides: s.w.overrides, envFile: path.join(s.w.homedir, '.svall/.env') });
-    expect(setupRows(plan, report, { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((r) => r.key === 'edited:claude:mcp:linear')?.detail).toContain('stays as it is here and no longer follows');
+    expect(setupRows(plan, report, { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((r) => r.key === 'edited:claude:mcp:linear')).toMatchObject({ detail: 'edited on m; no longer follows this Mac', action: "Delete it on m to take this Mac's again" });
     editJson(s.w.claudeJson, (j) => { delete j.mcpServers.linear; });
     await s.push();
     expect(json(s.w.claudeJson).mcpServers.linear).toMatchObject({ command: 'npx', timeout: 9 });
@@ -900,7 +900,7 @@ describe('a link where a keyed file lay', () => {
     expect(Object.keys(readState(s.stateFile).keyed ?? {})).toEqual(['claude/agents/keyed.md']);
     const plan = mirrorPlan(s.home, s.consent);
     const report = configReport(reportAsk(plan), { ...s.options, overrides: s.w.overrides, envFile: path.join(s.w.homedir, '.svall/.env') });
-    expect(setupRows(plan, report, { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((x) => x.key === row.key)?.detail).toBe('agents/keyed.md stays as you edited it, with any key the mirror copied in it; remove it yourself');
+    expect(setupRows(plan, report, { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((x) => x.key === row.key)?.detail).toBe('edited on m; stays as it is');
     expect((await takeBackCopies(s.options)).join('\n')).toContain(landed);
     fs.rmSync(landed);
     await s.push();
@@ -1011,7 +1011,7 @@ describe('the rows of a target', () => {
     editJson(s.w.claudeJson, (j) => { j.mcpServers.odd.timeout = 5; });
     s.consent.clear();
     await s.push();
-    expect(rowsOf(s).find((r) => r.key === 'claude:mcp:odd')?.detail).toBe('odd stays as you edited it, with any key the mirror copied in it; remove it yourself');
+    expect(rowsOf(s).find((r) => r.key === 'claude:mcp:odd')).toMatchObject({ detail: 'edited on m; stays as it is', action: 'Remove it on m if the copied key should go' });
   });
 
   it('offer no tick for a server in a plugin file the plan does not carry', () => {

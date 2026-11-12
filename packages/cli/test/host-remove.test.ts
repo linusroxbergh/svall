@@ -245,11 +245,13 @@ describe('host remove', () => {
     expect(registry.get('trift')).toBeUndefined();
   });
 
-  it('shows the keys the far uninstall took back as done', async () => {
-    ssh.reply(['uninstall'], { stdout: `took 1 key the mirror copied out of ${HOME}/.claude.json\nremoved ${HOME}/.svall/phone.json, the phone keys its home copied\nremoved ${BASE}/current\n` });
+  it('shows the keys the far uninstall took back as done, in its words and an earlier release\'s', async () => {
+    const blobs = `removed 2 unapplied copies of the agent setup left in ${HOME}/.svall`;
+    ssh.reply(['uninstall'], { stdout: `took 1 key Svall copied out of ${HOME}/.claude.json\ntook 1 key the mirror copied out of ${HOME}/.codex/config.toml\n${blobs}\nremoved ${HOME}/.svall/phone.json, the phone keys its home copied\nremoved ${BASE}/current\n` });
     expect(await removeHost('trift', {}, deps({ registry: registered('trift.test') }))).toEqual({ result: 'ready', actions: [] });
     expect(step('keys').at(-1)).toMatchObject({
-      status: 'ok', detail: 'copied keys removed from 2 files', raw: `took 1 key the mirror copied out of ${HOME}/.claude.json\nremoved ${HOME}/.svall/phone.json, the phone keys its home copied`,
+      status: 'ok', detail: 'copied keys removed from 4 files',
+      raw: `took 1 key Svall copied out of ${HOME}/.claude.json\ntook 1 key the mirror copied out of ${HOME}/.codex/config.toml\n${blobs}\nremoved ${HOME}/.svall/phone.json, the phone keys its home copied`,
     });
   });
 

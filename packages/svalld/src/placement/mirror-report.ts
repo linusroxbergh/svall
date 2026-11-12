@@ -20,6 +20,8 @@ const INSTALL_RUN: Record<string, string> = {
 };
 
 const Place = z.array(z.union([z.string(), z.number()]));
+const CHECK_AGAIN = 'Check again';
+const UNCOPIED = 'not copied: Svall does not copy this file';
 // where an item lies on the worker: in config file `doc`, or in the file the mirror writes whole landing at `file`, at
 // `place` as the Mac holds it
 const Where = { doc: z.enum(DOC_NAMES).optional(), file: z.string().optional(), place: Place };
@@ -212,22 +214,24 @@ export function forRobot(plan: MirrorPlan, o: { agents: AgentKind[]; folders: st
 }
 
 /**
- * The setup rows of the mirror to `o.machine` by `plan` and the worker's report. Without a report a row that hangs on one
- * says `o.unchecked`, and a key row that its change is saved for when the machine links.
+ * The setup rows of the mirror to `o.machine` by `plan` and the worker's report: each says how the item stands there, and its
+ * action how to change that. Without a report a row that hangs on one says `o.unchecked`, and a ticked one that its change is
+ * saved; `o.stale`, the machine runs another release, which an upgrade ends.
  */
-export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string; overrides: string; here?: (name: string) => boolean; apt?: boolean; mac?: boolean }): SetupRow[] {
+export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string; stale?: boolean; overrides: string; here?: (name: string) => boolean; apt?: boolean; mac?: boolean }): SetupRow[] {
   const m = o.machine;
   const rows: SetupRow[] = [];
-  const saved = `${o.unchecked}; saved, and takes effect when ${m} links`;
+  const again = report || !o.stale ? CHECK_AGAIN : `Upgrade ${m}`;
   // a ticked item the worker does not hold yet, or was not asked about
   const notYet = (tick: NonNullable<SetupRow['tick']>, name: string): SetupRow =>
-    ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: report ? `sent; not on ${m} yet` : saved, tick, gap: { name, what: `ticked; not on ${m} yet` } });
+    ({ key: tick.item, status: 'warn', action: again, detail: report ? `sent, not on ${m} yet` : `saved; applies when ${m} is back`, tick, gap: { name, what: `ticked; not on ${m} yet` } });
   // an unticked item whose copy the worker still holds
   const stillOn = (tick: NonNullable<SetupRow['tick']>, name: string): SetupRow =>
-    ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: `still on ${m}; check ${m} again`, tick, gap: { name, what: `unticked; still on ${m}` } });
+    ({ key: tick.item, status: 'warn', action: CHECK_AGAIN, detail: `switched off, still on ${m}`, tick, gap: { name, what: `unticked; still on ${m}` } });
   // an item that stays as the person edited it: what the record holds cannot say a key still lies in it
+  const edited = { detail: `edited on ${m}; stays as it is`, action: `Remove it on ${m} if the copied key should go` };
   const staysEdited = (tick: NonNullable<SetupRow['tick']>, name: string): SetupRow => ({
-    key: tick.item, status: 'warn', action: `remove ${name} on ${m}`, detail: `${name} stays as you edited it, with any key the mirror copied in it; remove it yourself`, tick, gap: { name, what: 'stays as you edited it, with any key the mirror copied in it' },
+    key: tick.item, status: 'warn', ...edited, tick, gap: { name, what: 'stays as you edited it, with any key Svall copied in it' },
   });
   // the variables an unticked env key of server `s` reads on the worker: the references the mirror leaves in its place
   const reads = (s: MirroredServer, f: string): string[] => {
@@ -241,21 +245,23 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
     if (report?.edited?.[item] === 'link') return staysEdited(tick, name);
     const held = (f: string) => report?.secrets[fieldKey(item, f)];
     const own = (f: string) => held(f) === 'own' || (server && f.startsWith('env.') && reads(server, f).every((v) => report?.vars[v] === true));
-    if (tick.on && fields.every((f) => held(f) === 'copied')) return { key: item, status: 'ok', detail: `keys copied to ${m}: ${preview.join(', ')}`, tick };
+    if (tick.on && fields.every((f) => held(f) === 'copied')) return { key: item, status: 'ok', detail: 'copied', tick };
     if (!tick.on && fields.some((f) => held(f) === 'copied')) return stillOn(tick, name);
-    if (fields.every((f) => (tick.on ? held(f) : own(f)))) return { key: item, status: 'ok', detail: `${m} has its own keys`, tick };
+    if (fields.every((f) => (tick.on ? held(f) : own(f)))) return { key: item, status: 'ok', detail: `${m} has its own`, tick };
     if (tick.on) return notYet(tick, name);
     const vars = server ? [...new Set(fields.filter((f) => f.startsWith('env.')).flatMap((f) => reads(server, f)))] : [];
-    const without = `copied without its keys (${preview.join(', ')}); tick to copy them, ${vars.length
-      ? `set ${vars.join(', ')} on ${m} (${vars.map((v) => `svall ${o.fleetFlag}worker env ${v}`).join(', ')}), or set them in ${o.overrides} there`
-      : `or set them on ${m} in ${o.overrides}`}`;
     return {
-      key: item, status: 'warn', action: `copy ${name}'s keys to ${m}`, detail: report ? without : `${saved}: ${without}`, tick,
+      key: item, status: 'warn', detail: report ? 'not copied' : o.unchecked, tick,
+      action: vars.length ? `Tick to copy, or set ${vars.join(', ')} on ${m}: ${vars.map((v) => `svall ${o.fleetFlag}worker env ${v}`).join(', ')}` : `Tick to copy, or set them on ${m} in ${o.overrides}`,
       gap: { name, what: `keys not copied (${fields.filter((f) => !own(f)).join(', ')})` },
     };
   };
   // what a tick went over stays in the machine's backup, and its row says so
-  const inBackup = (row: SetupRow, names: string[]): SetupRow => (names.some((n) => report?.replaced?.[n]) ? { ...row, detail: `${row.detail}; what ${m} held itself is in its mirror-backup` } : row);
+  const inBackup = (row: SetupRow, names: string[]): SetupRow => {
+    if (!names.some((n) => report?.replaced?.[n])) return row;
+    const backup = `${m}'s own copy is in its backup folder`;
+    return { ...row, action: row.action ? `${row.action}. ${backup}` : backup };
+  };
   const keys = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server?: MirroredServer): SetupRow =>
     inBackup(keyRow(item, name, fields, ticked, preview, server), fields.map((f) => fieldKey(item, f)));
   // a server or plugin config with settings Svall cannot copy one by one, whose file travels as it is once ticked
@@ -263,25 +269,22 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   const wholeRow = (item: string, name: string, fields: string[], on: boolean): SetupRow => {
     const tick = { item, name, fields, on, preview: fields };
     if (report?.edited?.[item] === 'link' || (!on && report?.edited?.[item] === 'copy')) return staysEdited(tick, name);
-    if (!on && report?.whole[item]) return report.edited?.[item] ? { key: item, status: 'skip', detail: `${name} stays as you edited it`, tick } : stillOn(tick, name);
-    if (!on) {
-      return {
-        key: item, status: 'warn', action: `copy ${name} to ${m} as it is`, detail: `${name} has settings Svall cannot copy one by one; tick to copy its file as it is, keys included`, tick,
-        gap: { name, what: 'not copied; tick to copy it as it is' },
-      };
-    }
+    if (!on && report?.whole[item]) return report.edited?.[item] ? { key: item, status: 'skip', ...edited, tick } : stillOn(tick, name);
+    if (!on) return { key: item, status: 'warn', detail: 'not copied', action: 'Tick to copy the whole file, keys included', tick, gap: { name, what: 'not copied; tick to copy it as it is' } };
     if (report?.ownWhole?.[item]) return { key: item, status: 'ok', detail: `${m} has its own`, tick };
-    return report?.whole[item] ? { key: item, status: 'ok', detail: `copied to ${m} as it is`, tick } : notYet(tick, name);
+    return report?.whole[item] ? { key: item, status: 'ok', detail: 'copied whole', tick } : notYet(tick, name);
   };
   // a server Svall cannot copy one by one has a preview naming its fields
   for (const s of plan.servers) {
     // a tick cannot land in a plugin's file the plan does not carry
     if (s.file && !plan.files.some((f) => f.from === s.file)) {
-      if (!s.known || s.secretFields.length) rows.push({ key: s.key, status: 'skip', detail: `${s.name} stays on ${homeWord()}: the mirror does not carry its file`, gap: { name: s.name, what: 'not copied: the mirror does not carry its file' } });
+      if (!s.known || s.secretFields.length) rows.push({ key: s.key, status: 'skip', detail: UNCOPIED, gap: { name: s.name, what: UNCOPIED } });
     } else if (!s.known) rows.push(whole(s.key, s.name, s.preview, Object.keys(s.entry).length > 0));
     else if (s.secretFields.length) rows.push(keys(s.key, s.name, s.secretFields, s.ticked, s.preview, s));
-    if (s.known && !s.ticked.length && report?.edited?.[s.key] === 'copy') rows.push({ key: `edited:${s.key}`, status: 'warn', action: `remove ${s.name} on ${m}`, detail: `${s.name} stays as you edited it, with any key the mirror copied in it; remove it yourself` });
-    else if (s.known && !s.ticked.length && report?.edited?.[s.key] === 'own') rows.push({ key: `edited:${s.key}`, status: 'skip', detail: `${s.name} on ${m} stays as it is here and no longer follows ${homeWord()}; delete it on ${m} and the next push writes it anew` });
+    if (s.known && !s.ticked.length && report?.edited?.[s.key] === 'copy') rows.push({ key: `edited:${s.key}`, status: 'warn', ...edited });
+    else if (s.known && !s.ticked.length && report?.edited?.[s.key] === 'own') {
+      rows.push({ key: `edited:${s.key}`, status: 'skip', detail: `edited on ${m}; no longer follows ${homeWord()}`, action: `Delete it on ${m} to take ${homeWord()}'s again` });
+    }
   }
 
   const servers = carried(plan);
@@ -293,22 +296,21 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
     ];
     if (!readers.length) continue;
     const key = `var:${v}`;
-    if (report?.vars[v]) rows.push({ key, status: 'ok', detail: `${v} is set on ${m}` });
-    else if (!report) rows.push({ key, status: 'warn', action: `check ${m} again`, detail: o.unchecked });
+    const readBy = `${readers.join(', ')} ${readers.length === 1 ? 'reads' : 'read'} it`;
+    if (report?.vars[v]) rows.push({ key, status: 'ok', detail: 'set' });
+    else if (!report) rows.push({ key, status: 'warn', action: again, detail: o.unchecked });
     else {
-      rows.push({
-        key, status: 'warn', action: `set ${v} on ${m}`, run: `svall ${o.fleetFlag}worker env ${v}`, detail: `${readers.join(', ')} ${readers.length === 1 ? 'reads' : 'read'} ${v}, which is not set on ${m}`,
-        gap: { name: v, what: `not set; ${readers.join(', ')} ${readers.length === 1 ? 'reads' : 'read'} it` }, ...(o.here?.(v) && { here: true }),
-      });
+      const run = `svall ${o.fleetFlag}worker env ${v}`;
+      rows.push({ key, status: 'warn', action: run, run, detail: `not set · ${readBy}`, gap: { name: v, what: `not set; ${readBy}` }, ...(o.here?.(v) && { here: true }) });
     }
   }
   for (const s of servers) {
     if (!s.oauth) continue;
     const key = `oauth:${s.key}`;
     if (s.agent !== 'claude') {
-      rows.push({ key, status: 'skip', ...s.oauth, detail: `log in once on ${m}; the row stays either way: ${s.oauth.run}`, gap: { name: s.name, what: 'log in once there; the row stays' } });
-    } else if (report?.oauth[s.key]) rows.push({ key, status: 'ok', detail: `logged in on ${m}` });
-    else rows.push({ key, status: 'warn', action: `log in once on ${m}`, ...s.oauth, detail: `then /mcp and sign in to ${s.name}`, ...(report && { gap: { name: s.name, what: 'not logged in' } }) });
+      rows.push({ key, status: 'skip', ...s.oauth, detail: `log in once on ${m}`, gap: { name: s.name, what: 'log in once there; the row stays' } });
+    } else if (report?.oauth[s.key]) rows.push({ key, status: 'ok', detail: 'logged in' });
+    else rows.push({ key, status: 'warn', action: `Start claude there, then /mcp and log in to ${s.name}`, ...s.oauth, detail: 'not logged in', ...(report && { gap: { name: s.name, what: 'not logged in' } }) });
   }
   const missing = report ? [...new Set(servers.flatMap((s) => s.runtimes))].filter((bin) => report.commands[bin] === false) : [];
   for (const bin of missing) {
@@ -320,25 +322,28 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
     // the row's tick says the machine does not need the program; ticked, the row stands aside
     const tick = { item: key, fields: [NOT_NEEDED], on: plan.notNeeded.includes(bin), preview: [] };
     if (tick.on) {
-      rows.push({ key, status: 'skip', detail: `not needed on ${m}, you ticked; untick to list it again`, tick, gap: { name, what: 'not needed there, you ticked' } });
+      rows.push({ key, status: 'skip', detail: 'not needed here', tick, gap: { name, what: 'not needed there, you ticked' } });
       continue;
     }
     const gap = { name, what: `not installed; ${users} ${one ? 'needs' : 'need'} it` };
-    const need = `${users} ${one ? 'needs' : 'need'} it; tick if ${m} does not`;
     if (path.posix.isAbsolute(bin)) {
-      rows.push({ key, status: 'warn', action: `install ${name} on ${m}`, detail: `${users} ${one ? 'runs' : 'run'} ${bin}, which ${m} does not have; a path under ${homeWord()}'s home is looked for under ${m}'s. Tick if ${m} does not need it`, tick, gap });
-    } else rows.push({ key, status: 'warn', action: `install ${bin} on ${m}`, ...(o.apt !== false && Object.hasOwn(INSTALL_RUN, bin) && { run: INSTALL_RUN[bin] }), detail: need, tick, gap });
+      rows.push({ key, status: 'warn', action: `A path under ${homeWord()}'s home folder is looked for under ${m}'s`, detail: `not on ${m} · ${users} ${one ? 'runs' : 'run'} it`, tick, gap });
+      continue;
+    }
+    const run = o.apt !== false && Object.hasOwn(INSTALL_RUN, bin) ? INSTALL_RUN[bin] : undefined;
+    rows.push({ key, status: 'warn', action: run ?? `Install ${bin} on ${m}`, ...(run && { run }), detail: `not installed · ${users} ${one ? 'needs' : 'need'} it`, tick, gap });
   }
   for (const s of plan.macOnly) {
     const key = `maconly:${s.agent}:${s.name}`;
     // a Mac worker runs it too, and is simply not sent it
-    const where = o.mac ? `stays on ${homeWord()}` : 'only runs on a Mac';
-    if (!rows.some((r) => r.key === key)) rows.push({ key, status: 'skip', detail: `${s.name} ${where}; not mirrored`, gap: { name: s.name, what: o.mac ? where : 'runs only on a Mac' } });
+    const where = o.mac ? `stays on ${homeWord()}` : 'runs only on a Mac';
+    if (!rows.some((r) => r.key === key)) rows.push({ key, status: 'skip', detail: where, gap: { name: s.name, what: where } });
   }
   for (const c of plan.configs) rows.push(keys(c.key, c.file, c.fields, c.ticked, c.preview));
   for (const p of plan.plugins) rows.push(whole(p.key, p.name, p.fields, p.ticked));
   for (const f of plan.unreadable) {
-    rows.push({ key: `unreadable:${f}`, status: 'warn', detail: `${f} cannot be read as JSON or TOML; set it up on ${m} by hand`, gap: { name: path.basename(f), what: `not copied: ${homeWord()} cannot read it` } });
+    const what = `not copied: ${homeWord()} cannot read it`;
+    rows.push({ key: `unreadable:${f}`, status: 'warn', detail: what, action: `Set it up on ${m} by hand`, raw: `${f} cannot be read as JSON or TOML`, gap: { name: path.basename(f), what } });
   }
   tellApart(rows, plan.servers);
   return rows;

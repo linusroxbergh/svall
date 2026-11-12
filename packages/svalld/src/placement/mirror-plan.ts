@@ -529,7 +529,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
 
   const carried = files.filter((f) => {
     if (ustarFits(Buffer.from(`./${f.to}`))) return true;
-    skipped.push(`${f.from} has a path too long for the mirror to carry`);
+    skipped.push(`${f.from} has a path too long for Svall to copy`);
     return false;
   });
   // a server's env key not ticked is the worker's own variable, as the agent's reference left in its place reads it; a

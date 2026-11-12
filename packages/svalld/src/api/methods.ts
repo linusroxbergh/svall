@@ -8,6 +8,7 @@ import type { HomeFreeze } from '../fleet/home-freeze.js';
 import { gitVersion } from '../links/git.js';
 import type { HomeApi } from '../link/home-api.js';
 import { askWorkers, type HomeLinks } from '../link/home.js';
+import { inFull } from '../link/ssh.js';
 import { homeWord } from '../machine.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
@@ -207,11 +208,11 @@ const handlers: Handlers = {
     }
     const link = ctx.links?.for(p.machine);
     if (link?.connected()) {
-      await mirror.push(link).catch((e: Error) => { throw new ApiError('not_mirrored', `the change is saved, but ${name} did not take it: ${e.message}`); });
+      await mirror.push(link).catch((e: Error) => { throw new ApiError('not_mirrored', `Saved; ${name} has not taken it yet`, { raw: inFull(e) }); });
     }
     // the worker keeps the item as the mirror last wrote it while this Mac cannot read it
     const unread = mirror.unreadFile(p.item);
-    if (unread) throw new ApiError('not_mirrored', `${unread} on ${homeWord()} cannot be read; the copy stays on ${name} until it can`);
+    if (unread) throw new ApiError('not_mirrored', `${homeWord()} cannot read ${unread}; ${name} keeps its copy`);
     return setupOf(ctx, p.machine, 0);
   },
   'machines.updateAgents': async (p, { store, links }) => {
@@ -222,13 +223,13 @@ const handlers: Handlers = {
     return {};
   },
   'machines.copySetupFrom': async (p, ctx) => {
-    if (!ctx.setupCopy || !ctx.links) throw new ApiError('not_on_worker', 'a copy of an agent setup lands on the fleet\'s home');
+    if (!ctx.setupCopy || !ctx.links) throw new ApiError('not_on_worker', 'A copy goes to the fleet\'s home only');
     if (!ctx.store.state.machines?.[p.machine]) throw new ApiError('not_found', `no machine ${p.machine}`);
     const { links, setupCopy } = ctx;
     const mirror = mirrorOf(ctx);
     // no push of the home's lands on the worker while it reads what it sends
     return mirror.inTurn(p.machine, () => {
-      if (p.seed && mirror.holdsSetup()) throw new ApiError('refused', 'this home holds an agent setup of its own, which is never seeded');
+      if (p.seed && mirror.holdsSetup()) throw new ApiError('refused', `${homeWord()} already has an agent setup`);
       return setupCopy.from(p.machine, () => links.call(p.machine, 'config.copyToHome', {}, { timeoutMs: serverWait('machines.copySetupFrom', p) }));
     });
   },

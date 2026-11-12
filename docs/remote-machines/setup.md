@@ -191,13 +191,13 @@ OpenCode, the name in the server's `env_vars` for Codex), so the server reads th
 the machine, which robots there take from the fleet's `.env` (below); a key in its headers, URL or arguments is left
 out; a reference with a default keeps the reference alone. The row stays until you tick it or the machine has its own
 key: a key for that server in the overrides (below) counts, and so does the variable an `env` key reads set there with
-`svall worker env LINEAR_API_KEY`; the row then reads "studio has its own keys". While the home is linked to the
+`svall worker env LINEAR_API_KEY`; the row then reads "studio has its own". While the home is linked to the
 machine, ticking or unticking changes the copy there at once, whatever runs there; otherwise the change is saved, and
 takes effect when studio links. An untick while the home cannot read the file that holds the key is saved too, and the
 copy stays on studio until the home can read that file again; while studio still holds a copy you unticked, the row
-reads "still on studio; check studio again", and the list names it "unticked; still on studio". A file there that holds a ticked key is readable by your account alone. A
+reads "switched off, still on studio", with **Check again**, and the list names it "unticked; still on studio". A file there that holds a ticked key is readable by your account alone. A
 server or plugin config with settings Svall cannot copy one by one, or a server that runs a shell's `-c` script, whose
-keys Svall cannot read, is a row "copy notion to studio as it is", and is copied only once ticked, its file as it is, keys included. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
+keys Svall cannot read, is a row "not copied", to tick to copy the whole file, and is copied only once ticked, its file as it is, keys included. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
 `plugin.json`, or a file its marketplace entry names) with a key in a server's `env`, a marketplace's
 `marketplace.json` whose entries set `headers` or `headersHelper`, and a subagent, in `agents/`, a plugin's `agents/`
 or a file a plugin's `plugin.json` or marketplace entry names in `agents`, whose `mcpServers` defines a server with a
@@ -213,7 +213,7 @@ Fleets that share a machine share its agent files there: a key ticked in one fle
 so tick or untick it in each fleet that uses the machine.
 
 **Variables.** A server can read a variable, as `"GITHUB_TOKEN": "${GITHUB_TOKEN}"` in its `env` does, or hold an
-empty value for one. That is a row "set GITHUB_TOKEN on studio" until the machine's daemon has the variable. In the
+empty value for one. That is a row "not set · github reads it" until the machine's daemon has the variable. In the
 app the row has a field: type the value, shown to no one, and **Set on studio** sends it over the link into the fleet's
 `.env` on the machine, mode 600, and nowhere on this Mac; the field is cleared as it goes. When this Mac has the
 variable itself, in the daemon's environment or the fleet's `.env` here, **Copy from this Mac** sends that value
@@ -221,14 +221,14 @@ without showing it. From a terminal, `svall worker env GITHUB_TOKEN` on the mach
 it, or takes it from a pipe, and keeps it in the same file. Robots that start there afterwards have it; a machine on a
 release before this one takes no value from the app, and the row says to upgrade it.
 
-**Logins and programs.** A Claude Code server that signs in with OAuth is a row "log in once on studio". **Open
+**Logins and programs.** A Claude Code server that signs in with OAuth is a row "not logged in". **Open
 terminal** types `MCP_OAUTH_CALLBACK_PORT=3118 claude` there and forwards port 3118 of this Mac there; run it, type
 `/mcp` and sign in. A server that names its own callback port gets plain `claude` and that port forwarded instead,
 and an `mcp-remote` server the port that follows its URL. Over your own ssh, forward the port with
 `ssh -L 3118:localhost:3118`. A Codex or OpenCode server's login is listed with the command to run there, and the row stays
 whether or not you did; those logins pick their own port, so sign in there over an ssh tunnel of your own to the
 port the login names. A server whose program the machine lacks is a
-row "install uvx on studio"; its tick says the machine does not need the program (`svall host consent studio runtime:uvx
+row "not installed · fetch needs it", with the command that installs it; its tick says the machine does not need the program (`svall host consent studio runtime:uvx
 on` from a terminal), and the row then stands aside. A server that runs only on a Mac, such as the Chrome extension or
 one that runs `xcrun`, is listed and not copied.
 
@@ -345,8 +345,9 @@ in place of this Mac) under Machines →
 **Check** → Your agent setup, or run `svall host consent studio phone on`. Ticking copies the home's push keys and the
 phone's devices to the machine, which is why it stays off until ticked. While the home's own phone link is on, the
 worker then serves the phone with `tailscale serve` on a free https port (443 stays with whatever already serves
-there), and the row shows the address. Unticking, or turning the home's phone link off, stops it. If the row says
-tailscale refused, run `sudo tailscale set --operator=$USER` on the machine and **Check** again. The phone learns the
+there), and the row reads "on" with the address. Unticking, or turning the home's phone link off, stops it. A row
+"on, not serving" says why behind it; where Tailscale there does not let Svall share the fleet, run
+`sudo tailscale set --operator=$USER` on the machine and **Check** again. The phone learns the
 address the next time it opens while the home is on; there is nothing to pair. [What the phone does
 then](placement.md#while-the-home-is-away).
 

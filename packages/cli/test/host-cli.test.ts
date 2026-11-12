@@ -60,6 +60,23 @@ describe('a relayed run', () => {
   });
 });
 
+describe('a command that fails', () => {
+  it('says why in a sentence, with what ssh said on a line of its own under it', async () => {
+    const config = path.join(work, 'config');
+    const registry = MachineRegistry.load(config);
+    registry.add({ name: 'trift', ssh: 'denied.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
+    registry.save();
+    const root = path.resolve(import.meta.dirname, '../../..');
+    const child = spawn(process.execPath, ['--import', 'tsx', path.join(root, 'packages/cli/src/main.ts'), '--host', 'trift', 'robot', 'list'], {
+      cwd: root, env: { ...process.env, SVALL_CONFIG_DIR: config, SVALL_HOME: fleet }, stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let err = '';
+    child.stderr.on('data', (c: Buffer) => { err += c.toString(); });
+    expect(await new Promise((resolve) => { child.on('close', resolve); })).toBe(1);
+    expect(err).toBe('svall: ssh could not reach denied.test; run ssh denied.test once in a terminal, then try again\n  linus@denied.test: Permission denied (publickey).\n');
+  });
+});
+
 describe('the localhost sshd integration', () => {
   const live = process.env.SVALL_TEST_SSH;
   it.skipIf(!live)('runs a host probe over a real master (set SVALL_TEST_SSH=<destination> to run)', async () => {
@@ -190,8 +207,8 @@ describe('the last line a run prints', () => {
     await setUpNow(rows, { name: 'trift', machine: REMOTE, there: THERE }, yes.io);
     expect(yes.asked).toEqual([
       'Set them up now? [Y/n] ',
-      "Copy linear's keys to trift? env.LINEAR_API_KEY lin…90 [y/N] ",
-      "Copy github's keys to trift? env.GITHUB_API_KEY git…90 [y/N] ",
+      "Copy linear's LINEAR_API_KEY to trift? lin…90 [y/N] ",
+      "Copy github's GITHUB_API_KEY to trift? git…90 [y/N] ",
     ]);
     expect(yes.consent).toEqual([[REMOTE, 'claude:mcp:linear', ['env.LINEAR_API_KEY'], true]]);
     expect(yes.said.join('')).toBe([

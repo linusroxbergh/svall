@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Mutation } from '../src/journal.js';
-import { aside, asideLine, CONFIG_WORD, convertLine, keyLabel, keyMask, notNeeded, toTick, wayOn, type SetupRow } from '../src/placement.js';
+import { aside, asideLine, checksAgain, CONFIG_WORD, convertLine, keyLabel, keyMask, notNeeded, toTick, wayOn, type SetupRow } from '../src/placement.js';
 import { Robot } from '../src/state.js';
 
 const minimalRobot = {
@@ -81,5 +81,17 @@ describe('keyLabel and keyMask', () => {
 describe('CONFIG_WORD', () => {
   it('names the paths a home move writes anew in a person\'s words', () => {
     expect([CONFIG_WORD.defaultCwd, CONFIG_WORD['home.cwd'], CONFIG_WORD['onboarding.firstProject']]).toEqual(["new robots' folder", "mission control's folder", 'first project folder']);
+  });
+});
+
+describe('checksAgain', () => {
+  it('reads Check again, with the machine named or not, and a note after it, as asking for a check; nothing else does', () => {
+    const tick = { item: 'claude:mcp:rb', fields: ['env.RB_API_KEY'], on: false, preview: [] };
+    for (const action of ['Check again', 'check studio again', "Check again. studio's own copy is in its backup folder"]) {
+      expect([checksAgain({ action }), toTick({ action, tick })]).toEqual([true, false]);
+    }
+    for (const action of ['Tick to copy, or set RB_API_KEY on studio: svall worker env RB_API_KEY', 'Upgrade studio', undefined]) {
+      expect([checksAgain({ action }), toTick({ action, tick })]).toEqual([false, true]);
+    }
   });
 });
