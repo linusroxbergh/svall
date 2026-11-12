@@ -399,7 +399,7 @@ put on the unit is taken back.
 At the limit on cores the fleet's processes run slower. A fleet with a memory limit uses no swap, so at
 that limit the machine's disk is left alone and the kernel stops one process of the fleet at once: the robot's terminal says `Killed`, the agent can be
 revived, and every other robot runs on. The daemon marks each robot's processes as the ones to stop first, so it is
-not tmux or the daemon. `svall host doctor` and the daemon's log say how often it happened; which robot lost a
+not tmux or the daemon. The app says so as it happens; `svall host doctor` and the daemon's log say how often it happened; which robot lost a
 process only root's kernel log says.
 
 What a limit does not reach: a fleet whose terminals run on a tmux Svall did not bring, such as Ubuntu's own kept
