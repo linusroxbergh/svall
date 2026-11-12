@@ -23,7 +23,7 @@ textarea { overflow-x: hidden; }
 .connect-log + .btn, .connect small + .btn { margin-top: var(--sp-xl); }
 .connect-log { max-width: min(90vw, 900px); max-height: 40vh; overflow: auto; margin-top: var(--sp-xl); padding: var(--sp-md) var(--sp-xl); text-align: left; font: var(--text-sm)/var(--lh) var(--mono); background: var(--shade-1); border: 1px solid var(--line); border-radius: var(--r-sm); white-space: pre-wrap; }
 .setup { display: flex; height: 100%; overflow: auto; color: var(--ink); font-size: var(--text-lg); }
-.setup-body { display: flex; flex-direction: column; gap: var(--sp-3xl); width: min(90vw, 600px); margin: 0 auto; padding: clamp(calc(var(--sp-3xl) * 2), 16vh, 160px) 0 calc(var(--sp-3xl) * 2); }
+.setup-body { display: flex; flex-direction: column; gap: var(--sp-3xl); width: min(90vw, 600px); margin: 0 auto; padding: clamp(calc(var(--sp-3xl) * 2), 16vh, calc(var(--sp-2xl) * 10)) 0 calc(var(--sp-3xl) * 2); }
 .setup-intro { display: flex; flex-direction: column; gap: var(--sp-md); }
 .setup-fields { display: flex; flex-direction: column; gap: var(--sp-3xl); min-width: 0; margin: 0; padding: 0; border: 0; }
 .setup h1 { margin: 0; font-size: var(--text-3xl); font-weight: var(--w-semibold); letter-spacing: var(--track-tight); }
