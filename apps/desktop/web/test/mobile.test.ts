@@ -4,7 +4,7 @@ import type { Api } from '../src/api.js';
 import { sections, subtitle, waiting } from '../src/mobile/list.js';
 import { encode, linkTerminal, type Screen } from '../src/mobile/term.js';
 import { parseRoute, routePath } from '../src/mobile/route.js';
-import { NO_PAGE, OFF, phonesHere } from '../src/phoneText.js';
+import { NO_PAGE, phonesHere } from '../src/phoneText.js';
 import { chr, fleet, isl } from './fixtures.js';
 import { cwdChoices } from '../src/mobile/choices.js';
 import { islandCwd } from '../src/selectors.js';
@@ -309,9 +309,8 @@ describe('the phones on the page', () => {
       .toBe('me@example.com since 09:05 · you@example.com since 14:30');
   });
 
-  // an off forgets every phone's notifications, so the switch and its remedy both say so
-  it('tells whoever turns the link off that each phone turns notifications on again', () => {
-    expect(OFF).toMatch(/re-enable notifications on each phone/);
+  // an off forgets every phone's notifications, so the remedy that turns it off and on says so
+  it('tells whoever turns the link off and on that each phone turns notifications on again', () => {
     expect(NO_PAGE).toMatch(/re-enable notifications on each phone/);
   });
 });

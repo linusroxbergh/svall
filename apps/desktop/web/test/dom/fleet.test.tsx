@@ -271,13 +271,19 @@ test('a new robot sheet open as the Mac comes back starts in the Mac\'s folder, 
   expect(call).toHaveBeenCalledWith('robot.create', { islandId: 'i_a', cwd: '/tmp' });
 });
 
+test('a phone the fleet does not know says where to scan the code again', () => {
+  store.getState().setStatus('unpaired');
+  render(<Fleet onOpen={() => {}} />);
+  expect(screen.getByText(/^This phone is not paired/).textContent).toBe('This phone is not paired with the fleet. Scan the QR code in Svall → Phone on your Mac. A Home Screen icon has to be removed and added again from that link.');
+});
+
 test('a page a worker still serves says where the fleet runs now; the home and a fallback through a machine do not', () => {
   const copy = fleet();
   copy.machines = { studio: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } } } as never;
   store.getState().setFleet(copy);
   store.getState().setStatus('online');
   const { unmount } = render(<Fleet onOpen={() => {}} />);
-  expect(screen.getByTestId('phone-moved').textContent).toContain('This fleet runs on studio now.');
+  expect(screen.getByTestId('phone-moved').textContent).toBe('This fleet runs on studio now. Scan its new QR code: on your Mac, Svall → Phone.');
   unmount();
   store.getState().setVia({ machine: 'm', home: 'studio' } as never);
   const fallback = render(<Fleet onOpen={() => {}} />);

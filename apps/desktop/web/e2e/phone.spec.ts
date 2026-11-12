@@ -113,6 +113,24 @@ test('the tab stands while the fleet is not served, and the switch in it turns t
   }
 });
 
+test('a long address stays on one line, whole on the pointer, and the panel lists the steps to the Home Screen icon', async ({ page }) => {
+  const fake = await fakeDaemon();
+  try {
+    const url = 'https://linuss-macbook-pro.tail1a2b3c.ts.net:8461/';
+    fake.status = { ...SERVING, url };
+    await open(page, fake.port);
+    await page.getByTestId('mobile-tab').click();
+    const link = page.getByTestId('mobile-url');
+    await expect(link).toHaveText(url);
+    await expect(link).toHaveAttribute('data-tip', url);
+    // one line of 10.5px text and its padding; a second line would add another 12px or more
+    expect((await link.boundingBox())!.height).toBeLessThan(32);
+    await expect(page.getByTestId('mobile-steps').locator('li')).toHaveCount(3);
+  } finally {
+    await fake.close();
+  }
+});
+
 test('the dock omits Phone when no link can be made on this machine', async ({ page }) => {
   const fake = await fakeDaemon();
   try {

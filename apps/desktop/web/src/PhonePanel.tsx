@@ -4,7 +4,9 @@ import { loadMobileStatus, serveFleet } from './actions.js';
 import { app, deps } from './boot.js';
 import { copyText } from './bridge.js';
 import { useApp } from './hooks.js';
-import { NO_PAGE, OFF, phonesHere } from './phoneText.js';
+import { NO_PAGE, OFF, phonesHere, phoneProblem } from './phoneText.js';
+import { homeName } from './placement.js';
+import { Said } from './Said.js';
 
 /** Runs mobile.set and keeps the answer, so the switch, the utility dock and the settings row move together. */
 function useMobileSwitch(): { status?: MobileStatus; busy: boolean; flip(): void } {
@@ -28,6 +30,15 @@ export function MobileSwitch({ testId }: { testId: string }) {
   );
 }
 
+/** What keeps the phone link from serving, with a terminal for its fix on the home that serves it. `settings`: the fix as a Settings note. */
+export function PhoneProblem({ settings }: { settings?: boolean }) {
+  const status = useApp((s) => s.mobile);
+  const home = useApp((s) => s.via && homeName(s.fleet, s.via));
+  const problem = status && phoneProblem(status);
+  if (!problem) return null;
+  return <div data-testid="mobile-problem"><Said {...problem} on={home} settings={settings} /></div>;
+}
+
 /** Once the fleet is served, the link to reach it by; the panel's title carries the switch. Compact shows the QR and link alone. */
 export function MobilePanel({ compact = false }: { compact?: boolean }) {
   const status = useApp((s) => s.mobile);
@@ -48,7 +59,7 @@ export function MobilePanel({ compact = false }: { compact?: boolean }) {
   const link = status.serving && (
     <>
       {status.qr && <img className="mob-qr" src={redact ?? status.qr} alt={`QR code for ${status.url}`} />}
-      <button className="mob-url" data-testid="mobile-url" data-tip="Copy the link" onClick={copy}>
+      <button className="mob-url" data-testid="mobile-url" data-tip={redact ? 'Copy the link' : status.url} onClick={copy}>
         {redact ? <><i className="mob-mask" /><i className="mob-mask" /></> : copied ? 'copied' : status.url}
       </button>
     </>
@@ -62,13 +73,21 @@ export function MobilePanel({ compact = false }: { compact?: boolean }) {
           <div className="mob-here" data-testid="mobile-here" data-live={status.phones.length > 0 || undefined}>{phonesHere(status.phones)}</div>
         </>
       )}
-      <div className="use-note">
-        {status.serving ? <>
-          {status.pageMissing && <><b data-testid="mobile-nopage">{NO_PAGE}</b>{' '}</>}
-          {status.logins.length ? <>Only {redact ? <i className="mob-mask" /> : status.logins.join(', ')} can connect. To add others, list everyone in mobile.logins in fleet.json and restart the daemon.</> : 'No login can connect yet. Add one to mobile.logins in fleet.json and restart the daemon.'}
-          {' '}On the phone: open the link, then Share → Add to Home Screen.
-        </> : OFF}
-      </div>
+      <PhoneProblem />
+      {status.serving ? (
+        <>
+          <div className="use-note">
+            {status.pageMissing && <><b data-testid="mobile-nopage">{NO_PAGE}</b>{' '}</>}
+            {status.logins.length ? <>Only {redact ? <i className="mob-mask" /> : status.logins.join(', ')} can connect.</> : 'No login can connect yet.'}
+            {' '}Settings → Phone says how to add one.
+          </div>
+          <ol className="mob-steps" data-testid="mobile-steps">
+            <li>Scan the code with your phone's camera.</li>
+            <li>Tap Share, then Add to Home Screen.<span className="modal-sub">Safari: the square with an arrow, at the bottom. Chrome: the same mark, right of the address bar.</span></li>
+            <li>Open Svall from the new icon and allow notifications.</li>
+          </ol>
+        </>
+      ) : !phoneProblem(status) && <div className="use-note">{OFF}</div>}
     </div>
   );
 }
