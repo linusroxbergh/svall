@@ -1192,7 +1192,7 @@ const namePaths = (m, nowhere) => {
 const dropPaths = (m) => { fleetKey(m, 'defaultCwd'); fleetKey(m, 'onboarding'); };
 function saysLacking(label, steps, nowhere, name) {
   const said = steps.find((e) => e.step === 'check' && e.status === 'ok')?.detail ?? '';
-  check(`${label}: the check says what the far machine lacks, and passes`, said.includes(`defaultCwd becomes ~/${nowhere}, which ${name} does not have yet`) && !said.includes('onboarding'), said);
+  check(`${label}: the check says what the far machine lacks, and passes`, said.includes(`new robots' folder becomes ~/${nowhere}, which ${name} does not have yet`) && !said.includes('first project folder'), said);
 }
 // the folder a repo's notes lie in on a home at `home`, by the path of its main checkout there
 const NOTE = 'it-note.md';
@@ -1213,7 +1213,7 @@ function homeMoves(ids, fx) {
   sh(L, 'mkdir -p ~/.svall/retro && truncate -s 200M ~/.svall/retro/it-big');
   const big = sh(L, 'svall --json fleet home set remote </dev/null', { ok: false });
   const bigFailed = moveSteps(big.stdout).find((e) => e.status === 'fail');
-  check('a fleet too big to carry is refused at the check', big.code !== 0 && bigFailed?.step === 'check' && /the fleet's files come to 2\d\d MB, more than a move carries/.test(bigFailed.detail), () => `${big.code}: ${brief(bigFailed)}`);
+  check('a fleet too big to carry is refused at the check', big.code !== 0 && bigFailed?.step === 'check' && /^The fleet's files are 2\d\d MB; a move carries \d+ MB$/.test(bigFailed.detail), () => `${big.code}: ${brief(bigFailed)}`);
   sh(L, 'rm -f ~/.svall/retro/it-big');
   check('and the home goes on, with nothing of a move', homeOf(L).mine === true && call(L, 'fleet.homeMove', { op: 'status' }).moving === undefined && !moveLeft(L), () => moveLeft(L));
   // mission control's robot, which goes first with the move engine, and the phone, which travels as what it was
