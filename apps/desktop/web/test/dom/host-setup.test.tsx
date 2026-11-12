@@ -877,6 +877,24 @@ test("the phone's row names the home by the window's name for it, and its box tu
   expect(screen.getByTestId('host-tick-mirror:phone').closest('label')?.textContent).toBe('on');
 });
 
+test('a phone row that does not serve, with a repair to run there, keeps Open terminal beside its box', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', {
+      step: 'mirror:phone', status: 'warn', detail: 'on, not serving', action: 'Tailscale on trift does not let Svall share this fleet. Run once on trift: sudo tailscale set --operator=$USER',
+      run: 'sudo tailscale set --operator=$USER', tick: { item: 'phone', fields: ['serve'], on: true, preview: [] },
+    });
+    store.getState().hostDone('doctor', 0);
+  });
+  fireEvent.click(screen.getByTestId('host-setup-fold'));
+  expect(screen.getByTestId('host-tick-mirror:phone')).toBeTruthy();
+  fireEvent.click(screen.getByTestId('host-terminal-mirror:phone'));
+  expect(store.getState().hostTerminal).toMatchObject({ run: 'sudo tailscale set --operator=$USER' });
+});
+
 test('a program row with an install command keeps Open terminal beside its not-needed box', () => {
   render(<HostSetup />);
   act(() => {

@@ -253,8 +253,8 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
     : row.run && terminal && idle ? 'terminal'
     : RUN_AGAIN.has(run.op) && !row.action && row.status === 'fail' && idle ? 'again'
     : undefined;
-  // a program row keeps its install command's terminal beside the box that says the machine does not need it
-  const opens = control === 'terminal' || (notNeeded(row) && !!row.run && !!terminal && idle);
+  // a program row keeps its install command's terminal beside the box that says the machine does not need it, and the phone's its repair beside its own
+  const opens = control === 'terminal' || ((notNeeded(row) || row.step === PHONE) && !!row.run && !!terminal && idle);
   // what to do, as the row says it or its sentence ended in it, less what its box does and the ssh its terminal opens; then what a tool said
   const fix = key && row.action ? besideBox(row.action) : row.action;
   const todo = fix && fix !== said ? fix : command;
