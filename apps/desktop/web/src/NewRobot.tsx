@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ROBOT_NOTE_MAX, type Result } from '@svall/protocol';
 import { newNamedRobot, newRobotFolder, placeRobot, showCreated } from './actions.js';
 import { app, deps } from './boot.js';
@@ -29,6 +29,8 @@ export function NewRobot() {
   // null: the list could not be read
   const [listed, setListed] = useState<Result<'workspace.clones'> | null>();
   const [refused, setRefused] = useState<string>();
+  // folders below the list's foot, which a fade over its last row says
+  const [below, setBelow] = useState(false);
   // a folder the user chose stands through the list being read again
   const chosen = useRef(false);
   // Other folder… reached by the arrow keys leaves the focus in the list
@@ -59,6 +61,9 @@ export function NewRobot() {
     }, () => { if (!left) setListed(null); });
     return () => { left = true; };
   }, [open, startsAt]);
+
+  const measure = () => { const el = list.current; setBelow(!!el && el.scrollTop + el.clientHeight < el.scrollHeight - 1); };
+  useLayoutEffect(measure, [open, listed]);
 
   if (!open) return null;
   const close = () => app.store.getState().setNamingRobot(false);
@@ -115,7 +120,8 @@ export function NewRobot() {
           <div className="new-folder">
             {away && <div data-testid="new-robot-away"><Said line={`${homeName({ machines }, via)} is not reachable`} fix="This robot starts on this Mac." mark="warn" /></div>}
             <span className="modal-sub" id="new-robot-where" data-testid="new-robot-where">folder on {where}</span>
-            <div className="new-folder-list" ref={list} role="listbox" aria-labelledby="new-robot-where" aria-busy={listed === undefined || undefined} data-testid="new-robot-folders" onKeyDown={walk}>
+            <div className="new-folder-list" ref={list} role="listbox" aria-labelledby="new-robot-where" aria-busy={listed === undefined || undefined} data-testid="new-robot-folders"
+              data-empty={(listed !== undefined && !folders.length) || undefined} data-more={below || undefined} onKeyDown={walk} onScroll={measure}>
               {listed === undefined && <span className="new-folder-quiet"><span className="move-spin" aria-hidden />Reading {where}'s folders…</span>}
               {listed === null && <span className="new-folder-quiet"><Said line={`${where === 'this Mac' ? 'This Mac' : where} did not list its folders`} mark="warn" /></span>}
               {listed && !folders.length && <span className="new-folder-quiet" data-testid="new-robot-none">{via.online ? `No clone or robot folder on ${where} yet.` : 'No clone listed here; type a path inside one.'}</span>}

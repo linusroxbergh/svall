@@ -46,14 +46,14 @@ type Step = (typeof STEPS)[number];
 type Steps = Record<MovePhase, Step>;
 const OUT: Steps = { rest: 'rest', bundle: 'pack', prepare: 'carry', commit: 'land', activate: 'start', release: 'start', done: 'start', aborted: 'check' };
 const BACK: Steps = { ...OUT, prepare: 'land' };
-type Words = { todo: string; doing: string; done: string; name: string };
+type Words = { todo: string; doing: string; done: string };
 const said = (robot: string, where: string, what: string): Record<Step, Words> => ({
-  check: { todo: 'Check', doing: 'Checking…', done: 'Checked', name: 'Check' },
-  rest: { todo: `Rest ${robot}`, doing: `Resting ${robot}…`, done: `Rested ${robot}`, name: 'Rest' },
-  pack: { todo: `Pack ${what}`, doing: `Packing ${what}…`, done: `Packed ${what}`, name: 'Pack' },
-  carry: { todo: `Carry to ${where}`, doing: `Carrying to ${where}…`, done: `Carried to ${where}`, name: 'Carry' },
-  land: { todo: `Land on ${where}`, doing: `Landing on ${where}…`, done: `Landed on ${where}`, name: 'Land' },
-  start: { todo: `Start ${robot} there`, doing: `Starting ${robot} there…`, done: `Started ${robot} there`, name: 'Start' },
+  check: { todo: 'Check', doing: 'Checking…', done: 'Checked' },
+  rest: { todo: `Rest ${robot}`, doing: `Resting ${robot}…`, done: `Rested ${robot}` },
+  pack: { todo: `Pack ${what}`, doing: `Packing ${what}…`, done: `Packed ${what}` },
+  carry: { todo: `Carry to ${where}`, doing: `Carrying to ${where}…`, done: `Carried to ${where}` },
+  land: { todo: `Land on ${where}`, doing: `Landing on ${where}…`, done: `Landed on ${where}` },
+  start: { todo: `Start ${robot} there`, doing: `Starting ${robot} there…`, done: `Started ${robot} there` },
 });
 
 // a move started from the sheet: on its way, through, undone before its commit with the step it failed at, or its answer
@@ -190,7 +190,6 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const sheet = answer && 'ok' in answer && answer.ok ? answer.sheet : undefined;
   const refusal = answer && 'ok' in answer && !answer.ok ? answer.refusal : undefined;
   const failed = answer && 'error' in answer ? answer.error : undefined;
-  const stays = sheet ? staying(sheet).stays : [];
   const again = () => setAsked((n) => n + 1);
   // a refusal that comes after the sheet closed offers to open it again, where the refusal shows with its button
   const go = () => {
@@ -228,11 +227,17 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const step = doing?.upgrade && host?.running ? host.steps.at(-1)?.step : undefined;
   // the agents a move checks where it lands: the robot's, and its second terminal's
   const kinds = [...new Set([c.agent?.kind, c.second?.agent?.kind].filter((k) => k !== undefined))];
+  // what the check asks, in the tip of the line that says it runs
+  const checks = [
+    `${far} reachable${back ? '' : `, on ${release}'s release`}`,
+    ...(kinds.length ? [`${kinds.map((k) => AGENT_LABEL[k]).join(' and ')} installed, current and logged in on ${where}`] : []),
+    `${c.repo ? 'its branch, changes and session' : 'its session'} can travel`,
+  ].join('; ');
   const pick = (f: string) => setCarry((was) => (was.includes(f) ? was.filter((x) => x !== f) : [...was, f]));
 
   return (
     <div className="modal-back" data-testid="move-sheet" onPointerDown={close}>
-      <div className="modal sheet dialog" ref={panel} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(close)}>
+      <div className={`modal sheet dialog${run ? '' : ' holds'}`} ref={panel} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(close)}>
         <div className="kicker"><span data-testid="move-title">Move {c.name} to {where}</span><CloseX ref={shut} onClose={close} testid="move-close" /></div>
         {run && (
           <Progress stand={stand(run, c.moving, retried, reached.current, steps, landed)} words={said(c.name, where, c.repo ? 'branch and session' : 'session')}
@@ -246,24 +251,22 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
         )}
         {!run && !answer && (
           <>
-            <span className="move-state" data-testid="move-checking"><span className="move-mark"><span className="move-spin" /></span>Checking that {c.name} can move…</span>
-            {/* what the check asks, each thing and what it must be */}
+            <span className="move-state" data-testid="move-checking" data-tip={checks}><span className="move-mark"><span className="move-spin" /></span>Checking that {c.name} can move…</span>
+            {/* the rows the check answers hold their place until it does */}
             <div className="rows move-checks">
-              <div className="row"><span>{far}</span><b>reachable{!back && `, on ${release}'s release`}</b></div>
-              {kinds.length > 0 && <div className="row"><span>{kinds.map((k) => AGENT_LABEL[k]).join(' and ')}</span><b>installed, current, logged in</b></div>}
-              <div className="row"><span>{c.repo ? 'branch, changes, session' : 'session'}</span><b>can travel</b></div>
+              {(c.repo ? ['session', 'branch', 'clone'] : ['session', 'repository']).map((label) => <div key={label} className="row"><span>{label}</span><b>…</b></div>)}
             </div>
+            <div className="acts"><button className="btn pri" data-testid="move-go-checking" disabled data-tip="Waits for the check">Move</button></div>
           </>
         )}
         {!run && sheet && (
           <>
             <span className="move-state" data-state="ready" data-testid="move-ready"><span className="move-mark"><Mark status="ok" /></span>Ready to move</span>
             <div className="rows" data-testid="move-summary">
-              {moveRows(sheet, c.repo && c.repo.mainRoot.split('/').pop(), where).map(([label, value]) => <div key={label} className="row"><span>{label}</span><b>{value}</b></div>)}
+              {moveRows(staying(sheet), c.repo && c.repo.mainRoot.split('/').pop(), where).map(([label, value]) => <div key={label} className="row"><span>{label}</span><b>{value}</b></div>)}
             </div>
-            {(stays.length > 0 || sheet.converts || sheet.question) && (
+            {(sheet.converts || sheet.question) && (
               <div className="host-note" data-testid="move-notes">
-                {stays.map((x) => <span key={x} className="modal-sub">{x}</span>)}
                 {sheet.converts && <span className="modal-sub" data-testid="move-converts">{convertLine(sheet.converts)}</span>}
                 {sheet.question && <span className="modal-sub" data-testid="move-question">its open question is dropped; it asks again</span>}
               </div>
@@ -279,7 +282,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
         {!run && doing && <div className="modal-note" data-testid="move-fixing">{doing.doing}{step && `: ${stepLabel(step)}`}…</div>}
         {!run && !doing && refusal && (
           <>
-            <span className="move-state" data-state="blocked" data-testid="move-blocked"><span className="move-mark"><Mark status="warn" /></span>Not ready to move yet</span>
+            <span className="move-state" data-state="blocked" data-testid="move-blocked"><span className="move-mark"><Mark status="blocked" /></span>Not ready to move yet</span>
             {blockers.map((b, i) => {
               const answerable = interruptOf(b.action);
               const updates = b.run ? updatesIn(b.run) : undefined;
@@ -302,10 +305,9 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
               const tail = [raw, ...(i === 0 ? refusal.details : [])].filter(Boolean).join('\n');
               return (
                 <div key={b.reason} className="move-blocker">
-                  <span className="move-mark" aria-hidden><Mark status="warn" /></span>
                   <div className="host-note" data-testid={at('move-refusal')}>
                     {/* a blocker whose button says what to do needs no line saying it */}
-                    <Said line={line} fix={button ? undefined : atMe && b.action === UPGRADE_ACTION ? 'Update Svall on this Mac' : b.action} raw={tail || undefined} mark={false} />
+                    <Said line={line} fix={button ? undefined : atMe && b.action === UPGRADE_ACTION ? 'Update Svall on this Mac' : b.action} raw={tail || undefined} mark="warn" />
                     {i === 0 && fix && 'failed' in fix && <div role="status" data-testid="move-fix-failed"><Said {...(fix.raw ? { line: fix.failed, raw: fix.raw } : splitRaw(fix.failed))} /></div>}
                   </div>
                   {button}
@@ -329,8 +331,8 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
 }
 
 /**
- * A failure is one sentence on its step, the rest behind details, and one button that tries again, checks again or retries.
- * Through, the result is the body and the steps fold behind one line.
+ * A failed step says why under its name, the rest behind details, as the home sheet's do, with one button that tries or
+ * checks again. Through, the result is the body and the steps fold behind one line.
  */
 function Progress({ stand: st, words, robot, where, here, setup, close, show, again }: {
   stand: Stand; words: Record<Step, Words>; robot: string; where: string; here: string; setup?: string; close(): void; show(): void; again(s: Stand): void;
@@ -343,7 +345,7 @@ function Progress({ stand: st, words, robot, where, here, setup, close, show, ag
   const told = splitRaw(first ?? '');
   // undone before its commit, the robot is back where it was, but for a check that never moved it
   const back = f && !f.landed && st.step !== 'check' ? `; ${robot} is back on ${here}` : '';
-  const sentence = f && `${words[st.step].name} failed: ${told.line.replace(/\.$/, '')}${back}.`;
+  const why = f && `${told.line.replace(/\.$/, '')}${back}`;
   const details = f ? [...(told.raw ? [told.raw] : []), ...more] : [];
   const act = st.done ? { testid: 'move-done', label: 'Done', run: close }
     : f && { testid: 'move-action', label: f.refused ? 'Check again' : 'Try again', run: () => again(st) };
@@ -355,7 +357,7 @@ function Progress({ stand: st, words, robot, where, here, setup, close, show, ag
         return (
           <li key={s} data-state={now} data-testid={`move-step-${s}`}>
             <span className="move-mark" aria-hidden>{now === 'doing' ? <span className="move-spin" /> : <Mark status={({ done: 'ok', failed: 'fail', todo: 'todo' } as const)[now]} />}</span>
-            {now === 'failed' ? <div><Said line={sentence ?? ''} raw={details.join('\n') || undefined} mark={false} /></div> : <span>{words[s][now]}</span>}
+            {now === 'failed' ? <div>{words[s].todo}<Said line={why ?? ''} raw={details.join('\n') || undefined} mark={false} /></div> : <span>{words[s][now]}</span>}
           </li>
         );
       })}

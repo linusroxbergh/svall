@@ -22,13 +22,16 @@
 .move-mark { flex: none; display: grid; place-items: center; width: 1em; height: 1lh; }
 .move-steps > li[data-state="done"] > .move-mark { color: var(--done); }
 .move-steps > li[data-state="failed"] > .move-mark { color: var(--danger); }
+.move-steps > li[data-state="warned"] > .move-mark { color: var(--working); }
 .move-spin { display: inline-block; width: .7em; height: .7em; box-sizing: border-box; border: 1.5px solid var(--line-strong); border-top-color: var(--ink); border-radius: 50%; animation: spin var(--pulse-fast) linear infinite; }
 @keyframes move-pulse { 50% { opacity: .45; } }
-/* one check a move failed: its sentence, and its button beside it; a mark, when it has one, on its first line */
+/* one check a move failed: its sentence, its mark on the sentence's first line, and its button beside it */
 .move-blocker { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-md); }
 .move-blocker :is(.host-note, .said) { flex: 1; }
 .move-blocker .btn { flex: none; }
-.move-blocker > .move-mark { align-self: flex-start; color: var(--working); font-size: var(--text-md); line-height: var(--lh); }
+/* before a run a sheet keeps one height from checking to ready, its foot at the bottom */
+.modal.sheet.holds { min-height: 256px; }
+.modal.sheet.holds > .acts { margin-top: auto; }
 /* what a done move's sheet holds under its state line, spaced as the sheet is */
 .move-end { display: contents; }
 /* the phone's code after a home move, its place held while the window reaches the new home */
@@ -36,3 +39,5 @@
 .home-phone:empty { display: none; }
 .home-phone[data-wait]:not(:has(.said)) { min-height: 262px; }
 .home-wait { display: flex; align-items: center; justify-content: center; gap: var(--sp-sm); }
+/* under the phone's problem, where its sentence starts */
+.home-later { margin-top: var(--sp-sm); padding-inline-start: calc(var(--text-md) + var(--sp-sm)); }

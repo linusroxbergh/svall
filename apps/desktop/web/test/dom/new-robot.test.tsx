@@ -144,6 +144,8 @@ test('with no folder there is nothing to create until one is typed, and the list
   answers(STUDIO, []);
   await open(far);
   expect(screen.getByTestId('new-robot-none').textContent).toBe('No clone or robot folder on studio yet.');
+  // an empty list gives up the height its rows would take, so the field sits under its line
+  expect(screen.getByTestId('new-robot-folders').hasAttribute('data-empty')).toBe(true);
   expect(screen.queryByTestId('new-robot-other')).toBeNull();
   expect(screen.getByTestId('new-robot-create').hasAttribute('disabled')).toBe(true);
   expect(screen.getByTestId('new-robot-create').dataset.tip).toBe('Choose a folder on studio');
@@ -375,6 +377,24 @@ test('the arrow keys walk the list, choosing as they go, and leave the focus the
   fireEvent.keyDown(document.activeElement!, { key: 'Home' });
   expect(picked()).toBe('/home/linus/app');
   expect(screen.queryByTestId('new-robot-folder')).toBeNull();
+});
+
+test('folders past the list\'s foot are said by a fade over it, gone once the list is scrolled to its end', async () => {
+  // jsdom lays nothing out, so the list's heights are the ones a window would measure
+  const tall = { clientHeight: 119, scrollHeight: 340 };
+  for (const [k, v] of Object.entries(tall)) Object.defineProperty(HTMLElement.prototype, k, { configurable: true, get() { return (this as HTMLElement).dataset.testid === 'new-robot-folders' ? v : 0; } });
+  try {
+    answers(STUDIO, FOLDERS);
+    await open(far);
+    const list = screen.getByTestId('new-robot-folders');
+    expect(list.hasAttribute('data-more')).toBe(true);
+    expect(list.hasAttribute('data-empty')).toBe(false);
+    list.scrollTop = 221;
+    fireEvent.scroll(list);
+    expect(list.hasAttribute('data-more')).toBe(false);
+  } finally {
+    for (const k of Object.keys(tall)) delete (HTMLElement.prototype as unknown as Record<string, unknown>)[k];
+  }
 });
 
 test('a listed folder chosen after Other folder… is the one created in', async () => {

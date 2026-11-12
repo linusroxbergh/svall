@@ -13,7 +13,6 @@ const { CrewAwayBanner, HomeMoveBanner } = await import('../../src/HomeBanner.js
 const STUDIO = '66666666-7777-4888-9999-aaaaaaaaaaaa' as MachineId;
 const ME = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
 const SHEET = { here: 3, there: 7, mission: [], rewrites: [] };
-const BOX = 'cccccccc-0000-4000-8000-000000000000' as MachineId;
 
 const answer = (methods: Record<string, unknown>) => call.mockImplementation((method: string) => Promise.resolve(methods[method] ?? {}));
 
@@ -59,8 +58,8 @@ describe('the sheet of a home move', () => {
     expect(screen.getByTestId('home-steps').textContent).not.toContain('The other workers join');
   });
 
-  it('a move that carries one counts its row from the start, so the bar and the steps done agree, and says what it found', async () => {
-    act(() => { store.setState((s) => ({ fleet: { ...s.fleet, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 0 }, [BOX]: { name: 'box', reachable: true, since: 0 } } } }) as never); });
+  it('a move its check says carries other workers counts their row from the start, so the bar and the steps done agree', async () => {
+    answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, carries: true } } });
     await open();
     fireEvent.click(screen.getByTestId('home-go'));
     expect(screen.getByTestId('home-step-workers').textContent).toBe('Join the other workers to studio');
@@ -134,6 +133,9 @@ describe('the sheet of a home move', () => {
     answer({ 'fleet.homeCheck': { ok: false, sheet: SHEET, refusal: { reason: 'studio is not reachable', action: 'try again when it is awake', details: [], more: [{ reason: 'studio2 is a worker of this fleet too', action: 'remove studio2 first, and add it again from studio' }] } } });
     await open();
     expect(screen.getByTestId('home-blocked').textContent).toBe('Not ready to move yet');
+    // the state line's mark is its own, apart from each refusal's warning
+    expect(screen.getAllByTestId('home-refusal')[0].querySelector('.said')!.getAttribute('data-mark')).toBe('warn');
+    expect(screen.getByTestId('home-blocked').querySelector('.move-mark')!.innerHTML).not.toBe(screen.getAllByTestId('home-refusal')[0].querySelector('.said-mark')!.innerHTML);
     expect(screen.queryByTestId('home-ready')).toBeNull();
     expect(screen.getAllByTestId('home-refusal').map(said)).toEqual([['studio is not reachable', 'try again when it is awake'], ['studio2 is a worker of this fleet too', 'remove studio2 first, and add it again from studio']]);
     expect(screen.queryByTestId('home-go')).toBeNull();
@@ -436,13 +438,28 @@ describe('the sheet of a home move', () => {
     fireEvent.click(screen.getByTestId('home-go'));
     step('check', 'ok');
     step('pause', 'fail', { detail: 'the phone link cannot be read' });
-    step('crew', 'warn', { detail: "mission control's crew stayed where the move sent them", say: "Mission control's crew is still on studio" });
+    step('crew', 'warn', { detail: "Mission control's crew stayed where the move sent them", say: "Mission control's crew is still on studio" });
     act(() => { store.getState().hostDone('home', 1); });
     await screen.findByTestId('home-crew-back');
+    // said once, its way back at the foot
+    expect(said(screen.getByTestId('home-step-crew'))).toEqual(["Mission control's crew is still on studio"]);
     expect([...document.querySelectorAll('.modal .acts button')].map((b) => [b.textContent, b.className])).toEqual([['Bring them back', 'btn pri'], ['Close', 'btn']]);
     fireEvent.click(screen.getByTestId('home-crew-back'));
     expect(store.getState().homeSheet).toBeUndefined();
     expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-crew', args: { name: '' } });
+  });
+
+  it('one robot of mission control left away is brought back as it', async () => {
+    act(() => {
+      store.setState((st) => ({ fleet: { ...st.fleet, islands: { ...st.fleet.islands, home: { id: 'home', kind: 'home' } }, robots: { r1: { id: 'r1', name: 'golden heron', islandId: 'home', machine: STUDIO, sentAhead: 'hm_abcdefghij' } } } }) as never);
+    });
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    step('check', 'ok');
+    step('pause', 'fail', { detail: 'The phone link cannot be read' });
+    step('crew', 'warn', { detail: "Mission control's golden heron stayed where the move sent it", say: "Mission control's golden heron is still on studio" });
+    act(() => { store.getState().hostDone('home', 1); });
+    expect((await screen.findByTestId('home-crew-back')).textContent).toBe('Bring it back');
   });
 
   it.each([['finish', 'home-retry'], ['call off', 'home-abort']] as const)('a stopped move that still stands offers to finish it or call it off, and no Close: the × closes; %s hands it on', async (_what, testid) => {

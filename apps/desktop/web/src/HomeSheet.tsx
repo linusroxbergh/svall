@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CONFIG_WORD, type Blocker, type MachineId, type Result } from '@svall/protocol';
+import { CONFIG_WORD, crewAway, type Blocker, type MachineId, type Result } from '@svall/protocol';
 import { loadMobileStatus } from './actions.js';
 import { app, deps } from './boot.js';
 import { openFolder, type HostStep } from './bridge.js';
@@ -12,7 +12,6 @@ import { Info } from './Info.js';
 import { blockersOf, INTERRUPT_AFTER_MS, interruptOf, KEPT, type Interrupt } from './MoveSheet.js';
 import { MobilePanel, PhoneProblem } from './PhonePanel.js';
 import { phoneProblem } from './phoneText.js';
-import { myMachine } from './placement.js';
 import { Said } from './Said.js';
 
 type Check = Result<'fleet.homeCheck'> | { error: string };
@@ -59,8 +58,8 @@ export function HomeSheet() {
   // where the fleet's home goes, and whether the window follows it there, whose phone the sheet ends on
   const target = useApp((s) => (s.homeSheet?.back ? s.via?.machine : s.homeSheet?.to));
   const reached = useApp((s) => (s.homeSheet?.back ? !s.via : s.via?.home === s.homeSheet?.to && !!s.via?.online));
-  // whether the move carries workers besides the two machines, whose step then counts from the start
-  const carries = useApp((s) => Object.keys(s.fleet.machines ?? {}).some((m) => m !== target && m !== s.via?.home && m !== myMachine(s)));
+  // mission control's robots a stopped move left away, one of them said as it
+  const one = useApp((s) => crewAway(s.fleet).length === 1);
   const [check, setCheck] = useState<Check>();
   // what mission control's robots answer the move, undefined while they are asked; a robot at work is interrupted only on the
   // choice its box keeps, as in the move sheet, `working` saying why
@@ -130,6 +129,8 @@ export function HomeSheet() {
   const crewSaid = mission && !mission.length ? [] : crew;
   const ready = !!mission && crewSaid?.length === 0;
   const checking = !check || (!!mission && !crewSaid);
+  // a move that carries other workers counts their step from the start, so its bar and its steps done agree
+  const carries = !!sheet?.carries;
   const steps = STEPS(name, back);
   // what the run reports past its rows, as a failure at the mark or the shell's own, or mission control left away
   const more = run?.steps.filter((s) => (s.status === 'fail' || s.status === 'warn') && !steps.some(([k]) => k === s.step))
@@ -146,8 +147,9 @@ export function HomeSheet() {
   const item = ({ step, words: w, row, now }: Row) => {
     const said = (now === 'failed' || now === 'warned') && row ? row : undefined;
     const todo = said && (said.say ?? said.action);
-    // why, and what to do under it; a row that says only what to do says that
-    const why = said?.detail ? { ...rawOf(onThisMac(said.detail), said.raw), fix: todo && onThisMac(todo) } : todo ? { line: onThisMac(todo) } : undefined;
+    // why, and what to do under it; a row that says only what to do says that, and mission control left away is said once, its button at the foot
+    const why = step === 'crew' && said ? { line: onThisMac(said.say ?? said.detail ?? '') }
+      : said?.detail ? { ...rawOf(onThisMac(said.detail), said.raw), fix: todo && onThisMac(todo) } : todo ? { line: onThisMac(todo) } : undefined;
     return (
       <li key={step} data-state={now} data-testid={`home-step-${step}`}>
         <span className="move-mark" aria-hidden>{now === 'doing' ? <span className="move-spin" /> : <Mark status={({ done: 'ok', failed: 'fail', warned: 'warn', todo: 'todo' } as const)[now]} />}</span>
@@ -164,8 +166,7 @@ export function HomeSheet() {
         const tail = [raw, ...(i === 0 ? refused.details : [])].filter(Boolean).join('\n');
         return (
           <div key={b.reason} className="move-blocker" data-testid="home-refusal">
-            <span className="move-mark" aria-hidden><Mark status="warn" /></span>
-            <Said line={line} fix={onThisMac(b.action)} raw={tail || undefined} run={b.run} on={name} mark={false} />
+            <Said line={line} fix={onThisMac(b.action)} raw={tail || undefined} run={b.run} on={name} mark="warn" />
             {!back && fleetHome && TOO_BIG.test(b.reason) && (
               <button className="btn sm" data-testid="home-show-files" onClick={() => openFolder(app.bridge, fleetHome, undefined)}>Show in Finder</button>
             )}
@@ -177,9 +178,8 @@ export function HomeSheet() {
         const { line, raw } = rawOf(b.reason, b.raw);
         return (
           <div key={b.reason} className="move-blocker" data-testid="home-crew-refusal">
-            <span className="move-mark" aria-hidden><Mark status="warn" /></span>
             {/* a robot at work is answered by its button, whose words say what to do */}
-            <Said line={line} fix={answerable ? undefined : b.action} raw={raw} run={b.run} on={back ? undefined : name} mark={false} />
+            <Said line={line} fix={answerable ? undefined : b.action} raw={raw} run={b.run} on={back ? undefined : name} mark="warn" />
             {answerable && <button className="btn sm" data-testid="home-crew-action" onClick={() => setInterrupt(answerable)}>{b.action}</button>}
           </div>
         );
@@ -191,11 +191,11 @@ export function HomeSheet() {
   const made = (key: string) => key === 'home.cwd';
   return (
     <div className="modal-back" data-testid="home-sheet" onPointerDown={shutUnlessRunning}>
-      <div className="modal sheet dialog" ref={panel} tabIndex={-1} role="dialog" aria-label={back ? 'Bring the fleet back' : `Make ${name} the home`} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(shutUnlessRunning)}>
+      <div className={`modal sheet dialog${run ? '' : ' holds'}`} ref={panel} tabIndex={-1} role="dialog" aria-label={back ? 'Bring the fleet back' : `Make ${name} the home`} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(shutUnlessRunning)}>
         <div className="kicker"><span data-testid="home-title">{back ? 'Bring the fleet back to this Mac' : `Make ${name} this fleet's home`}</span>{!run?.running && <CloseX ref={shut} onClose={close} testid="home-close" />}</div>
         {!run && checking && <span className="move-state" data-testid="home-checking"><span className="move-mark"><span className="move-spin" /></span>Checking that the fleet can move…</span>}
         {!run && ready && <span className="move-state" data-state="ready" data-testid="home-ready"><span className="move-mark"><Mark status="ok" /></span>Ready to move</span>}
-        {blocked && <span className="move-state" data-state="blocked" data-testid="home-blocked"><span className="move-mark"><Mark status="warn" /></span>Not ready to move yet</span>}
+        {blocked && <span className="move-state" data-state="blocked" data-testid="home-blocked"><span className="move-mark"><Mark status="blocked" /></span>Not ready to move yet</span>}
         {!run && check && 'error' in check && <div data-testid="home-error"><Said {...splitRaw(check.error)} /></div>}
         {blocked && blockers}
         {!run && (sheet || checking) && (
@@ -259,7 +259,7 @@ export function HomeSheet() {
               </>
             ) : (
               <>
-                {crewLeft ? <button className="btn pri" data-testid="home-crew-back" onClick={then('home-crew')}>Bring them back</button>
+                {crewLeft ? <button className="btn pri" data-testid="home-crew-back" onClick={then('home-crew')}>{one ? 'Bring it back' : 'Bring them back'}</button>
                   : <button className="btn pri" data-testid="home-try-again" disabled={busy} data-tip={busy ? BUSY : undefined} onClick={go}>Try again</button>}
                 <button className="btn" data-testid="home-close-failed" onClick={close}>Close</button>
               </>
@@ -299,7 +299,7 @@ function PhoneDone({ name, waits }: { name: string; waits: boolean }) {
     return (
       <div data-testid={problem ? undefined : 'home-phone-wait'}>
         {problem ? <PhoneProblem /> : <Said line={`${name} has not turned its phone link on yet`} mark="warn" />}
-        <span className="modal-sub">Turn it on later in Settings → Phone.</span>
+        <span className="modal-sub home-later">Turn it on later in Settings → Phone.</span>
       </div>
     );
   }

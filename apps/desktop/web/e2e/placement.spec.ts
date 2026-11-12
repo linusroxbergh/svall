@@ -177,7 +177,7 @@ test('a move runs in its sheet, one line per step as it gets there, and a failur
   mark('prepare');
   fake.page!({ event: 'state.patch', data: { ops: [{ op: 'remove', path: `/robots/${id}/moving` }] } });
   fake.page!({ id: fake.moveTo, error: { code: 'not_reachable', message: 'linus-vault is not reachable', data: { phase: 'prepare', moveId: 'mv_0123456789' } } });
-  await expect(sheet.getByTestId('move-step-carry').locator('.said > div > span').first()).toHaveText('Carry failed: linus-vault is not reachable; ada is back on this Mac.');
+  await expect(sheet.getByTestId('move-step-carry').locator('.said > div > span').first()).toHaveText('linus-vault is not reachable; ada is back on this Mac');
   await expect(sheet.getByTestId('move-step-carry')).toHaveAttribute('data-state', 'failed');
   await expect(sheet.getByTestId('move-step-land')).toHaveCount(0);
   await expect(sheet.locator('.acts button')).toHaveText(['Try again', 'Close']);

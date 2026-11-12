@@ -52,14 +52,17 @@ export function moveParts(s: MoveSheet, repo: string | undefined, machine: strin
   ];
 }
 
-/** What a move carries as a sheet's rows, a label and its value each; what stays behind is the sheet's notes. */
+/** What a move carries as a sheet's rows, a label and its value each, what it leaves behind the last of them by name. */
 export function moveRows(s: MoveSheet, repo: string | undefined, machine: string): [string, string][] {
   const changed = s.changedFiles + s.untrackedFiles;
   const carried = [...(s.commits ? [`${count(s.commits, 'commit')} not on origin`] : []), ...(changed ? [count(changed, 'changed file')] : [])];
+  // each of the check's sentences of what stays, by what it names
+  const left = s.stays.map((x) => x.replace(/ (stays here|is not carried)$/, '').replace(/ stays in (.+)$/, ', in $1'));
   return [
     ...(s.sessionBytes ? [['session', size(s.sessionBytes)] as [string, string]] : []),
     s.notInRepo ? ['repository', 'none: it moves with its session only'] : ['branch', [s.branch, carried.join(', ')].filter(Boolean).join(' · ')],
     ...(repo && !s.notInRepo ? [['clone', `${repo} on ${machine} · ${s.clone === 'clone' ? 'made on this first move' : 'there already'}`] as [string, string]] : []),
+    ...(left.length ? [['not carried', left.join(' · ')] as [string, string]] : []),
   ];
 }
 
