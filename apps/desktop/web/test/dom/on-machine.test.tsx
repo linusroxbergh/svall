@@ -135,7 +135,8 @@ test('while its machine is not reachable, what needs the machine waits and says 
   ]);
   fireEvent.submit(screen.getByTestId('side-gap-var-var:X'));
   expect(call).not.toHaveBeenCalledWith('machines.setVar', expect.anything());
-  expect((screen.getByTestId('side-gap-copy-claude:mcp:linear') as HTMLButtonElement).disabled).toBe(false);
+  const copy = screen.getByTestId('side-gap-copy-claude:mcp:linear') as HTMLButtonElement;
+  expect([copy.disabled, copy.dataset.tip]).toEqual([false, 'Applies when vault answers']);
   await act(async () => { fireEvent.click(screen.getByTestId('side-gap-copy-claude:mcp:linear')); });
   expect(call).toHaveBeenCalledWith('machines.consent', { machine: VAULT, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
 });

@@ -104,7 +104,7 @@ export function OnMachine({ id, machine, name, away }: { id: string; machine: Ma
           <div key={r.key} className="side-gap" data-testid={`side-gap-${r.key}`}>
             <span>{gapWords(r)}</span>
             {toTick(r) && !notNeeded(r) ? (
-              <button className="btn sm" data-testid={`side-gap-copy-${r.key}`} onClick={() => void tick(r.tick!)}>Copy key</button>
+              <button className="btn sm" data-testid={`side-gap-copy-${r.key}`} data-tip={away && `Applies when ${name} answers`} onClick={() => void tick(r.tick!)}>Copy key</button>
             ) : r.key.startsWith('var:') && r.action ? (
               <VarField machine={machine} name={name} varName={r.key.slice('var:'.length)} here={r.here} testid={`side-gap-var-${r.key}`} away={away}
                 take={() => () => void read()} failed={(m) => app.store.getState().showToast(m, 'error')} />
