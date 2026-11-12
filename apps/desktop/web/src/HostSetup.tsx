@@ -116,11 +116,11 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
         onClick={() => setOpen(!open)}><More /></button>
       {open && (
         <div ref={menu} className="machine-menu menu popover" role="menu" style={place}>
-          {!current && <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip={running ? BUSY : `Install ${release} release there`} onClick={item(() => run('upgrade'))}>Upgrade to {release} release</button>}
+          {!current && !unremoved && <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip={running ? BUSY : `Install ${release} release there`} onClick={item(() => run('upgrade'))}>Upgrade to {release} release</button>}
           <button role="menuitem" className="menu-item" data-testid="machine-terminal" disabled={running || !reachable}
             data-tip={reachable ? 'A terminal on this machine, for what Svall leaves to you there' : `This Mac has no ssh route to ${name}`}
             onClick={item(() => store().openHostTerminal(name))}>Open terminal</button>
-          {worker && id && (
+          {worker && id && !unremoved && (
             <button role="menuitem" className="menu-item" data-testid="machine-make-home" disabled={running} data-tip={`The fleet's islands, notes, settings and phone pairing move to ${name}; robots stay where they run`}
               onClick={item(() => { store().toggleHost(false); store().setHomeSheet({ to: id as MachineId, name, back: false }); })}>Make {name} this fleet's home…</button>
           )}
@@ -129,7 +129,7 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
               onClick={item(() => { store().toggleHost(false); store().setHomeSheet({ to: id as MachineId, name, back: true }); })}>Bring the fleet back to this Mac…</button>
           )}
           {!home && <div className="menu-sep" role="separator" />}
-          {!home && <button role="menuitem" className="menu-item dan" data-testid="machine-remove" disabled={running || placed > 0 || !!stays}
+          {!home && !unremoved && <button role="menuitem" className="menu-item dan" data-testid="machine-remove" disabled={running || placed > 0 || !!stays}
             data-tip={stays || (placed ? `${placed === 1 ? '1 robot is' : `${placed} robots are`} placed there; move ${placed === 1 ? 'it' : 'them'} back first` : 'Uninstall Svall on this machine and drop its route')}
             onClick={item(() => ask(false))}>Remove</button>}
           {!home && (!up || unremoved) && (
@@ -160,7 +160,8 @@ function Outcome({ run, edit }: { run: HostRun; edit(): void }) {
   const close = (pri: boolean, label = 'Done') => (
     <button className={pri ? 'btn pri' : 'btn'} data-testid="host-done" onClick={() => app.store.getState().toggleHost(false)}>{label}</button>
   );
-  const again = <button className="btn" data-testid="machine-doctor" onClick={() => startHost('doctor', { name, ...farId(run.args) })}>Check again</button>;
+  // after a run that did not finish, finding out why is the way on
+  const again = <button className={o.failed ? 'btn pri' : 'btn'} data-testid="machine-doctor" onClick={() => startHost('doctor', { name, ...farId(run.args) })}>Check again</button>;
   // Done after a run that went through, Close after one that did not, always last
   const end = close(!!o.done, o.failed ? 'Close' : 'Done');
   const acts = run.op === 'add' && !addedBy(run) ? <><button className="btn pri" data-testid="host-edit" data-tip="Shows the form again, filled in" onClick={edit}>Try again</button>{close(false, 'Close')}</>
@@ -208,6 +209,8 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
   const cut = from > 0 ? Math.max(line!.lastIndexOf(': ', from), line!.lastIndexOf('; ', from)) : -1;
   const said = cut > 0 ? line!.slice(0, cut) : line ?? row.action;
   const command = cut > 0 ? line!.slice(cut + 2) : undefined;
+  // a state and what it leads to, which goes to the next line whole when the two do not fit on one
+  const [state, leads] = said?.includes(': ') ? [said.slice(0, said.indexOf(': ')), said.slice(said.indexOf(': ') + 2)] : [said, undefined];
   const idle = !run.running;
   // no upgrade from a row while the machine runs a newer release or serves another Mac: a fix that is not an upgrade
   const noUpgrade = run.steps.some((s) => (s.step === 'release' || s.step === 'worker') && s.action && !UPGRADE.test(s.action));
@@ -244,14 +247,14 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
       .then(() => { if (!app.store.getState().host?.running) startHost('doctor', { name, ...farId(run.args) }); }, fail)
       .finally(() => setUpdating(false));
   };
-  // a machine an add has just listed is acted on once this Mac's list names it
-  const unlisted = id ? undefined : `${name} is not in the list of machines yet`;
   // a key's row is named by its key, and its box copies it; a program's box says the machine does not need it
   const key = !!row.tick && !notNeeded(row) && row.step !== PHONE;
   const label = key ? keyLabel(row) : stepLabel(row.step, home);
   // setup there puts it right: this fleet's, or a named fleet's, which an upgrade from here writes again
   const bySetup = row.run ? SETUP.test(row.run) : !!row.action && UPGRADE.test(row.action);
-  const control = row.tick ? 'tick'
+  // a key the machine has its own of is nothing to copy over
+  const own = key && row.status === 'ok' && !row.tick?.on;
+  const control = row.tick && !own ? 'tick'
     : (updates || onMac) && idle ? 'update'
     : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && !(row.action && !UPGRADE.test(row.action)) && idle ? 'upgrade'
     : run.op === 'doctor' && row.step === 'worker' && row.status === 'fail' && !noUpgrade && idle ? 'worker'
@@ -277,7 +280,7 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
       onClick={() => terminal!(row.run!, row.forward, row.step, purpose)}>Open terminal</button>
   );
   const box = row.tick && (
-    <label className="host-tick" data-tip={unlisted ?? (!idle ? BUSY : undefined)}>
+    <label className="host-tick" data-tip={id && !idle ? BUSY : undefined}>
       {/* a tick under way keeps the box, and focus on it, and takes no second change */}
       <input type="checkbox" data-testid={`host-tick-${row.step}`} aria-describedby={sentence}
         aria-label={notNeeded(row) ? `${label} is not needed on ${name}` : key ? `Copy ${label} to ${name}` : label}
@@ -291,7 +294,7 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
     tick: () => (opens ? <span className="host-ctl">{open}{box}</span> : box),
     update: () => (
       <button className="btn sm" data-testid={`host-update-${row.step}`} disabled={updating || !id}
-        data-tip={unlisted ?? `Runs ${[updates && `${row.run} on ${name}`, onMac && `${onMac.map((k) => AGENT_UPDATE[k]).join(' && ')} on this Mac`].filter(Boolean).join(', then ')}, then checks again`}
+        data-tip={id && `Runs ${[updates && `${row.run} on ${name}`, onMac && `${onMac.map((k) => AGENT_UPDATE[k]).join(' && ')} on this Mac`].filter(Boolean).join(', then ')}, then checks again`}
         onClick={() => update(id as MachineId, updates, onMac)}>Update</button>
     ),
     upgrade: () => <button className="btn sm" data-testid="host-upgrade" data-tip={`Install ${release} release there`} onClick={() => startHost('upgrade', { name, ...farId(run.args) })}>Upgrade</button>,
@@ -321,7 +324,7 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
       <div className="host-said">
         {updating ? <span id={sentence} data-testid={`host-updating-${row.step}`}>updating {[updates && `on ${name}`, onMac && 'on this Mac'].filter(Boolean).join(' and ')}…</span>
           : asked !== undefined ? <span id={sentence} data-testid={`host-pushing-${row.step}`}>pushing to {name}…</span>
-          : <span id={sentence}>{said}</span>}
+          : <span id={sentence}>{state}{leads && <>: <span className="host-leads">{leads}</span></>}</span>}
         {(action || fix.runs || more.length > 0) && (
           <details className="modal-more" data-testid={`host-details-${row.step}`}>
             <summary><Caret dir="right" />details</summary>
@@ -363,6 +366,23 @@ const Fold = ({ open, testid, flip, children }: { open: boolean; testid: string;
   <button type="button" className="sec-fold host-fine" data-testid={testid} aria-expanded={open} onClick={flip}><Caret dir={open ? 'down' : 'right'} />{children}</button>
 );
 
+/** The fine checks under the sections they belong to; a section of one row goes without a heading, first, so no heading seems to hold it. */
+function Sections({ rows, name, row }: { rows: HostStep[]; name: string; row: (r: HostStep) => ReactNode }) {
+  const groups = groupSteps(rows, name);
+  const alone = groups.filter((g) => g.rows.length === 1).flatMap((g) => g.rows);
+  return (
+    <>
+      {alone.length > 0 && <div className="host-phase">{alone.map(row)}</div>}
+      {groups.filter((g) => g.rows.length > 1).map((group) => (
+        <div key={group.phase} className="host-phase">
+          <div className="kicker" data-testid="host-phase">{group.label}</div>
+          {group.rows.map(row)}
+        </div>
+      ))}
+    </>
+  );
+}
+
 /** The rows that need the person, flat, then the step under way; then the notes, the fine checks by section, and the agent setup, each folded behind one line. */
 function Checklist({ run, terminal, open, unfold }: { run: HostRun; terminal?: Terminal; open: Open; unfold: (o: Open) => void }) {
   const fleet = useApp((s) => s.fleet);
@@ -371,11 +391,18 @@ function Checklist({ run, terminal, open, unfold }: { run: HostRun; terminal?: T
   const now = run.running ? steps.filter((s) => s.status === 'start').at(-1) : undefined;
   // a step still under way when the run ended is where it stopped
   const ended = run.running ? steps.filter((s) => s.status !== 'start') : steps;
-  const tier = (s: HostStep) => (s.status === 'start' ? 'todo' : stepTier(s, run.op, fleet));
   // a run that does something to the machine is its steps, in order; an add or a check, the machine's checks by section
   const flow = run.op !== 'add' && run.op !== 'doctor';
+  // a step flow's rollback says what the machine runs now, so it stays in sight whatever it found
+  const tier = (s: HostStep) => (s.status === 'start' || (flow && s.step === 'rollback') ? 'todo' : stepTier(s, run.op, fleet));
   const [found, notes, fine] = (['todo', 'note', 'fine'] as const).map((t) => ended.filter((s) => tier(s) === t));
-  const todo = [...found.filter((s) => s.status === 'fail'), ...found.filter((s) => s.status !== 'fail')];
+  // a check lists what failed first; a run's steps keep the order they ran in
+  const todo = flow ? found : [...found.filter((s) => s.status === 'fail'), ...found.filter((s) => s.status !== 'fail')];
+  // a check that waits on another that failed was not made, which no fine count holds
+  const unchecked = fine.filter((s) => s.status === 'skip' && s.detail === 'not checked').length;
+  // rows that act on the machine wait for this Mac's list to name it, as an add's do until the list is read again
+  const waits = (s: HostStep) => !!s.tick || !!(s.run && updatesIn(s.run)) || !!updatesHere(`${s.detail ?? ''}; ${s.action ?? ''}`);
+  const unlisted = useApp((s) => !run.running && !run.args.id && !s.machines?.some((m) => m.name === name)) && run.steps.some(waits);
   const setup = run.steps.filter(isSetup);
   // a row set up from here stays in sight until the machine is checked again: a run's args stay with it as its rows change
   const listed = useRef<{ of?: HostArgs; steps: Set<string> }>({ steps: new Set() });
@@ -391,6 +418,7 @@ function Checklist({ run, terminal, open, unfold }: { run: HostRun; terminal?: T
   const flip = (k: keyof Open) => () => unfold({ ...open, [k]: !open[k] });
   return (
     <div className="host-steps" data-testid="host-steps">
+      {unlisted && <span className="modal-sub" data-testid="host-unlisted">Update and the copy boxes wait until this Mac's list of machines names {name}.</span>}
       {todo.length > 0 && <div className="host-phase">{todo.map(row)}</div>}
       {now && (
         <div className="host-step host-now" data-testid="host-now">
@@ -405,16 +433,13 @@ function Checklist({ run, terminal, open, unfold }: { run: HostRun; terminal?: T
       )}
       {fine.length > 0 && (
         <div className="host-phase">
-          <Fold open={open.fine} testid="host-fine" flip={flip('fine')}>{flow ? `${plural(fine.length, 'step')} done` : `${plural(fine.length, 'check')} fine`}</Fold>
+          <Fold open={open.fine} testid="host-fine" flip={flip('fine')}>
+            {flow ? `${plural(fine.length - unchecked, 'step')} done` : `${plural(fine.length - unchecked, 'check')} fine`}
+            {unchecked > 0 && ` · ${unchecked} not checked`}
+          </Fold>
           {open.fine && (
             <div className="host-folded">
-              {flow ? fine.map(row) : groupSteps(fine, name).map((group) => (
-                <div key={group.phase} className="host-phase">
-                  {/* a section of one row that bears its name needs no heading over it */}
-                  {!(group.rows.length === 1 && stepLabel(group.rows[0].step) === group.label) && <div className="kicker" data-testid="host-phase">{group.label}</div>}
-                  {group.rows.map(row)}
-                </div>
-              ))}
+              {flow ? fine.map(row) : <Sections rows={fine} name={name} row={row} />}
             </div>
           )}
         </div>

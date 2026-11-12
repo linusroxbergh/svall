@@ -184,7 +184,8 @@ export const stepLabel = (step: string, home = 'this Mac'): string => (step.star
 
 /** How a step stands, without the machine the sheet already names when the sentence starts with it, and what a tool said after it. */
 export function stepSaid(row: HostStep, machine: string): { line?: string; raw?: string } {
-  const whole = row.detail?.startsWith(`${machine} `) ? row.detail.slice(machine.length + 1) : row.detail;
+  // the agent setup's rows say the machine's name as part of how they stand, as `albumap has its own`
+  const whole = !row.step.startsWith(MIRROR) && row.detail?.startsWith(`${machine} `) ? row.detail.slice(machine.length + 1) : row.detail;
   return whole ? splitRaw(whole) : {};
 }
 

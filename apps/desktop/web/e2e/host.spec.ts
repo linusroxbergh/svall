@@ -69,7 +69,7 @@ test('the machines panel reads the list as it opens, and reports every step', as
   await expect(page.getByTestId('host-step-claude')).toContainText('Claude Code1.2.3, not logged in');
   // an agent update waits, saying why, until this Mac's list names the machine
   await expect(page.getByTestId('host-update-versions')).toBeDisabled();
-  await expect(page.getByTestId('host-update-versions')).toHaveAttribute('data-tip', 'studio is not in the list of machines yet');
+  await expect(page.getByTestId('host-unlisted')).toHaveText("Update and the copy boxes wait until this Mac's list of machines names studio.");
   await expect(page.getByTestId('host-notes')).toHaveText('1 note');
   await expect(page.getByTestId('host-fine')).toHaveText('4 checks fine');
   await expect(page.getByTestId('host-outcome')).toHaveText('studio has 2 things to fixCheck againDone');
@@ -104,7 +104,8 @@ test('a check says ready, or how many things are left, and Check runs it once mo
   await expect(page.getByTestId('host-notes')).toHaveText('1 note');
   await expect(page.getByTestId('host-fine')).toHaveText('3 checks fine');
   await page.getByTestId('host-fine').click();
-  await expect(page.getByTestId('host-phase')).toHaveText(['Svall on studio', 'Agents on studio']);
+  // a section of one row, Agents here, goes first with no heading
+  await expect(page.getByTestId('host-phase')).toHaveText(['Svall on studio']);
   await expect(page.getByTestId('host-step-release')).toContainText('0.5.0');
   await expect(page.getByTestId('host-outcome')).toHaveText('studio is readyCheck againDone');
 

@@ -589,7 +589,9 @@ test('a consent answer goes to the run its tick was made in, not to a later run 
 test('a machine not yet in the list has its rows shown but nothing ticked, and the sheet keeps its title and outcome out of the scrolling rows', () => {
   checked([]);
   const box = screen.getByTestId('host-tick-mirror:claude:mcp:linear') as HTMLInputElement;
-  expect([box.disabled, box.closest('label')!.getAttribute('data-tip')]).toEqual([true, 'trift is not in the list of machines yet']);
+  // why, said once at the top of the list rather than in a tip over each box
+  expect([box.disabled, box.closest('label')!.hasAttribute('data-tip')]).toEqual([true, false]);
+  expect(screen.getByTestId('host-unlisted').textContent).toBe("Update and the copy boxes wait until this Mac's list of machines names trift.");
   const body = document.querySelector('.host-body')!;
   expect(body.contains(screen.getByTestId('host-steps'))).toBe(true);
   expect(body.contains(screen.getByTestId('host-machine'))).toBe(false);
@@ -758,6 +760,8 @@ test('a remove that did not finish offers no button on its row; Forget waits in 
   expect(row.querySelector('.btn')).toBeNull();
   expect(screen.getByTestId('host-outcome').textContent).toBe('Remove did not finishTry againClose');
   fireEvent.click(screen.getByTestId('machine-more'));
+  // half removed, it is only reached or forgotten: no upgrade, no home there, and Remove is the foot's Try again
+  expect([...document.querySelectorAll('.machine-menu .menu-item')].map((b) => b.getAttribute('data-testid'))).toEqual(['machine-terminal', 'machine-forget']);
   fireEvent.click(screen.getByTestId('machine-forget'));
   expect(store.getState().hostConfirm).toEqual({ name: 'trift', forget: true });
 });
@@ -772,10 +776,12 @@ test("an add's agent update waits, saying why, until this Mac's list names the m
     store.getState().hostDone('add', 1);
   });
   const update = () => screen.getByTestId('host-update-versions') as HTMLButtonElement;
-  expect([update().disabled, update().getAttribute('data-tip')]).toEqual([true, 'trift is not in the list of machines yet']);
+  expect(update().disabled).toBe(true);
+  expect(screen.getByTestId('host-unlisted')).toBeTruthy();
   expect(screen.queryByTestId('host-terminal-versions')).toBeNull();
   act(() => store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]));
   expect(update().disabled).toBe(false);
+  expect(screen.queryByTestId('host-unlisted')).toBeNull();
   await act(async () => { fireEvent.click(update()); });
   expect(call).toHaveBeenCalledWith('machines.updateAgents', { machine: MACHINE, kinds: ['claude'] });
 });
@@ -795,15 +801,20 @@ test("an upgrade that put the release before back did not finish; its rows keep 
     store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
     store.getState().toggleHost(true, 'trift');
     store.getState().hostStarted('upgrade', { name: 'trift' });
-    store.getState().hostStep('upgrade', { step: 'probe', status: 'warn', detail: 'does not answer', action: 'see why: svall host doctor trift', raw: 'trift answers from release 0.9.3, not 0.9.4' });
-    store.getState().hostStep('upgrade', { step: 'rollback', status: 'warn', detail: 'back on 0.9.3', action: 'see why: svall host doctor trift', raw: 'current -> /home/ada/.svall-base/releases/0.9.3' });
+    store.getState().hostStep('upgrade', { step: 'install', status: 'ok', detail: '0.9.4 installed' });
+    store.getState().hostStep('upgrade', { step: 'probe', status: 'warn', detail: 'answers from 0.9.3, not 0.9.4', action: 'see why: svall host doctor trift' });
+    store.getState().hostStep('upgrade', { step: 'rollback', status: 'ok', detail: 'back on 0.9.3', action: 'see why: svall host doctor trift', raw: 'current -> /home/ada/.local/share/svall/releases/0.9.3' });
     store.getState().hostDone('upgrade', 1);
   });
+  // finding out why is the way on
   expect(screen.getByTestId('host-outcome').textContent).toBe('Upgrade did not finishCheck againClose');
-  for (const step of ['probe', 'rollback']) {
-    expect(screen.queryByTestId(`host-action-${step}`)).toBeNull();
-    expect(screen.getByTestId(`host-details-${step}`).textContent).not.toContain('see why');
-  }
+  expect(screen.getByTestId('machine-doctor').className).toBe('btn pri');
+  // the rollback that worked stays in sight, as done, after the check it followed
+  expect(screen.queryAllByTestId(/^host-step-/).map((e) => [e.getAttribute('data-testid'), e.getAttribute('data-status')]))
+    .toEqual([['host-step-probe', 'warn'], ['host-step-rollback', 'ok']]);
+  expect(screen.getByTestId('host-fine').textContent).toBe('1 step done');
+  expect(screen.queryByTestId('host-action-probe')).toBeNull();
+  expect(screen.getByTestId('host-details-rollback').textContent).not.toContain('see why');
 });
 
 test('an upgrade whose rollback failed did not finish, and offers the rollback the CLI names before Close', () => {
@@ -817,6 +828,46 @@ test('an upgrade whose rollback failed did not finish, and offers the rollback t
     store.getState().hostDone('upgrade', 1);
   });
   expect(screen.getByTestId('host-outcome').textContent).toBe('Upgrade did not finishRoll back triftClose');
+  // in the order they ran, as every run's steps
+  expect(screen.queryAllByTestId(/^host-step-/).map((e) => e.getAttribute('data-testid'))).toEqual(['host-step-probe', 'host-step-rollback']);
+});
+
+test('the fine checks list a section of one row first, with no heading, and count apart what was not checked', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    for (const [step, status] of [['master', 'ok'], ['linger', 'ok'], ['release', 'ok'], ['worker', 'ok'], ['svalld', 'skip'], ['hook receiver', 'skip']] as const) {
+      store.getState().hostStep('doctor', { step, status, detail: status === 'skip' ? 'not checked' : 'd' });
+    }
+    // an agent the fleet does not run, skipped, is nothing wrong
+    store.getState().hostStep('doctor', { step: 'codex', status: 'skip', detail: 'not installed' });
+    store.getState().hostDone('doctor', 0);
+  });
+  expect(screen.getByTestId('host-fine').textContent).toBe('5 checks fine · 2 not checked');
+  fireEvent.click(screen.getByTestId('host-fine'));
+  expect(screen.getAllByTestId('host-phase').map((e) => e.textContent)).toEqual(['Svall on trift']);
+  expect(screen.queryAllByTestId(/^host-step-/).map((e) => e.getAttribute('data-testid')))
+    .toEqual(['host-step-master', 'host-step-linger', 'host-step-codex', 'host-step-release', 'host-step-worker', 'host-step-svalld', 'host-step-hook receiver']);
+});
+
+test("a key the machine has its own of says so by the machine's name, with no box to copy over it; a state's consequence keeps whole", () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'gh', status: 'warn', detail: 'not logged in: pull request links stay unresolved', action: 'gh auth login', run: 'gh auth login' });
+    store.getState().hostStep('doctor', { step: 'mirror:codex:mcp:github', status: 'ok', detail: 'trift has its own', tick: { item: 'codex:mcp:github', name: 'github', fields: ['env.GITHUB_TOKEN'], on: false, preview: [], ticked: [] } });
+    store.getState().hostDone('doctor', 0);
+  });
+  fireEvent.click(screen.getByTestId('host-setup-fold'));
+  const row = screen.getByTestId('host-step-mirror:codex:mcp:github');
+  expect(row.querySelector('.host-said > span')!.textContent).toBe('trift has its own');
+  expect(screen.queryByTestId('host-tick-mirror:codex:mcp:github')).toBeNull();
+  fireEvent.click(screen.getByTestId('host-notes'));
+  expect(screen.getByTestId('host-step-gh').querySelector('.host-said > span .host-leads')!.textContent).toBe('pull request links stay unresolved');
 });
 
 test("a remove's steps that went well fold as steps done, in the order they ran", () => {
