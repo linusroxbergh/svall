@@ -17,6 +17,7 @@ const { boardRobotMenu, robotMenu } = await import('../../src/menus.js');
 const { dispatchKey } = await import('../../src/keyboard.js');
 const { ContextMenu } = await import('../../src/ContextMenu.js');
 const { TerminalArea } = await import('../../src/TerminalArea.js');
+const { HoverCard } = await import('../../src/map/HoverCard.js');
 
 const MAC = 'a1b2c3d4-0000-4000-8000-000000000001' as MachineId;
 const HOME = 'a1b2c3d4-0000-4000-8000-000000000002' as MachineId;
@@ -255,6 +256,16 @@ test('a far robot\'s menu rows stand disabled and say why as a tip', () => {
   act(() => store.getState().setVia(FOLLOWING));
   robotMenu(press, 'c0', () => {});
   expect(items()).toEqual(ALLOWED);
+});
+
+test('a robot whose machine does not answer reads not reachable on its board card and its hover card, as the machine does', () => {
+  act(() => store.setState({ view: 'board' }));
+  act(() => store.getState().setVia(COPY));
+  render(<><Board /><HoverCard c={store.getState().fleet.robots.c0} x={0} y={0} flip={false} /></>);
+  expect(screen.getByTestId('kc-c0').querySelector('.kc-st')!.textContent).toBe('not reachable');
+  expect(screen.getByTestId('hover-card').querySelector('.hst')!.textContent).toBe('not reachable');
+  // one on this Mac says its own status
+  expect(screen.getByTestId('kc-c1').querySelector('.kc-st')!.textContent).not.toBe('not reachable');
 });
 
 const pointer = (type: string, x: number) => new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: x });
