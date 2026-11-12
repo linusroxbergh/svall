@@ -24,8 +24,8 @@ export function UtilityDock() {
   const width = usePanelWidth('sidebar');
   const usageTab = useApp((s) => s.settings.usageTab);
   const bindings = useApp((s) => s.settings.bindings);
-  // the control stands whether or not the fleet is served, so it can be switched on from here
-  const phoneTab = useApp((s) => !!s.mobile && !s.mobile.error) && !fallback;
+  // the control stands whether the fleet is served, not served or cannot be, so its panel switches the link on or says why not
+  const phoneTab = useApp((s) => !!s.mobile) && !fallback;
   const serving = useApp((s) => !!s.mobile?.serving);
   const phoneLabel = serving ? 'Phone link on' : 'Phone link off';
   // an open sidebar names a waiting update itself

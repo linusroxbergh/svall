@@ -383,7 +383,7 @@ describe('store', () => {
     expect(store.getState().sleepingRobot).toBeUndefined();
   });
 
-  it('keeps the phone panel through turning the link off, and puts it away with the tab it hangs from', () => {
+  it('keeps the phone panel through turning the link off and through a link error, and puts it away with the tab it hangs from', () => {
     const store = createAppStore();
     store.getState().setMobile({ serving: true, url: 'https://mac.ts.net:8443/', port: 8443, logins: [], phones: [] });
     store.getState().toggleMobile();
@@ -391,7 +391,10 @@ describe('store', () => {
     // the switch that turned it off is in the panel, which stays to turn it back on
     store.getState().setMobile({ serving: false, url: '', port: 8443, logins: [], phones: [] });
     expect(store.getState().mobileOpen).toBe(true);
+    // the panel is where the error is said
     store.getState().setMobile({ serving: false, url: '', port: 8443, logins: [], phones: [], error: 'tailscale is not installed' });
+    expect(store.getState().mobileOpen).toBe(true);
+    store.getState().setMobile(undefined);
     expect(store.getState().mobileOpen).toBe(false);
   });
 

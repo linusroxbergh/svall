@@ -131,13 +131,28 @@ test('a long address stays on one line, whole on the pointer, and the panel list
   }
 });
 
-test('the dock omits Phone when no link can be made on this machine', async ({ page }) => {
+test('a link that cannot start keeps Phone in the dock and its panel open, which says why in place of the off line', async ({ page }) => {
   const fake = await fakeDaemon();
   try {
-    fake.status = { serving: false, url: '', port: 8443, logins: [], phones: [], error: 'tailscale is not installed' };
+    fake.status = { serving: false, url: '', port: 8443, logins: [], phones: [] };
     await open(page, fake.port);
-    await expect(page.getByTestId('usage-tab')).toBeVisible();
-    await expect(page.getByTestId('mobile-tab')).toHaveCount(0);
+    await page.getByTestId('mobile-tab').click();
+    await expect(page.getByTestId('mobile-body')).toHaveText('Reach this fleet from your phone, over your tailnet only.');
+
+    fake.status = { serving: false, url: '', port: 8443, logins: [], phones: [], error: 'Tailscale on mac does not let Svall share this fleet', fix: 'Run once on mac: sudo tailscale set --operator=$USER' };
+    await page.getByTestId('mobile-switch').click();
+    await expect(page.getByTestId('mobile-problem')).toContainText('Tailscale on mac does not let Svall share this fleet');
+    await expect(page.getByTestId('mobile-problem')).toContainText('Run once on mac: sudo tailscale set --operator=$USER');
+    await expect(page.getByTestId('mobile-body')).not.toContainText('Reach this fleet');
+    await expect(page.getByTestId('mobile-panel')).toBeVisible();
+    await expect(page.getByTestId('mobile-tab')).toHaveAttribute('aria-expanded', 'true');
+
+    // a Mac whose tailnet is down has the tab too, and its panel says so as it opens
+    fake.status = { serving: false, url: '', port: 8443, logins: [], phones: [], error: 'Tailscale is not running on mac' };
+    await page.reload();
+    await expect(page.getByTestId('board')).toBeVisible();
+    await page.getByTestId('mobile-tab').click();
+    await expect(page.getByTestId('mobile-problem')).toHaveText('Tailscale is not running on mac');
   } finally {
     await fake.close();
   }

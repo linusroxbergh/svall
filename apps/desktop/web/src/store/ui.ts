@@ -331,7 +331,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     toggleFeedback: (open, opts) => toggleUtility('feedbackOpen', open, opts),
     setFeedbackDraft: (patch) => set((s) => ({ feedbackDraft: patch ? { ...s.feedbackDraft, ...patch } : EMPTY_DRAFT })),
     // the panel carries the switch, so it stays open across turning the link off; only a link that cannot be made at all shuts it
-    setMobile: (mobile) => set((s) => ({ mobile, mobileOpen: mobile && !mobile.error ? s.mobileOpen : false })),
+    setMobile: (mobile) => set((s) => ({ mobile, mobileOpen: mobile ? s.mobileOpen : false })),
     // the daemon says who is on the page as they come and go; the rest of the status stands
     setPhones: (phones) => set((s) => (s.mobile ? { mobile: { ...s.mobile, phones } } : s)),
     setPhoneRedact: (phoneRedact) => set({ phoneRedact }),
