@@ -627,7 +627,7 @@ test('a check that finds the machine on another release offers its upgrade on th
     store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
     store.getState().toggleHost(true, 'trift');
     store.getState().hostStarted('doctor', { name: 'trift' });
-    store.getState().hostStep('doctor', { step: 'release', status: 'fail', detail: '0.20.0 there; this Mac runs 0.21.0' });
+    store.getState().hostStep('doctor', { step: 'release', status: 'fail', detail: '0.20.0 there, 0.21.0 on this Mac', action: 'svall host upgrade trift' });
     store.getState().hostDone('doctor', 1);
   });
   expect(screen.queryByTestId('host-again-release')).toBeNull();
@@ -641,7 +641,8 @@ test("a check that finds the machine not running this fleet's robots offers the 
     store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
     store.getState().toggleHost(true, 'trift');
     store.getState().hostStarted('doctor', { name: 'trift' });
-    store.getState().hostStep('doctor', { step: 'worker', status: 'fail', detail: "does not run this fleet's robots yet: svall host upgrade trift sets it up" });
+    store.getState().hostStep('doctor', { step: 'release', status: 'fail', detail: '0.20.0 there, 0.21.0 on this Mac', action: 'svall host upgrade trift' });
+    store.getState().hostStep('doctor', { step: 'worker', status: 'fail', detail: "does not run this fleet's robots yet", action: 'svall host upgrade trift sets it up' });
     store.getState().hostDone('doctor', 1);
   });
   fireEvent.click(screen.getByTestId('host-worker'));
@@ -657,8 +658,8 @@ test("a check that finds the machine not running this fleet's robots offers the 
   // an upgrade there would go back to this Mac's older release
   act(() => {
     store.getState().hostStarted('doctor', { name: 'trift' });
-    store.getState().hostStep('doctor', { step: 'release', status: 'fail', detail: "0.22.0 there, newer than this Mac's 0.21.0", action: 'update svall on this Mac' });
-    store.getState().hostStep('doctor', { step: 'worker', status: 'fail', detail: "does not run this fleet's robots yet: svall host upgrade trift sets it up" });
+    store.getState().hostStep('doctor', { step: 'release', status: 'fail', detail: '0.22.0 there, 0.21.0 on this Mac', action: 'update svall on this Mac' });
+    store.getState().hostStep('doctor', { step: 'worker', status: 'fail', detail: "does not run this fleet's robots yet", action: 'svall host upgrade trift sets it up' });
     store.getState().hostDone('doctor', 1);
   });
   expect(screen.queryByTestId('host-worker')).toBeNull();

@@ -23,6 +23,7 @@ import { VarField } from './VarField.js';
 const SETUP = /^svall(-dev)? setup$/;
 const isFarHome = (s: App): boolean => { const id = s.machines?.find((m) => m.name === s.hostMachine)?.id; return !!id && id === s.via?.home; };
 const FORGET = /\bhost remove \S+ --forget\b/;
+const UPGRADE = /\bhost upgrade\b/;
 // what a failed row runs again as it ran; an add goes back to its form, a remove to its foot, a home move through its sheet
 const RUN_AGAIN = new Set<HostOp>(['upgrade', 'rollback']);
 // the runs the sheet's title names with their machine, as `Check studio`
@@ -188,8 +189,8 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   const said = cut > 0 ? line!.slice(0, cut) : line ?? row.action;
   const command = cut > 0 ? line!.slice(cut + 2) : undefined;
   const idle = !run.running;
-  // no upgrade from a row while the machine runs a newer release or serves another Mac
-  const noUpgrade = run.steps.some((s) => (s.step === 'release' || s.step === 'worker') && s.action);
+  // no upgrade from a row while the machine runs a newer release or serves another Mac: a fix that is not an upgrade
+  const noUpgrade = run.steps.some((s) => (s.step === 'release' || s.step === 'worker') && s.action && !UPGRADE.test(s.action));
   const release = useApp((s) => (s.via?.name && s.via.home !== id ? `${s.via.name}'s` : "this Mac's"));
   // the rows svalld answers a change with go to the run the change was made in, known by its args, which its rows keep,
   // or to a check of the machine since
@@ -228,7 +229,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   const label = key ? keyLabel(row) : stepLabel(row.step, home);
   const control = row.tick ? 'tick'
     : (updates || onMac) && id && idle ? 'update'
-    : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && !row.action && idle ? 'upgrade'
+    : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && !(row.action && !UPGRADE.test(row.action)) && idle ? 'upgrade'
     : run.op === 'doctor' && row.step === 'worker' && row.status === 'fail' && !noUpgrade && idle ? 'worker'
     : run.op === 'doctor' && row.run && SETUP.test(row.run) && run.steps.some((s) => s.step === 'release' && s.status === 'ok') && !noUpgrade && idle ? 'repair'
     : row.step.startsWith('mirror:var:') && row.status === 'warn' && row.action && id && idle ? 'var'
