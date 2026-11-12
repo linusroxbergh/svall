@@ -144,7 +144,7 @@ const STEP_LABEL: Record<string, string> = {
   service: 'Services', identity: 'Release there', enrol: 'Worker', seed: 'Your agent setup', claude: 'Claude Code',
   codex: 'Codex', opencode: 'OpenCode', versions: 'Agent versions', probe: 'Final check', rollback: 'Rollback', registry: 'Listed here',
   systemd: 'Background service', launchd: 'Background service', 'launchd plist': 'Service file', worker: 'Worker', 'daemon env': 'Service environment',
-  'daemon path': 'Service path', 'daemon node': "Service's Node", svalld: 'Background service', node: 'Node', path: 'PATH',
+  'daemon path': 'Service path', 'daemon node': "Service's Node", svalld: 'Service port', node: 'Node', path: 'PATH',
   gh: 'GitHub CLI', git: 'Git', hooks: 'Agent hooks', 'codex hooks': 'Codex hooks', 'codex sandbox': 'Codex sandbox', 'opencode plugin': 'OpenCode plugin',
   'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: 'Checks there', svall: 'Svall', keys: 'Keys',
   mark: 'Hand over', crew: 'Mission control',

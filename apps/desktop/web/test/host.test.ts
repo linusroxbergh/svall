@@ -166,9 +166,9 @@ describe('a step by name', () => {
   it('reads as plain words, and a step it does not know as itself', () => {
     expect(['ssh', 'master', 'identity', 'enrol', 'registry', 'keys', 'mark'].map((s) => stepLabel(s)))
       .toEqual(['Login', 'Connection', 'Release there', 'Worker', 'Listed here', 'Keys', 'Hand over']);
-    // the checks a machine's own doctor reports, its service by no unit or label
+    // the checks a machine's own doctor reports, its service by no unit or label, and the port it answers on apart from it
     expect(['systemd', 'launchd', 'svalld', 'daemon env', 'daemon path', 'daemon node', 'gh', 'path', 'codex sandbox', 'opencode plugin', 'linger', 'doctor'].map((s) => stepLabel(s)))
-      .toEqual(['Background service', 'Background service', 'Background service', 'Service environment', 'Service path', "Service's Node", 'GitHub CLI', 'PATH', 'Codex sandbox',
+      .toEqual(['Background service', 'Background service', 'Service port', 'Service environment', 'Service path', "Service's Node", 'GitHub CLI', 'PATH', 'Codex sandbox',
         'OpenCode plugin', 'Keeps running', 'Checks there']);
     expect(stepLabel('weather')).toBe('weather');
   });
