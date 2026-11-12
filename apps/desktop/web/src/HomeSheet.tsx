@@ -12,26 +12,33 @@ import { Info } from './Info.js';
 import { blockersOf, INTERRUPT_AFTER_MS, interruptOf, KEPT, type Interrupt } from './MoveSheet.js';
 import { MobilePanel, PhoneProblem } from './PhonePanel.js';
 import { phoneProblem } from './phoneText.js';
+import { myMachine } from './placement.js';
 import { Said } from './Said.js';
 
 type Check = Result<'fleet.homeCheck'> | { error: string };
+type Words = { todo: string; doing: string; done: string };
+const words = (todo: string, doing: string, done: string): Words => ({ todo, doing: `${doing}…`, done });
 
-// what a move's run says of itself, in the order it goes: its marker is its own business
-const STEPS = (name: string, back: boolean): [string, string][] => [
-  ['check', 'Check'],
-  ['mission', `Mission control's robots move to ${back ? 'this Mac' : name}`],
-  ['pause', back ? `Pause ${name}` : 'Pause this Mac'],
-  ['copy', 'Copy the fleet'],
-  ['adopt', back ? 'This Mac takes over' : `${name} takes over`],
-  ['join', back ? `${name} joins` : 'This Mac joins'],
-  ['probe', 'Reconnect'],
-  ['workers', 'The other workers join'],
-];
+// what a move's run says of itself, in the order it goes, as the move sheet says its own: its marker is its own business
+const STEPS = (name: string, back: boolean): [string, Words][] => {
+  const [here, there] = back ? [name, 'this Mac'] : ['this Mac', name];
+  return [
+    ['check', words('Check', 'Checking', 'Checked')],
+    ['mission', words(`Move mission control's robots to ${there}`, `Moving mission control's robots to ${there}`, `Moved mission control's robots to ${there}`)],
+    ['pause', words(`Pause ${here}`, `Pausing ${here}`, `Paused ${here}`)],
+    ['copy', words('Copy the fleet', 'Copying the fleet', 'Copied the fleet')],
+    ['adopt', words(`Hand the fleet to ${there}`, `Handing the fleet to ${there}`, `Handed the fleet to ${there}`)],
+    ['join', words(`Make ${here} a worker`, `Making ${here} a worker`, `Made ${here} a worker`)],
+    ['probe', words('Reconnect', 'Reconnecting', 'Reconnected')],
+    ['workers', words(`Join the other workers to ${there}`, `Joining the other workers to ${there}`, `Joined the other workers to ${there}`)],
+  ];
+};
 // any move's id lets mission control's robots be checked, which moves nothing
 const CHECK_MOVE = 'hm_crewcheck0';
 // the refusal of a fleet too big to carry, whose files a person trims on this Mac
 const TOO_BIG = /^the fleet's files /i;
-type Row = { step: string; words: string; row?: HostStep; now: 'todo' | 'doing' | 'failed' | 'warned' | 'done' };
+const BUSY = 'Another run on a machine is under way';
+type Row = { step: string; words: Words; row?: HostStep; now: 'todo' | 'doing' | 'failed' | 'warned' | 'done' };
 
 /** A sentence that carries what a tool said apart, or, with none, cut where a tool's words begin. */
 const rawOf = (text: string, raw?: string): { line: string; raw?: string } => (raw ? { line: text, raw } : splitRaw(text));
@@ -52,6 +59,8 @@ export function HomeSheet() {
   // where the fleet's home goes, and whether the window follows it there, whose phone the sheet ends on
   const target = useApp((s) => (s.homeSheet?.back ? s.via?.machine : s.homeSheet?.to));
   const reached = useApp((s) => (s.homeSheet?.back ? !s.via : s.via?.home === s.homeSheet?.to && !!s.via?.online));
+  // whether the move carries workers besides the two machines, whose step then counts from the start
+  const carries = useApp((s) => Object.keys(s.fleet.machines ?? {}).some((m) => m !== target && m !== s.via?.home && m !== myMachine(s)));
   const [check, setCheck] = useState<Check>();
   // what mission control's robots answer the move, undefined while they are asked; a robot at work is interrupted only on the
   // choice its box keeps, as in the move sheet, `working` saying why
@@ -60,6 +69,8 @@ export function HomeSheet() {
   const [working, setWorking] = useState<string>();
   const [started, setStarted] = useState(false);
   const [unfolded, setUnfolded] = useState(false);
+  // a stopped run's foot waits for the home's own word on whether the move stands, as the banner's last poll may be old
+  const [told, setTold] = useState(false);
   // a move that stopped past its mark stands until it is finished or called off, which holds the crew where it is
   const stands = useApp((s) => !!s.homeMove && !s.homeMove.unmarked);
   // the fleet's files are trimmed where they are: on this Mac, when it is the home
@@ -86,7 +97,7 @@ export function HomeSheet() {
       if (!at.length) return setCrew(refused);
       setWorking(at.map((b) => b.reason).join('; '));
       setInterrupt(interruptOf(at[0].action));
-    }, (e: Error) => { if (live) setCrew([{ reason: e.message, action: 'check again' }]); });
+    }, (e: Error) => { if (live) setCrew([{ reason: e.message, action: 'Check again' }]); });
     return () => { live = false; };
   }, [check, interrupt]);
   // the focus stays in the sheet: on its ×, or on the sheet itself while a run hides that
@@ -97,12 +108,20 @@ export function HomeSheet() {
   const done = ended && !failed && run.code === 0;
   // the phone's link is the old home's until the new home answers for its own
   useEffect(() => { if (done) app.store.getState().setMobile(undefined); }, [done]);
+  useEffect(() => {
+    if (!ended || done) return;
+    let live = true;
+    (app.api().local ?? app.api()).call('fleet.homeMove', { op: 'status' })
+      .then((r) => { if (live) app.store.getState().setHomeMove(r.moving); }, () => undefined)
+      .finally(() => { if (live) setTold(true); });
+    return () => { live = false; };
+  }, [ended, done]);
   if (!ask) return null;
   const { name, back } = ask;
   const dest = back ? 'this Mac' : name;
   const shutUnlessRunning = () => { if (!(started && host?.running)) close(); };
   const go = () => {
-    if (startHost('home', { name: back ? 'local' : name, ...(interrupt && { interrupt: true }) })) setStarted(true);
+    if (startHost('home', { name: back ? 'local' : name, ...(interrupt && { interrupt: true }) })) { setStarted(true); setTold(false); }
   };
   // a press at the foot of a stopped move hands it to the run that finishes it, calls it off or brings the crew back, which its banner then shows
   const then = (op: 'home-retry' | 'home-abort' | 'home-crew') => () => { close(); startHost(op, { name: '' }); };
@@ -113,77 +132,97 @@ export function HomeSheet() {
   const checking = !check || (!!mission && !crewSaid);
   const steps = STEPS(name, back);
   // what the run reports past its rows, as a failure at the mark or the shell's own, or mission control left away
-  const more = run?.steps.filter((s) => (s.status === 'fail' || s.status === 'warn') && !steps.some(([k]) => k === s.step)).map((s): [string, string] => [s.step, stepLabel(s.step)]) ?? [];
-  // each step the run shows, a move that carried no other worker showing none of that row
-  const rows = !run ? [] : [...steps, ...more].flatMap(([step, words]): Row[] => {
+  const more = run?.steps.filter((s) => (s.status === 'fail' || s.status === 'warn') && !steps.some(([k]) => k === s.step))
+    .map((s): [string, Words] => [s.step, words(stepLabel(s.step), stepLabel(s.step), stepLabel(s.step))]) ?? [];
+  // each step the run shows, the other workers' only for a move that carries some
+  const rows = !run ? [] : [...steps, ...more].flatMap(([step, w]): Row[] => {
     const row = run.steps.find((s) => s.step === step);
-    if (row?.status === 'skip' || (!row && step === 'workers')) return [];
+    if (row?.status === 'skip' || (!row && step === 'workers' && !carries)) return [];
     const now = !row ? 'todo' : row.status === 'start' ? 'doing' : row.status === 'fail' ? 'failed' : row.status === 'warn' ? 'warned' : 'done';
-    return [{ step, words, row, now }];
+    return [{ step, words: w, row, now }];
   });
-  const shown = failed ? rows.filter((r) => r.now !== 'todo') : rows;
-  const item = ({ step, words, row, now }: Row) => {
+  // a run that stopped shows the steps it got to
+  const shown = failed || ended ? rows.filter((r) => r.now !== 'todo') : rows;
+  const item = ({ step, words: w, row, now }: Row) => {
     const said = (now === 'failed' || now === 'warned') && row ? row : undefined;
     const todo = said && (said.say ?? said.action);
     // why, and what to do under it; a row that says only what to do says that
-    const told = said?.detail ? { ...rawOf(onThisMac(said.detail), said.raw), fix: todo && onThisMac(todo) } : todo ? { line: onThisMac(todo) } : undefined;
+    const why = said?.detail ? { ...rawOf(onThisMac(said.detail), said.raw), fix: todo && onThisMac(todo) } : todo ? { line: onThisMac(todo) } : undefined;
     return (
       <li key={step} data-state={now} data-testid={`home-step-${step}`}>
         <span className="move-mark" aria-hidden>{now === 'doing' ? <span className="move-spin" /> : <Mark status={({ done: 'ok', failed: 'fail', warned: 'warn', todo: 'todo' } as const)[now]} />}</span>
-        <div>{words}{told && <div data-testid={now === 'failed' ? 'home-failed' : undefined}><Said {...told} mark={false} /></div>}</div>
+        <div>{now === 'doing' || now === 'done' ? w[now] : w.todo}{why && <div data-testid={now === 'failed' ? 'home-failed' : undefined}><Said {...why} mark={false} /></div>}</div>
       </li>
     );
   };
   const crewLeft = !!run?.steps.some((s) => s.step === 'crew' && s.status === 'warn');
+  const phone = !!run?.steps.some((s) => s.step === 'phone');
+  const blockers = !run && (
+    <>
+      {refused && blockersOf(refused).map((b, i) => {
+        const { line, raw } = rawOf(onThisMac(b.reason), b.raw);
+        const tail = [raw, ...(i === 0 ? refused.details : [])].filter(Boolean).join('\n');
+        return (
+          <div key={b.reason} className="move-blocker" data-testid="home-refusal">
+            <span className="move-mark" aria-hidden><Mark status="warn" /></span>
+            <Said line={line} fix={onThisMac(b.action)} raw={tail || undefined} run={b.run} on={name} mark={false} />
+            {!back && fleetHome && TOO_BIG.test(b.reason) && (
+              <button className="btn sm" data-testid="home-show-files" onClick={() => openFolder(app.bridge, fleetHome, undefined)}>Show in Finder</button>
+            )}
+          </div>
+        );
+      })}
+      {crewSaid?.map((b) => {
+        const answerable = interruptOf(b.action);
+        const { line, raw } = rawOf(b.reason, b.raw);
+        return (
+          <div key={b.reason} className="move-blocker" data-testid="home-crew-refusal">
+            <span className="move-mark" aria-hidden><Mark status="warn" /></span>
+            {/* a robot at work is answered by its button, whose words say what to do */}
+            <Said line={line} fix={answerable ? undefined : b.action} raw={raw} run={b.run} on={back ? undefined : name} mark={false} />
+            {answerable && <button className="btn sm" data-testid="home-crew-action" onClick={() => setInterrupt(answerable)}>{b.action}</button>}
+          </div>
+        );
+      })}
+    </>
+  );
+  const blocked = !run && (!!refused || !!crewSaid?.length);
+  // a folder the new home makes when it takes the fleet is no gap; the path waits in its tip
+  const made = (key: string) => key === 'home.cwd';
   return (
     <div className="modal-back" data-testid="home-sheet" onPointerDown={shutUnlessRunning}>
       <div className="modal sheet dialog" ref={panel} tabIndex={-1} role="dialog" aria-label={back ? 'Bring the fleet back' : `Make ${name} the home`} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(shutUnlessRunning)}>
         <div className="kicker"><span data-testid="home-title">{back ? 'Bring the fleet back to this Mac' : `Make ${name} this fleet's home`}</span>{!run?.running && <CloseX ref={shut} onClose={close} testid="home-close" />}</div>
-        {!run && checking && <div className="host-note" data-testid="home-checking"><span className="move-state"><span className="move-mark"><span className="move-spin" /></span>Checking that the fleet can move…</span></div>}
+        {!run && checking && <span className="move-state" data-testid="home-checking"><span className="move-mark"><span className="move-spin" /></span>Checking that the fleet can move…</span>}
         {!run && ready && <span className="move-state" data-state="ready" data-testid="home-ready"><span className="move-mark"><Mark status="ok" /></span>Ready to move</span>}
-        {!run && (!!refused || !!crewSaid?.length) && <span className="move-state" data-state="blocked" data-testid="home-blocked"><span className="move-mark"><Mark status="warn" /></span>Not ready to move yet</span>}
+        {blocked && <span className="move-state" data-state="blocked" data-testid="home-blocked"><span className="move-mark"><Mark status="warn" /></span>Not ready to move yet</span>}
         {!run && check && 'error' in check && <div data-testid="home-error"><Said {...splitRaw(check.error)} /></div>}
-        {!run && sheet && (
-          <div className="rows" data-testid="home-summary">
+        {blocked && blockers}
+        {!run && (sheet || checking) && (
+          <div className="rows" data-testid={sheet ? 'home-summary' : undefined}>
             <div className="row"><span>moves<Info id="home-moves">Push keys and phone pairing move too, so paired phones stay paired. Open the phone once from the new QR code.</Info></span><b>islands, notes, settings, phone link</b></div>
-            <div className="row"><span>robots</span><b>stay where they run · {back ? `${sheet.there} here, ${sheet.here}` : `${sheet.here} here, ${sheet.there}`} on {name}</b></div>
-            {sheet.mission.length > 0 && <div className="row"><span>mission control</span><b data-testid="home-mission">{sheet.mission.length === 1 ? '1 robot moves' : `${sheet.mission.length} robots move`} to {dest} first</b></div>}
-            {sheet.rewrites.map((r) => <div key={r.key} className="row" data-testid="home-rewrite"><span>{CONFIG_WORD[r.key] ?? r.key}</span><b>{r.to}{r.lacks && ` · not on ${dest} yet`}</b></div>)}
-            {sheet.waits?.map((w) => <div key={w.id} className="row" data-testid="home-waits"><span>{w.name}</span><b>not answering · joins {dest} when it does</b></div>)}
+            {/* while the check runs, the row it counts holds its place */}
+            <div className="row"><span>robots</span><b>{!sheet ? '…' : `stay where they run · ${back ? `${sheet.there} here, ${sheet.here}` : `${sheet.here} here, ${sheet.there}`} on ${name}`}</b></div>
+            {sheet && sheet.mission.length > 0 && <div className="row"><span>mission control</span><b data-testid="home-mission">{sheet.mission.length === 1 ? '1 robot moves' : `${sheet.mission.length} robots move`} to {dest} first</b></div>}
+            {sheet?.rewrites.map((r) => (
+              <div key={r.key} className="row" data-testid="home-rewrite">
+                <span>{CONFIG_WORD[r.key] ?? r.key}</span>
+                {r.lacks && made(r.key) ? <b data-tip={r.to}>made on {dest} during the move</b> : <b>{r.to}{r.lacks && ` · not on ${dest} yet`}</b>}
+              </div>
+            ))}
           </div>
         )}
-        {!run && refused && blockersOf(refused).map((b, i) => {
-          const { line, raw } = rawOf(onThisMac(b.reason), b.raw);
-          const tail = [raw, ...(i === 0 ? refused.details : [])].filter(Boolean).join('\n');
-          return (
-            <div key={b.reason} className="move-blocker" data-testid="home-refusal">
-              <span className="move-mark" aria-hidden><Mark status="warn" /></span>
-              <Said line={line} fix={onThisMac(b.action)} raw={tail || undefined} run={b.run} on={name} mark={false} />
-              {!back && fleetHome && TOO_BIG.test(b.reason) && (
-                <button className="btn sm" data-testid="home-show-files" onClick={() => openFolder(app.bridge, fleetHome, undefined)}>Show in Finder</button>
-              )}
-            </div>
-          );
-        })}
-        {!run && crewSaid?.map((b) => {
-          const answerable = interruptOf(b.action);
-          const { line, raw } = rawOf(b.reason, b.raw);
-          return (
-            <div key={b.reason} className="move-blocker" data-testid="home-crew-refusal">
-              <span className="move-mark" aria-hidden><Mark status="warn" /></span>
-              {/* a robot at work is answered by its button, whose words say what to do */}
-              <Said line={line} fix={answerable ? undefined : b.action} raw={raw} run={b.run} on={back ? undefined : name} mark={false} />
-              {answerable && <button className="btn sm" data-testid="home-crew-action" onClick={() => setInterrupt(answerable)}>{b.action[0].toUpperCase()}{b.action.slice(1)}</button>}
-            </div>
-          );
-        })}
+        {!run && sheet?.waits?.map((w) => <div key={w.id} data-testid="home-waits"><Said line={`${w.name} is not answering`} fix={`It joins ${dest} when it does.`} mark="warn" /></div>)}
         {!run && interrupt && (
           <label className="move-pick" data-testid="home-interrupt"><input type="checkbox" checked onChange={() => setInterrupt(false)} /><span>{KEPT[interrupt]}{working && <span className="modal-sub">{working}</span>}</span></label>
         )}
-        {!run && check && (
+        {!run && (
           <div className="acts">
-            {ready && <button className="btn pri" data-testid="home-go" disabled={busy} onClick={go}>{back ? 'Bring it back' : 'Make it the home'}</button>}
-            {(!('ok' in check) || !check.ok || crewSaid?.some((b) => !interruptOf(b.action))) && <button className="btn" data-testid="home-again" onClick={look}>Check again</button>}
+            {ready || checking ? (
+              <button className="btn pri" data-testid={checking ? 'home-go-checking' : 'home-go'} disabled={checking || busy} data-tip={checking ? 'Waits for the check' : busy ? BUSY : undefined} onClick={go}>
+                {back ? 'Bring it back' : 'Make it the home'}
+              </button>
+            ) : <button className="btn pri" data-testid="home-again" onClick={look}>Check again</button>}
           </div>
         )}
         {run && !done && (
@@ -198,8 +237,11 @@ export function HomeSheet() {
           <div className="move-end" data-testid="home-done">
             <span className="move-state" data-state="ready"><span className="move-mark"><Mark status="ok" /></span>The fleet runs on {dest}</span>
             {rows.some((r) => r.now === 'warned') && <ol className="move-steps" data-testid="home-steps">{rows.filter((r) => r.now === 'warned').map(item)}</ol>}
-            {reached ? <PhoneDone name={dest} waits={!!run?.steps.some((s) => s.step === 'phone')} />
-              : <span className="move-state" data-testid="home-reaching"><span className="move-mark"><span className="move-spin" /></span>Reaching the fleet on {dest}…</span>}
+            {/* a link the move turns on holds its code's place while the window reaches the new home and the link starts */}
+            <div className="home-phone" data-wait={phone || undefined}>
+              {reached ? <PhoneDone name={dest} waits={phone} />
+                : <span className="modal-sub home-wait" data-testid="home-reaching"><span className="move-spin" aria-hidden />Reaching the fleet on {dest}…</span>}
+            </div>
             <button type="button" className="sec-fold host-fine" data-testid="home-steps-fold" aria-expanded={unfolded} onClick={() => setUnfolded(!unfolded)}>
               <Caret dir={unfolded ? 'down' : 'right'} />{plural(rows.filter((r) => r.now === 'done').length, 'step')} done
             </button>
@@ -208,7 +250,7 @@ export function HomeSheet() {
           </div>
         )}
         {ended && !done && !failed && <div data-testid="home-ended"><Said line="The move stopped without saying why." raw={`exit ${run.code}`} /></div>}
-        {ended && !done && (
+        {ended && !done && told && (
           <div className="acts">
             {stands ? (
               <>
@@ -217,7 +259,8 @@ export function HomeSheet() {
               </>
             ) : (
               <>
-                {crewLeft && <button className="btn pri" data-testid="home-crew-back" onClick={then('home-crew')}>Bring them back</button>}
+                {crewLeft ? <button className="btn pri" data-testid="home-crew-back" onClick={then('home-crew')}>Bring them back</button>
+                  : <button className="btn pri" data-testid="home-try-again" disabled={busy} data-tip={busy ? BUSY : undefined} onClick={go}>Try again</button>}
                 <button className="btn" data-testid="home-close-failed" onClick={close}>Close</button>
               </>
             )}
@@ -255,10 +298,10 @@ function PhoneDone({ name, waits }: { name: string; waits: boolean }) {
   if (problem || (waits && late)) {
     return (
       <div data-testid={problem ? undefined : 'home-phone-wait'}>
-        {problem ? <PhoneProblem /> : <Said line={`${name} has not turned its phone link on yet`} />}
+        {problem ? <PhoneProblem /> : <Said line={`${name} has not turned its phone link on yet`} mark="warn" />}
         <span className="modal-sub">Turn it on later in Settings → Phone.</span>
       </div>
     );
   }
-  return waits ? <span className="move-state"><span className="move-mark"><span className="move-spin" /></span>Starting the phone link on {name}…</span> : null;
+  return waits ? <span className="modal-sub home-wait"><span className="move-spin" aria-hidden />Starting the phone link on {name}…</span> : null;
 }

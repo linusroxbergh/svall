@@ -33,21 +33,12 @@ test('a placed robot names its machine on its card, row, panes and token, offers
   expect(home.y < there.y && there.y < open.y).toBe(true);
   expect(home.width).toBeCloseTo(close.x + close.width - open.x, 0);
   await expect(card.getByTestId('side-cwd')).toHaveAttribute('data-tip', 'Copy linus-vault:/tmp');
-  // the robot's terminal and a shell there open onto nothing while the machine is out of reach
+  // the robot's terminal and a shell there, on the card and the pane strip, open onto nothing while the machine is out of reach
   await expect(card.getByTestId('side-finder')).toHaveText('Shell on linus-vault');
-  for (const t of ['side-finder', 'side-open']) {
-    await expect(card.getByTestId(t)).toBeDisabled();
-    await expect(card.getByTestId(t)).toHaveAttribute('data-tip', 'linus-vault is not reachable');
+  for (const button of [card.getByTestId('side-finder'), card.getByTestId('side-open'), page.getByTestId('pane-left-terminal-there')]) {
+    await expect(button).toBeDisabled();
+    await expect(button).toHaveAttribute('data-tip', 'linus-vault is not reachable');
   }
-
-  // the machine terminal, in the robot's folder, once the registry names the way there
-  await page.getByTestId('pane-left-terminal-there').click();
-  await expect.poll(async () => (await sent(page)).some((m) => m.type === 'host.list')).toBe(true);
-  await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux' }] });
-  await expect(page.getByTestId('host-machine')).toHaveText('Shell on linus-vault');
-  await expect(page.getByTestId('host-terminal-note')).toContainText('Press Return to open a shell on linus-vault in /tmp.');
-  await expect.poll(async () => (await sent(page)).find((m) => m.type === 'term.show' && m.id === 'machine:linus-vault'))
-    .toMatchObject({ machine: { ssh: 'linus@vault', type: "cd '/tmp'" } });
 
   // a neighbour here, to hold the placed robot's card up against
   const here = await svall.api.call('robot.create', { islandId: (await svall.api.call('state.get', {})).robots[id].islandId, cwd: '/tmp', name: 'bo' });
@@ -134,7 +125,7 @@ test('a robot sharing a main checkout gets its own worktree in the one sheet, an
         converts: { main: '/Users/ada/svall', branch: 'ada', changed: 3, keep: true }, notInRepo: false,
       };
       const result = m.method === 'robot.moveTo' ? { moveId: 'mv_0123456789' } : m.params.ownWorktree
-        ? { ok: true, sheet } : { ok: false, refusal: { reason: "two robots share svall's main checkout", action: 'give it its own worktree', details: [] } };
+        ? { ok: true, sheet } : { ok: false, refusal: { reason: "Two robots share svall's main checkout", action: 'Give it its own worktree', details: [] } };
       ws.send(JSON.stringify({ id: m.id, result }));
     });
   });
@@ -146,7 +137,7 @@ test('a robot sharing a main checkout gets its own worktree in the one sheet, an
   await expect(sheet.getByTestId('move-refusal')).toHaveCount(0);
   await expect(sheet.getByLabel(/^Give it its own worktree/)).toBeChecked();
   await sheet.getByTestId('move-go').click();
-  await expect(sheet.getByTestId('move-through')).toHaveText('ada runs on linus-vault.');
+  await expect(sheet.getByTestId('move-through')).toHaveText('ada runs on linus-vault');
   expect(asked.at(-1)).toEqual({ method: 'robot.moveTo', params: { id, machine: VAULT, ownWorktree: true } });
 });
 
@@ -189,7 +180,7 @@ test('a move runs in its sheet, one line per step as it gets there, and a failur
   await expect(sheet.getByTestId('move-step-carry').locator('.said > div > span').first()).toHaveText('Carry failed: linus-vault is not reachable; ada is back on this Mac.');
   await expect(sheet.getByTestId('move-step-carry')).toHaveAttribute('data-state', 'failed');
   await expect(sheet.getByTestId('move-step-land')).toHaveCount(0);
-  await expect(sheet.locator('.acts button')).toHaveText(['Try again']);
+  await expect(sheet.locator('.acts button')).toHaveText(['Try again', 'Close']);
   await expect(sheet.getByTestId('move-step-carry').locator('details')).toHaveCount(0);
 });
 

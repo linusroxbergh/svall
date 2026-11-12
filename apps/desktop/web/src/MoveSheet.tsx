@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  AGENT_LABEL, ApiError, convertLine, INTERRUPT_ACTIONS, MovePhase, moveParts, UPGRADE_ACTION, updatesIn, WORKTREE_ACTION,
+  AGENT_LABEL, ApiError, convertLine, INTERRUPT_ACTIONS, MovePhase, moveRows, UPGRADE_ACTION, updatesIn, WORKTREE_ACTION,
   type AgentKind, type Blocker, type MachineId, type MoveSheet as What, type Moving, type Refusal,
 } from '@svall/protocol';
 import { app } from './boot.js';
@@ -27,7 +27,6 @@ export const interruptOf = (action: string): Interrupt | undefined => (Object.ke
 export const KEPT: Record<Interrupt, string> = { agent: 'Interrupt it now', command: 'Move anyway and end it' };
 // a credential file's box says whether it stays
 const staying = (w: What): What => ({ ...w, stays: w.stays.filter((x) => !w.credentialFiles.some((f) => x === `${f} stays here`)) });
-const OWN_WORKTREE = `${WORKTREE_ACTION[0].toUpperCase()}${WORKTREE_ACTION.slice(1)}`;
 // every check a move failed, the first and the rest alike
 export const blockersOf = (r: Refusal): Blocker[] => [r, ...(r.more ?? [])];
 // whether a blocker's row has a button of its own; one without leaves checking again to the sheet's foot
@@ -191,6 +190,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const sheet = answer && 'ok' in answer && answer.ok ? answer.sheet : undefined;
   const refusal = answer && 'ok' in answer && !answer.ok ? answer.refusal : undefined;
   const failed = answer && 'error' in answer ? answer.error : undefined;
+  const stays = sheet ? staying(sheet).stays : [];
   const again = () => setAsked((n) => n + 1);
   // a refusal that comes after the sheet closed offers to open it again, where the refusal shows with its button
   const go = () => {
@@ -245,29 +245,33 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
             }} />
         )}
         {!run && !answer && (
-          <div className="host-note" data-testid="move-checking">
-            <span className="move-state"><span className="move-mark"><span className="move-spin" /></span>Checking that {c.name} can move…</span>
-            <ul className="move-checks">
-              <li>{far} is reachable{!back && ` and on ${release}'s release`}</li>
-              {kinds.length > 0 && <li>{kinds.map((k) => AGENT_LABEL[k]).join(' and ')} {kinds.length === 1 ? 'is' : 'are'} installed, current and logged in on {where}</li>}
-              <li>{c.repo ? 'its branch, changes and session can travel' : 'its session can travel'}</li>
-            </ul>
-          </div>
+          <>
+            <span className="move-state" data-testid="move-checking"><span className="move-mark"><span className="move-spin" /></span>Checking that {c.name} can move…</span>
+            {/* what the check asks, each thing and what it must be */}
+            <div className="rows move-checks">
+              <div className="row"><span>{far}</span><b>reachable{!back && `, on ${release}'s release`}</b></div>
+              {kinds.length > 0 && <div className="row"><span>{kinds.map((k) => AGENT_LABEL[k]).join(' and ')}</span><b>installed, current, logged in</b></div>}
+              <div className="row"><span>{c.repo ? 'branch, changes, session' : 'session'}</span><b>can travel</b></div>
+            </div>
+          </>
         )}
         {!run && sheet && (
           <>
-            <div className="host-note">
-              <span className="move-state" data-state="ready" data-testid="move-ready"><span className="move-mark"><Mark status="ok" /></span>Ready to move</span>
-              <ul data-testid="move-summary">
-                {moveParts(staying(sheet), c.repo && c.repo.mainRoot.split('/').pop(), where).map((p) => <li key={p}>{p}</li>)}
-              </ul>
-              {sheet.converts && <span data-testid="move-converts">{convertLine(sheet.converts)}</span>}
-              {sheet.question && <span data-testid="move-question">its open question is dropped; it asks again</span>}
+            <span className="move-state" data-state="ready" data-testid="move-ready"><span className="move-mark"><Mark status="ok" /></span>Ready to move</span>
+            <div className="rows" data-testid="move-summary">
+              {moveRows(sheet, c.repo && c.repo.mainRoot.split('/').pop(), where).map(([label, value]) => <div key={label} className="row"><span>{label}</span><b>{value}</b></div>)}
             </div>
+            {(stays.length > 0 || sheet.converts || sheet.question) && (
+              <div className="host-note" data-testid="move-notes">
+                {stays.map((x) => <span key={x} className="modal-sub">{x}</span>)}
+                {sheet.converts && <span className="modal-sub" data-testid="move-converts">{convertLine(sheet.converts)}</span>}
+                {sheet.question && <span className="modal-sub" data-testid="move-question">its open question is dropped; it asks again</span>}
+              </div>
+            )}
             {sheet.credentialFiles.map((f) => (
               <label key={f} className="move-pick"><input type="checkbox" checked={carry.includes(f)} onChange={() => pick(f)} />copy {f} to {where}</label>
             ))}
-            {own && <label className="move-pick"><input type="checkbox" checked onChange={() => setOwn(false)} /><span>{OWN_WORKTREE}{shared && <span className="modal-sub">{shared}</span>}</span></label>}
+            {own && <label className="move-pick"><input type="checkbox" checked onChange={() => setOwn(false)} /><span>{WORKTREE_ACTION}{shared && <span className="modal-sub">{shared}</span>}</span></label>}
             {interrupt && <label className="move-pick"><input type="checkbox" checked onChange={() => setInterrupt(false)} /><span>{KEPT[interrupt]}{working && <span className="modal-sub">{working}</span>}</span></label>}
             <div className="acts"><button className="btn pri" data-testid="move-go" onClick={go}>Move</button></div>
           </>
@@ -290,17 +294,18 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
                 <button className="btn sm" data-testid={at('move-action')} data-tip={`Opens a terminal on ${where} with ${b.run} typed, for you to run`}
                   onClick={() => { setAway(true); terminalOn(where, b.run); }}>Open terminal</button>
               ) : b.action === WORKTREE_ACTION ? (
-                <button className="btn sm" data-testid={at('move-action')} onClick={() => setOwn(true)}>{OWN_WORKTREE}</button>
+                <button className="btn sm" data-testid={at('move-action')} onClick={() => setOwn(true)}>{WORKTREE_ACTION}</button>
               ) : answerable ? (
-                <button className="btn sm" data-testid={at('move-action')} onClick={() => setInterrupt(answerable)}>{b.action[0].toUpperCase()}{b.action.slice(1)}</button>
+                <button className="btn sm" data-testid={at('move-action')} onClick={() => setInterrupt(answerable)}>{b.action}</button>
               ) : undefined;
               const { line, raw } = b.raw ? { line: b.reason, raw: b.raw } : splitRaw(b.reason);
               const tail = [raw, ...(i === 0 ? refusal.details : [])].filter(Boolean).join('\n');
               return (
                 <div key={b.reason} className="move-blocker">
+                  <span className="move-mark" aria-hidden><Mark status="warn" /></span>
                   <div className="host-note" data-testid={at('move-refusal')}>
                     {/* a blocker whose button says what to do needs no line saying it */}
-                    <Said line={line} fix={button ? undefined : atMe && b.action === UPGRADE_ACTION ? 'update Svall on this Mac' : b.action} raw={tail || undefined} />
+                    <Said line={line} fix={button ? undefined : atMe && b.action === UPGRADE_ACTION ? 'Update Svall on this Mac' : b.action} raw={tail || undefined} mark={false} />
                     {i === 0 && fix && 'failed' in fix && <div role="status" data-testid="move-fix-failed"><Said {...(fix.raw ? { line: fix.failed, raw: fix.raw } : splitRaw(fix.failed))} /></div>}
                   </div>
                   {button}
@@ -341,7 +346,7 @@ function Progress({ stand: st, words, robot, where, here, setup, close, show, ag
   const sentence = f && `${words[st.step].name} failed: ${told.line.replace(/\.$/, '')}${back}.`;
   const details = f ? [...(told.raw ? [told.raw] : []), ...more] : [];
   const act = st.done ? { testid: 'move-done', label: 'Done', run: close }
-    : f && { testid: 'move-action', label: f.landed ? 'Retry' : f.refused ? 'Check again' : 'Try again', run: () => again(st) };
+    : f && { testid: 'move-action', label: f.refused ? 'Check again' : 'Try again', run: () => again(st) };
   const list = (
     <ol className="move-steps" data-testid="move-steps">
       {STEPS.map((s, i) => {
@@ -365,17 +370,25 @@ function Progress({ stand: st, words, robot, where, here, setup, close, show, ag
       )}
       {st.done ? (
         <>
-          <div className="move-blocker">
-            <span className="host-note" data-testid="move-through">{robot} runs on {where}.{setup && ` ${setup}`}</span>
-            {setup && <button className="btn sm" data-testid="move-through-show" onClick={show}>Show</button>}
-          </div>
+          <span className="move-state" data-state="ready" data-testid="move-through"><span className="move-mark"><Mark status="ok" /></span>{robot} runs on {where}</span>
+          {setup && (
+            <div className="move-blocker">
+              <span className="modal-sub" data-testid="move-through-setup">{setup}</span>
+              <button className="btn sm" data-testid="move-through-show" onClick={show}>Show</button>
+            </div>
+          )}
           <button type="button" className="sec-fold host-fine" data-testid="move-steps-fold" aria-expanded={unfolded} onClick={() => setUnfolded(!unfolded)}>
             <Caret dir={unfolded ? 'down' : 'right'} />{plural(STEPS.length, 'step')} done
           </button>
           {unfolded && list}
         </>
       ) : list}
-      {act && <div className="acts"><button className="btn pri" data-testid={act.testid} autoFocus onClick={act.run}>{act.label}</button></div>}
+      {act && (
+        <div className="acts">
+          <button className="btn pri" data-testid={act.testid} autoFocus onClick={act.run}>{act.label}</button>
+          {f && <button className="btn" data-testid="move-close-failed" onClick={close}>Close</button>}
+        </div>
+      )}
     </>
   );
 }

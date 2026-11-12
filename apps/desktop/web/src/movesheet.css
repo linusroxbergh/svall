@@ -1,8 +1,9 @@
-/* where a move stands before it starts: checking, ready, or not yet */
-.move-state { display: flex; align-items: flex-start; gap: var(--sp-md); color: var(--ink); font-weight: var(--w-semibold); }
+/* where a move stands: checking, ready, not yet or through; one size in every sheet and state */
+.move-state { display: flex; align-items: flex-start; gap: var(--sp-md); color: var(--ink); font-size: var(--text-md); line-height: var(--lh); font-weight: var(--w-semibold); }
 .move-state[data-state="ready"] > .move-mark { color: var(--done); }
 .move-state[data-state="blocked"] > .move-mark { color: var(--working); }
-.move-checks { color: var(--ink-3); }
+/* what a check asks, quiet until it answers */
+.move-checks, .move-checks.rows b { color: var(--ink-3); }
 /* a choice the move sheet asks about again as it changes */
 .move-pick { display: flex; align-items: center; gap: var(--sp-md); font-size: var(--text-md); color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
 .move-pick > input { flex: none; margin: 0; accent-color: var(--sand); }
@@ -30,3 +31,8 @@
 .move-blocker > .move-mark { align-self: flex-start; color: var(--working); font-size: var(--text-md); line-height: var(--lh); }
 /* what a done move's sheet holds under its state line, spaced as the sheet is */
 .move-end { display: contents; }
+/* the phone's code after a home move, its place held while the window reaches the new home */
+.home-phone { display: flex; flex-direction: column; justify-content: center; gap: var(--sp-xl); }
+.home-phone:empty { display: none; }
+.home-phone[data-wait]:not(:has(.said)) { min-height: 262px; }
+.home-wait { display: flex; align-items: center; justify-content: center; gap: var(--sp-sm); }

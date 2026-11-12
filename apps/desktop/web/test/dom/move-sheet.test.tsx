@@ -60,21 +60,23 @@ const bar = () => [...screen.getByTestId('move-bar').children].map((i) => i.getA
 // what a failed step or a refusal said behind its details
 const raw = (el: Element) => el.querySelector('.said details .modal-more-body')?.textContent;
 const said = (el: Element) => [...el.querySelectorAll('.said > div > span')].map((e) => e.textContent);
+// a sheet's rows, each its label and its value
+const rows = (el: Element) => [...el.querySelectorAll('.row')].map((r) => `${r.children[0].textContent}: ${r.children[1].textContent}`);
 
 test('the sheet says it is ready and what travels, a line each, re-asks with a ticked credential file, and Move starts the move', async () => {
   await open(VAULT);
   expect(screen.getByTestId('move-title').textContent).toBe('Move ada to linus-vault');
   expect(screen.getByTestId('move-sheet').querySelector('.modal')!.classList.contains('sheet')).toBe(true);
   expect(screen.getByTestId('move-ready').textContent).toBe('Ready to move');
-  expect([...screen.getByTestId('move-summary').children].map((li) => li.textContent))
-    .toEqual(['session 4 MB', 'branch kanban-board: 2 commits not on origin, 3 changed files', 'svall on linus-vault: will clone (first time)']);
+  expect(rows(screen.getByTestId('move-summary')))
+    .toEqual(['session: 4 MB', 'branch: kanban-board · 2 commits not on origin, 3 changed files', 'clone: svall on linus-vault · made on this first move']);
   expect(checks()).toEqual([{ id: 'c0', machine: VAULT }]);
 
   answers = [{ ok: true, sheet: sheet({ stays: [] }) }];
   const carry = screen.getByLabelText('copy .env to linus-vault') as HTMLInputElement;
   await act(async () => fireEvent.click(carry));
   expect(checks().at(-1)).toEqual({ id: 'c0', machine: VAULT, carry: ['.env'] });
-  expect(screen.getByTestId('move-summary').textContent).not.toContain('.env stays here');
+  expect(screen.getByTestId('move-sheet').textContent).not.toContain('.env stays here');
   expect((screen.getByLabelText('copy .env to linus-vault') as HTMLInputElement).checked).toBe(true);
 
   expect(screen.getAllByRole('button').filter((b) => b.closest('.acts'))).toHaveLength(1);
@@ -87,22 +89,22 @@ test('while it checks, the sheet says what it checks', async () => {
   act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/agent', value: { kind: 'claude', sessionId: 's1', status: 'idle' } }]));
   call.mockImplementation((method: string) => (method === 'robot.moveCheck' ? new Promise(() => {}) : Promise.resolve({})));
   await open(VAULT);
-  expect(screen.getByTestId('move-checking').querySelector('.move-state')!.textContent).toBe('Checking that ada can move…');
-  expect([...screen.getByTestId('move-checking').querySelectorAll('li')].map((li) => li.textContent)).toEqual([
-    "linus-vault is reachable and on this Mac's release", 'Claude Code is installed, current and logged in on linus-vault', 'its branch, changes and session can travel',
+  expect(screen.getByTestId('move-checking').textContent).toBe('Checking that ada can move…');
+  expect(rows(screen.getByTestId('move-sheet'))).toEqual([
+    "linus-vault: reachable, on this Mac's release", 'Claude Code: installed, current, logged in', 'branch, changes, session: can travel',
   ]);
 });
 
 test.each([
-  ['another machine against the home\'s release', VAULT, undefined, "linus-vault is reachable and on studio's release"],
-  ['this Mac against the home\'s, a robot going there', '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, undefined, "this Mac is reachable and on studio's release"],
-  ['the machine a robot comes back from', HOME, '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, 'this Mac is reachable'],
+  ['another machine against the home\'s release', VAULT, undefined, "linus-vault: reachable, on studio's release"],
+  ['this Mac against the home\'s, a robot going there', '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, undefined, "this Mac: reachable, on studio's release"],
+  ['the machine a robot comes back from', HOME, '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, 'this Mac: reachable'],
 ])('through a far home, the sheet checks %s', async (_, to, on, line) => {
   act(() => store.getState().setVia({ machine: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, home: HOME, name: 'studio', online: true }));
   if (on) act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: on }]));
   call.mockImplementation((method: string) => (method === 'robot.moveCheck' ? new Promise(() => {}) : Promise.resolve({})));
   await open(to);
-  expect(screen.getByTestId('move-checking').querySelector('li')!.textContent).toBe(line);
+  expect(rows(screen.getByTestId('move-sheet'))[0]).toBe(line);
 });
 
 test("on the way back, the sheet checks that the machine it is on answers and this Mac's agent", async () => {
@@ -112,8 +114,7 @@ test("on the way back, the sheet checks that the machine it is on answers and th
   ]));
   call.mockImplementation((method: string) => (method === 'robot.moveCheck' ? new Promise(() => {}) : method === 'system.info' ? Promise.resolve({ machineId: HOME }) : Promise.resolve({})));
   await open();
-  expect([...screen.getByTestId('move-checking').querySelectorAll('li')].map((li) => li.textContent))
-    .toEqual(['linus-vault is reachable', 'Claude Code is installed, current and logged in on this Mac', 'its branch, changes and session can travel']);
+  expect(rows(screen.getByTestId('move-sheet'))).toEqual(['linus-vault: reachable', 'Claude Code: installed, current, logged in', 'branch, changes, session: can travel']);
 });
 
 test('a running move shows one line per step as it gets there under a bar of six, and once through Done closes the sheet', async () => {
@@ -143,7 +144,10 @@ test('a running move shows one line per step as it gets there under a bar of six
   // through, the result is the body and the steps fold behind one line
   expect(screen.queryByTestId('move-bar')).toBeNull();
   expect(screen.queryByTestId('move-steps')).toBeNull();
-  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault.');
+  // the result is a state line, as the home sheet's done line is
+  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault');
+  expect(screen.getByTestId('move-through').classList.contains('move-state')).toBe(true);
+  expect(screen.getByTestId('move-through').querySelector('.move-mark svg')).toBeTruthy();
   expect(screen.queryByTestId('move-through-show')).toBeNull();
   expect(screen.getByTestId('move-steps-fold').textContent).toBe('6 steps done');
   fireEvent.click(screen.getByTestId('move-steps-fold'));
@@ -163,12 +167,22 @@ test("once through on a worker the sheet says how much of the robot's agent setu
   expect(call.mock.calls.some(([m]) => m === 'machines.setup')).toBe(false);
   await move.settle({ moveId: MOVE });
   expect(call).toHaveBeenCalledWith('machines.setup', { machine: VAULT, robot: 'c0' });
-  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault. 2 parts of its agent setup are not there yet.');
+  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault');
+  expect(screen.getByTestId('move-through-setup').textContent).toBe('2 parts of its agent setup are not there yet.');
   // Show takes the person to the card's section that lists them
   fireEvent.click(screen.getByTestId('move-through-show'));
   expect(store.getState().moveSheet).toBeUndefined();
   expect([store.getState().selectedId, store.getState().sideCardOpen]).toEqual(['c0', true]);
   expect(store.getState().sections['robot.machine']).toMatchObject({ shut: false });
+});
+
+test('a move that failed closes from its foot', async () => {
+  const move = heldMove();
+  await open(VAULT);
+  await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+  await move.settle(new ApiError('not_reachable', 'linus-vault is not reachable', { phase: 'prepare', moveId: MOVE }));
+  fireEvent.click(screen.getByTestId('move-close-failed'));
+  expect(store.getState().moveSheet).toBeUndefined();
 });
 
 test('a move undone before its commit says in one sentence which step failed, with no move id, and Try again moves again', async () => {
@@ -182,6 +196,7 @@ test('a move undone before its commit says in one sentence which step failed, wi
   expect(bar()).toEqual(['done', 'done', 'done', 'failed', 'todo', 'todo']);
   expect(raw(screen.getByTestId('move-step-carry'))).toBeUndefined();
   expect(screen.getByTestId('move-action').textContent).toBe('Try again');
+  expect(screen.getAllByRole('button').filter((b) => b.closest('.acts')).map((b) => [b.textContent, b.className])).toEqual([['Try again', 'btn pri'], ['Close', 'btn']]);
 
   heldMove();
   await act(async () => fireEvent.click(screen.getByTestId('move-action')));
@@ -197,12 +212,12 @@ test('a move stalled after its commit names its step from the robot\'s mark, and
   await move.settle({ moveId: MOVE });
   expect(lines().at(-1)).toBe('failed Start failed: claude exited back to its shell.');
   expect(raw(screen.getByTestId('move-step-start'))).toBeUndefined();
-  expect(screen.getByTestId('move-action').textContent).toBe('Retry');
+  expect(screen.getByTestId('move-action').textContent).toBe('Try again');
 
   await act(async () => fireEvent.click(screen.getByTestId('move-action')));
   expect(call).toHaveBeenCalledWith('robot.moveRetry', { moveId: MOVE });
   await mark();
-  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault.');
+  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault');
 });
 
 test('a Retry shows the step running again, and one that fails again shows its new failure with no toast, Retry still offered', async () => {
@@ -220,7 +235,7 @@ test('a Retry shows the step running again, and one that fails again shows its n
   await act(async () => fail(new ApiError('failed', 'claude exited back to its shell again')));
   expect(lines().at(-1)).toBe('failed Start failed: claude exited back to its shell again.');
   expect(store.getState().toast).toBeUndefined();
-  expect(screen.getByTestId('move-action').textContent).toBe('Retry');
+  expect(screen.getByTestId('move-action').textContent).toBe('Try again');
 });
 
 test('a Retry refused for a reason the robot\'s mark does not hold says that reason, Retry still offered', async () => {
@@ -232,7 +247,7 @@ test('a Retry refused for a reason the robot\'s mark does not hold says that rea
   call.mockImplementation((method: string) => (method === 'robot.moveRetry' ? Promise.reject(new Error('svalld connection closed')) : Promise.resolve({})));
   await act(async () => fireEvent.click(screen.getByTestId('move-action')));
   expect(lines().at(-1)).toBe('failed Start failed: svalld connection closed.');
-  expect(screen.getByTestId('move-action').textContent).toBe('Retry');
+  expect(screen.getByTestId('move-action').textContent).toBe('Try again');
   // a mark that says more since is what stands
   await mark({ id: MOVE, to: VAULT, phase: 'activate', error: 'claude exited back to its shell again' });
   expect(lines().at(-1)).toBe('failed Start failed: claude exited back to its shell again.');
@@ -250,7 +265,7 @@ test('a move whose answer is lost before any mark of it came goes on at its chec
   expect(screen.queryByTestId('move-action')).toBeNull();
 
   await act(async () => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
-  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault. 1 part of its agent setup is not there yet.');
+  expect(screen.getByTestId('move-through-setup').textContent).toBe('1 part of its agent setup is not there yet.');
   expect(call.mock.calls.filter(([m]) => m === 'robot.moveTo')).toHaveLength(1);
 });
 
@@ -266,7 +281,7 @@ test('a move whose answer is lost with the link to svalld goes on by the robot\'
   await mark({ id: MOVE, to: VAULT, phase: 'activate' });
   act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
   await mark();
-  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault.');
+  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault');
   expect(call.mock.calls.filter(([m]) => m === 'robot.moveTo')).toHaveLength(1);
 });
 
@@ -340,7 +355,7 @@ describe('on a window whose home is elsewhere', () => {
     const to = set();
     refuse(UPGRADE_ACTION);
     await open(to);
-    expect(screen.getByTestId('move-refusal').textContent).toContain('update Svall on this Mac');
+    expect(screen.getByTestId('move-refusal').textContent).toContain('Update Svall on this Mac');
     expect(screen.queryByTestId('move-action')).toBeNull();
     expect(screen.getByTestId('move-again')).toBeTruthy();
     cleanup();
@@ -401,7 +416,7 @@ test('a move the daemon refuses at its own check fails at Check, and Check again
 test('a robot on main says its changes move to a new branch, and one asking a question that it asks again', async () => {
   answers = [{ ok: true, sheet: sheet({ credentialFiles: [], stays: ['node_modules is not carried'], question: true, converts: { main: '/Users/ada/svall', branch: 'kanban', changed: 3 } }) }];
   await open(VAULT);
-  expect(screen.getByTestId('move-summary').textContent).toContain('node_modules is not carried');
+  expect(screen.getByTestId('move-notes').textContent).toContain('node_modules is not carried');
   expect(screen.getByTestId('move-converts').textContent).toBe("your 3 changed files in svall's main checkout move to a new branch kanban");
   expect(screen.getByTestId('move-question').textContent).toBe('its open question is dropped; it asks again');
 });
@@ -416,6 +431,10 @@ test('a refusal is one sentence, what to do and one button, with its details beh
   expect(screen.queryByTestId('move-summary')).toBeNull();
   expect(raw(screen.getByTestId('move-refusal'))).toBe('svall-notes has no remote; push svall-notes to a remote first');
   expect(screen.getAllByRole('button').filter((b) => b.closest('.acts')).map((b) => b.textContent)).toEqual(['Check again']);
+  // laid out as the home sheet's: the blocker's own warning mark at its left, none of the problem's own beside it
+  const blocker = screen.getByTestId('move-refusal').closest('.move-blocker')!;
+  expect(blocker.firstElementChild!.className).toBe('move-mark');
+  expect(blocker.querySelector('.said')!.hasAttribute('data-mark')).toBe(false);
 });
 
 test('what a tool said folds behind a refusal\'s details: its own words, or the tail its sentence carries', async () => {
