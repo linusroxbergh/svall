@@ -80,7 +80,7 @@ export function NewRobot() {
     } catch (e) {
       const { code, data } = e as { code?: string; data?: { kind?: string } };
       if (via && code === 'not_a_folder') setRefused(data?.kind === 'file' ? `${folder} is a file, not a folder` : `${where === 'this Mac' ? 'This Mac' : where} has no folder ${folder}`);
-      else d.store.getState().showToast((e as Error).message);
+      else d.store.getState().showToast(e as Error);
       setBusy(false);
     }
   };

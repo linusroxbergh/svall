@@ -36,7 +36,7 @@ export async function openFleetConfig(d: ResourcesDeps): Promise<void> {
     // the list has no row for fleet.json, so none stays marked
     d.store.getState().chooseResourceRow(undefined);
   } catch (e) {
-    d.store.getState().showToast((e as Error).message);
+    d.store.getState().showToast(e as Error);
   }
 }
 
@@ -83,7 +83,7 @@ export async function deleteDoc(d: ResourcesDeps, rootId: string, path: string):
   await reloadResources(d);
   const put = text;
   const undo = put === undefined ? undefined : () => {
-    void d.api.call('docs.create', { id: rootId, path, text: put }).then(() => reloadResources(d), (e: Error) => d.store.getState().showToast(e.message));
+    void d.api.call('docs.create', { id: rootId, path, text: put }).then(() => reloadResources(d), (e: Error) => d.store.getState().showToast(e));
   };
   d.store.getState().showToast(`Deleted ${bare(path)}`, 'ok', undo && { label: 'Undo', run: undo });
 }
@@ -101,7 +101,7 @@ export async function deleteResource(d: ResourcesDeps, name: string, open: { roo
   for (const p of d.store.getState().ide[rootId]?.open.filter(under) ?? []) closeFile(d, rootId, p);
   await reloadResources(d);
   const undo = () => {
-    void d.api.call('resources.restore', { token }).then(() => reloadResources(d), (e: Error) => d.store.getState().showToast(e.message));
+    void d.api.call('resources.restore', { token }).then(() => reloadResources(d), (e: Error) => d.store.getState().showToast(e));
   };
   d.store.getState().showToast(`Deleted ${name}`, 'ok', { label: 'Undo', run: undo });
 }

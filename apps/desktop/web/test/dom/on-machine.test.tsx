@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import type { MachineId, SetupRow } from '@svall/protocol';
+import { ApiError, type MachineId, type SetupRow } from '@svall/protocol';
 import { call, freshStore, sent, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
@@ -57,14 +57,14 @@ test('a placed robot\'s card lists what of its agent setup will not work on its 
 });
 
 test('a copy the machine did not take says why, and a robot whose agent setup all works there shows no section', async () => {
-  call.mockImplementation((method: string) => (method === 'machines.consent' ? Promise.reject(new Error('the change is saved, but vault did not take it: ENOSPC'))
+  call.mockImplementation((method: string) => (method === 'machines.consent' ? Promise.reject(new ApiError('not_mirrored', 'Saved; vault has not taken it yet', { raw: 'ENOSPC: no space left on device' }))
     : Promise.resolve({ rows })));
   await act(async () => { render(<OnMachine id="c1" machine={VAULT} name="vault" />); });
   unfold();
   // the saved tick shows, as the rows are read again
   rows = [{ key: linear.key, status: 'warn', detail: 'd', tick: { ...linear.tick!, on: true }, gap: { name: 'linear', what: 'ticked; not on vault yet' } }, notion, chrome];
   await act(async () => { fireEvent.click(screen.getByTestId('side-gap-copy-claude:mcp:linear')); });
-  expect(store.getState().toast).toMatchObject({ text: 'the change is saved, but vault did not take it: ENOSPC', tone: 'error' });
+  expect(store.getState().toast).toMatchObject({ text: 'Saved; vault has not taken it yet', raw: 'ENOSPC: no space left on device', tone: 'error' });
   expect(call.mock.calls.filter(([m]) => m === 'machines.setup')).toHaveLength(2);
   expect(shown()[0]).toBe('linear ticked; not on vault yet');
 

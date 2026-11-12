@@ -3,7 +3,7 @@ import { app } from './boot.js';
 import { copyText } from './bridge.js';
 import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
-import { splitRaw } from './host.js';
+import { splitRaw, withoutTokens } from './host.js';
 import { refocusSurface } from './keyboard.js';
 import { theme } from './theme.js';
 
@@ -62,8 +62,8 @@ export function Toast({ corner = 'bottom-left' }: { corner?: Corner }) {
     if (document.hasFocus() && (!at || at === document.body || ref.current?.contains(at))) refocusSurface(app);
   }, [live]);
   if (!toast) return null;
-  // an error shows its sentence; what a tool said after it is copied, not shown
-  const { line, raw } = toast.tone === 'error' ? splitRaw(toast.text) : { line: toast.text, raw: undefined };
+  // an error shows its sentence; what a tool said, as the daemon sent it or after the sentence, is copied, not shown
+  const { line, raw } = toast.tone !== 'error' ? { line: toast.text, raw: undefined } : toast.raw ? { line: withoutTokens(toast.text), raw: withoutTokens(toast.raw) } : splitRaw(toast.text);
   return (
     <div ref={ref} className="toast" data-testid="toast" data-tone={toast.tone} data-corner={corner} data-leaving={!live || undefined}
       onPointerEnter={() => setOver(true)} onPointerLeave={() => setOver(false)} onPointerDown={() => { setOver(true); pressed.current = toast.tone === 'error'; }}>

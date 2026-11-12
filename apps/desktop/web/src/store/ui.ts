@@ -14,7 +14,7 @@ export type Terminal = { id: string; rect: Rect };
 export type Webview = { tab: string; rect: Rect; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string };
 // a toast reports a refusal, confirms something the user set going, or tells a fact (info); an action is the one thing it
 // offers to take back, and dismiss puts a Dismiss beside it
-export type Toast = { text: string; tone: 'error' | 'ok' | 'info'; action?: { label: string; run(): void }; dismiss?: boolean };
+export type Toast = { text: string; tone: 'error' | 'ok' | 'info'; raw?: string; action?: { label: string; run(): void }; dismiss?: boolean };
 // a link waiting by the pointer for the user to say where it should open; one from a terminal names the surface the keys go back to
 export type LinkAsk = { url: string; robotId: string; x: number; y: number; surface?: string };
 // an entry with items opens them beside it, one with neither run nor items shows greyed out, and sep rules it off from those above
@@ -137,7 +137,8 @@ export type UiActions = {
   askArrange(): void;
   arranged(): void;
   setPlacingNow(busy: boolean): void;
-  showToast(message: string, tone?: Toast['tone'], action?: Toast['action'], dismiss?: boolean): void;
+  /** `message`, or an error said by its message, with what a tool said as `raw` where the daemon sent it in its data. */
+  showToast(message: string | Error, tone?: Toast['tone'], action?: Toast['action'], dismiss?: boolean): void;
   runToastAction(): void;
   clearToast(): void;
   askLink(ask: LinkAsk): void;
@@ -275,7 +276,10 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     askArrange: () => set({ arrangeAsk: 'key' }),
     arranged: () => set({ arrangeAsk: false }),
     setPlacingNow: (placingNow) => set({ placingNow }),
-    showToast: (message, tone = 'error', action, dismiss) => set({ toast: { text: message, tone, ...(action && { action }), ...(dismiss && { dismiss }) } }),
+    showToast: (message, tone = 'error', action, dismiss) => {
+      const raw = typeof message === 'string' ? undefined : (message as Error & { data?: { raw?: unknown } }).data?.raw;
+      set({ toast: { text: typeof message === 'string' ? message : message.message, tone, ...(typeof raw === 'string' && { raw }), ...(action && { action }), ...(dismiss && { dismiss }) } });
+    },
     runToastAction: () => { const a = get().toast?.action; if (!a) return; set({ toast: undefined }); a.run(); },
     clearToast: () => set({ toast: undefined }),
     askLink: (linkAsk) => set({ linkAsk }),

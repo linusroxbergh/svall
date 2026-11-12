@@ -12,7 +12,7 @@ export type Deps = { api: Api; store: AppStore; bridge: Bridge };
 // the fleet calls need the socket and the mirror; only the keyboard also needs the shell
 type ActionDeps = Pick<Deps, 'api' | 'store'>;
 
-const toast = (d: ActionDeps) => (e: Error) => d.store.getState().showToast(e.message);
+const toast = (d: ActionDeps) => (e: Error) => d.store.getState().showToast(e);
 
 // the codes the fleet refuses an edit with; any other failure, as a dropped link, a timeout or a restart, leaves it to send again
 const REFUSALS = new Set(['frozen', 'invalid', 'invalid_params', 'not_found', 'moving']);
@@ -67,7 +67,7 @@ export async function newRobotOn(d: ActionDeps, islandId: string, column?: strin
     showCreated(d, c.id);
     return c.id;
   } catch (e) {
-    d.store.getState().showToast((e as Error).message);
+    d.store.getState().showToast(e as Error);
     return undefined;
   }
 }
@@ -108,7 +108,7 @@ export async function addColumn(d: ActionDeps): Promise<string | undefined> {
     const cols = await d.api.call('column.add', { name });
     return cols.find((k) => k.name === name)?.id;
   } catch (e) {
-    d.store.getState().showToast((e as Error).message);
+    d.store.getState().showToast(e as Error);
     return undefined;
   }
 }
@@ -135,7 +135,7 @@ export async function deleteEmptyColumn(d: ActionDeps, id: string): Promise<void
   try {
     await d.api.call('column.delete', { id, moveTo: cols[at === 0 ? 1 : at - 1].id });
   } catch (e) {
-    d.store.getState().showToast((e as Error).message);
+    d.store.getState().showToast(e as Error);
     return;
   }
   const undo = async () => {
@@ -145,7 +145,7 @@ export async function deleteEmptyColumn(d: ActionDeps, id: string): Promise<void
       // a column added without afterId goes last, so the first comes back by a reorder
       if (!before && made && back[0].id !== made.id) await d.api.call('column.reorder', { id: made.id, targetId: back[0].id, after: false });
     } catch (e) {
-      d.store.getState().showToast((e as Error).message);
+      d.store.getState().showToast(e as Error);
     }
   };
   d.store.getState().showToast(`Deleted “${name}”`, 'ok', { label: 'Undo', run: () => void undo() });
@@ -312,7 +312,7 @@ export async function startHomeRobot(d: ActionDeps, p: { prompt: string; label?:
     }
     return true;
   } catch (e) {
-    d.store.getState().showToast((e as Error).message);
+    d.store.getState().showToast(e as Error);
     return false;
   } finally {
     stop();

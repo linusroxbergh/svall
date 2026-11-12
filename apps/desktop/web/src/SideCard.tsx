@@ -225,7 +225,7 @@ function StartedRow({ id, machines }: { id: string; machines: FleetState['machin
 // robot messages waiting on the user, past the run of them a loop between robots would make
 function Held({ id, n, promptId, refuse }: { id: string; n: number; promptId: string; refuse?: () => void }) {
   const answer = (a: 'approve' | 'deny') => app.api().call('robot.answer', { id, answer: a, promptId })
-    .catch((e: Error) => app.store.getState().showToast(e.message, 'error'));
+    .catch((e: Error) => app.store.getState().showToast(e, 'error'));
   return (
     <div className="side-away" data-testid="side-held">
       <span>{n} robot messages since your last prompt; the next waits on you</span>

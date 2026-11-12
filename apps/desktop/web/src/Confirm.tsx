@@ -49,7 +49,7 @@ export function ConfirmClose() {
     <Confirm id={id} testid="confirm-close" title="Delete robot" name={name} act="Delete" focusAct
       note={<>Closing kills its terminal and deletes its docs.{unsaved > 0 && ` ${unsaved} unsaved ${unsaved === 1 ? 'file goes' : 'files go'} with it.`}</>}
       onCancel={() => app.store.getState().setClosingRobot(undefined)}
-      onConfirm={(id) => { closeRobot(deps(), id).catch((e: Error) => app.store.getState().showToast(e.message)); }} />
+      onConfirm={(id) => { closeRobot(deps(), id).catch((e: Error) => app.store.getState().showToast(e)); }} />
   );
 }
 

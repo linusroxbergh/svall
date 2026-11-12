@@ -282,7 +282,7 @@ function RobotPreferences() {
   const permissions = useApp((s) => s.fleet.svallPermissions ?? false);
   const set = (p: { newRobotStart?: 'agent' | 'shell'; svallPermissions?: boolean }) => {
     const d = deps();
-    d.api.call('robotPreferences.set', p).catch((e: Error) => d.store.getState().showToast(e.message));
+    d.api.call('robotPreferences.set', p).catch((e: Error) => d.store.getState().showToast(e));
   };
   return <>
     <div className="row"><span>new robots start</span><b><select className="fld inline" aria-label="New robots start" value={start} onChange={(e) => set({ newRobotStart: e.target.value as 'agent' | 'shell' })}><option value="agent">Your main agent</option><option value="shell">A shell</option></select></b></div>

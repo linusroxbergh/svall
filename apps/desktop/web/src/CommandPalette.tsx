@@ -15,7 +15,7 @@ const commandsOf = (b: Bindings): Command[] => [
   ...actionIds().filter((id) => id !== 'palette' && id !== 'quit').map((id) => ({
     label: ACTIONS[id].label,
     key: keyLabel(id, b),
-    run: () => void dispatchKey(ACTIONS[id].action, keyDeps()).catch((e: Error) => app.store.getState().showToast(e.message)),
+    run: () => void dispatchKey(ACTIONS[id].action, keyDeps()).catch((e: Error) => app.store.getState().showToast(e)),
   })),
   { label: 'New fleet', run: () => openFleetPicker(app.store, 'new') },
   { label: 'Keyboard shortcuts', run: () => app.store.getState().toggleSettings(true, 'keyboard') },

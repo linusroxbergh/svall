@@ -202,7 +202,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
       const data = e instanceof ApiError ? e.data : undefined;
       const phase = MovePhase.safeParse(data?.phase).data;
       const moveId = typeof data?.moveId === 'string' ? data.moveId : undefined;
-      if (!shown.current) store().showToast(e.message, 'error', refused ? { label: 'Check again', run: () => store().setMoveSheet({ id, to }) } : undefined);
+      if (!shown.current) store().showToast(e, 'error', refused ? { label: 'Check again', run: () => store().setMoveSheet({ id, to }) } : undefined);
       else if (e instanceof ApiError) setRun({ at: 'failed', step: phase ? steps[phase] : 'check', error: e.message, moveId, refused });
       else setRun({ at: 'lost', error: e.message });
     });

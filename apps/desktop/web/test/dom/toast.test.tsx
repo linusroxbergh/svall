@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { act, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { ApiError } from '@svall/protocol';
 import { bridge, freshStore, sent, store } from './harness.js';
 
 bridge.present = true;
@@ -169,6 +170,15 @@ test('an error shows its sentence, and Copy details copies what a tool said afte
   act(() => store.getState().showToast('studio is not reachable: ssh: connect to host studio port 22: Connection refused'));
   expect(getByTestId('toast-text').textContent).toBe('studio is not reachable');
   expect(getByTestId('toast-copy').textContent).toBe('Copy details');
+});
+
+test('a daemon\'s refusal shows its sentence whole, and Copy details copies what the tool said as the daemon sent it apart', () => {
+  const { getByTestId } = render(<Toast />);
+  act(() => store.getState().showToast(new ApiError('internal', 'Claude Code did not update', { raw: 'claude update exited 1: token=abcdef1234567890 refused' })));
+  expect(getByTestId('toast-text').textContent).toBe('Claude Code did not update');
+  sent.length = 0;
+  act(() => getByTestId('toast-copy').click());
+  expect(sent).toContainEqual({ type: 'copy', text: 'claude update exited 1: token=… refused' });
 });
 
 test('an error with no tool\'s words offers nothing to copy, and any other toast is shown whole', () => {

@@ -237,7 +237,7 @@ export function Board() {
       const id = await newRobotOn(deps(), island ?? (await newRobotTarget(deps())).islandId, other);
       if (id && other) await placeRobot(deps(), id, other);
     } catch (e) {
-      app.store.getState().showToast((e as Error).message);
+      app.store.getState().showToast(e as Error);
     }
   };
   const menu = (e: React.MouseEvent, id: string) =>
