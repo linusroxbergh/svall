@@ -400,6 +400,21 @@ esac
     expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', detail: 'set to 1.2.3, still answering from 1.2.1' });
   });
 
+  it('says a release put back whose daemon then does not answer, with what ssh said behind', async () => {
+    let base = '';
+    // the daemon of the one before answers the new release's probe, then nothing answers once the rollback has run
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], answers: '1.2.2', accepts: () => !fs.existsSync(`${base}/rolled`) });
+    base = far.base;
+    await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(far.now()).toBe('1.2.2');
+    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: 'answers from 1.2.2, not 1.2.3' });
+    expect(step('rollback').at(-1)).toMatchObject({
+      status: 'warn', detail: 'on 1.2.2, which does not answer',
+      raw: expect.stringMatching(/^trift: Svall's background service refused the token\n/),
+    });
+  });
+
   it('after a reinstall under the only name it had, says no other release is kept to go back to', async () => {
     const far = await farMachine({ releases: [['1.2.3', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.3' });
     await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
