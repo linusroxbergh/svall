@@ -7,6 +7,7 @@ import { HomeFreeze } from '../../src/fleet/home-freeze.js';
 import { abortAdopt, addEnrol, adoptDir, adoptStatus, createMarker, endMove, enter, homeGate, installAdopt, journalLines, packFleet, readMarker, settleMove, stageAdopt, TOLD_UNMARKED, writeEnrol } from '../../src/fleet/home-move.js';
 import { daemonLock } from '../../src/kernel-lock.js';
 import { resolvePaths } from '../../src/paths.js';
+import { SshError } from '../../src/link/ssh.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { ADOPT_KEY, ASKER, FLEET, ID, KEY, MAC, marker, STUDIO, world, putMarker } from './home-world.js';
 
@@ -393,6 +394,10 @@ describe('the one way a move ends', () => {
     const d = { join: none, thaw: none, start: none };
     expect(await settleMove(paths, ID, { status: 'not-adopted' }, KEY, d)).toEqual({ status: 'done' });
     expect(journalLines(paths, ID)).toEqual([expect.objectContaining({ phase: 'aborted', detail: TOLD_UNMARKED })]);
+    // a daemon gone past its port file says so in its own words, and counts as none
+    const gone = resolvePaths(makeHome());
+    const crashed = () => Promise.reject(new SshError('daemon_down', "Svall's background service is not running; start it: svall setup", `process 4711 in ${gone.home}/version is gone`));
+    expect(await settleMove(gone, ID, { status: 'not-adopted' }, KEY, { join: crashed, thaw: crashed, start: crashed })).toEqual({ status: 'done' });
     const bytes = () => (fs.readdirSync(paths.home, { recursive: true }) as string[]).sort().map((f) => [f, fs.statSync(path.join(paths.home, f)).isFile() ? fs.readFileSync(path.join(paths.home, f), 'utf8') : '']);
     const before = bytes();
     expect(() => createMarker(paths, told)).toThrow(/called off here before its mark/);

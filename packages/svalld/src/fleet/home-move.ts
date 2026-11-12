@@ -800,7 +800,7 @@ export type Settling = {
 };
 
 /** Whether `e` says no daemon answers at all, and so not that one answered and refused. */
-const noDaemon = (e: unknown): boolean => /svalld is not running|ECONNREFUSED/.test((e as Error).message);
+const noDaemon = (e: unknown): boolean => (e as { kind?: unknown }).kind === 'daemon_down' || /svalld is not running|ECONNREFUSED/.test((e as Error).message);
 
 /**
  * Told by the machine that took the fleet how a move ended, as often as it takes, with the key its driver holds; what has heard
