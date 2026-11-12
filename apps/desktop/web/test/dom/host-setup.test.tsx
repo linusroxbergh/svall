@@ -789,6 +789,23 @@ test('a terminal whose ssh quit closes with Close', () => {
   expect(screen.getByTestId('host-terminal-done').textContent).toBe('Close');
 });
 
+test("an upgrade that put the release before back did not finish; its rows keep only what was said behind details, as the sheet's Check again sees why", () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('upgrade', { name: 'trift' });
+    store.getState().hostStep('upgrade', { step: 'probe', status: 'warn', detail: 'does not answer', action: 'see why: svall host doctor trift', raw: 'trift answers from release 0.9.3, not 0.9.4' });
+    store.getState().hostStep('upgrade', { step: 'rollback', status: 'warn', detail: 'back on 0.9.3', action: 'see why: svall host doctor trift', raw: 'current -> /home/ada/.svall-base/releases/0.9.3' });
+    store.getState().hostDone('upgrade', 1);
+  });
+  expect(screen.getByTestId('host-outcome').textContent).toBe('Upgrade did not finishCheck againClose');
+  for (const step of ['probe', 'rollback']) {
+    expect(screen.queryByTestId(`host-action-${step}`)).toBeNull();
+    expect(screen.getByTestId(`host-details-${step}`).textContent).not.toContain('see why');
+  }
+});
+
 test('an upgrade whose rollback failed did not finish, and offers the rollback the CLI names before Close', () => {
   render(<HostSetup />);
   act(() => {

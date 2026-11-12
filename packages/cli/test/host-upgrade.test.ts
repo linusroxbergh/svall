@@ -58,6 +58,7 @@ case "$1" in
       to=\${3:-$(ls -t "$base/releases" | grep -vx "$(now)" | head -1)}
       [ -n "$to" ] || { echo "no release under $base/releases to go back to" >&2; exit 1; }
       [ -d "$base/releases/$to" ] || { echo "no release at $base/releases/$to to go back to" >&2; exit 1; }
+      echo "stopping the fleet units"
       ln -sfn "$base/releases/$to" "$base/current" && echo "current -> $base/releases/$to"
       exit
     fi
@@ -353,7 +354,11 @@ esac
     expect(far.now()).toBe('1.2.2');
     expect(runs.mock.calls).toEqual([['1.2.2']]);
     expect(ssh.remoteCalls()).toContainEqual([`${far.base}/releases/1.2.3/bin/svall`, 'setup', '--rollback', '1.2.2']);
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', detail: 'back on 1.2.2', action: 'see why: svall host doctor trift', raw: expect.stringContaining("read the service's log") });
+    // what the rollback said, whole, then the long way
+    expect(step('rollback').at(-1)).toMatchObject({
+      status: 'warn', detail: 'back on 1.2.2', action: 'see why: svall host doctor trift',
+      raw: expect.stringMatching(new RegExp(`^stopping the fleet units\ncurrent -> ${far.base}/releases/1\.2\.2\nssh .* read the service's log`)),
+    });
   });
 
   it('after a reinstall under the name it ran, goes back to the newest release kept there, and never calls the new tree the one it ran before', async () => {

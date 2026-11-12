@@ -37,6 +37,8 @@ const RUN_AGAIN = new Set<HostOp>(['upgrade', 'rollback']);
 const TITLED = new Set<HostOp>(['doctor', 'upgrade', 'rollback', 'remove']);
 // the ssh a terminal opens for the user, ahead of what an action says to run there
 const SSH_THEN = /^ssh \S+, then /;
+// what the sheet's own Check again does
+const SEE_WHY = /^see why: .*\bhost doctor \S+$/;
 const PHONE = 'mirror:phone';
 const farId = (args: HostArgs): { id?: string } => (args.id ? { id: args.id } : {});
 const homeOf = (s: App): string | undefined => (s.via ? homeName(s.fleet, s.via) : undefined);
@@ -263,7 +265,7 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
   // a program row keeps its install command's terminal beside the box that says the machine does not need it, and the phone's its repair beside its own
   const opens = control === 'terminal' || ((notNeeded(row) || row.step === PHONE) && !!row.run && !!terminal && idle);
   // what to do, as the row says it or its sentence ended in it, less what its box does and the ssh its terminal opens; then what a tool said
-  const fix: Fix = key && row.action ? besideBox(row.action) : { say: row.action };
+  const fix: Fix = key && row.action ? besideBox(row.action) : { say: row.action && !SEE_WHY.test(row.action) ? row.action : undefined };
   const todo = fix.say && fix.say !== said ? fix.say : command;
   const action = opens ? todo?.replace(SSH_THEN, '') : todo;
   const more = [...new Set([row.raw, told])].filter((m): m is string => !!m && m !== said);

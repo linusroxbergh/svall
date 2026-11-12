@@ -183,7 +183,9 @@ export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forge
   const { lines, todo } = tiered(ended(flags.steps ?? []), flags.fleet, op !== 'add');
   // a machine an add listed before it stopped has things to fix, as its window says; any other run that stopped did not finish
   const listed = op === 'add' && (flags.steps ?? []).some((s) => s.step === 'registry' && s.status === 'ok');
-  const last = o.stopped ? (listed && todo ? verdict(name, todo) : `${TITLE[op]} did not finish`) : setup ? verdict(name, todo) : doneLine(op, name, flags);
+  // an upgrade that put the release before back did not finish either
+  const stopped = o.stopped !== undefined || (op === 'upgrade' && (flags.steps ?? []).some((s) => s.step === 'rollback'));
+  const last = stopped ? (listed && todo ? verdict(name, todo) : `${TITLE[op]} did not finish`) : setup ? verdict(name, todo) : doneLine(op, name, flags);
   return [...lines, last, ...(setup ? setupLine((o.setup ?? []).map(asRow), name, flags.there!) : [])].join('\n');
 }
 

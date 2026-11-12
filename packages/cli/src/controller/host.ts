@@ -1077,7 +1077,7 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
           : now === before ? `stays on ${now}: no earlier release is kept there` : `on ${now}, the newest release kept there`;
         const long = `ssh ${entry.record.ssh} and read the service's log; ${rollbackTo(name, d)}`;
         if (out instanceof Error) throw new StepError(runs, seeWhy(name, d), undefined, undefined, `${inFull(out)}\n${long}`);
-        return { value: undefined, status: 'warn' as const, detail: runs, action: seeWhy(name, d), raw: [out.trim().split('\n').at(-1), long].filter(Boolean).join('\n') };
+        return { value: undefined, status: 'warn' as const, detail: runs, action: seeWhy(name, d), raw: [out.trim(), long].filter(Boolean).join('\n') };
       });
     } finally {
       await master.close().catch(() => undefined);
