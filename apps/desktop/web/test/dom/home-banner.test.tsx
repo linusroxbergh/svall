@@ -66,13 +66,13 @@ describe('the banner of a home this window cannot follow', () => {
   it('names a refused login with what to do, with no upgrade to press', () => {
     standingIn({ state: 'auth', detail: 'run ssh ada@studio once in a terminal, then try again' });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toBe('This Mac cannot log in to studio. Run ssh ada@studio once in a terminal, then try again.Try again');
-    // the command to run is mono, and a press copies it
-    const command = screen.getByTestId('home-command');
-    expect([command.textContent, command.className]).toEqual(['ssh ada@studio', 'copy mono']);
+    expect(screen.getByTestId('home-banner').textContent).toBe('This Mac cannot log in to studio. Run ssh ada@studio once in a terminal, then try again.CopyTry again');
+    // the command alone is mono, whole, and Copy beside the buttons copies it for a terminal on this Mac
+    expect([...screen.getByTestId('home-detail').querySelectorAll('code')].map((c) => c.textContent)).toEqual(['ssh ada@studio']);
     bridge.present = true;
-    try { fireEvent.click(command); } finally { bridge.present = false; }
+    try { fireEvent.click(screen.getByTestId('home-copy')); } finally { bridge.present = false; }
     expect(sent).toContainEqual({ type: 'copy', text: 'ssh ada@studio' });
+    expect(screen.getByTestId('home-copy').textContent).toBe('Copied');
     expect(screen.getByTestId('home-retry')).toBeTruthy();
     expect(screen.queryByTestId('home-upgrade')).toBeNull();
   });

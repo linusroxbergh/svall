@@ -108,7 +108,6 @@ button.setup-row > svg { color: var(--ink-3); }
 .banner b { font-weight: var(--w-medium); color: var(--ink); }
 .banner-sub { color: var(--ink-2); }
 .banner .btn.sm { flex: none; }
-.banner .copy.mono { font-size: var(--text-sm); }
 /* the words of what went wrong can be selected and copied */
 .toast[data-tone="error"] .toast-text, .banner > span, .connect > div, .fb-error, .fleet-error, .host-failed,
 .host-step[data-status="fail"] .host-said, .host-verdict, .host-note, .move-steps > li[data-state="failed"] > span:last-child,

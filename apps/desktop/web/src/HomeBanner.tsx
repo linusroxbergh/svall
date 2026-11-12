@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { crewAway, homeMoveStands } from '@svall/protocol';
 import { app } from './boot.js';
 import { copyText, type HostStep } from './bridge.js';
@@ -7,6 +7,7 @@ import { startHost } from './hostRun.js';
 import { machineNames, onThisMac, plainStep, splitRaw } from './host.js';
 import { interruptOf, KEPT } from './MoveSheet.js';
 import { copiedAt, machineOf, myMachine } from './placement.js';
+import { Fix } from './Said.js';
 
 const WAIT_MS = 5000;
 
@@ -102,12 +103,21 @@ export function CrewAwayBanner() {
 // a sentence the daemon gives in lower case, as the line under a banner's fact
 const sentence = (t: string): string => ended(`${t[0].toUpperCase()}${t.slice(1)}`);
 
-// the ssh a line tells a person to run, in mono, which a press copies
-function withCommand(t: string): ReactNode {
-  const ssh = /\bssh \S+/.exec(t);
-  if (!ssh) return t;
-  const copy = () => { copyText(app.bridge, ssh[0]); app.store.getState().showToast('Copied', 'ok'); };
-  return <>{t.slice(0, ssh.index)}<button className="copy mono" data-testid="home-command" data-tip={`Copy ${ssh[0]}`} onClick={copy}>{ssh[0]}</button>{t.slice(ssh.index + ssh[0].length)}</>;
+// the ssh a line tells a person to run once on this Mac, which Copy beside the banner's buttons copies
+const sshIn = (t?: string): string | undefined => (t ? /\bssh \S+/.exec(t)?.[0] : undefined);
+
+// a command copied for a terminal on this Mac, where the window opens none, as a problem's Copy does
+function CopyCommand({ run }: { run: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
+  return (
+    <button className="btn sm" data-testid="home-copy" data-tip={`Copy ${run} to run in a terminal on this Mac`}
+      onClick={() => { copyText(app.bridge, run); setCopied(true); }}>{copied ? 'Copied' : 'Copy'}</button>
+  );
 }
 
 // a sentence the daemon ends on the ids it compared, which the window keeps to a tip
@@ -144,7 +154,8 @@ export function HomeBanner() {
   const age = copied !== undefined && copiedAt(copied);
   // what the window shows meanwhile: this Mac's copy of the fleet
   const meanwhile = `${age ? `Showing the fleet as of ${age}; robots` : 'Robots'} on this Mac keep working.`;
-  const [fact, sub] = state === 'auth' ? [`This Mac cannot log in to ${name}.`, detail && withCommand(sentence(detail))]
+  const ssh = state === 'auth' ? sshIn(detail) : undefined;
+  const [fact, sub] = state === 'auth' ? [`This Mac cannot log in to ${name}.`, detail && <Fix fix={sentence(detail)} run={ssh} />]
     : state === 'version' && release ? [`${name} runs ${newer ? 'a newer' : 'an older'} Svall than this Mac.`, `${release} there${mine ? `, ${mine} here` : ''}.`]
       : state === 'version' ? [detail ?? `${name} runs another version of Svall`, undefined]
         : state === 'mismatch' ? [detail ?? `${name} holds a different fleet than this Mac expects`, meanwhile]
@@ -158,6 +169,7 @@ export function HomeBanner() {
         {sub && <>{' '}<span className="banner-sub" data-testid={state === 'auth' ? 'home-detail' : 'home-age'} data-tip={state === 'unreachable' ? detail : undefined}>{sub}</span></>}
         {failed && <>{' '}<Failed step={failed} alone plain={(t) => plainStep(t, machineNames(machines))} testid="home-upgrade-failed" /></>}
       </span>
+      {ssh && <CopyCommand run={ssh} />}
       {upgrades && <button className="btn sm" data-testid="home-upgrade" disabled={running} onClick={() => startHost('upgrade', { name: machine! })}>{running ? `Upgrading ${name}…` : `Upgrade ${name}`}</button>}
       <button className="btn sm" data-testid="home-retry" disabled={running} onClick={() => app.api().retryHome()}>Try again</button>
     </div>
