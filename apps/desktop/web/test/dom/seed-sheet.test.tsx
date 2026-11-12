@@ -18,7 +18,10 @@ const { installKeyHandlers } = await import('../../src/keyboard.js');
 
 const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
 const HOME = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
-const KEY = { key: 'claude:mcp:a', status: 'warn', detail: 'a key', tick: { item: 'claude:mcp:a', fields: ['env.A'], on: false, preview: ['env.A ****'] } };
+const KEY = { key: 'claude:mcp:a', status: 'warn', detail: 'a key', tick: { item: 'claude:mcp:a', name: 'a', fields: ['env.A'], on: false, preview: ['env.A a_…90'], ticked: [] } };
+// a server with two keys, one ticked, and a file that travels whole
+const TWO = { key: 'codex:mcp:gh', status: 'warn', detail: 'keys', tick: { item: 'codex:mcp:gh', name: 'github', fields: ['env.GH_TOKEN', 'env.GH_HOST'], on: false, preview: ['env.GH_TOKEN ghp_…4f', 'env.GH_HOST gh…om'], ticked: ['env.GH_HOST'] } };
+const WHOLE = { key: 'claude:plugin:rb', status: 'warn', detail: 'whole', tick: { item: 'claude:plugin:rb', name: 'rb', fields: ['env.RB'], on: true, preview: ['env.RB rb_…12'] } };
 
 const answer = (mine: boolean, far: boolean) => {
   here.mockImplementation((m: string) => Promise.resolve(m === 'machines.holdsSetup' ? { holds: mine } : { rows: [KEY] }));
@@ -38,10 +41,29 @@ describe('the first copy of an agent setup onto a far home', () => {
   it('is offered once a window reaches a home with none, on a Mac that holds one, with its key rows, and veils the terminals', async () => {
     following();
     render(<SeedSheet />);
-    expect(await screen.findByTestId('seed-title')).toHaveProperty('textContent', 'studio has no agent setup yet');
+    expect(await screen.findByTestId('seed-title')).toHaveProperty('textContent', 'Copy your agent setup to studio?');
+    expect(screen.getByTestId('seed-sheet').querySelector('.modal')!.classList.contains('sheet')).toBe(true);
+    expect(screen.getByTestId('seed-says').textContent).toBe("studio has no agent setup yet. Agents there start from this Mac's, or from nothing.");
     await screen.findByTestId('setup-tick-claude:mcp:a');
     expect(isVeiled(store.getState())).toBe(true);
     expect(copies()).toEqual([]);
+  });
+
+  it('says what it copies in a row, and each key as a labelled box with its value masked: one for each key of a server, one for a file sent whole', async () => {
+    following();
+    here.mockImplementation((m: string) => Promise.resolve(m === 'machines.holdsSetup' ? { holds: true } : { rows: [KEY, TWO, WHOLE] }));
+    render(<SeedSheet />);
+    await screen.findByTestId('setup-tick-claude:mcp:a');
+    const row = document.querySelector('.modal .rows .row')!;
+    expect([row.firstElementChild!.firstChild!.textContent, row.querySelector('b')!.textContent]).toEqual(['copies', 'CLAUDE.md, settings, skills, rules, plugins']);
+    const picks = [...document.querySelectorAll('label.move-pick')];
+    expect(picks.map((l) => [l.querySelector('span')!.firstChild!.textContent, l.querySelector('.modal-sub.mono')?.textContent])).toEqual([
+      ["a's A", 'a_…90'], ["github's GH_TOKEN", 'ghp_…4f'], ["github's GH_HOST", 'gh…om'], ['rb, whole, keys included', undefined],
+    ]);
+    expect(picks.map((l) => (l.querySelector('input') as HTMLInputElement).checked)).toEqual([false, false, true, true]);
+    fireEvent.click(screen.getByTestId('setup-tick-codex:mcp:gh#env.GH_TOKEN'));
+    await waitFor(() => expect(here).toHaveBeenCalledWith('home.setupConsent', { item: 'codex:mcp:gh', fields: ['env.GH_TOKEN'], on: true }));
+    expect(screen.getByTestId('seed-sheet').textContent).toContain('Later: Settings → Agent setup.');
   });
 
   it('asks nothing of a home that holds one, or a Mac with none, or a window with no way to the home', async () => {
@@ -65,6 +87,7 @@ describe('the first copy of an agent setup onto a far home', () => {
     fireEvent.click(screen.getByTestId('seed-copy'));
     await waitFor(() => expect(screen.queryByTestId('seed-sheet')).toBeNull());
     expect(copies()).toEqual([['machines.copySetupFrom', { machine: ME, seed: true }]]);
+    expect(store.getState().toast).toMatchObject({ text: 'Copied your agent setup to studio.', tone: 'ok' });
     expect(isVeiled(store.getState())).toBe(false);
     unmount();
     there.mockClear();
@@ -112,6 +135,8 @@ describe('the first copy of an agent setup onto a far home', () => {
       render(<SeedSheet />);
       await screen.findByTestId('setup-tick-claude:mcp:a');
       fireEvent.click(screen.getByTestId('seed-copy'));
+      expect(screen.getByTestId('seed-copy').textContent).toBe('Copying…');
+      expect((screen.getByTestId('setup-tick-claude:mcp:a') as HTMLInputElement).disabled).toBe(true);
       fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
       expect(screen.getByTestId('seed-sheet')).toBeTruthy();
       landed({ sent: 1 });
@@ -174,11 +199,16 @@ describe('the first copy of an agent setup onto a far home', () => {
 
   it('stays, saying why, when the home refuses or the copy fails', async () => {
     following();
-    there.mockImplementation((m: string) => (m === 'machines.holdsSetup' ? Promise.resolve({ holds: false }) : Promise.reject(new Error('this home holds an agent setup of its own'))));
+    there.mockImplementation((m: string) => (m === 'machines.holdsSetup' ? Promise.resolve({ holds: false }) : Promise.reject(new Error('studio could not take it: Command failed: tar -x\nno space left'))));
     render(<SeedSheet />);
     await screen.findByTestId('setup-tick-claude:mcp:a');
+    fireEvent.click(screen.getByTestId('setup-tick-claude:mcp:a'));
+    await waitFor(() => expect(screen.getByTestId('seed-copy').hasAttribute('disabled')).toBe(false));
     fireEvent.click(screen.getByTestId('seed-copy'));
-    expect((await screen.findByTestId('seed-failed')).textContent).toContain('holds an agent setup');
+    const failed = await screen.findByTestId('seed-failed');
+    expect(failed.querySelector('.said > div > span')!.textContent).toBe('studio could not take it');
+    expect(failed.querySelector('details .modal-more-body')!.textContent).toBe('Command failed: tar -x\nno space left');
     expect(screen.getByTestId('seed-sheet')).toBeTruthy();
+    expect(store.getState().toast).toBeUndefined();
   });
 });

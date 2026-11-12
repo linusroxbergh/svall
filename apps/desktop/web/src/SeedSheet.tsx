@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Result, SetupRow } from '@svall/protocol';
-import { SetupTicks } from './AgentSetup.js';
 import { app, deps } from './boot.js';
 import { dialogKeys, useApp } from './hooks.js';
+import { keyLabel, keyMask, splitRaw } from './host.js';
+import { Info } from './Info.js';
 import { homeName } from './placement.js';
 import { reloadResources } from './resources/load.js';
 import { CloseX } from './CloseX.js';
+import { Said } from './Said.js';
 import { seedAnswered } from './store/host.js';
 
 /** A window that reaches a far home with no agent setup yet, on a Mac that holds one: this Mac's goes there first, with what each key asks, or not at all. */
@@ -48,23 +50,48 @@ export function SeedSheet() {
     setSeedCopying(true);
     setFailed(undefined);
     app.api().call('machines.copySetupFrom', { machine: me!, seed: true }).then(
-      () => { close(); void reloadResources(deps()); },
+      () => { close(); app.store.getState().showToast(`Copied your agent setup to ${home}.`, 'ok'); void reloadResources(deps()); },
       fail,
     ).finally(() => setSeedCopying(false));
   };
+  // a key row's box, one for each key of a server that sends several, and one for what travels whole
+  const box = (r: SetupRow, id: string, fields: string[], on: boolean, field?: string) => {
+    const mask = keyMask(r, field);
+    return (
+      <label key={id} className="move-pick">
+        <input type="checkbox" data-testid={`setup-tick-${id}`} checked={on} disabled={busy} onChange={(e) => tick(r, fields, e.target.checked)} />
+        <span>{keyLabel(r, field)}{mask && <span className="modal-sub mono">{mask}</span>}</span>
+      </label>
+    );
+  };
+  const keys = (r: SetupRow) => {
+    const t = r.tick!;
+    return !t.ticked || t.fields.length < 2 ? box(r, r.key, t.fields, t.on) : t.fields.map((f) => box(r, `${r.key}#${f}`, [f], t.ticked!.includes(f), f));
+  };
   return (
     <div className="modal-back" data-testid="seed-sheet">
-      <div className="modal dialog" ref={panel} tabIndex={-1} role="dialog" aria-label={`Copy your agent setup to ${home}`} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(shutUnlessCopying)}>
-        <div className="kicker"><span data-testid="seed-title">{home} has no agent setup yet</span>{!busy && <CloseX ref={shut} onClose={close} testid="seed-close" />}</div>
-        <div className="desc" data-testid="seed-says">
-          Your agent setup lives on the fleet's home, and every worker takes it from there, this Mac included. Copy this Mac's to {home} first, or start {home} from nothing. Keys in config files stay on this Mac unless you tick them.
+      <div className="modal sheet dialog" ref={panel} tabIndex={-1} role="dialog" aria-label={`Copy your agent setup to ${home}`} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(shutUnlessCopying)}>
+        <div className="kicker"><span data-testid="seed-title">Copy your agent setup to {home}?</span>{!busy && <CloseX ref={shut} onClose={close} testid="seed-close" />}</div>
+        <div className="host-note" data-testid="seed-says">{home} has no agent setup yet. Agents there start from this Mac's, or from nothing.</div>
+        <div className="rows">
+          <div className="row">
+            <span>copies<Info id="seed-copies">The fleet's home holds the agent setup, and every worker takes it from there, this Mac included. Files go as they are, anything written in them included.</Info></span>
+            <b>CLAUDE.md, settings, skills, rules, plugins</b>
+          </div>
         </div>
-        {!!rows?.length && <SetupTicks rows={rows} tick={tick} />}
-        {failed && <div className="desc" role="alert" data-testid="seed-failed" data-error>{failed}</div>}
-        <div className="opens">
-          <button className="btn pri sm" data-testid="seed-copy" disabled={busy || rows === undefined || pending > 0} onClick={copy}>{busy ? 'Copying…' : `Copy to ${home}`}</button>
-          <button className="btn sm" data-testid="seed-no" disabled={busy} data-tip="Settings → Agent setup copies it whenever you want" onClick={close}>Not now</button>
+        {rows === undefined && !failed && <span className="move-state"><span className="move-mark"><span className="move-spin" /></span>Reading this Mac's keys…</span>}
+        {!!rows?.length && (
+          <>
+            <div className="kicker">Keys<Info id="seed-keys">A key stays on this Mac unless you tick it.</Info></div>
+            {rows.flatMap(keys)}
+          </>
+        )}
+        {failed && <div role="alert" data-testid="seed-failed"><Said {...splitRaw(failed)} /></div>}
+        <div className="acts">
+          <button className="btn pri" data-testid="seed-copy" disabled={busy || rows === undefined || pending > 0} onClick={copy}>{busy ? 'Copying…' : `Copy to ${home}`}</button>
+          <button className="btn" data-testid="seed-no" disabled={busy} onClick={close}>Not now</button>
         </div>
+        <span className="modal-sub">Later: Settings → Agent setup.</span>
       </div>
     </div>
   );
