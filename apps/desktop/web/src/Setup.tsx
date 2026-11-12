@@ -397,34 +397,41 @@ const labelOf = (r: FarRow): string => (!r.op ? HERE : r.op === 'join' && r.step
 const STATE = { start: 'doing', ok: 'done', skip: 'done', warn: 'warned', fail: 'failed' } as const;
 // a command the CLI sets in backticks, and a link, in mono
 const MONO = /`([^`]+)`|(https?:\/\/\S+?)(?=[.,;)]?(?:\s|$))/g;
-function inMono(text: string): ReactNode {
-  const parts: ReactNode[] = [];
-  let at = 0;
-  for (const m of text.matchAll(MONO)) {
-    // the word before stays on the command's line, so a line never starts on a command alone
-    const before = text.slice(at, m.index);
-    const word = before.search(/\S*\s*$/);
-    parts.push(before.slice(0, word), <span key={m.index} className="setup-keep">{before.slice(word)}<code>{m[1] ?? m[2]}</code></span>);
-    at = m.index + m[0].length;
+/** `text` with what the CLI marks as a command or link, and each of `commands`, in mono, the prose between them as it is. */
+function inMono(text: string, commands: string[] = []): ReactNode {
+  const spans = [...text.matchAll(MONO)].map((m) => ({ at: m.index, end: m.index + m[0].length, code: m[1] ?? m[2] }));
+  for (const code of commands) {
+    const at = text.indexOf(code);
+    if (at >= 0 && !spans.some((s) => at < s.end && s.at < at + code.length)) spans.push({ at, end: at + code.length, code });
   }
-  return parts.length ? [...parts, text.slice(at)] : text;
+  const parts: ReactNode[] = [];
+  let from = 0;
+  for (const { at, end, code } of spans.sort((a, b) => a.at - b.at)) {
+    // the word before stays on the command's line, so a line never starts on a command alone
+    const before = text.slice(from, at);
+    const word = before.search(/\S*\s*$/);
+    parts.push(before.slice(0, word), <span key={at} className="setup-keep">{before.slice(word)}<code>{code}</code></span>);
+    from = end;
+  }
+  return parts.length ? [...parts, text.slice(from)] : text;
 }
-const SSH_THEN = /^ssh \S+, then /;
+// the ssh a server's fix names ahead of what to run there
+const SSH_THEN = /\b(ssh \S+), then /;
 
 function FarStep({ row }: { row: FarRow }) {
   const plain = (text: string) => onThisMac(plainStep(text, {}));
   const action = row.action && plain(row.action);
-  // this window opens no terminal on the server, so a command to run there waits behind details, ahead of what a tool said
-  const command = action && (row.run || SSH_THEN.test(action)) ? action : undefined;
   const said = row.detail && (row.raw ? { line: plain(row.detail), raw: withoutTokens(row.raw) } : splitRaw(plain(row.detail)));
+  // what to do: the window's own words where the CLI gives them, its command behind details; else the CLI's, its commands in mono
+  const fix = row.say ? plain(row.say) : action && inMono(action, [SSH_THEN.exec(action)?.[1], row.run].filter((c): c is string => !!c));
+  const raw = [row.say && row.run, said && said.raw].filter(Boolean).join('\n') || undefined;
   const told = row.status === 'ok' || row.status === 'skip' ? undefined
-    : said && command ? { line: said.line, raw: [command, said.raw].filter(Boolean).join('\n') }
-    : said ? { ...said, ...(action && { fix: action }) }
-    : action ? { line: action } : undefined;
+    : said ? { line: inMono(said.line), raw, fix }
+    : fix ? { line: fix, raw } : undefined;
   return (
     <li data-state={STATE[row.status]} data-step={row.step} data-status={row.status}>
       <span className="move-mark" aria-hidden><Mark status={row.status} /></span>
-      <div>{labelOf(row)}{told && <Said {...told} line={inMono(told.line)} fix={told.fix && inMono(told.fix)} mark={false} />}</div>
+      <div>{labelOf(row)}{told && <Said {...told} mark={false} />}</div>
     </li>
   );
 }

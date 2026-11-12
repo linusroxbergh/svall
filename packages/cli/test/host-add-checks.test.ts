@@ -330,7 +330,7 @@ describe('host add', () => {
     healthy({ tools: ['tailscale', 'systemctl', 'loginctl'] });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out.result).toBe('actions');
-    expect(step('tools').at(-1)).toMatchObject({ status: 'fail', action: 'ssh trift.test, then sudo apt install git', run: 'sudo apt install git' });
+    expect(step('tools').at(-1)).toMatchObject({ status: 'fail', action: 'ssh trift.test, then sudo apt install git', run: 'sudo apt install git', say: 'Install git on trift.test' });
     expect(ssh.remoteCalls().some((w) => w.includes('sudo'))).toBe(false);
   });
 

@@ -357,18 +357,32 @@ describe('the first run forks three ways', () => {
     expect(hosts(sent)).toHaveLength(1);
   });
 
-  test('a failed step whose fix is a command for the server keeps it behind details, ahead of what a tool said', () => {
+  test('a failed step\'s fix shows, its command whole in mono and the words around it as they are, what a tool said behind details', () => {
     const { receive } = shell(ready, { fork: false });
     fireEvent.click(screen.getByTestId('fork-join'));
     toSsh('ada@studio');
     fireEvent.click(screen.getByTestId('fork-go'));
     receive(FAR);
-    receive({ type: 'host.step', op: 'join', event: { step: 'home', status: 'fail', detail: 'Tailscale is not running on ada@studio', action: 'start it: sudo systemctl start tailscaled', run: 'sudo systemctl start tailscaled', raw: 'tailscaled is stopped' } });
+    receive({ type: 'host.step', op: 'join', event: { step: 'home', status: 'fail', detail: 'Tailscale is not running on ada@studio', action: 'Start it: ssh ada@studio, then sudo systemctl start tailscaled', run: 'sudo systemctl start tailscaled', raw: 'tailscaled is stopped' } });
     receive({ type: 'host.done', op: 'join', code: 1 });
     const failed = screen.getByTestId('fork-steps').querySelector('li[data-status="fail"]')!;
     expect(failed.querySelector('.said > div > span')!.textContent).toBe('Tailscale is not running on ada@studio');
-    expect(failed.querySelector('.modal-sub')).toBeNull();
-    expect(failed.querySelector('.modal-more-body.mono')!.textContent).toBe('start it: sudo systemctl start tailscaled\ntailscaled is stopped');
+    const fix = failed.querySelector('.modal-sub')!;
+    expect([fix.textContent, [...fix.querySelectorAll('code')].map((c) => c.textContent)]).toEqual(['Start it: ssh ada@studio, then sudo systemctl start tailscaled', ['ssh ada@studio', 'sudo systemctl start tailscaled']]);
+    expect(failed.querySelector('.modal-more-body.mono')!.textContent).toBe('tailscaled is stopped');
+  });
+
+  test('a failed step the CLI words for the window says what to do in a line, its command behind details', () => {
+    const { receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-server'));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive(FAR);
+    receive({ type: 'host.step', op: 'add', event: { step: 'tools', status: 'fail', detail: 'git missing', action: 'ssh ada@studio, then sudo apt install git', run: 'sudo apt install git', say: 'Install git on ada@studio' } });
+    receive({ type: 'host.done', op: 'add', code: 1 });
+    const failed = screen.getByTestId('fork-steps').querySelector('li[data-status="fail"]')!;
+    expect([failed.querySelector('.said > div > span')!.textContent, failed.querySelector('.modal-sub')!.textContent]).toEqual(['git missing', 'Install git on ada@studio']);
+    expect(failed.querySelector('.modal-more-body.mono')!.textContent).toBe('sudo apt install git');
   });
 
   test('a failed step\'s fix says its link in mono', () => {
@@ -531,14 +545,14 @@ describe('the first run forks three ways', () => {
     step('add', { step: 'ssh', status: 'ok', detail: 'logs in' });
     step('add', { step: 'home', status: 'ok', detail: '/home/ada' });
     step('add', { step: 'tmux', status: 'warn', detail: '3.4: Shift+Enter needs 3.5' });
-    step('add', { step: 'linger', status: 'warn', detail: 'off: the fleet stops when you log out', action: 'ssh ada@studio, then loginctl enable-linger' });
+    step('add', { step: 'linger', status: 'warn', detail: 'off: the fleet stops when you log out', action: 'ssh ada@studio, then sudo loginctl enable-linger ada', run: 'sudo loginctl enable-linger ada' });
     step('add', { step: 'os', status: 'start' });
     const list = screen.getByTestId('fork-steps');
     expect([...list.querySelectorAll('li')].map((li) => li.getAttribute('data-step') ?? li.getAttribute('data-testid'))).toEqual(['linger', 'fork-now']);
-    // the command to run on the server waits behind details, in mono, as this window opens no terminal there
+    // the fix's commands in mono, each whole, the word between them as it is
     expect(list.querySelector('[data-step="linger"] .said > div > span')!.textContent).toBe('off: the fleet stops when you log out');
-    expect(list.querySelector('[data-step="linger"] .modal-sub')).toBeNull();
-    expect(list.querySelector('[data-step="linger"] .modal-more-body.mono')!.textContent).toBe('ssh ada@studio, then loginctl enable-linger');
+    expect([...list.querySelectorAll('[data-step="linger"] .modal-sub code')].map((c) => c.textContent)).toEqual(['ssh ada@studio', 'sudo loginctl enable-linger ada']);
+    expect(list.querySelector('[data-step="linger"] .modal-more')).toBeNull();
     expect(screen.getByTestId('fork-now').textContent).toBe(`${stepLabel('os')}…`);
     expect(screen.getByTestId('fork-notes').textContent).toBe('1 note');
     expect(screen.getByTestId('fork-done').textContent).toBe('2 steps done');

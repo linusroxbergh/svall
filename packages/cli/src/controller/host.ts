@@ -238,7 +238,7 @@ function toolsProbe(out: string, destination: string): Outcome<void> {
   }
   if (packages.length) {
     const apt = there(destination, `sudo apt install ${packages.join(' ')}`);
-    throw new StepError(`${missing.join(', ')} missing`, apt.action, apt.run, `Install ${missing.join(' and ')} on ${destination}`);
+    throw new StepError(`${missing.join(', ')} missing`, apt.action, apt.run, `Install ${packages.join(' and ')} on ${destination}`);
   }
   throw new StepError(`${missing.join(', ')} missing`, onThere(destination, 'install Tailscale from https://tailscale.com/download/linux'));
 }
