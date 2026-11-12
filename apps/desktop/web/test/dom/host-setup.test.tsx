@@ -479,8 +479,10 @@ test('a key row is named by its key, says how it stands, its box labelled copy; 
   const row = screen.getByTestId('host-step-mirror:claude:mcp:linear');
   expect(row.querySelector('.host-name')?.textContent).toBe("linear's LINEAR_API_KEY");
   expect(row.querySelector('.host-said > span')?.textContent).toBe('not copied');
-  // its details say what else would do, not what its box does
-  expect(screen.getByTestId('host-details-mirror:claude:mcp:linear').textContent).toBe('detailsOr set LINEAR_API_KEY on trift: svall worker env LINEAR_API_KEY');
+  // its details say what else would do, not what its box does, in a sentence and the command whole on a line of its own
+  expect(screen.getByTestId('host-action-mirror:claude:mcp:linear').textContent).toBe('Set LINEAR_API_KEY on trift instead:');
+  const command = screen.getByTestId('host-command-mirror:claude:mcp:linear');
+  expect([command.tagName, command.className, command.textContent]).toEqual(['CODE', 'host-cmd', 'svall worker env LINEAR_API_KEY']);
   // the agent setup holds no robot back: the verdict says ready, and the fold counts what is not there yet
   expect(screen.getByTestId('host-outcome').querySelector('.host-verdict')!.textContent).toBe('trift is ready');
   expect(screen.getByTestId('host-setup-fold').textContent).toBe('Your agent setup · 1 not on trift yet');
@@ -587,7 +589,7 @@ test('a consent answer goes to the run its tick was made in, not to a later run 
 test('a machine not yet in the list has its rows shown but nothing ticked, and the sheet keeps its title and outcome out of the scrolling rows', () => {
   checked([]);
   const box = screen.getByTestId('host-tick-mirror:claude:mcp:linear') as HTMLInputElement;
-  expect([box.disabled, box.getAttribute('data-tip')]).toEqual([true, 'listed once the machine is added']);
+  expect([box.disabled, box.closest('label')!.getAttribute('data-tip')]).toEqual([true, 'trift is not in the list of machines yet']);
   const body = document.querySelector('.host-body')!;
   expect(body.contains(screen.getByTestId('host-steps'))).toBe(true);
   expect(body.contains(screen.getByTestId('host-machine'))).toBe(false);
@@ -671,7 +673,7 @@ test("a check row that setup there fixes offers Repair, which installs this Mac'
   fireEvent.click(screen.getByTestId('host-notes'));
   expect(screen.getByTestId('host-repair-daemon env').textContent).toBe('Repair');
   // what Repair runs there, said as the command it is
-  expect(screen.getByTestId('host-action-systemd').className).toBe('mono');
+  expect(screen.getByTestId('host-action-systemd').className).toBe('host-cmd');
 
   // another release there is the release row's upgrade to make
   check('fail');
@@ -758,6 +760,83 @@ test('a remove that did not finish offers no button on its row; Forget waits in 
   fireEvent.click(screen.getByTestId('machine-more'));
   fireEvent.click(screen.getByTestId('machine-forget'));
   expect(store.getState().hostConfirm).toEqual({ name: 'trift', forget: true });
+});
+
+test("an add's agent update waits, saying why, until this Mac's list names the machine, then runs from the same row", async () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().toggleHost(true);
+    store.getState().hostStarted('add', { name: 'trift', ssh: 'ada@trift' });
+    store.getState().hostStep('add', { step: 'versions', status: 'warn', detail: 'Claude Code 1.2.3 there, 1.2.4 on this Mac', action: 'ssh ada@trift, then claude update', run: 'claude update' });
+    store.getState().hostStep('add', { step: 'registry', status: 'ok', detail: 'listed' });
+    store.getState().hostDone('add', 1);
+  });
+  const update = () => screen.getByTestId('host-update-versions') as HTMLButtonElement;
+  expect([update().disabled, update().getAttribute('data-tip')]).toEqual([true, 'trift is not in the list of machines yet']);
+  expect(screen.queryByTestId('host-terminal-versions')).toBeNull();
+  act(() => store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]));
+  expect(update().disabled).toBe(false);
+  await act(async () => { fireEvent.click(update()); });
+  expect(call).toHaveBeenCalledWith('machines.updateAgents', { machine: MACHINE, kinds: ['claude'] });
+});
+
+test('a terminal whose ssh quit closes with Close', () => {
+  store.getState().setMachines([{ name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64' }]);
+  render(<HostSetup />);
+  act(() => store.getState().openHostTerminal('trift', 'claude auth login'));
+  expect(screen.getByTestId('host-terminal-done').textContent).toBe('Done');
+  act(() => shell({ type: 'term.failed', id: 'machine:trift', reason: 'ssh quit as soon as it started: Connection closed' }));
+  expect(screen.getByTestId('host-terminal-done').textContent).toBe('Close');
+});
+
+test('an upgrade whose rollback failed did not finish, and offers the rollback the CLI names before Close', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('upgrade', { name: 'trift' });
+    store.getState().hostStep('upgrade', { step: 'probe', status: 'warn', detail: 'does not answer', action: 'see why: svall host doctor trift' });
+    store.getState().hostStep('upgrade', { step: 'rollback', status: 'fail', detail: 'on 0.9.4; 0.9.3 could not be put back', action: 'see why: svall host doctor trift' });
+    store.getState().hostDone('upgrade', 1);
+  });
+  expect(screen.getByTestId('host-outcome').textContent).toBe('Upgrade did not finishRoll back triftClose');
+});
+
+test("a remove's steps that went well fold as steps done, in the order they ran", () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('remove', { name: 'trift' });
+    for (const step of ['machine', 'uninstall', 'registry', 'keys']) store.getState().hostStep('remove', { step, status: 'ok', detail: 'd' });
+    store.getState().hostDone('remove', 0);
+  });
+  expect(screen.getByTestId('host-fine').textContent).toBe('4 steps done');
+  fireEvent.click(screen.getByTestId('host-fine'));
+  expect(screen.queryAllByTestId('host-phase')).toEqual([]);
+  expect(screen.queryAllByTestId(/^host-step-/).map((e) => e.getAttribute('data-testid'))).toEqual(['host-step-machine', 'host-step-uninstall', 'host-step-registry', 'host-step-keys']);
+});
+
+test("the ⋯ menu offers no upgrade to the release the machine runs, as its last check or one just made found", () => {
+  act(() => store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64', current: true }]));
+  render(<MachineActions id={MACHINE} name="trift" />);
+  fireEvent.click(screen.getByTestId('machine-more'));
+  expect(screen.queryByTestId('machine-upgrade')).toBeNull();
+  expect(screen.getByTestId('machine-terminal')).toBeTruthy();
+  // a check that finds another release there offers it again, though the list said otherwise
+  act(() => {
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'release', status: 'fail', detail: '0.9.3 there, 0.9.4 on this Mac', action: 'svall host upgrade trift' });
+    store.getState().hostDone('doctor', 1);
+  });
+  expect(screen.getByTestId('machine-upgrade')).toBeTruthy();
+  act(() => store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]));
+  act(() => {
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'release', status: 'ok', detail: '0.9.4, same as this Mac' });
+    store.getState().hostDone('doctor', 0);
+  });
+  expect(screen.queryByTestId('machine-upgrade')).toBeNull();
 });
 
 test('a check that finds the machine on another release offers its upgrade on that row', () => {
@@ -876,6 +955,22 @@ test('the agent setup fold lists what is left to set up, then what runs only on 
   fireEvent.click(screen.getByTestId('host-setup-there'));
   // a login is named by its server
   expect(screen.getByTestId('host-step-mirror:oauth:claude:mcp:notion').textContent).toBe('notionlogged in');
+});
+
+test('an agent setup all there opens straight onto its rows', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'mirror:oauth:claude:mcp:notion', status: 'ok', detail: 'logged in' });
+    store.getState().hostStep('doctor', { step: 'mirror:var:X', status: 'ok', detail: 'set' });
+    store.getState().hostDone('doctor', 0);
+  });
+  expect(screen.getByTestId('host-setup-fold').textContent).toBe('Your agent setup · all there');
+  fireEvent.click(screen.getByTestId('host-setup-fold'));
+  expect(screen.queryByTestId('host-setup-there')).toBeNull();
+  expect(screen.queryAllByTestId(/^host-step-mirror/).map((e) => e.getAttribute('data-testid'))).toEqual(['host-step-mirror:oauth:claude:mcp:notion', 'host-step-mirror:var:X']);
 });
 
 test("the phone's row names the home by the window's name for it, and its box turns it on", () => {

@@ -138,7 +138,9 @@ describe('the end of a run', () => {
   });
 
   it('offers Roll back only when the rollback after a failed upgrade failed too', () => {
-    expect(outcomeOf(ended('upgrade', 1, [step('probe', 'warn'), step('rollback', 'fail', { detail: 'setup --rollback exited 1' })])).next).toBe('rollback');
+    expect(outcomeOf(ended('upgrade', 1, [step('probe', 'warn'), step('rollback', 'fail', { detail: 'setup --rollback exited 1' })])))
+      .toEqual({ text: 'Upgrade did not finish', failed: true, next: 'rollback' });
+    expect(outcomeOf(ended('upgrade', 1, [step('install', 'fail', { detail: 'no' })])).text).toBe('Upgrade did not finish');
     // an upgrade stopped before it installed left the machine as it was, and one stopped in install has no release to go back from
     expect(outcomeOf(ended('upgrade', 1, [step('master', 'fail', { detail: 'no' })])).next).toBeUndefined();
     expect(outcomeOf(ended('upgrade', 1, [step('install', 'fail', { detail: 'no' })])).next).toBeUndefined();

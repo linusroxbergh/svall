@@ -50,10 +50,13 @@
 .host-body .host-step { display: grid; grid-template-columns: 12px 132px minmax(0, 1fr) auto; column-gap: var(--sp-md); align-items: baseline; }
 .host-body .host-step > .host-name { width: auto; padding-inline-end: var(--sp-sm); }
 .host-said .modal-more-body .mono { font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+/* a command to run is read and copied whole: on a line of its own, never broken */
+.host-said .modal-more-body .host-cmd { display: block; font-family: var(--mono); font-size: var(--text-xs); white-space: pre; overflow-wrap: normal; overflow-x: auto; user-select: text; }
 .host-now > .host-said { grid-column: 2 / -1; }
 /* a box with its word, which stands on the text's baseline, so the box is lowered onto the middle of the line */
 .host-tick { display: flex; align-items: baseline; gap: var(--sp-xs); color: var(--ink-2); white-space: nowrap; }
 .host-tick > input { flex: none; margin: 0; translate: 0 2px; accent-color: var(--sand); }
+.host-tick:has(> input:disabled) { opacity: var(--disabled); }
 .host-ctl { display: flex; align-items: baseline; gap: var(--sp-md); }
 .host-body .host-step .btn { flex: none; }
 /* a variable's field goes on a line of its own under the sentence, lined up with it */

@@ -67,7 +67,9 @@ test('the machines panel reads the list as it opens, and reports every step', as
   await expect(panel.getByTestId('host-machine')).toHaveText('studio');
   await expect(page.locator('[data-testid^="host-step-"]')).toHaveCount(2);
   await expect(page.getByTestId('host-step-claude')).toContainText('Claude Code1.2.3, not logged in');
-  await expect(page.getByTestId('host-action-versions')).toHaveText('claude update');
+  // an agent update waits, saying why, until this Mac's list names the machine
+  await expect(page.getByTestId('host-update-versions')).toBeDisabled();
+  await expect(page.getByTestId('host-update-versions')).toHaveAttribute('data-tip', 'studio is not in the list of machines yet');
   await expect(page.getByTestId('host-notes')).toHaveText('1 note');
   await expect(page.getByTestId('host-fine')).toHaveText('4 checks fine');
   await expect(page.getByTestId('host-outcome')).toHaveText('studio has 2 things to fixCheck againDone');
@@ -129,16 +131,16 @@ test('a check says ready, or how many things are left, and Check runs it once mo
   await panel.getByTestId('machine-upgrade').click();
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'install', status: 'fail', detail: 'did not finish', raw: 'svall setup exited 1' } });
   await receive(page, { type: 'host.done', op: 'upgrade', code: 1 });
-  await expect(page.getByTestId('host-outcome')).toHaveText('studio has 1 thing to fixCheck againDone');
+  await expect(page.getByTestId('host-outcome')).toHaveText('Upgrade did not finishCheck againClose');
   await expect(page.getByTestId('host-rollback')).toHaveCount(0);
 
   // one whose own rollback failed too offers the rollback the CLI names
   await panel.getByTestId('machine-more').click();
   await panel.getByTestId('machine-upgrade').click();
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'probe', status: 'warn', detail: 'does not answer' } });
-  await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'rollback', status: 'fail', detail: 'did not finish', raw: 'svall setup --rollback exited 1' } });
+  await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'rollback', status: 'fail', detail: 'on 0.5.0; 0.4.0 could not be put back', raw: 'svall setup --rollback exited 1' } });
   await receive(page, { type: 'host.done', op: 'upgrade', code: 1 });
-  await expect(page.getByTestId('host-outcome')).toHaveText('studio has 2 things to fixRoll back studioClose');
+  await expect(page.getByTestId('host-outcome')).toHaveText('Upgrade did not finishRoll back studioClose');
   await page.getByTestId('host-rollback').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'rollback', args: { name: 'studio' } });
   await receive(page, { type: 'host.done', op: 'rollback', code: 0 });
@@ -271,8 +273,8 @@ test('the setup page ends in one line, the agent setup counted on its fold; a lo
   await doctor(page, [...PASSED, ...vars]);
   await expect(panel.getByTestId('host-outcome')).toHaveText('studio is readyCheck againDone');
   await expect(panel.getByTestId('host-setup-fold')).toHaveText('Your agent setup · all there');
-  await panel.getByTestId('host-setup-there').click();
-  await expect(panel.getByTestId('host-setup-there')).toHaveText('40 already there');
+  // all there, the fold, open since the check before, holds the rows themselves
+  await expect(panel.getByTestId('host-setup-there')).toHaveCount(0);
   await panel.getByTestId('host-step-mirror:var:VAR_39').scrollIntoViewIfNeeded();
   await expect(panel.getByTestId('host-step-mirror:var:VAR_39')).toBeInViewport();
   await expect(panel.getByTestId('host-machine')).toBeInViewport();
@@ -338,7 +340,10 @@ test('a mirror row shows its key, how it stands, a labelled box and details; tic
   await expect(details).toHaveJSProperty('open', false);
   await details.locator('summary').click();
   await expect(details).toHaveJSProperty('open', true);
-  await expect(details).toHaveText('detailsOr set LINEAR_API_KEY on studio: svall worker env LINEAR_API_KEY');
+  await expect(details).toHaveText('detailsSet LINEAR_API_KEY on studio instead:svall worker env LINEAR_API_KEY');
+  // the command whole on a line of its own
+  const command = panel.getByTestId('host-command-mirror:claude:mcp:linear');
+  expect(await command.evaluate((e) => [getComputedStyle(e).whiteSpace, getComputedStyle(e).display])).toEqual(['pre', 'block']);
 
   await panel.getByTestId('host-tick-mirror:claude:mcp:linear').click();
   await expect.poll(() => asked).toEqual([{ machine: MACHINE, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true }]);
