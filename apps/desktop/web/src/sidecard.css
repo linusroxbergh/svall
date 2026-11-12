@@ -216,7 +216,7 @@
 .set-slider input { width: 132px; accent-color: var(--sand); }
 .set-slider .tnum, .set-zoom .tnum { min-width: 36px; text-align: right; }
 .set-zoom .tnum { text-align: center; }
-.set-switch { display: inline-flex; align-items: center; justify-content: space-between; box-sizing: border-box; width: calc(var(--ctl-sm) * 2 + var(--sp-sm)); height: var(--ctl-sm);
+.set-switch { display: inline-flex; vertical-align: middle; align-items: center; justify-content: space-between; box-sizing: border-box; width: calc(var(--ctl-sm) * 2 + var(--sp-sm)); height: var(--ctl-sm);
   padding: 0 var(--sp-sm) 0 var(--sp-xs); border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
 /* its knob sits at the side it is switched to, so it reads as a control rather than a state */
 .set-switch::before { content: ''; flex: none; width: calc(var(--ctl-sm) - 2 * var(--sp-xs)); height: calc(var(--ctl-sm) - 2 * var(--sp-xs)); border-radius: var(--r-xs); background: var(--fill-3); }
