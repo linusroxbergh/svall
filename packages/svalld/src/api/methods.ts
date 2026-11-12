@@ -183,14 +183,14 @@ const handlers: Handlers = {
     const home = fleetHome?.();
     const known = registered?.();
     const workers = Object.entries(store.state.machines ?? {}).filter(([id]) => id !== home?.machine).map(([id, m]) => ({
-      id: id as MachineId, name: m.name, role: 'worker' as const, platform: known?.get(id)?.platform, ...(known?.get(id)?.dial === 'worker' && { dialsIn: true as const }), reachable: m.reachable, release: m.release, ...(owed[id] && { joining: owed[id].why ?? '' }), ...(owed[id]?.tried !== undefined && { joinTried: owed[id].tried }),
+      id: id as MachineId, name: m.name, role: 'worker' as const, platform: known?.get(id)?.platform, ...(known?.get(id)?.dial === 'worker' && { dialsIn: true as const }), reachable: m.reachable, since: m.since, release: m.release, ...(owed[id] && { joining: owed[id].why ?? '' }), ...(owed[id]?.tried !== undefined && { joinTried: owed[id].tried }),
       robots: robots.filter((r) => r.machine === id).length,
     }));
     if (!home) return { machines: workers };
     const held = store.state.machines?.[home.machine];
     return { machines: [{
       id: home.machine, name: home.name, role: 'home' as const, platform: known?.get(home.machine)?.platform ?? (home.mine ? platform() : undefined),
-      reachable: home.mine || (router?.homeConnected ?? false), release: home.mine ? releaseVersion() : held?.release, robots: robots.filter((r) => r.machine === undefined || r.machine === home.machine).length,
+      reachable: home.mine || (router?.homeConnected ?? false), ...(!home.mine && held && { since: held.since }), release: home.mine ? releaseVersion() : held?.release, robots: robots.filter((r) => r.machine === undefined || r.machine === home.machine).length,
     }, ...workers] };
   },
   'machines.refresh': (_p, { links, rejoinsAgain }) => { links?.refresh(); rejoinsAgain?.(); return {}; },

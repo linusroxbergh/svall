@@ -201,7 +201,7 @@ describe.skipIf(!hasGit)('a move asked through the API', () => {
     const moved = await dispatch({ id: 1, method: 'robot.moveTo', params: { id: 'c_1', machine: W } }, ctx) as { result: { moveId: string } };
     expect(moved.result.moveId).toMatch(/^mv_[0-9a-z]{10}$/);
     expect(home.store.state.robots.c_1.machine).toBe(W);
-    expect(await dispatch({ id: 2, method: 'machines.list' }, ctx)).toEqual({ id: 2, result: { machines: [{ id: W, name: 'w1', role: 'worker', platform: undefined, reachable: true, release: '1.2.3', robots: 1 }] } });
+    expect(await dispatch({ id: 2, method: 'machines.list' }, ctx)).toEqual({ id: 2, result: { machines: [{ id: W, name: 'w1', role: 'worker', platform: undefined, reachable: true, since: expect.any(Number), release: '1.2.3', robots: 1 }] } });
     // a move that is done has nothing left to run on
     expect(await dispatch({ id: 3, method: 'robot.moveRetry', params: { moveId: moved.result.moveId } }, ctx)).toMatchObject({ id: 3, error: { code: 'invalid' } });
   });
@@ -624,17 +624,19 @@ describe('a window and the fleet\'s home', () => {
     expect(await dispatch({ id: 1, method: 'machines.list', params: {} }, owed)).toMatchObject({ result: { machines: [{ id: HOME }, { id: W, joining: 'No route to host', joinTried: 5 }] } });
   });
 
-  it('machines.list names each role and platform, the home first, whichever machine answers', async () => {
-    const machines = { [W]: { name: 'mac', reachable: true, since: 0, release: '0.21' } };
+  it('machines.list names each role, platform and reachability, the home first, whichever machine answers', async () => {
+    const machines = { [W]: { name: 'mac', reachable: true, since: 7, release: '0.21' } };
     const robots = { a: {}, b: { machine: W }, c: { machine: HOME } };
     const registered = () => new Map([[W, { platform: 'darwin', dial: 'worker' }]]);
     const onHome = await dispatch({ id: 1, method: 'machines.list', params: {} }, local({}, { store: { state: { machines, robots } }, registered }));
     expect(onHome).toMatchObject({ result: { machines: [
       { id: HOME, name: 'studio', role: 'home', reachable: true, robots: 2 },
-      { id: W, name: 'mac', role: 'worker', platform: 'darwin', dialsIn: true, reachable: true, robots: 1 },
+      { id: W, name: 'mac', role: 'worker', platform: 'darwin', dialsIn: true, reachable: true, since: 7, robots: 1 },
     ] } });
-    const away = local({}, { store: { state: { machines: { ...machines, [HOME]: { name: 'studio', reachable: false, since: 0, release: '0.20' } }, robots } }, registered, fleetHome: () => ({ ...home, mine: false }), router: { homeConnected: false } });
-    expect(await dispatch({ id: 2, method: 'machines.list', params: {} }, away)).toMatchObject({ result: { machines: [{ id: HOME, role: 'home', reachable: false, release: '0.20' }, { id: W, role: 'worker' }] } });
+    // the home answering for itself has no time it was last seen
+    expect((onHome as { result: { machines: object[] } }).result.machines[0]).not.toHaveProperty('since');
+    const away = local({}, { store: { state: { machines: { ...machines, [HOME]: { name: 'studio', reachable: false, since: 5, release: '0.20' } }, robots } }, registered, fleetHome: () => ({ ...home, mine: false }), router: { homeConnected: false } });
+    expect(await dispatch({ id: 2, method: 'machines.list', params: {} }, away)).toMatchObject({ result: { machines: [{ id: HOME, role: 'home', reachable: false, since: 5, release: '0.20' }, { id: W, role: 'worker', since: 7 }] } });
   });
 });
 
