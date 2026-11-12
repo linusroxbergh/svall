@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { Limits, type LimitsReport, type MachineSize } from '@svall/protocol';
+import { gb, Limits, LIMITS_WHY, type LimitsReport, type MachineSize } from '@svall/protocol';
 import { peekConfig, saveLimits } from '../config.js';
 import { writeDurable } from '../durable.js';
 import { Invalid } from '../errors.js';
@@ -19,7 +19,7 @@ export const defaultLimits = (size: MachineSize): Required<Limits> => ({
   memoryMb: Math.max(size.memoryMb - 1024, Math.floor(size.memoryMb / 2)),
 });
 
-export const gb = (mb: number): string => `${Math.round(mb / 102.4) / 10} GB`;
+export { gb };
 
 export const limitsWords = (limits: Limits, size: MachineSize): string => [
   limits.cpus ? `${limits.cpus} of ${size.cores} cores` : 'every core',
@@ -84,15 +84,7 @@ export async function readLimits(o: LimitsTarget): Promise<LimitsReport> {
 export const withLimits = (unit: string, limits: Limits): string =>
   unit.replace(/(\nOOMPolicy=continue)(\nCPUQuota=[^\n]*)?(\nMemoryMax=[^\n]*)?(\nMemorySwapMax=[^\n]*)?/, (_, at: string) => `${at}${unitLimits(limits)}`);
 
-export const WHY: Record<LimitsReport['state'], string | undefined> = {
-  none: undefined,
-  applied: undefined,
-  pending: 'it holds once the fleet\'s daemon starts',
-  unapplied: 'systemd did not put it on the fleet\'s unit',
-  no_cpu: 'this account is given no control of cores: as root, put Delegate=cpu cpuset io memory pids under [Service] in /etc/systemd/system/user@.service.d/delegate.conf and reboot',
-  no_memory: 'this account is given no control of memory',
-  outside: 'the fleet\'s terminals run outside its unit, on a tmux Svall did not bring, until every robot there is closed and the daemon restarts',
-};
+export const WHY = LIMITS_WHY;
 
 /** Sets what the fleet may use here, on its unit as it runs, restarting nothing; a limit that does not take hold is taken back. */
 export async function setLimits(wanted: Limits, o: LimitsTarget): Promise<LimitsReport> {

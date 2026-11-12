@@ -1,4 +1,4 @@
-import { Limits, LimitsReport } from '@svall/protocol';
+import { Limits, LimitsReport, type LimitsOffer } from '@svall/protocol';
 import { WHY, gb, limitsWords } from '@svall/svalld/linux/limits';
 import { svallExe } from '@svall/svalld/release';
 import { shq } from '@svall/svalld/text';
@@ -61,7 +61,7 @@ async function farLimits(master: SshMaster, far: Far, argv: string[]): Promise<L
   try { return LimitsReport.parse(JSON.parse(r.stdout)); } catch { return 'svall fleet limits did not answer what a limit reads as'; }
 }
 
-type Step = { value: undefined; status?: 'warn'; detail: string };
+type Step = { value: undefined; status?: 'warn'; detail: string; offer?: LimitsOffer };
 
 /** A connect's question: what this fleet may use of the machine. One that holds a limit is shown it; one with none is set
  *  what `limits` or `ask` says, and left with none, as advice, when neither does. A limit that cannot be set stops nothing. */
@@ -72,8 +72,11 @@ export async function limitsStep(master: SshMaster, far: Far, o: LimitsChoice): 
   if (o.limits === undefined && (report.limits.cpus || report.limits.memoryMb)) return shown(report);
   const wanted = o.limits ?? await o.ask?.({ name: far.name, report });
   if (wanted === undefined) {
-    const offer = report.suggested.cpus || report.suggested.memoryMb ? `; ${far.later} ${limitFlags(report.suggested).join(' ')} keeps the rest for the machine` : '';
-    return { value: undefined, status: 'warn', detail: `${limitsLine(report, far.name)}${offer}` };
+    const offer = report.suggested.cpus || report.suggested.memoryMb;
+    return {
+      value: undefined, status: 'warn', detail: `${limitsLine(report, far.name)}${offer ? `; ${far.later} ${limitFlags(report.suggested).join(' ')} keeps the rest for the machine` : ''}`,
+      ...(offer && { offer: { size: report.size, suggested: report.suggested } }),
+    };
   }
   if (!wanted.cpus && !wanted.memoryMb && report.state === 'none') return shown(report);
   const set = await farLimits(master, far, ['set', ...limitFlags(wanted)]);

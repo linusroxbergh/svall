@@ -25,6 +25,7 @@ describe('host add and what the fleet may use of the machine', () => {
     expect(step('limits').at(-1)).toEqual({
       step: 'limits', status: 'warn',
       detail: 'trift has 12 cores and 93.8 GB, and this fleet may use all of it; svall host limits trift --cpus 11 --memory 94976M keeps the rest for the machine',
+      offer: { size: LIMITS.size, suggested: LIMITS.suggested },
     });
     expect(result).toBe('ready');
   });

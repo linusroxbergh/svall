@@ -82,6 +82,22 @@ export const LimitsReport = z.object({
   lastHit: z.number().optional(),
 });
 export type LimitsReport = z.infer<typeof LimitsReport>;
+/** MiB as GB, to a tenth. */
+export const gb = (mb: number): string => `${Math.round(mb / 102.4) / 10} GB`;
+
+/** What a connect asks a fleet to keep to on a machine that holds no limit yet. */
+export type LimitsOffer = Pick<LimitsReport, 'size' | 'suggested'>;
+
+/** Why a limit a report holds does not hold, in the words of systemd and the kernel. */
+export const LIMITS_WHY: Record<LimitsReport['state'], string | undefined> = {
+  none: undefined,
+  applied: undefined,
+  pending: 'it holds once the fleet\'s daemon starts',
+  unapplied: 'systemd did not put it on the fleet\'s unit',
+  no_cpu: 'this account is given no control of cores: as root, put Delegate=cpu cpuset io memory pids under [Service] in /etc/systemd/system/user@.service.d/delegate.conf and reboot',
+  no_memory: 'this account is given no control of memory',
+  outside: 'the fleet\'s terminals run outside its unit, on a tmux Svall did not bring, until every robot there is closed and the daemon restarts',
+};
 
 /** A fleet reached its memory limit on `machine`, where the kernel stopped one of its processes: the `hits`th since that machine's daemon started. */
 export const LimitHit = z.object({ machine: MachineId, name: z.string(), hits: z.number().int(), at: z.number() });
@@ -145,8 +161,8 @@ export function agentsInUse(fleet: FleetAgents): Set<AgentKind> {
 // a warning on these needs a person, whatever the fleet runs
 const TODO_WARNS = new Set(['linger', 'release', 'worker', 'service', 'systemd', 'versions', 'hooks', 'codex hooks', 'opencode plugin']);
 
-// a warning in a step flow that needs no one: the join's offer to copy the agent setup, and an Ubuntu that is not LTS
-const FLOW_NOTES = new Set(['seed', 'os']);
+// a warning in a step flow that needs no one: the join's offer to copy the agent setup, a machine's limits, and an Ubuntu that is not LTS
+const FLOW_NOTES = new Set(['seed', 'limits', 'os']);
 
 /**
  * A row's tier: a failure is to do, and so is a warning in a step flow (`flow`) but those of FLOW_NOTES, on a check that needs
