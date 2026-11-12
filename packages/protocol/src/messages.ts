@@ -571,4 +571,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 45;
+export const PROTOCOL_VERSION = 46;
