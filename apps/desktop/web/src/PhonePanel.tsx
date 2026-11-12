@@ -33,6 +33,22 @@ export function MobileSwitch({ testId, sw }: { testId: string; sw?: ReturnType<t
   );
 }
 
+/** The home of a window apart from it, whose phone link that window cannot read, and whether the window has no route to it at all. */
+export function usePhoneAway(): { home?: string; dialed: boolean } {
+  const home = useApp((s) => (s.via && (!s.via.online || s.via.served === true) ? homeName(s.fleet, s.via) : undefined));
+  const dialed = useApp((s) => s.via?.served === true);
+  return { home, dialed };
+}
+
+/** What a window apart from its home says in place of the phone link. */
+export function PhoneAway({ home, dialed, className, testid }: { home: string; dialed: boolean; className: string; testid: string }) {
+  return (
+    <div className={className} data-testid={testid}>
+      {dialed ? `This window has no route to ${home}. Open Svall where it reaches ${home} to change its phone link.` : `${home} is not reachable; its phone link shows once it is.`}
+    </div>
+  );
+}
+
 /** What keeps the phone link from serving, with a terminal for its fix on the home that serves it. `settings`: the fix as a Settings note. */
 export function PhoneProblem({ settings }: { settings?: boolean }) {
   const status = useApp((s) => s.mobile);

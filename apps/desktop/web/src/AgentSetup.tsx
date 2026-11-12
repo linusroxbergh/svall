@@ -119,15 +119,16 @@ const backupLabel = (dir: string): string => {
 
 const and = (names: string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
-/** What a copy did on the home besides copying: what it replaced, in the home's backup by its day, and what it left as edited there. */
+/** What a copy did on the home besides copying, in one line: what it replaced, in the home's backup by its day, and what it left as edited there. */
 function Copied({ r }: { r: Result<'machines.copySetupFrom'> }) {
   const replaced = r.replaced?.length ? `Its own ${and(r.replaced)} ${r.replaced.length > 1 ? 'are' : 'is'}` : 'What it replaced is';
+  const left = r.left?.length ? `${and(r.left)} ${r.left.length > 1 ? 'stay' : 'stays'} as edited there` : undefined;
+  if (!r.backup && !r.replaced?.length && !left) return null;
   return (
-    <>
-      {r.backup ? <span>{replaced} in its <span data-tip={r.backup}>{backupLabel(r.backup)}</span>.</span>
-        : r.replaced?.length ? <span>Its own {and(r.replaced)} went to its backup folder.</span> : null}
-      {!!r.left?.length && <span>Left as edited there: {and(r.left)}.</span>}
-    </>
+    <span>
+      {r.backup ? <>{replaced} in its <span data-tip={r.backup}>{backupLabel(r.backup)}</span></> : r.replaced?.length ? <>Its own {and(r.replaced)} went to its backup folder</> : null}
+      {left && (r.backup || r.replaced?.length ? `; ${left}` : left[0].toUpperCase() + left.slice(1))}.
+    </span>
   );
 }
 

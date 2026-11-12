@@ -1180,7 +1180,7 @@ test('a copy says what a tick went over on the home and what an untick left ther
     await screen.findByTestId('setup-tick-claude:mcp:linear');
     fireEvent.click(screen.getByTestId('setup-copy'));
     const copied = await screen.findByTestId('setup-copied');
-    expect([...copied.children].map((c) => c.textContent)).toEqual(['Copied to studio', `Its own linear is in its backup from ${new Date(2026, 10, 4).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}.`, 'Left as edited there: odd.']);
+    expect([...copied.children].map((c) => c.textContent)).toEqual(['Copied to studio', `Its own linear is in its backup from ${new Date(2026, 10, 4).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}; odd stays as edited there.`]);
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }

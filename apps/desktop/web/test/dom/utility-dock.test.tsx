@@ -71,19 +71,24 @@ test('the settings button carries a dot only while an update waits and the sideb
   expect(screen.getByTestId('settings-open').getAttribute('aria-label')).toBe('Settings');
 });
 
-test('a window standing in for its home has no phone tab, and an open panel goes with it, for the daemon here holds no link', async () => {
+test('a window standing in for its home keeps its phone tab, whose panel says the home is out of reach in place of a switch, for the daemon here holds no link', async () => {
   const via = { machine: 'aaaaaaaa-0000-4000-8000-000000000000', home: 'bbbbbbbb-0000-4000-8000-000000000000', name: 'studio' } as never;
   act(() => store.getState().setMobile({ serving: false } as never));
   store.getState().toggleMobile(true);
   render(<UtilityDock />);
   await act(async () => {});
-  expect(screen.queryByTestId('mobile-panel')).not.toBeNull();
   expect(screen.queryByTestId('mobile-switch')).not.toBeNull();
   act(() => store.getState().setVia(via));
-  expect(screen.queryByTestId('mobile-panel')).toBeNull();
+  expect(screen.getByTestId('mobile-tab')).toBeTruthy();
+  expect(screen.getByTestId('mobile-away').textContent).toBe('studio is not reachable; its phone link shows once it is.');
   expect(screen.queryByTestId('mobile-switch')).toBeNull();
-  expect(screen.queryByLabelText('Phone link off')).toBeNull();
+  expect(screen.queryByTestId('mobile-body')).toBeNull();
+  // a window that opened apart from its home has read no link, and still has the tab
+  act(() => store.getState().setMobile(undefined));
+  expect(screen.getByTestId('mobile-tab')).toBeTruthy();
   // following the home, its phone link is the fleet's again
+  act(() => { store.getState().setMobile({ serving: false } as never); store.getState().toggleMobile(true); });
   act(() => store.getState().setVia({ ...(via as object), online: true } as never));
-  expect(screen.queryByTestId('mobile-panel')).not.toBeNull();
+  expect(screen.queryByTestId('mobile-away')).toBeNull();
+  expect(screen.queryByTestId('mobile-switch')).not.toBeNull();
 });

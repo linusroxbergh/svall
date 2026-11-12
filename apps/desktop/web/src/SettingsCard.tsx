@@ -14,7 +14,7 @@ import { Close, Copy, Minus, Plus } from './icons.js';
 import { Group, Info } from './Info.js';
 import { Keybindings } from './Keybindings.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
-import { MobilePanel, MobileSwitch, PhoneProblem, useMobileSwitch } from './PhonePanel.js';
+import { MobilePanel, MobileSwitch, PhoneAway, PhoneProblem, useMobileSwitch, usePhoneAway } from './PhonePanel.js';
 import { NO_PAGE, phonesHere } from './phoneText.js';
 import { homeName } from './placement.js';
 import { openFleetConfig } from './resources/docs.js';
@@ -42,17 +42,8 @@ function Opacity({ label, name, value, info }: { label: string; name: 'cardOpaci
 
 function Phone() {
   // a window apart from its home reads no phone link, which is the home's to serve
-  const away = useApp((s) => (s.via && (!s.via.online || s.via.served === true) ? homeName(s.fleet, s.via) : undefined));
-  const dialed = useApp((s) => s.via?.served === true);
-  if (away) {
-    return (
-      <Group name="Phone link">
-        <div className="set-note" data-testid="set-mobile-away">
-          {dialed ? `This window has no route to ${away}. Open Svall where it reaches ${away} to change its phone link.` : `${away} is not reachable; its phone link shows once it is.`}
-        </div>
-      </Group>
-    );
-  }
+  const { home, dialed } = usePhoneAway();
+  if (home) return <Group name="Phone link"><PhoneAway home={home} dialed={dialed} className="set-note" testid="set-mobile-away" /></Group>;
   return <PhoneRows />;
 }
 
