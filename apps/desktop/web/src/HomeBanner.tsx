@@ -6,7 +6,7 @@ import { useApp } from './hooks.js';
 import { startHost } from './hostRun.js';
 import { machineNames, onThisMac, plainStep, splitRaw } from './host.js';
 import { interruptOf, KEPT } from './MoveSheet.js';
-import { machineOf, myMachine } from './placement.js';
+import { copiedAt, machineOf, myMachine } from './placement.js';
 
 const WAIT_MS = 5000;
 
@@ -126,7 +126,7 @@ export function HomeBanner() {
   const { name, state, detail, newer, release } = home;
   const upgrades = state === 'version' && !newer;
   const failed = running ? undefined : run?.steps.filter((s) => s.status === 'fail').at(-1);
-  const age = copied !== undefined && new Date(copied).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const age = copied !== undefined && copiedAt(copied);
   const [fact, sub] = state === 'auth' ? [`This Mac cannot log in to ${name}.`, detail && sentence(detail)]
     : state === 'version' && release ? [`${name} runs ${newer ? 'a newer' : 'an older'} Svall than this Mac.`, `${release} there${mine ? `, ${mine} here` : ''}.`]
       : state === 'version' ? [detail ?? `${name} runs another version of Svall`, undefined]

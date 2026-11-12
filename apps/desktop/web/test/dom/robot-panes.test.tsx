@@ -38,7 +38,7 @@ test('a robot on a worker offers Files and Changes, and while its machine is unr
   act(() => store.getState().setPanes('c0', { left: 'files', right: 'changes' }));
   render(<RobotPanes id="c0" />);
   expect(screen.getByTestId('pane-left-files')).toBeTruthy();
-  const said = ['linus-vault is not reachable', 'Its terminal and files show again when it answers.', 'Check linus-vault'];
+  const said = ['linus-vault is not reachable', 'Its terminal, files and changes show again when it answers.', 'Check linus-vault'];
   expect(screen.getAllByTestId('pane-elsewhere').map(away)).toEqual([said, said]);
   expect(call.mock.calls.map(([m]) => m).filter((m) => /^(fs|repo)\./.test(m))).toEqual([]);
   // the check is the card's: the Machines panel opens on a check of the machine
@@ -58,10 +58,22 @@ test('on this Mac\'s copy of the fleet, a far robot\'s Files say how old the cop
     store.getState().setPanes('c0', { left: 'files' });
   });
   render(<RobotPanes id="c0" />);
-  const time = new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const time = new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   expect(away(screen.getByTestId('pane-elsewhere'))).toEqual(['studio is not reachable', `Showing the fleet as of ${time}.`, 'Try again']);
+  expect(time).not.toMatch(/2026/);
   fireEvent.click(screen.getByTestId('away-retry'));
   expect(retryHome).toHaveBeenCalled();
+});
+
+test('a shell on a robot\'s machine waits while that machine is not reachable, saying why', () => {
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
+  act(() => store.getState().setPanes('c0', { left: 'terminal', right: 'files' }));
+  const { rerender } = render(<RobotPanes id="c0" />);
+  const shell = () => screen.getAllByTestId(/^pane-(left|right)-terminal-there$/).map((b) => [(b as HTMLButtonElement).disabled, b.dataset.tip]);
+  expect(shell()).toEqual([[false, "A shell on linus-vault in /tmp"], [false, "A shell on linus-vault in /tmp"]]);
+  act(() => store.getState().applyPatch([{ op: 'replace', path: `/machines/${VAULT}/reachable`, value: false }]));
+  rerender(<RobotPanes id="c0" />);
+  expect(shell()).toEqual([[true, 'linus-vault is not reachable'], [true, 'linus-vault is not reachable']]);
 });
 
 test('while its machine runs a different build, Files and Changes say so as the terminal does', () => {

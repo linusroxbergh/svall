@@ -39,7 +39,9 @@ describe('the banner of a home this window cannot follow', () => {
     store.getState().setFleet({ ...store.getState().fleet, machines: { [HOME]: { name: 'studio', reachable: false, since: 0, snapshot: { version: 1, at: new Date('2026-11-04T10:00:00').getTime() } } } });
     standingIn({ state: 'unreachable' });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toMatch(/^studio is not reachable\. Showing the fleet as of .*2026.*; robots on this Mac keep working\.Try again$/);
+    expect(screen.getByTestId('home-banner').textContent).toMatch(/^studio is not reachable\. Showing the fleet as of [^;]*; robots on this Mac keep working\.Try again$/);
+    // dated as Machines dates a check, with no year
+    expect(screen.getByTestId('home-age').textContent).not.toMatch(/2026/);
     expect(screen.getByTestId('home-banner').querySelector('b')!.textContent).toBe('studio is not reachable.');
     expect(screen.queryByTestId('home-detail')).toBeNull();
     expect(screen.getByTestId('home-age').className).toBe('banner-sub');

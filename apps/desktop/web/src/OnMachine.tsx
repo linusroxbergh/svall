@@ -5,7 +5,7 @@ import { useApp } from './hooks.js';
 import { cdLine, hasRoute } from './host.js';
 import { startHost } from './hostRun.js';
 import { terminalOn } from './MoveSheet.js';
-import { machineOf } from './placement.js';
+import { copiedAt, machineOf } from './placement.js';
 import { Section } from './Section.js';
 import { VarField } from './VarField.js';
 
@@ -56,12 +56,12 @@ export function Away({ id, line, testid }: { id: string; line: string; testid?: 
       <span data-testid={testid}>{line}</span>
       {copy ? (
         <>
-          {at !== undefined && <span className="modal-sub">Showing the fleet as of {new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.</span>}
+          {at !== undefined && <span className="modal-sub">Showing the fleet as of {copiedAt(at)}.</span>}
           <button className="btn sm" data-testid="away-retry" onClick={() => app.api().retryHome()}>Try again</button>
         </>
       ) : (
         <>
-          <span className="modal-sub">Its terminal and files show again when it answers.</span>
+          <span className="modal-sub">Its terminal, files and changes show again when it answers.</span>
           {name && <button className="btn sm" data-testid="away-check" disabled={running} onClick={check}>Check {name}</button>}
         </>
       )}
