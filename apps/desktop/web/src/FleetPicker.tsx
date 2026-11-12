@@ -67,7 +67,7 @@ function Picker({ mode }: { mode: 'bare' | 'menu' | 'new' }) {
     <div className="modal-back" data-testid="fleet-picker" onPointerDown={close}>
       <div className="modal dialog" ref={panel} tabIndex={-1} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(close)}>
         <div className="kicker">{mode === 'new' ? 'New fleet' : 'Fleets'}<CloseX onClose={close} testid="fleet-picker-close" /></div>
-        {!online && <div className="modal-note" data-testid="fleet-picker-offline">svalld is not connected, so fleets can't be listed or made.</div>}
+        {!online && <div className="modal-note" data-testid="fleet-picker-offline">Svall's background service is not connected, so fleets can't be listed or made.</div>}
         {listError && <div className="fleet-error">{listError}</div>}
         {(mode !== 'new' || errors.new) && <div className="fleet-rows">
           {fleets?.map((f) => (

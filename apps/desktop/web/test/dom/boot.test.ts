@@ -9,8 +9,8 @@ test('initApp builds the app once and the facade reads it', () => {
   expect(app.store).toBe(ctx.store);
   expect(app.bridge).toBe(ctx.bridge);
   // no shell and no port in the url, so nothing connected and the socket is still out of reach
-  expect(() => app.api()).toThrow('svalld not connected');
-  expect(() => deps()).toThrow('svalld not connected');
+  expect(() => app.api()).toThrow("Svall's background service is not connected");
+  expect(() => deps()).toThrow("Svall's background service is not connected");
   expect(ctx.store.getState().loaded).toBe(false);
 });
 
@@ -33,7 +33,7 @@ test('Send Feedback… opens the form from the menu although svalld never connec
   const { store } = fresh.initApp();
   window.__svall!.receive(JSON.stringify({ type: 'menu.run', action: 'feedback' }));
   expect(store.getState().feedbackOpen).toBe(true);
-  expect(() => fresh.app.api()).toThrow('svalld not connected');
+  expect(() => fresh.app.api()).toThrow("Svall's background service is not connected");
   delete (window as unknown as { webkit?: unknown }).webkit;
 });
 

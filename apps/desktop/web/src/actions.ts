@@ -1,5 +1,5 @@
 import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, keptSession, type Cell, type Column, type ContextItem, type HomeAction, type MachineId, type Params, type Result, type Size } from '@svall/protocol';
-import { ApiError, type Api } from './api.js';
+import { ApiError, CONNECTION_LOST, type Api } from './api.js';
 import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { withoutSecond } from './panes.js';
@@ -44,7 +44,7 @@ function warnUnfound(d: ActionDeps, command: string): boolean {
   const cli = command.trim().split(/\s+/)[0];
   const found = d.store.getState().fleet.agentsFound;
   const unfound = AgentKind.safeParse(cli).success && found !== undefined && !found.includes(cli as AgentKind);
-  if (unfound) d.store.getState().showToast(`Mission control runs ${cli}, which svalld doesn't find. Install it, then run ${shim()} setup.`);
+  if (unfound) d.store.getState().showToast(`Mission control runs ${cli}, which Svall's background service doesn't find. Install it, then run ${shim()} setup.`);
   return unfound;
 }
 
@@ -205,7 +205,7 @@ export function toggleIsland(d: ActionDeps, id: string): void {
 // restart; any other failure of it is logged
 export function arrangeIslands(d: ActionDeps, aspect?: number, homeRoom?: number, automatic = false): void {
   d.api.call('island.arrange', { aspect, homeRoom }).catch(automatic ? (e: Error) => {
-    if (!refused(e) && e.message !== 'svalld connection closed') console.warn(`island.arrange: ${e.message}`);
+    if (!refused(e) && e.message !== CONNECTION_LOST) console.warn(`island.arrange: ${e.message}`);
   } : toast(d));
 }
 

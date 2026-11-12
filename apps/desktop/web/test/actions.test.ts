@@ -291,7 +291,7 @@ describe('an arrange the map makes on its own', () => {
 
   it('says nothing when the fleet refuses it or svalld\'s restart cuts it off', async () => {
     expect(await arrange(new ApiError('frozen', 'the fleet is moving to studio; try again once it has'), true)).toEqual({ toast: undefined, logged: [] });
-    expect(await arrange(new Error('svalld connection closed'), true)).toEqual({ toast: undefined, logged: [] });
+    expect(await arrange(new Error("Lost the connection to Svall's background service"), true)).toEqual({ toast: undefined, logged: [] });
   });
 
   it('logs any other failure, and one a person asks for says why on a toast', async () => {
@@ -624,7 +624,7 @@ describe('home', () => {
     store.getState().setFleet({ ...fleet(), agentsFound: ['codex'] });
     expect(await startHomeRobot({ api, store }, { prompt: 'regroup the fleet' })).toBe(true);
     expect(calls.map((c) => c.method)).toEqual(['robot.create']);
-    expect(store.getState().toast).toEqual({ text: "Mission control runs claude, which svalld doesn't find. Install it, then run svall-dev setup.", tone: 'error' });
+    expect(store.getState().toast).toEqual({ text: "Mission control runs claude, which Svall's background service doesn't find. Install it, then run svall-dev setup.", tone: 'error' });
   });
 
   it('reports failure and toasts when the fleet refuses', async () => {
@@ -805,6 +805,6 @@ describe('a new robot', () => {
     c.store.getState().applyPatch([{ op: 'add', path: '/agentsFound', value: ['codex'] }]);
     await newRobotOn(c, 'home');
     expect(created(c).command).toBe('claude --model opus');
-    expect(c.store.getState().toast?.text).toMatch(/Mission control runs claude, which svalld doesn't find/);
+    expect(c.store.getState().toast?.text).toMatch(/Mission control runs claude, which Svall's background service doesn't find/);
   });
 });

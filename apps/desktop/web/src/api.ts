@@ -2,6 +2,10 @@ import { ApiError, HelloReply, LOGIN_REFUSED, PROTOCOL_VERSION, UNPAIRED, server
 
 export { ApiError };
 
+// what a call says with no socket to Svall's background service, and when the socket closed under it
+export const NOT_CONNECTED = "Svall's background service is not connected";
+export const CONNECTION_LOST = "Lost the connection to Svall's background service";
+
 // where svalld answers, the subprotocols the socket offers, and the token to say on arrival; a socket the proxy has
 // already vouched for has none. A far home is told what this window calls it and which machine the window is on
 export type Endpoint = { url: string; protocols?: string[]; token?: string; names?: { home: string; me?: string } };
@@ -72,13 +76,13 @@ export class Api {
 
   call<M extends MethodName>(method: M, params: Params<M>): Promise<Result<M>> {
     const ws = this.ws;
-    if (!ws || !this.online) return Promise.reject(new Error('svalld offline'));
+    if (!ws || !this.online) return Promise.reject(new Error(NOT_CONNECTED));
     const id = this.next++;
     const ms = serverWait(method, params) + this.callTimeout;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`svalld did not answer ${method} within ${ms}ms`));
+        reject(Object.assign(new Error(`Svall's background service did not answer in ${Math.ceil(ms / 1000)} s`), { data: { raw: method } }));
       }, ms);
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
       ws.send(JSON.stringify({ id, method, params }));
@@ -137,7 +141,7 @@ export class Api {
       clearTimeout(late);
       if (this.ws !== ws) return;
       this.online = false;
-      for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('svalld connection closed')); }
+      for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error(CONNECTION_LOST)); }
       this.pending.clear();
       if (this.stopped) return;
       if (ev.code === LOGIN_REFUSED) { this.held = 'refused'; this.onStatus('refused'); }

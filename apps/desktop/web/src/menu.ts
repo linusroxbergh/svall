@@ -1,3 +1,4 @@
+import { NOT_CONNECTED } from './api.js';
 import type { MenuState, ToShell } from './bridge.js';
 import { commitFocused } from './Field.js';
 import { dispatchKey, openFleetPicker, type KeyDeps } from './keyboard.js';
@@ -27,7 +28,7 @@ const menuState = (s: AppState): MenuState => ({
 // File lists the fleets of the svalld on this Mac
 async function menuFleets({ store, api }: Pick<KeyDeps, 'store' | 'api'>): Promise<Extract<ToShell, { type: 'menu.fleets' }>> {
   const s = store.getState();
-  if (s.status !== 'online') return { type: 'menu.fleets', fleets: [], note: 'svalld is not connected' };
+  if (s.status !== 'online') return { type: 'menu.fleets', fleets: [], note: NOT_CONNECTED };
   return api.call('fleets.list', {}).then((r) => ({ type: 'menu.fleets' as const, fleets: r.fleets }), () => ({ type: 'menu.fleets' as const, fleets: [], note: 'Fleets could not be listed' }));
 }
 

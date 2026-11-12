@@ -1,5 +1,5 @@
 import { robotOfKey, isNews, isPushStatus, sessionsOf, shownAgent, type FleetState, type PushStatus, type Session } from '@svall/protocol';
-import type { Api } from './api.js';
+import { NOT_CONNECTED, type Api } from './api.js';
 import type { Bridge, NotifyPermission, ToShell } from './bridge.js';
 import type { NotifySettings } from './settings.js';
 import type { App, AppStore } from './store/index.js';
@@ -100,7 +100,7 @@ export function followNotifications(o: { store: AppStore; bridge: Bridge; api():
     if (!c) return;
     try {
       const api = await waitOnline();
-      if (!api) throw new Error('svalld not connected');
+      if (!api) throw new Error(NOT_CONNECTED);
       await api.call('robot.answer', { id: key, answer: action, promptId });
     } catch {
       // a newer question's banner is up under the same key, and stays

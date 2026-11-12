@@ -1,5 +1,5 @@
 import type { Event, MethodName, Params, Result } from '@svall/protocol';
-import { Api, ApiError, type Endpoint, type Status } from './api.js';
+import { Api, ApiError, CONNECTION_LOST, type Endpoint, type Status } from './api.js';
 import type { Via } from './placement.js';
 import type { AppStore } from './store/index.js';
 
@@ -17,7 +17,7 @@ const OPENS = 3;
 
 /** An answer the page no longer waits for, as it left the source that was to give it. */
 export class SourceLeft extends Error {
-  constructor() { super('svalld connection closed'); }
+  constructor() { super(CONNECTION_LOST); }
 }
 
 type Opts = { makeApi?: (endpoint: Endpoint) => Api; onSwitch?: () => void; onLocalBack?: () => void };

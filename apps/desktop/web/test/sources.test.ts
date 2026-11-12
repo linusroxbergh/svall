@@ -592,7 +592,7 @@ describe('the page follows the home while it answers, and this machine otherwise
     await settle();
     expect(answered).toBe(1);
     expect(statuses.at(-1)).toBe('offline');
-    await expect(api.call('state.get', {})).rejects.toThrow('svalld offline');
+    await expect(api.call('state.get', {})).rejects.toThrow("Svall's background service is not connected");
   });
 
   it('a daemon that answers it names no home is a home of its own, and is not asked again', async () => {

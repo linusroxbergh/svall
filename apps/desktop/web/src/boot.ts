@@ -1,5 +1,5 @@
 import { loadMobileStatus, type Deps } from './actions.js';
-import { Api, ApiError } from './api.js';
+import { Api, ApiError, NOT_CONNECTED } from './api.js';
 import { followAwake } from './awake.js';
 import { connectionFromUrl, createBridge, type Bridge, type Connection } from './bridge.js';
 import { createBrowserManager, type BrowserManager } from './browser.js';
@@ -145,10 +145,10 @@ function createApp(): AppContext {
   return {
     bridge,
     store,
-    api: () => { if (!api) throw new Error('svalld not connected'); return api; },
-    manager: () => { if (!manager) throw new Error('svalld not connected'); return manager; },
-    browser: () => { if (!browser) throw new Error('svalld not connected'); return browser; },
-    repoWatch: () => { if (!repoWatch) throw new Error('svalld not connected'); return repoWatch; },
+    api: () => { if (!api) throw new Error(NOT_CONNECTED); return api; },
+    manager: () => { if (!manager) throw new Error(NOT_CONNECTED); return manager; },
+    browser: () => { if (!browser) throw new Error(NOT_CONNECTED); return browser; },
+    repoWatch: () => { if (!repoWatch) throw new Error(NOT_CONNECTED); return repoWatch; },
   };
 }
 

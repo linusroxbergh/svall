@@ -1109,7 +1109,7 @@ describe('Fleet config', () => {
     expect(sent.filter((m) => m.type === 'openConfig')).toEqual([]);
     await act(async () => { await saveFile(deps(), rootId, 'fleet.json'); });
     expect(call).toHaveBeenCalledWith('fs.write', expect.objectContaining({ id: rootId, path: 'fleet.json' }));
-    expect(store.getState().toast?.text).toBe('Saved on studio. Most of it takes effect when its daemon next starts');
+    expect(store.getState().toast?.text).toBe('Saved on studio. Most of it takes effect when Svall\'s background service there next starts');
   });
 
   test('saying so on a save is for that file, on a far home', async () => {
