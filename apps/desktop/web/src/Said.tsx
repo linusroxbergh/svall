@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { app } from './boot.js';
+import { copyText } from './bridge.js';
 import { Caret, Mark } from './icons.js';
 import { terminalOn } from './MoveSheet.js';
 import { useRoute } from './OnMachine.js';
@@ -11,8 +13,9 @@ export function Fix({ fix, run }: { fix: string; run?: string }) {
 }
 
 /**
- * A problem, said once: its line, what to do under it, what a tool said behind details, and a terminal on `on` with
- * `run` typed when this Mac reaches it; a command the fix does not quote waits behind details when nothing types it.
+ * A problem, said once: its line, what to do under it, what a tool said behind details, and for its command `run` a terminal
+ * on `on` with it typed when this Mac reaches it, or, with no `on`, Copy, as it runs on this Mac, where the window opens no
+ * terminal. A command the fix does not quote stands in mono under it beside Copy, and behind details where neither is offered.
  * `settings`: the fix as a note of the Settings window. `mark`: false inside a row that carries its own.
  */
 export function Said({ line, fix, raw, run, on, settings, mark = 'fail' }: {
@@ -20,14 +23,22 @@ export function Said({ line, fix, raw, run, on, settings, mark = 'fail' }: {
 }) {
   const route = useRoute(run ? on : undefined);
   const terminal = !!run && !!on && route;
+  const here = !!run && on === undefined;
   const quoted = typeof fix === 'string' && !!run && fix.includes(run);
-  const more = [!terminal && run && !quoted ? run : undefined, raw].filter(Boolean).join('\n\n');
+  const more = [!terminal && !here && run && !quoted ? run : undefined, raw].filter(Boolean).join('\n\n');
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
   return (
     <div className="said" data-mark={mark || undefined}>
       {mark && <span className="said-mark" aria-hidden><Mark status={mark} /></span>}
       <div>
         <span>{line}</span>
         {fix && <span className={settings ? 'set-note' : 'modal-sub'}>{typeof fix === 'string' ? <Fix fix={fix} run={run} /> : fix}</span>}
+        {here && !quoted && <code className="said-run">{run}</code>}
         {more && (
           <details className="modal-more">
             <summary><Caret dir="right" />details</summary>
@@ -36,6 +47,10 @@ export function Said({ line, fix, raw, run, on, settings, mark = 'fail' }: {
         )}
       </div>
       {terminal && <button className="btn sm" onClick={() => terminalOn(on!, run!)}>Open terminal</button>}
+      {here && (
+        <button className="btn sm" data-testid="said-copy" data-tip={`Copy ${run} to run in a terminal on this Mac`}
+          onClick={() => { copyText(app.bridge, run!); setCopied(true); }}>{copied ? 'Copied' : 'Copy'}</button>
+      )}
     </div>
   );
 }

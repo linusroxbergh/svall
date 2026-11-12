@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { freshStore, sent, store } from './harness.js';
+import { bridge, freshStore, sent, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
@@ -79,10 +79,32 @@ test('before the list is read a terminal is offered, and a machine the list does
   expect(sent).toContainEqual({ type: 'host.list' });
 });
 
-test('a command with no terminal to type it, and no fix that quotes it, waits behind details before what the tool said', () => {
-  const { container, rerender } = render(<Said line="Tailscale names no login for this Mac" fix="Set mobile.logins in fleet.json, then restart Svall's background service" run="svall restart" raw="no owner" />);
+test('a command on a machine this Mac has no route to, and no fix that quotes it, waits behind details before what the tool said', () => {
+  act(() => store.getState().setMachines([STUDIO, { name: 'mini', id: 'm2', platform: 'darwin-arm64' }]));
+  const { container } = render(<Said line="Tailscale names no login for mini" fix="Set mobile.logins in fleet.json, then restart Svall's background service" run="svall restart" on="mini" raw="no owner" />);
   expect(container.querySelector('.modal-more-body')!.textContent).toBe('svall restart\n\nno owner');
-  rerender(<Said line="x" fix="Run once on this Mac: sudo tailscale up" run="sudo tailscale up" />);
-  expect(container.querySelector('details')).toBeNull();
-  expect(container.querySelector('.modal-sub code.said-run')!.textContent).toBe('sudo tailscale up');
+  expect(screen.queryByTestId('said-copy')).toBeNull();
+});
+
+test('a command that runs on this Mac stands whole in mono with Copy beside it, which copies it and says so for a moment; a tool\'s words stay behind details', () => {
+  vi.useFakeTimers();
+  bridge.present = true;
+  try {
+    const { container, rerender } = render(<Said line="Tailscale on this Mac does not let Svall share this fleet" fix="Run once on this Mac: sudo tailscale set --operator=$USER" run="sudo tailscale set --operator=$USER" raw="Access denied" />);
+    expect(container.querySelector('.modal-sub code.said-run')!.textContent).toBe('sudo tailscale set --operator=$USER');
+    expect(container.querySelector('.modal-sub')!.textContent).toBe('Run once on this Mac: sudo tailscale set --operator=$USER');
+    expect(container.querySelector('.modal-more-body')!.textContent).toBe('Access denied');
+    expect(terminal()).toBeNull();
+    const copy = screen.getByTestId('said-copy');
+    sent.length = 0;
+    fireEvent.click(copy);
+    expect(sent).toContainEqual({ type: 'copy', text: 'sudo tailscale set --operator=$USER' });
+    expect(copy.textContent).toBe('Copied');
+    act(() => { vi.advanceTimersByTime(1500); });
+    expect(copy.textContent).toBe('Copy');
+    // a fix that does not quote it has the command on a line of its own, never inside the prose
+    rerender(<Said line="x" fix="Set mobile.logins, then restart Svall's background service" run="svall restart" />);
+    expect(container.querySelector('.said > div > code.said-run')!.textContent).toBe('svall restart');
+    expect(container.querySelector('details')).toBeNull();
+  } finally { vi.useRealTimers(); bridge.present = false; }
 });
