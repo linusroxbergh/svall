@@ -32,6 +32,7 @@ textarea { overflow-x: hidden; }
 .setup h2 { margin: 0; }
 .setup p { margin: 0; color: var(--ink-2); font-size: var(--text-lg); }
 .setup code { font: var(--text-sm)/var(--lh) var(--mono); color: var(--ink-2); }
+.setup-keep { white-space: nowrap; }
 .setup-list { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--fill-1); }
 .setup-row { grid-column: 1 / -1; padding: var(--sp-md) var(--sp-xl); }
 .setup-row { display: grid; grid-template-columns: subgrid; column-gap: var(--sp-3xl); align-items: center; }

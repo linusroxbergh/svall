@@ -401,7 +401,10 @@ function inMono(text: string): ReactNode {
   const parts: ReactNode[] = [];
   let at = 0;
   for (const m of text.matchAll(MONO)) {
-    parts.push(text.slice(at, m.index), <code key={m.index}>{m[1] ?? m[2]}</code>);
+    // the word before stays on the command's line, so a line never starts on a command alone
+    const before = text.slice(at, m.index);
+    const word = before.search(/\S*\s*$/);
+    parts.push(before.slice(0, word), <span key={m.index} className="setup-keep">{before.slice(word)}<code>{m[1] ?? m[2]}</code></span>);
     at = m.index + m[0].length;
   }
   return parts.length ? [...parts, text.slice(at)] : text;

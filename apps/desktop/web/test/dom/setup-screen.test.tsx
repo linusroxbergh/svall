@@ -174,6 +174,8 @@ test('a warning sets the commands the CLI marks, and a link, in mono, with no ba
     ['Codex asks once to trust these hooks: start codex and choose "Trust all and continue", or trust them in /hooks', ['codex', '/hooks']],
     ['See https://svall.dev/docs.', ['https://svall.dev/docs']],
   ]);
+  // a command keeps the word before it on its line
+  expect([...document.querySelectorAll('.setup-keep')].map((k) => k.textContent)).toEqual(['start codex', 'in /hooks', 'See https://svall.dev/docs']);
 });
 
 test('Help\'s Send Feedback… opens the form on the setup page, and Esc closes it', async () => {
