@@ -11,6 +11,8 @@ import { copiedAt, machineOf, myMachine } from './placement.js';
 const WAIT_MS = 5000;
 
 const ended = (t: string): string => (/[.!?…]$/.test(t) ? t : `${t}.`);
+// a run from a banner goes through Svall's background service, so it waits while the window has lost it
+const OFFLINE = "Lost the connection to Svall's background service";
 
 // a run that failed, in the window's words: why, then what to do here, unless that was said elsewhere; what a tool said waits behind the pointer
 function Failed({ step, alone = false, plain = onThisMac, testid }: { step: HostStep; alone?: boolean; plain?: (text: string) => string; testid: string }) {
@@ -60,8 +62,8 @@ export function HomeMoveBanner() {
           </span>
         )}
       </span>
-      {!moving.unmarked && <button className="btn sm" data-testid="home-move-retry" disabled={running} onClick={() => startHost('home-retry', { name: '' })}>{run?.op === 'home-retry' && running ? 'Finishing…' : 'Finish the move'}</button>}
-      <button className="btn sm" data-testid="home-move-abort" disabled={running} data-tip={moving.unmarked ? undefined : 'Works once the machine that holds the move says it was not taken'} onClick={() => startHost('home-abort', { name: '' })}>
+      {!moving.unmarked && <button className="btn sm" data-testid="home-move-retry" disabled={running || !online} data-tip={online ? undefined : OFFLINE} onClick={() => startHost('home-retry', { name: '' })}>{run?.op === 'home-retry' && running ? 'Finishing…' : 'Finish the move'}</button>}
+      <button className="btn sm" data-testid="home-move-abort" disabled={running || !online} data-tip={!online ? OFFLINE : moving.unmarked ? undefined : 'Works once the machine that holds the move says it was not taken'} onClick={() => startHost('home-abort', { name: '' })}>
         {run?.op === 'home-abort' && running ? (moving.unmarked ? 'Clearing it…' : 'Calling it off…') : moving.unmarked ? 'Clear it' : 'Call it off'}
       </button>
     </div>
@@ -77,6 +79,7 @@ export function CrewAwayBanner() {
   const run = useApp((s) => (s.host?.op === 'home-crew' ? s.host : undefined));
   // a move that stands holds them where they are, so bringing them back could only fail
   const busy = useApp((s) => s.homeSheet !== undefined || s.homeMove !== undefined || (s.host?.running === true && s.host.op.startsWith('home')));
+  const online = useApp((s) => s.status === 'online');
   const running = run?.running === true;
   if (!names || (busy && !running)) return null;
   const failed = running ? undefined : run?.steps.filter((s) => s.status === 'fail').at(-1);
@@ -89,7 +92,7 @@ export function CrewAwayBanner() {
         {' '}
         {failed ? <Failed step={failed} alone={chosen !== undefined} testid="crew-away-failed" /> : <span className="banner-sub">A move that stopped left {one ? 'it' : 'them'} there.</span>}
       </span>
-      <button className="btn sm" data-testid="crew-away-back" disabled={running} onClick={() => startHost('home-crew', { name: '', ...(chosen && { interrupt: true }) })}>
+      <button className="btn sm" data-testid="crew-away-back" disabled={running || !online} data-tip={online ? undefined : OFFLINE} onClick={() => startHost('home-crew', { name: '', ...(chosen && { interrupt: true }) })}>
         {running ? `Bringing ${one ? 'it' : 'them'} back…` : chosen ? KEPT[chosen] : `Bring ${one ? 'it' : 'them'} back`}
       </button>
     </div>

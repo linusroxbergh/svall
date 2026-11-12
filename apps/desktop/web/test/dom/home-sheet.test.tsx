@@ -684,6 +684,16 @@ describe('a move nothing is driving', () => {
     expect(screen.getByTestId('home-move-banner').querySelector('span')!.textContent).toBe('The fleet is moving to studio. studio has not let go of it: staged. Call it off again once it answers, or finish the move.');
   });
 
+  it('while the window has lost Svall\'s background service, neither button takes a press, and says why', async () => {
+    online();
+    answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } } });
+    render(<HomeMoveBanner />);
+    await screen.findByTestId('home-move-banner');
+    act(() => { store.getState().setStatus('offline'); });
+    expect(['home-move-retry', 'home-move-abort'].map((t) => { const b = screen.getByTestId(t) as HTMLButtonElement; return [b.disabled, b.dataset.tip]; }))
+      .toEqual([[true, "Lost the connection to Svall's background service"], [true, "Lost the connection to Svall's background service"]]);
+  });
+
   it('while Call it off runs, neither button takes a press', async () => {
     online();
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } } });
@@ -719,6 +729,7 @@ describe('a move nothing is driving', () => {
 
 describe('mission control left away by a move that stopped', () => {
   const crew = (machine?: string) => act(() => {
+    store.getState().setStatus('online');
     store.setState((s) => ({ fleet: { ...s.fleet, islands: { home: { id: 'home', kind: 'home' } }, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 0 } }, robots: { r1: { id: 'r1', name: 'golden heron', islandId: 'home', ...(machine && { machine, sentAhead: 'hm_abcdefghij' }) } } } }) as never);
   });
 
@@ -734,6 +745,14 @@ describe('mission control left away by a move that stopped', () => {
     expect(screen.getByTestId('crew-away-banner').textContent).toBe('Mission control\'s golden heron is still on studio. A move that stopped left it there.Bring it back');
     fireEvent.click(screen.getByTestId('crew-away-back'));
     expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-crew', args: { name: '' } });
+  });
+
+  it('waits while the window has lost Svall\'s background service, saying why', () => {
+    crew(STUDIO);
+    render(<CrewAwayBanner />);
+    act(() => { store.getState().setStatus('offline'); });
+    const back = screen.getByTestId('crew-away-back') as HTMLButtonElement;
+    expect([back.disabled, back.dataset.tip]).toEqual([true, "Lost the connection to Svall's background service"]);
   });
 
   it('names two as they, and this Mac as this Mac', () => {
