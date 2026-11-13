@@ -141,15 +141,15 @@ describe('a machine\'s limits in Settings → Machines', () => {
     const edit = screen.getByTestId('limits-edit');
     expect(screen.getByTestId('limits-suggested').textContent).toBe("Suggested for studio's 12 cores and 94 GB");
     expect([field('cores').value, field('memory').value]).toEqual(['11', '93']);
-    // memory starts at what is in use, in whole GB
-    expect([...edit.querySelectorAll('.limits-range')].map((r) => r.textContent)).toEqual(['1 to 12', '7 to 94 GB']);
+    // memory starts at what is in use, to the tenth of a GB above it
+    expect([...edit.querySelectorAll('.limits-range')].map((r) => r.textContent)).toEqual(['1 to 12', '6.3 to 94 GB']);
     expect(screen.getByTestId('limits-held').textContent).toBe('memory in use now6.2 GB');
     expect([...edit.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Save']);
     expect(screen.getByTestId('limits-save').closest('.row')!.textContent).toBe('Robots keep running; the limits take hold nowSave');
     fireEvent.change(field('cores'), { target: { value: '' } });
     fireEvent.change(field('memory'), { target: { value: '6' } });
     const save = screen.getByTestId('limits-save') as HTMLButtonElement;
-    expect([save.disabled, save.dataset.tip]).toEqual([true, '7 to 94 GB']);
+    expect([save.disabled, save.dataset.tip]).toEqual([true, '6.3 to 94 GB']);
     fireEvent.change(field('memory'), { target: { value: '64' } });
     fireEvent.click(save);
     expect(call).toHaveBeenCalledWith('machines.setLimits', { machine: STUDIO, cpus: null, memoryMb: 65536 });
@@ -183,11 +183,36 @@ describe('a machine\'s limits in Settings → Machines', () => {
     const wrong = () => screen.getAllByTestId('limits-wrong').map((w) => [w.previousElementSibling, w.textContent]);
     expect(wrong()).toEqual([[field('cores').closest('.row'), '1 to 12 cores']]);
     // the range leaves the wrong field's side for the line under it
-    expect([...screen.getByTestId('limits-edit').querySelectorAll('.limits-range')].map((r) => r.textContent)).toEqual(['7 to 94 GB']);
+    expect([...screen.getByTestId('limits-edit').querySelectorAll('.limits-range')].map((r) => r.textContent)).toEqual(['6.3 to 94 GB']);
     expect((screen.getByTestId('limits-save') as HTMLButtonElement).dataset.tip).toBe('1 to 12 cores');
     fireEvent.change(field('cores'), { target: { value: '8' } });
     fireEvent.change(field('memory'), { target: { value: '0.2' } });
-    expect(wrong()).toEqual([[field('memory').closest('.row'), '7 to 94 GB']]);
+    expect(wrong()).toEqual([[field('memory').closest('.row'), '6.3 to 94 GB']]);
+  });
+
+  test('a small machine\'s own suggestion can be saved, and memory under 512 MiB cannot', async () => {
+    daemon({ [STUDIO]: { size: { cores: 2, memoryMb: 957 }, suggested: { cpus: 1, memoryMb: 512 }, limits: {}, state: 'none', heldMb: 150 } });
+    await machines();
+    await value('studio');
+    fireEvent.click(screen.getByTestId('limits-change'));
+    expect([...screen.getByTestId('limits-edit').querySelectorAll('.limits-range')].map((r) => r.textContent)).toEqual(['1 to 2', '0.5 to 0.9 GB']);
+    fireEvent.change(field('memory'), { target: { value: '0.4' } });
+    expect(screen.getByTestId('limits-wrong').textContent).toBe('0.5 to 0.9 GB');
+    fireEvent.change(field('memory'), { target: { value: '0.5' } });
+    fireEvent.click(screen.getByTestId('limits-save'));
+    expect(call).toHaveBeenLastCalledWith('machines.setLimits', { machine: STUDIO, cpus: 1, memoryMb: 512 });
+  });
+
+  test('a limit in force over what is in use stands, to the tenth of a GB, and a cores-only change saves', async () => {
+    daemon({ [STUDIO]: { ...SET, limits: { cpus: 11, memoryMb: 6860 }, heldMb: 6300 } });
+    await machines();
+    await value('studio');
+    fireEvent.click(screen.getByTestId('limits-change'));
+    expect(screen.queryByTestId('limits-wrong')).toBeNull();
+    expect([...screen.getByTestId('limits-edit').querySelectorAll('.limits-range')].map((r) => r.textContent)).toEqual(['1 to 12', '6.2 to 94 GB']);
+    fireEvent.change(field('cores'), { target: { value: '8' } });
+    fireEvent.click(screen.getByTestId('limits-save'));
+    expect(call).toHaveBeenLastCalledWith('machines.setLimits', { machine: STUDIO, cpus: 8, memoryMb: 6860 });
   });
 
   test('Save keeps a memory limit to the MiB when only the cores change', async () => {

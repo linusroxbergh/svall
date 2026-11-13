@@ -48,14 +48,18 @@ function useFields(size: LimitsReport['size'], from: Limits, edited: () => void,
   const [memory, setMemory] = useState(from.memoryMb ? String(tenths(from.memoryMb)) : '');
   const c = Number(cpus);
   const m = Number(memory);
-  const least = heldMb ? Math.min(Math.ceil(heldMb / 1024), tenths(size.memoryMb)) : 0.5;
+  const least = Math.max(0.5, heldMb ? Math.ceil(heldMb / 102.4) / 10 : 0);
   const range = { cores: `1 to ${size.cores}`, memory: `${least} to ${gb(size.memoryMb)}` };
-  const wrong = cpus && !(Number.isInteger(c) && c >= 1 && c <= size.cores) ? { part: 'cores', says: `1 to ${cores(size.cores)}` } as const
-    : memory && !(m >= least && m <= tenths(size.memoryMb)) ? { part: 'memory', says: range.memory } as const : undefined;
-  // a GB typed as the machine's own size is all of it, not the few MiB a tenth rounds up past it
-  // memory left as it was keeps its MiB, which the tenths of a GB the field shows would round
+  // memory left as it was keeps its MiB, which the tenths of a GB the field shows would round; a GB typed as the
+  // machine's own size is all of it, not the few MiB a tenth rounds up past it
   const kept = from.memoryMb && memory === String(tenths(from.memoryMb)) ? from.memoryMb : undefined;
-  const limits: Limits = { ...(cpus && { cpus: c }), ...(memory && { memoryMb: kept ?? Math.min(Math.round(m * 1024), size.memoryMb) }) };
+  const typed = m <= tenths(size.memoryMb) ? Math.min(Math.round(m * 1024), size.memoryMb) : Math.round(m * 1024);
+  const memoryMb = kept ?? typed;
+  // what the machine takes, on the MiB sent
+  const takes = memoryMb >= 512 && memoryMb >= (heldMb ?? 0) && memoryMb <= size.memoryMb;
+  const wrong = cpus && !(Number.isInteger(c) && c >= 1 && c <= size.cores) ? { part: 'cores', says: `1 to ${cores(size.cores)}` } as const
+    : memory && !takes ? { part: 'memory', says: range.memory } as const : undefined;
+  const limits: Limits = { ...(cpus && { cpus: c }), ...(memory && { memoryMb }) };
   const field = (part: 'cores' | 'memory', o: { label: string; max: number; step: number }) => (
     <input type="number" className="fld inline limits-fld" aria-label={o.label} data-testid={`limits-${part}`} min={part === 'cores' ? 1 : least} max={o.max} step={o.step}
       placeholder="all" value={part === 'cores' ? cpus : memory} onChange={(e) => { (part === 'cores' ? setCpus : setMemory)(e.target.value); edited(); }} />
