@@ -1,0 +1,5 @@
+- Your fleet can run on a Linux server around the clock: install Svall there from the first run or Settings → Machines, and this Mac connects to it.
+- Move robots between this Mac and your servers, add more Linux machines, and move the fleet's home either way.
+- Drop a file or paste an image into a robot on another machine; your agent setup follows the fleet.
+- Choose how many cores and how much memory a fleet may use on a server; you hear when it reaches its limit.
+- Robots resume on their own after a quit, update or crash, and hear back from the robots they hand work to.
