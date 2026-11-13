@@ -299,7 +299,8 @@ JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with
    - Whichever route, the release step says whether the release is signed, as its manifest does.
    - Every step is `ok` but the advice a fresh machine gets: Claude Code, Codex, OpenCode and `gh` not installed,
      `versions` skipped with no agent to compare, and `mirror:unchecked`, as no daemon runs on the controller. The
-     linger step turns lingering on, and the tmux step finds the release's own.
+     linger step turns lingering on, and the tmux step finds the release's own. The limits step sets no limit, with no
+     one to ask, and hands the app the machine's size and the default it asks with.
    - The enrol step makes the machine a worker of the controller's private fleet, whose `fleet.json` the run writes
      first, as Svall's first start does.
    - The JSON result's `actions` are exactly the three installs, the things the text line `fresh has 3 things to fix`
