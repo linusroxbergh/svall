@@ -1,0 +1,1 @@
+- Adding a Linux server works: this release carries the Linux companion 0.28.0 was missing.
