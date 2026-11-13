@@ -95,7 +95,7 @@ export async function setLimits(wanted: Limits, o: LimitsTarget): Promise<Limits
   if (limits.cpus && limits.cpus > size.cores) throw new Invalid(`this machine has ${size.cores} cores`);
   if (limits.memoryMb && limits.memoryMb > size.memoryMb) throw new Invalid(`this machine has ${gb(size.memoryMb)} of memory`);
   if (limits.memoryMb && before.heldMb !== undefined && before.heldMb > limits.memoryMb) {
-    throw new Invalid(`the fleet holds ${gb(before.heldMb)} here now; stop a robot or allow more`);
+    throw new Invalid(`${gb(before.heldMb)} is in use now; stop a robot or allow at least ${Math.ceil(before.heldMb / 1024)} GB`);
   }
   const paths = resolvePaths(o.home);
   const apply = async (l: Limits): Promise<void> => {

@@ -380,10 +380,10 @@ has 12 cores and 94 GB. This fleet may use [11 cores, 93 GB], or none:". Return 
 ask sets nothing and says so in its `limits` step, with the command that sets the default. A machine that already
 holds a limit is shown it and not asked. A Mac has no limit.
 
-The app asks the same with the default filled in: **Add machine** once the machine is added; the first run's server
-path between installing the server and this Mac joining it, with **Set** or **No limit**; and after a join that finds
-the home with no limit, the window opens Settings → Machines on the home's limits, once. Settings → Machines shows each
-Linux machine's `limits` row, with **Change** for the cores, the memory and **No limit**, and why a limit does not hold.
+The app asks the same with the default filled in, both fields left empty for no limit: **Add machine** once the
+machine is added; the first run's server path between installing the server and this Mac joining it; and after a join
+that finds the home with no limit, the window opens Settings → Machines on the home's limits, once. Settings → Machines
+shows each Linux machine's `limits` row, with **Change** for the cores and the memory, and why a limit does not hold.
 
 | Command | Where | What it does |
 | --- | --- | --- |
@@ -397,15 +397,15 @@ the fleet home's `node.json` on that machine. Setting it reloads systemd and res
 and its own limit, so two fleets with the default may together ask for more than the machine has.
 
 A limit is refused when it is more than the machine has, when its memory is under what the fleet's processes hold now
-("the fleet holds 6.2 GB here now; stop a robot or allow more"), and, for cores, where the account is given no
+("6.2 GB is in use now; stop a robot or allow at least 7 GB"), and, for cores, where the account is given no
 control of them, as on an older systemd; the refusal names the root drop-in that gives it. A limit systemd does not
 put on the unit is taken back.
 
 At the limit on cores the fleet's processes run slower. A fleet with a memory limit uses no swap, so at
 that limit the machine's disk is left alone and the kernel stops one process of the fleet at once: the robot's terminal says `Killed`, the agent can be
 revived, and every other robot runs on. The daemon marks each robot's processes as the ones to stop first, so it is
-not tmux or the daemon. The app says so as it happens, with **Change limits**; the machine's `limits` row,
-`svall host doctor` and the daemon's log say how often it happened; which robot lost a process only root's kernel log
+not tmux or the daemon. The app says so as it happens, with **Change limits**; the info beside the machine's `limits`
+row, `svall host doctor` and the daemon's log say how often it happened; which robot lost a process only root's kernel log
 says.
 
 What a limit does not reach: a fleet whose terminals run on a tmux Svall did not bring, such as Ubuntu's own kept

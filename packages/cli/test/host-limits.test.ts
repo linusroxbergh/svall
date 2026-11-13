@@ -53,10 +53,10 @@ describe('host add and what the fleet may use of the machine', () => {
   });
 
   it('goes on when the machine refuses the limit, with why and the way to set one later', async () => {
-    ssh.reply(['fleet', 'limits', 'set'], { code: 1, stderr: 'svall: the fleet holds 6.2 GB here now; stop a robot or allow more\n' });
+    ssh.reply(['fleet', 'limits', 'set'], { code: 1, stderr: 'svall: 6.2 GB is in use now; stop a robot or allow at least 7 GB\n' });
     healthy();
     const { result } = await add({ limits: { memoryMb: 4096 } });
-    expect(step('limits').at(-1)).toEqual({ step: 'limits', status: 'warn', detail: 'no limit was set on trift: the fleet holds 6.2 GB here now; stop a robot or allow more; svall host limits trift sets one' });
+    expect(step('limits').at(-1)).toEqual({ step: 'limits', status: 'warn', detail: 'no limit was set on trift: 6.2 GB is in use now; stop a robot or allow at least 7 GB; svall host limits trift sets one' });
     expect(result).toBe('ready');
   });
 });

@@ -120,7 +120,7 @@ describe('setting a limit', () => {
     const m = machine({ anonMb: 6349 });
     await expect(setLimits({ cpus: 13 }, m.target)).rejects.toThrow('this machine has 12 cores');
     await expect(setLimits({ memoryMb: 96_001 }, m.target)).rejects.toThrow('this machine has 93.8 GB of memory');
-    await expect(setLimits({ memoryMb: 4096 }, m.target)).rejects.toThrow('the fleet holds 6.2 GB here now; stop a robot or allow more');
+    await expect(setLimits({ memoryMb: 4096 }, m.target)).rejects.toThrow('6.2 GB is in use now; stop a robot or allow at least 7 GB');
     await expect(setLimits({ memoryMb: 100 }, m.target)).rejects.toThrow();
     expect(m.saved()).toBeUndefined();
     expect(m.calls.join('\n')).not.toContain('daemon-reload');

@@ -252,7 +252,7 @@ describe('machines.limits and machines.setLimits', () => {
     expect(await dispatch({ id: 2, method: 'machines.setLimits', params: { machine: FAR, cpus: 4, memoryMb: null } }, ctx)).toEqual({ id: 2, result: report({ cpus: 4 }) });
     expect(calls).toEqual([[FAR, 'limits.get', {}], [FAR, 'limits.set', { cpus: 4 }]]);
     const old = base({ links: { call: () => Promise.reject(new ApiError('unknown_method', 'unknown method limits.get')) } });
-    expect(await dispatch({ id: 3, method: 'machines.limits', params: { machine: FAR } }, old)).toEqual({ id: 3, error: { code: 'not_supported', message: 'studio runs a release that takes no limit; upgrade it under Machines' } });
+    expect(await dispatch({ id: 3, method: 'machines.limits', params: { machine: FAR } }, old)).toEqual({ id: 3, error: { code: 'not_supported', message: 'studio\'s release has no limits yet; upgrade it from its ⋯ menu' } });
     expect(await dispatch({ id: 4, method: 'machines.limits', params: { machine: '33333333-3333-4333-8333-333333333333' } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
   });
 

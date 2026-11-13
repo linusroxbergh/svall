@@ -18,60 +18,52 @@ export function limitsValue(r: Pick<LimitsReport, 'size' | 'limits'>): string {
   ].join(' · ');
 }
 
-// why a limit the machine's unit holds does not hold, in the window's words; systemd's stay behind details
-const NOT_HELD: Partial<Record<LimitsReport['state'], (name: string) => { line: string; fix?: string }>> = {
+// why a limit the machine's unit holds does not hold, in the window's words; a tool's own stay behind details
+const NOT_HELD: Partial<Record<LimitsReport['state'], (name: string) => { line: string; fix?: string; raw?: string }>> = {
   pending: (n) => ({ line: 'not in force yet', fix: `It takes hold when Svall's background service on ${n} starts.` }),
-  unapplied: () => ({ line: 'not in force' }),
-  no_cpu: (n) => ({ line: `${n} cannot hold this fleet to a number of cores`, fix: 'Memory can be limited.' }),
-  no_memory: (n) => ({ line: `${n} cannot hold this fleet to an amount of memory` }),
-  outside: (n) => ({ line: `robots on ${n} run outside the limit`, fix: "Until every robot there is closed and Svall's background service restarts." }),
+  unapplied: () => ({ line: 'not in force', raw: LIMITS_WHY.unapplied }),
+  no_cpu: (n) => ({ line: `${n} cannot hold this fleet to a number of cores`, fix: 'Memory can be limited.', raw: LIMITS_WHY.no_cpu }),
+  no_memory: (n) => ({ line: `${n} cannot hold this fleet to an amount of memory`, raw: LIMITS_WHY.no_memory }),
+  outside: (n) => ({ line: `robots on ${n} run outside the limit`, fix: "Close every robot there, then restart Svall's background service" }),
 };
 
-export const limitsSaid = (r: LimitsReport, name: string): { line: string; fix?: string; raw?: string } | undefined => {
-  const said = NOT_HELD[r.state]?.(name);
-  return said && { ...said, raw: LIMITS_WHY[r.state] };
-};
+// a time of day today, with its date before
+const clock = (at: number): string => (new Date(at).toDateString() === new Date().toDateString()
+  ? new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  : new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }));
 
-const hitsLine = (r: LimitsReport): string | undefined => (r.hits
-  ? `reached its memory limit ${r.hits === 1 ? 'once' : `${r.hits} times`}, last ${new Date(r.lastHit ?? 0).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
-  : undefined);
+const hitsSaid = (r: LimitsReport): string => (r.hits
+  ? ` This fleet reached it ${r.hits === 1 ? `once, ${clock(r.lastHit ?? 0)}` : `${r.hits} times, last ${clock(r.lastHit ?? 0)}`}.`
+  : '');
 
 /** The `11,95232M` a join's `--limits` takes, or `none`. */
 export const limitsArg = (l: Limits): string => (l.cpus || l.memoryMb ? `${l.cpus ?? ''},${l.memoryMb ? `${l.memoryMb}M` : ''}` : 'none');
 
-/** Cores and GB fields, an empty one for no limit on that part, `edited` told of each change; `wrong` is the field that cannot be set and its range. */
-function useFields(size: LimitsReport['size'], from: Limits, edited: () => void) {
+/**
+ * Cores and GB fields, an empty one for no limit on that part, `edited` told of each change; each one's `range`, memory's from
+ * `heldMb` in use, which the machine would refuse to go under; `wrong` is the field that cannot be set and its range.
+ */
+function useFields(size: LimitsReport['size'], from: Limits, edited: () => void, heldMb?: number) {
   const [cpus, setCpus] = useState(from.cpus ? String(from.cpus) : '');
   const [memory, setMemory] = useState(from.memoryMb ? String(tenths(from.memoryMb)) : '');
   const c = Number(cpus);
   const m = Number(memory);
+  const least = heldMb ? Math.min(Math.ceil(heldMb / 1024), tenths(size.memoryMb)) : 0.5;
+  const range = { cores: `1 to ${size.cores}`, memory: `${least} to ${gb(size.memoryMb)}` };
   const wrong = cpus && !(Number.isInteger(c) && c >= 1 && c <= size.cores) ? { part: 'cores', says: `1 to ${cores(size.cores)}` } as const
-    : memory && !(m >= 0.5 && m <= tenths(size.memoryMb)) ? { part: 'memory', says: `0.5 to ${gb(size.memoryMb)}` } as const : undefined;
+    : memory && !(m >= least && m <= tenths(size.memoryMb)) ? { part: 'memory', says: range.memory } as const : undefined;
   // a GB typed as the machine's own size is all of it, not the few MiB a tenth rounds up past it
   const limits: Limits = { ...(cpus && { cpus: c }), ...(memory && { memoryMb: Math.min(Math.round(m * 1024), size.memoryMb) }) };
   const field = (part: 'cores' | 'memory', o: { label: string; max: number; step: number }) => (
-    <input type="number" className="fld inline limits-fld" aria-label={o.label} data-testid={`limits-${part}`} min={part === 'cores' ? 1 : 0.5} max={o.max} step={o.step}
+    <input type="number" className="fld inline limits-fld" aria-label={o.label} data-testid={`limits-${part}`} min={part === 'cores' ? 1 : least} max={o.max} step={o.step}
       placeholder="all" value={part === 'cores' ? cpus : memory} onChange={(e) => { (part === 'cores' ? setCpus : setMemory)(e.target.value); edited(); }} />
   );
-  return { limits, wrong, field };
+  return { limits, wrong, field, range };
 }
 
-/**
- * A connect's ask: the machine's size and what this fleet may use of it, filled in with the default, both fields empty for no
- * limit. `set` resolves once it is set; a rejection is said under it, and Set can be pressed again. `back`: a page's ask, whose
- * Set leads its foot with Back beside it.
- */
-export function LimitsAsk({ name, offer, set, waits, back }: { name: string; offer: LimitsOffer; set(l: Limits): Promise<unknown>; waits?: string; back?: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-  const { limits, wrong, field } = useFields(offer.size, offer.suggested, () => setError(undefined));
-  const press = () => {
-    setBusy(true);
-    setError(undefined);
-    set(limits).catch((e: Error) => setError(e.message)).finally(() => setBusy(false));
-  };
-  const why = waits ?? wrong?.says;
-  const button = <button className={back ? 'btn pri' : 'btn sm'} data-testid="limits-set" disabled={busy || !!why} data-tip={why} onClick={press}>{busy ? 'Setting…' : 'Set'}</button>;
+/** The first run's ask: the server's size and what this fleet may use of it, filled in with the default, both fields empty for no limit; Set leads the page's foot, Back beside it. */
+export function LimitsAsk({ name, offer, set, back }: { name: string; offer: LimitsOffer; set(l: Limits): void; back(): void }) {
+  const { limits, wrong, field } = useFields(offer.size, offer.suggested, () => undefined);
   return (
     <>
       <div className="limits-ask" data-testid="limits-ask">
@@ -81,11 +73,44 @@ export function LimitsAsk({ name, offer, set, waits, back }: { name: string; off
             {offer.suggested.cpus !== undefined && <>{field('cores', { label: 'Cores', max: offer.size.cores, step: 1 })} cores{offer.suggested.memoryMb !== undefined && ' and '}</>}
             {offer.suggested.memoryMb !== undefined && <>{field('memory', { label: 'Memory in GB', max: tenths(offer.size.memoryMb), step: 0.5 })} GB</>}
           </span>
-          {!back && button}
         </div>
-        {error && <Said {...splitSaid(error)} mark="warn" />}
+        {wrong && <span className="setup-hint" data-testid="limits-wrong">{wrong.says}</span>}
       </div>
-      {back && <div className="setup-acts">{button}<button type="button" className="btn" data-testid="fork-back" onClick={back}>Back</button></div>}
+      <div className="setup-acts">
+        <button type="button" className="btn pri" data-testid="limits-set" disabled={!!wrong} data-tip={wrong?.says} onClick={() => set(limits)}>Set</button>
+        <button type="button" className="btn" data-testid="fork-back" onClick={back}>Back</button>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Add machine's ask in one row: the fields, from `from` and empty for no limit, and Set at its end. `set` resolves once it is
+ * set; a refusal is said under it, and Set can be pressed again; `waits` says why Set is off.
+ */
+export function LimitsAskRow({ offer, from, set, waits }: { offer: LimitsOffer; from: Limits; set(l: Limits): Promise<unknown>; waits?: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const { limits, wrong, field } = useFields(offer.size, from, () => setError(undefined));
+  const press = () => {
+    setBusy(true);
+    setError(undefined);
+    set(limits).catch((e: Error) => setError(e.message)).finally(() => setBusy(false));
+  };
+  const why = waits ?? wrong?.says;
+  return (
+    <>
+      <div className="host-limits" data-testid="limits-ask">
+        <span className="modal-sub">limits</span>
+        <div className="host-limits-line">
+          {offer.suggested.cpus !== undefined && <>{field('cores', { label: 'Cores', max: offer.size.cores, step: 1 })}<span>of {cores(offer.size.cores)}</span></>}
+          {offer.suggested.cpus !== undefined && offer.suggested.memoryMb !== undefined && <span>·</span>}
+          {offer.suggested.memoryMb !== undefined && <>{field('memory', { label: 'Memory in GB', max: tenths(offer.size.memoryMb), step: 0.5 })}<span>of {gb(offer.size.memoryMb)}</span></>}
+          <button className="btn sm" data-testid="limits-set" disabled={busy || !!why} data-tip={why} onClick={press}>{busy ? 'Setting…' : 'Set'}</button>
+        </div>
+        {wrong && <span className="modal-sub" data-testid="limits-wrong">{wrong.says}</span>}
+      </div>
+      {error && <Said {...splitSaid(error)} mark="warn" />}
     </>
   );
 }
@@ -108,10 +133,13 @@ export function MachineLimits({ id, name, ask }: { id: MachineId; name: string; 
     setEditing(true);
     box.current?.scrollIntoView({ block: 'nearest' });
   }, [ask]);
+  const label = (
+    <span>limits<Info id={`limits-${id}`}>The cores and memory this fleet&apos;s robots share on {name}. At the memory limit, {name} stops the robot process holding most.{report && hitsSaid(report)}</Info></span>
+  );
   if (error && !report) return (
     <div className="machine-rows" data-testid={`machine-limits-${name}`}>
       <div className="row">
-        <span>limits</span>
+        {label}
         <b><button className="btn sm" data-testid="limits-read" onClick={() => setReads((n) => n + 1)}>Read again</button></b>
       </div>
       <div className="set-said"><Said {...splitSaid(error)} settings mark="warn" /></div>
@@ -119,54 +147,57 @@ export function MachineLimits({ id, name, ask }: { id: MachineId; name: string; 
   );
   if (!report) return (
     <div className="machine-rows" data-testid={`machine-limits-${name}`}>
-      <div className="row"><span>limits</span><b><span className="move-spin" data-testid="limits-reading" /></b></div>
+      <div className="row">{label}<b className="set-note" data-testid="limits-reading"><span className="move-spin" />Reading {name}&apos;s limits…</b></div>
     </div>
   );
-  const said = limitsSaid(report, name);
-  const hits = hitsLine(report);
+  const said = NOT_HELD[report.state]?.(name);
   return (
     <div ref={box} className="machine-rows" data-testid={`machine-limits-${name}`}>
       <div className="row">
-        <span>limits<Info id={`limits-${id}`}>The cores and memory this fleet&apos;s robots share on {name}. At the memory limit, {name} stops the robot process holding most.</Info></span>
+        {label}
         <b className="set-pair">
           <span data-testid="limits-value">{limitsValue(report)}</span>
-          <button className="btn sm" data-testid="limits-change" aria-expanded={editing} onClick={() => setEditing(!editing)}>{editing ? 'Cancel' : 'Change'}</button>
+          <button className="btn sm limits-change" data-testid="limits-change" aria-expanded={editing} onClick={() => setEditing(!editing)}>{editing ? 'Cancel' : 'Change'}</button>
         </b>
       </div>
       {said && <div className="set-said" data-testid="limits-said"><Said {...said} settings mark="warn" /></div>}
-      {hits && <div className="set-note" data-testid="limits-hits">{hits}</div>}
-      {editing && <LimitsEditor id={id} report={report} done={(r) => { setReport(r); setEditing(false); }} />}
+      {editing && <LimitsEditor id={id} name={name} report={report} done={(r) => { setReport(r); setEditing(false); }} />}
     </div>
   );
 }
 
-function LimitsEditor({ id, report, done }: { id: MachineId; report: LimitsReport; done(r: LimitsReport): void }) {
+function LimitsEditor({ id, name, report, done }: { id: MachineId; name: string; report: LimitsReport; done(r: LimitsReport): void }) {
   const set = report.limits.cpus || report.limits.memoryMb;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const { limits, wrong, field } = useFields(report.size, set ? report.limits : report.suggested, () => setError(undefined));
-  const says = (part: 'cores' | 'memory') => wrong?.part === part && <div className="set-note" data-testid="limits-wrong">{wrong.says}</div>;
-  const save = (l: Limits) => {
+  const { limits, wrong, field, range } = useFields(report.size, set ? report.limits : report.suggested, () => setError(undefined), report.heldMb);
+  const save = () => {
     setBusy(true);
     setError(undefined);
-    deps().api.call('machines.setLimits', { machine: id, cpus: l.cpus ?? null, memoryMb: l.memoryMb ?? null })
+    deps().api.call('machines.setLimits', { machine: id, cpus: limits.cpus ?? null, memoryMb: limits.memoryMb ?? null })
       .then(done, (e: Error) => setError(e.message)).finally(() => setBusy(false));
   };
   const cpuless = report.suggested.cpus === undefined && !report.limits.cpus;
+  // a field beside its range, which moves under it while what the field holds is out of it
+  const part = (p: 'cores' | 'memory', o: { label: string; max: number; step: number }) => (
+    <>
+      <div className="row">
+        <span>{p}</span>
+        <b className="set-pair">{wrong?.part !== p && <span className="limits-range">{range[p]}</span>}{field(p, o)}</b>
+      </div>
+      {wrong?.part === p && <div className="set-note" data-testid="limits-wrong">{wrong.says}</div>}
+    </>
+  );
   return (
     <div className="limits-edit" data-testid="limits-edit">
-      {!cpuless && <div className="row"><span>cores</span><b className="set-pair">{field('cores', { label: 'Cores', max: report.size.cores, step: 1 })}of {report.size.cores}</b></div>}
-      {says('cores')}
-      <div className="row"><span>memory</span><b className="set-pair">{field('memory', { label: 'Memory in GB', max: tenths(report.size.memoryMb), step: 0.5 })}of {gb(report.size.memoryMb)}</b></div>
-      {says('memory')}
-      {report.heldMb !== undefined && <div className="row" data-testid="limits-held"><span>in use now</span><b>{gb(report.heldMb)}</b></div>}
+      {!set && <div className="set-note" data-testid="limits-suggested">Suggested for {name}&apos;s {cores(report.size.cores)} and {gb(report.size.memoryMb)}</div>}
+      {!cpuless && part('cores', { label: 'Cores', max: report.size.cores, step: 1 })}
+      {part('memory', { label: 'Memory in GB', max: tenths(report.size.memoryMb), step: 0.5 })}
+      {report.heldMb !== undefined && <div className="row" data-testid="limits-held"><span>memory in use now</span><b>{gb(report.heldMb)}</b></div>}
       {error && <div className="set-said" data-testid="limits-error"><Said {...splitSaid(error)} settings mark="warn" /></div>}
       <div className="row">
-        <span />
-        <b className="set-pair">
-          <button className="btn sm" data-testid="limits-none" disabled={busy || !set} data-tip={set ? undefined : 'It has none'} onClick={() => save({})}>No limit</button>
-          <button className="btn sm" data-testid="limits-save" disabled={busy || !!wrong} data-tip={wrong?.says} onClick={() => save(limits)}>{busy ? 'Saving…' : 'Save'}</button>
-        </b>
+        <span className="set-note">Robots keep running; the limits take hold now</span>
+        <b><button className="btn sm" data-testid="limits-save" disabled={busy || !!wrong} data-tip={wrong?.says} onClick={save}>{busy ? 'Saving…' : 'Save'}</button></b>
       </div>
     </div>
   );

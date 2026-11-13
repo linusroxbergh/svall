@@ -80,41 +80,74 @@ describe('a machine\'s limits in Settings → Machines', () => {
     expect([row('away'), row('new')]).toEqual([null, null]);
   });
 
-  test('a limit that does not hold says why in a line, systemd\'s words behind details, and how often the fleet reached it', async () => {
-    daemon({ [STUDIO]: { ...SET, state: 'outside', hits: 3, lastHit: Date.UTC(2026, 10, 12, 14, 2) } });
+  test('a limit that does not hold says why in a line and what to do under it, a tool\'s words alone behind details, never daemon', async () => {
+    const PENDING = 'dddddddd-0000-4000-8000-000000000000' as MachineId;
+    daemon({ [STUDIO]: { ...SET, state: 'outside' }, [VAULT]: { ...SET, state: 'unapplied' }, [PENDING]: { ...SET, state: 'pending' } }, [...LIST,
+      { id: VAULT, name: 'vault', role: 'worker', platform: 'linux', reachable: true, robots: 0 },
+      { id: PENDING, name: 'tern', role: 'worker', platform: 'linux', reachable: true, robots: 0 }]);
     await machines();
-    const said = await screen.findByTestId('limits-said');
-    expect(said.querySelector('.said')!.getAttribute('data-mark')).toBe('warn');
-    expect(said.querySelector('.said > div > span')!.textContent).toBe('robots on studio run outside the limit');
-    expect(said.querySelector('.modal-more-body')!.textContent).toMatch(/^the fleet's terminals run outside its unit, on a tmux Svall did not bring/);
-    const at = new Date(Date.UTC(2026, 10, 12, 14, 2)).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    expect(screen.getByTestId('limits-hits').textContent).toBe(`reached its memory limit 3 times, last ${at}`);
+    const of = async (name: string) => said(await within(screen.getByTestId(`machine-limits-${name}`)).findByTestId('limits-said'));
+    expect((await screen.findAllByTestId('limits-said'))[0].querySelector('.said')!.getAttribute('data-mark')).toBe('warn');
+    expect(await of('studio')).toEqual({ line: 'robots on studio run outside the limit', fix: "Close every robot there, then restart Svall's background service", raw: undefined });
+    expect(await of('tern')).toEqual({ line: 'not in force yet', fix: "It takes hold when Svall's background service on tern starts.", raw: undefined });
+    expect(await of('vault')).toEqual({ line: 'not in force', fix: undefined, raw: "systemd did not put it on the fleet's unit" });
+    expect(document.body.textContent).not.toMatch(/daemon/);
+  });
+
+  test('how often the fleet reached its memory limit waits in the limits Info, not as a line of the block, at a time of day today', async () => {
+    vi.useFakeTimers({ now: new Date(2026, 10, 13, 12, 0), toFake: ['Date'] });
+    try {
+      daemon({ [STUDIO]: { ...SET, hits: 3, lastHit: new Date(2026, 10, 13, 9, 23).getTime() }, [VAULT]: { ...SET, hits: 1, lastHit: new Date(2026, 10, 12, 9, 23).getTime() } }, [...LIST,
+        { id: VAULT, name: 'vault', role: 'worker', platform: 'linux', reachable: true, robots: 0 }]);
+      await machines();
+      await value('studio');
+      await value('vault');
+      expect(screen.queryByTestId('limits-hits')).toBeNull();
+      const today = new Date(2026, 10, 13, 9, 23).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      const before = new Date(2026, 10, 12, 9, 23).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+      expect(document.getElementById(`set-tip-limits-${STUDIO}`)!.textContent).toMatch(new RegExp(`This fleet reached it 3 times, last ${today}\\.$`));
+      expect(document.getElementById(`set-tip-limits-${VAULT}`)!.textContent).toMatch(new RegExp(`This fleet reached it once, ${before}\\.$`));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('reading says so in words, and the Info stays while reading and after a read that failed', async () => {
+    daemon({ [STUDIO]: new Promise(() => undefined) as never });
+    await machines();
+    expect(within(row('studio')!).getByTestId('limits-reading').textContent).toBe("Reading studio's limits…");
+    expect(document.getElementById(`set-tip-limits-${STUDIO}`)).toBeTruthy();
   });
 
   test('one that cannot be read says why, with Read again', async () => {
-    daemon({ [STUDIO]: new ApiError('not_supported', 'studio runs a release that takes no limit; upgrade it under Machines') });
+    daemon({ [STUDIO]: new ApiError('not_supported', "studio's release has no limits yet; upgrade it from its ⋯ menu") });
     await machines();
     const r = await screen.findByTestId('limits-read');
-    expect(said(row('studio')!)).toEqual({ line: 'studio runs a release that takes no limit', fix: 'Upgrade it under Machines', raw: undefined });
+    expect(said(row('studio')!)).toEqual({ line: "studio's release has no limits yet", fix: 'Upgrade it from its ⋯ menu', raw: undefined });
+    expect(document.getElementById(`set-tip-limits-${STUDIO}`)).toBeTruthy();
     daemon({ [STUDIO]: SET });
     fireEvent.click(r);
     expect(await value('studio')).toBe('11 of 12 cores · 93 of 94 GB');
   });
 
-  test('Change opens the editor with the default for a machine with none and what the fleet holds now; Save sets it, an empty field for no limit on that part', async () => {
+  test('Change opens the editor, a machine with none suggested a limit, each field beside its range, the memory in use, and Save alone under what it does', async () => {
     daemon({ [STUDIO]: UNSET });
     await machines();
     await value('studio');
     fireEvent.click(screen.getByTestId('limits-change'));
     expect(screen.getByTestId('limits-change').textContent).toBe('Cancel');
+    const edit = screen.getByTestId('limits-edit');
+    expect(screen.getByTestId('limits-suggested').textContent).toBe("Suggested for studio's 12 cores and 94 GB");
     expect([field('cores').value, field('memory').value]).toEqual(['11', '93']);
-    expect(screen.getByTestId('limits-held').textContent).toBe('in use now6.2 GB');
-    // No limit has nothing to take away from a machine that holds none
-    expect((screen.getByTestId('limits-none') as HTMLButtonElement).disabled).toBe(true);
+    // memory starts at what is in use, in whole GB
+    expect([...edit.querySelectorAll('.limits-range')].map((r) => r.textContent)).toEqual(['1 to 12', '7 to 94 GB']);
+    expect(screen.getByTestId('limits-held').textContent).toBe('memory in use now6.2 GB');
+    expect([...edit.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Save']);
+    expect(screen.getByTestId('limits-save').closest('.row')!.textContent).toBe('Robots keep running; the limits take hold nowSave');
     fireEvent.change(field('cores'), { target: { value: '' } });
-    fireEvent.change(field('memory'), { target: { value: '200' } });
+    fireEvent.change(field('memory'), { target: { value: '6' } });
     const save = screen.getByTestId('limits-save') as HTMLButtonElement;
-    expect([save.disabled, save.dataset.tip]).toEqual([true, '0.5 to 94 GB']);
+    expect([save.disabled, save.dataset.tip]).toEqual([true, '7 to 94 GB']);
     fireEvent.change(field('memory'), { target: { value: '64' } });
     fireEvent.click(save);
     expect(call).toHaveBeenCalledWith('machines.setLimits', { machine: STUDIO, cpus: null, memoryMb: 65536 });
@@ -147,19 +180,24 @@ describe('a machine\'s limits in Settings → Machines', () => {
     expect(screen.queryByTestId('limits-error')).toBeNull();
     const wrong = () => screen.getAllByTestId('limits-wrong').map((w) => [w.previousElementSibling, w.textContent]);
     expect(wrong()).toEqual([[field('cores').closest('.row'), '1 to 12 cores']]);
+    // the range leaves the wrong field's side for the line under it
+    expect([...screen.getByTestId('limits-edit').querySelectorAll('.limits-range')].map((r) => r.textContent)).toEqual(['7 to 94 GB']);
     expect((screen.getByTestId('limits-save') as HTMLButtonElement).dataset.tip).toBe('1 to 12 cores');
     fireEvent.change(field('cores'), { target: { value: '8' } });
     fireEvent.change(field('memory'), { target: { value: '0.2' } });
-    expect(wrong()).toEqual([[field('memory').closest('.row'), '0.5 to 94 GB']]);
+    expect(wrong()).toEqual([[field('memory').closest('.row'), '7 to 94 GB']]);
   });
 
-  test('No limit takes a set limit off', async () => {
+  test('Save with both fields cleared takes a set limit off', async () => {
     daemon({ [STUDIO]: SET });
     await machines();
     await value('studio');
     fireEvent.click(screen.getByTestId('limits-change'));
     expect([field('cores').value, field('memory').value]).toEqual(['11', '93']);
-    fireEvent.click(screen.getByTestId('limits-none'));
+    expect(screen.queryByTestId('limits-suggested')).toBeNull();
+    fireEvent.change(field('cores'), { target: { value: '' } });
+    fireEvent.change(field('memory'), { target: { value: '' } });
+    fireEvent.click(screen.getByTestId('limits-save'));
     expect(call).toHaveBeenLastCalledWith('machines.setLimits', { machine: STUDIO, cpus: null, memoryMb: null });
     expect(await within(row('studio')!).findByText('no limit')).toBeTruthy();
   });
@@ -181,7 +219,7 @@ describe('a fleet that reached its memory limit', () => {
     render(<Toast />);
     act(() => limitHit(store, { machine: STUDIO, name: 'the-home-calls-it', hits: 1, at: Date.now() }));
     const toast = screen.getByTestId('toast');
-    expect([toast.dataset.tone, screen.getByTestId('toast-text').textContent]).toEqual(['info', "studio's fleet hit its memory limit; a process was stopped"]);
+    expect([toast.dataset.tone, screen.getByTestId('toast-text').textContent]).toEqual(['info', "studio reached its memory limit; one of the fleet's processes was stopped"]);
     expect(screen.getByTestId('toast-action').textContent).toBe('Change limits');
     act(() => screen.getByTestId('toast-action').click());
     expect(store.getState().settingsOpen).toBe(true);
@@ -224,7 +262,7 @@ describe('Add machine', () => {
   });
   beforeEach(() => store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false }));
 
-  test('asks what the fleet may use of a machine with no limit once it is added, and sets it through the fleet\'s daemon', async () => {
+  test('asks what the fleet may use of a machine with no limit once it is added, in one limits row, and sets it through the fleet\'s daemon', async () => {
     daemon({ [STUDIO]: UNSET });
     act(() => store.getState().setMachines([{ name: 'studio', id: STUDIO, ssh: 'ada@studio', platform: 'linux-x64' }] as never));
     render(<HostSetup />);
@@ -232,15 +270,29 @@ describe('Add machine', () => {
     add(OFFER);
     const ask = screen.getByTestId('limits-ask');
     expect(ask.closest('.host-form')).toBeTruthy();
+    expect(ask.textContent).toBe('limitsof 12 cores·of 94 GBSet');
     expect([field('cores').value, field('memory').value]).toEqual(['11', '93']);
     // the ask stands for the run's own row, which is not folded under the notes as well
     expect(screen.queryByTestId('host-notes')).toBeNull();
+    // unanswered, the add is not called ready, and Done does not lead
+    expect([screen.getByTestId('host-outcome').querySelector('.host-verdict')!.textContent, screen.getByTestId('host-done').className]).toEqual(['studio is added', 'btn']);
     call.mockImplementationOnce(() => Promise.reject(new ApiError('invalid', '6.2 GB is in use now; stop a robot or allow at least 7 GB')));
     fireEvent.click(screen.getByTestId('limits-set'));
-    await waitFor(() => expect(said(ask)).toEqual({ line: '6.2 GB is in use now', fix: 'Stop a robot or allow at least 7 GB', raw: undefined }));
+    await waitFor(() => expect(said(ask.parentElement!)).toEqual({ line: '6.2 GB is in use now', fix: 'Stop a robot or allow at least 7 GB', raw: undefined }));
     fireEvent.click(screen.getByTestId('limits-set'));
     expect(call).toHaveBeenCalledWith('machines.setLimits', { machine: STUDIO, cpus: 11, memoryMb: 95232 });
-    expect((await screen.findByTestId('limits-done')).textContent).toBe('limits11 of 12 cores · 93 of 94 GB');
+    expect((await screen.findByTestId('limits-done')).textContent).toBe('limits11 of 12 cores · 93 of 94 GBChange');
+    expect([screen.getByTestId('host-outcome').querySelector('.host-verdict')!.textContent, screen.getByTestId('host-done').className]).toEqual(['studio is ready', 'btn pri']);
+    // Change asks again, filled in with what was set; both fields empty is no limit, as in the first run
+    fireEvent.click(screen.getByTestId('limits-change'));
+    expect([field('cores').value, field('memory').value]).toEqual(['11', '93']);
+    fireEvent.change(field('memory'), { target: { value: '200' } });
+    expect(screen.getByTestId('limits-wrong').textContent).toBe('0.5 to 94 GB');
+    fireEvent.change(field('cores'), { target: { value: '' } });
+    fireEvent.change(field('memory'), { target: { value: '' } });
+    fireEvent.click(screen.getByTestId('limits-set'));
+    expect(call).toHaveBeenLastCalledWith('machines.setLimits', { machine: STUDIO, cpus: null, memoryMb: null });
+    expect((await screen.findByTestId('limits-done')).textContent).toBe('limitsno limitChange');
   });
 
   test('a machine this Mac does not list yet waits to be checked again, and one with a limit, or a run under way, is not asked', () => {

@@ -269,7 +269,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
             {error && <div role="alert"><Said {...splitRaw(error)} /></div>}
           </>
         )}
-        {asking ? <LimitsAsk name={nameFromSsh(ssh.trim())} offer={asking} back={back} set={(l) => { join(limitsArg(l)); return Promise.resolve(); }} /> : (
+        {asking ? <LimitsAsk name={nameFromSsh(ssh.trim())} offer={asking} back={back} set={(l) => join(limitsArg(l))} /> : (
           <div className="setup-acts">
             {running ? <button type="button" className="btn" data-testid="fork-stop" disabled={stopped} onClick={() => { setStopped(true); bridge.send({ type: 'host.cancel' }); }}>{stopped ? 'Stopping…' : 'Stop'}</button> : (
               <>

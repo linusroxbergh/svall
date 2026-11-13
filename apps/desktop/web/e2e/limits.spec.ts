@@ -46,12 +46,12 @@ test('a fleet that reached its memory limit on a worker is said in a toast, whos
     await page.goto(`/?port=${fake.port}&token=t&view=board`);
     await expect(page.getByTestId('board')).toBeVisible();
     fake.hit();
-    await expect(page.getByTestId('toast-text')).toHaveText("studio's fleet hit its memory limit; a process was stopped");
+    await expect(page.getByTestId('toast-text')).toHaveText("studio reached its memory limit; one of the fleet's processes was stopped");
     await expect(page.getByTestId('toast')).toHaveAttribute('data-tone', 'info');
     await page.getByTestId('toast-action').click();
     const row = page.getByTestId('machine-limits-studio');
     await expect(row.getByTestId('limits-edit')).toBeVisible();
-    await expect(row.getByTestId('limits-hits')).toContainText('reached its memory limit once');
+    await expect(page.locator(`#set-tip-limits-${STUDIO}`)).toContainText('This fleet reached it once');
     await row.getByTestId('limits-memory').fill('64');
     await row.getByTestId('limits-save').click();
     await expect(row.getByTestId('limits-value')).toHaveText('11 of 12 cores · 64 of 94 GB');

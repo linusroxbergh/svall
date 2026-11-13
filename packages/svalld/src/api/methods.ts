@@ -425,7 +425,7 @@ async function limitsOf(ctx: Ctx, machine: MachineId | undefined, call: 'limits.
   if (name === undefined || !ctx.links) throw new ApiError('not_found', `no machine ${machine}`);
   if (ctx.registered?.().get(machine)?.platform === 'darwin') throw new ApiError('not_supported', 'a limit is for a Linux machine');
   return LimitsReport.parse(await ctx.links.call(machine, call, limits, { timeoutMs: 30_000 }).catch((e: Error) => {
-    if (e instanceof ApiError && e.code === 'unknown_method') throw new ApiError('not_supported', `${name} runs a release that takes no limit; upgrade it under Machines`);
+    if (e instanceof ApiError && e.code === 'unknown_method') throw new ApiError('not_supported', `${name}'s release has no limits yet; upgrade it from its ⋯ menu`);
     throw e;
   }));
 }

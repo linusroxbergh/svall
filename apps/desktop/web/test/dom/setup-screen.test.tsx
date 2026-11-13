@@ -713,8 +713,11 @@ describe('the first run forks three ways', () => {
       added(receive, OFFER);
       expect([...document.querySelectorAll('.setup-acts button')].map((b) => [b.textContent, b.className])).toEqual([['Set', 'btn pri'], ['Back', 'btn']]);
       expect(screen.getByTestId('limits-ask').querySelector('button')).toBeNull();
+      fireEvent.change(screen.getByTestId('limits-cores'), { target: { value: '20' } });
+      expect([screen.getByTestId('limits-wrong').textContent, (screen.getByTestId('limits-set') as HTMLButtonElement).disabled]).toEqual(['1 to 12 cores', true]);
       fireEvent.change(screen.getByTestId('limits-cores'), { target: { value: '' } });
       fireEvent.change(screen.getByTestId('limits-memory'), { target: { value: '' } });
+      expect(screen.queryByTestId('limits-wrong')).toBeNull();
       fireEvent.click(screen.getByTestId('limits-set'));
       expect(hosts(sent).at(-1)).toEqual(['join', { name: '', ssh: 'ada@studio', limits: 'none' }]);
     });
