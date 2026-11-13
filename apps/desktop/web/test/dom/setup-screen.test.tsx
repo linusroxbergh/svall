@@ -722,6 +722,17 @@ describe('the first run forks three ways', () => {
       expect(hosts(sent).at(-1)).toEqual(['join', { name: '', ssh: 'ada@studio', limits: 'none' }]);
     });
 
+    test('a limit the server refused at the join is said before the window opens', () => {
+      const { receive } = shell(ready, { fork: false });
+      added(receive, OFFER);
+      fireEvent.click(screen.getByTestId('limits-set'));
+      receive({ type: 'host.step', op: 'join', event: { step: 'limits', status: 'warn', detail: 'no limit was set on studio: 6.2 GB is in use now; stop a robot or allow at least 7 GB; svall host limits studio sets one' } });
+      receive({ type: 'host.done', op: 'join', code: 0 });
+      expect(replaced).not.toHaveBeenCalled();
+      expect(screen.getByText('Svall is set up')).toBeTruthy();
+      expect(screen.getByText('No limit was set on studio: 6.2 GB is in use now; stop a robot or allow at least 7 GB; svall host limits studio sets one')).toBeTruthy();
+    });
+
     test('a server that holds a limit is not asked', () => {
       const held = shell(ready, { fork: false });
       added(held.receive);

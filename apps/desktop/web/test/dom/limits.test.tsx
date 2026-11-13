@@ -219,7 +219,7 @@ describe('a fleet that reached its memory limit', () => {
     render(<Toast />);
     act(() => limitHit(store, { machine: STUDIO, name: 'the-home-calls-it', hits: 1, at: Date.now() }));
     const toast = screen.getByTestId('toast');
-    expect([toast.dataset.tone, screen.getByTestId('toast-text').textContent]).toEqual(['info', "studio reached its memory limit; one of the fleet's processes was stopped"]);
+    expect([toast.dataset.tone, screen.getByTestId('toast-text').firstChild!.textContent, screen.getByTestId('toast-fix').textContent]).toEqual(['info', 'studio reached its memory limit', "One of the fleet's processes was stopped"]);
     expect(screen.getByTestId('toast-action').textContent).toBe('Change limits');
     act(() => screen.getByTestId('toast-action').click());
     expect(store.getState().settingsOpen).toBe(true);

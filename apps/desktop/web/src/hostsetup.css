@@ -37,6 +37,7 @@
 /* Change and Cancel one width, so the value beside them stays put */
 .limits-change { min-width: 5.5em; }
 .limits-range { color: var(--ink-3); font-size: var(--text-sm); font-weight: var(--w-regular); }
+.limits-wrong { text-align: right; }
 /* Add machine's ask: its label over the fields and Set at the line's end */
 .host-limits { display: flex; flex-direction: column; gap: var(--sp-xs); }
 .host-limits-line { display: flex; align-items: center; gap: var(--sp-sm); font-size: var(--text-md); color: var(--ink); }

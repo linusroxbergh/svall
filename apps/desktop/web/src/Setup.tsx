@@ -44,7 +44,8 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
   // a server's size and the limits to offer, asked between its add and the join
   const [asking, setAsking] = useState<LimitsOffer>();
   const [stopped, setStopped] = useState(false);
-  const going = useRef<{ fork: Fork; ssh: string; warnings?: string[] } | undefined>(undefined);
+  // limited: the person's answer to the limits ask was a limit
+  const going = useRef<{ fork: Fork; ssh: string; warnings?: string[]; limited?: boolean } | undefined>(undefined);
   const farRows = useRef<FarRow[]>([]);
   const [plan, setPlan] = useState<SetupPlan>();
   const [step, setStep] = useState(1);
@@ -90,9 +91,10 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       else if (m.op !== 'add' && !failed && m.code === 0) {
         // a home with no limit is asked for one by the window, once it reaches the home
         if (farRows.current.some((r) => r.op === 'join' && r.offer)) { try { localStorage.setItem(LIMITS_ASK_KEY, '1'); } catch { /* optional persistence */ } }
-        // a warning the join leaves a person, as a last check it could not save, is said before the window opens
-        const left = farRows.current.filter((r) => r.op === 'join' && r.status === 'warn' && stepTier(r, 'join', undefined) === 'todo')
-          .map((r) => `${stepLabel(r.step)} ${r.detail ?? ''}${r.raw ? `\n  ${r.raw}` : ''}`);
+        // a warning the join leaves a person, as a last check it could not save or a limit they asked for, is said before the window opens
+        const left = farRows.current.filter((r) => r.op === 'join' && r.status === 'warn' && (stepTier(r, 'join', undefined) === 'todo' || (r.step === 'limits' && to.limited)))
+          // a limits row's detail is a sentence of its own
+          .map((r) => `${r.step === 'limits' ? (r.detail ?? '').replace(/^./, (c) => c.toUpperCase()) : `${stepLabel(r.step)} ${r.detail ?? ''}`}${r.raw ? `\n  ${r.raw}` : ''}`);
         const all = [...(to.warnings ?? []), ...left];
         if (all.length) setWarnings(all); else window.location.replace('/');
       }
@@ -238,6 +240,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
     };
     // the person's answer to the ask, which the join sets on the server before this Mac joins
     const join = (limits: string) => {
+      if (going.current) going.current.limited = limits !== 'none';
       setAsking(undefined);
       setRunning(true);
       setBusy(true);

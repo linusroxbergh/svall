@@ -7,7 +7,7 @@ import { LIMITS_ASK_KEY } from './store/persist.js';
 export function limitHit(store: AppStore, hit: LimitHit): void {
   const s = store.getState();
   const name = s.via && hit.machine === s.via.home ? homeName(s.fleet, s.via) : s.fleet.machines?.[hit.machine]?.name ?? hit.name;
-  s.showToast(`${name} reached its memory limit; one of the fleet's processes was stopped`, 'info',
+  s.showToast({ text: `${name} reached its memory limit`, fix: "One of the fleet's processes was stopped" }, 'info',
     { label: 'Change limits', run: () => store.getState().toggleSettings(true, 'machines', hit.machine) });
 }
 

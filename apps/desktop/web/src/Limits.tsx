@@ -147,7 +147,7 @@ export function MachineLimits({ id, name, ask }: { id: MachineId; name: string; 
   );
   if (!report) return (
     <div className="machine-rows" data-testid={`machine-limits-${name}`}>
-      <div className="row">{label}<b className="set-note" data-testid="limits-reading"><span className="move-spin" />Reading {name}&apos;s limits…</b></div>
+      <div className="row">{label}<span className="set-note" data-testid="limits-reading"><span className="move-spin" />Reading {name}&apos;s limits…</span></div>
     </div>
   );
   const said = NOT_HELD[report.state]?.(name);
@@ -185,7 +185,7 @@ function LimitsEditor({ id, name, report, done }: { id: MachineId; name: string;
         <span>{p}</span>
         <b className="set-pair">{wrong?.part !== p && <span className="limits-range">{range[p]}</span>}{field(p, o)}</b>
       </div>
-      {wrong?.part === p && <div className="set-note" data-testid="limits-wrong">{wrong.says}</div>}
+      {wrong?.part === p && <div className="set-note limits-wrong" data-testid="limits-wrong">{wrong.says}</div>}
     </>
   );
   return (
