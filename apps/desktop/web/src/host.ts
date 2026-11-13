@@ -24,6 +24,14 @@ export function splitRaw(text: string): { line: string; raw?: string } {
   return { line: line ? withoutTokens(line) : 'Something went wrong on the machine', raw: withoutTokens(text.slice(at.index).replace(/^[\s:]+/, '')) };
 }
 
+/** A refusal as `Said` takes it: the sentence before a `; ` its line, what follows its fix, and a tool's words its raw. */
+export const splitSaid = (text: string, raw?: string): { line: string; fix?: string; raw?: string } => {
+  const { line: said, raw: told } = splitRaw(text);
+  const at = said.indexOf('; ');
+  const fix = at < 0 ? '' : said.slice(at + 2);
+  return { line: at < 0 ? said : said.slice(0, at), ...(fix && { fix: fix[0].toUpperCase() + fix.slice(1) }), raw: raw ? withoutTokens(raw) : told };
+};
+
 /** The machines this Mac knows: each one's name by its id. */
 export type MachineNames = Record<string, string>;
 

@@ -32,6 +32,8 @@
 /* a Linux machine's settings rows under it, first its limits, whose editor opens beneath them */
 .machine-rows { grid-column: 2 / 4; min-width: 0; }
 .set-win .row .fld.inline.limits-fld { width: 5em; text-align: right; }
+.limits-fld { -moz-appearance: textfield; appearance: textfield; }
+.limits-fld::-webkit-inner-spin-button, .limits-fld::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .limits-edit .row > span:empty { flex: 1; }
 /* a connect's ask: the machine's size and two short fields in the sentence, Set at its end */
 .limits-ask { display: flex; flex-direction: column; gap: var(--sp-xs); }

@@ -46,6 +46,12 @@ const machines = async () => {
 const row = (name: string) => screen.queryByTestId(`machine-limits-${name}`);
 const value = async (name: string) => (await within(screen.getByTestId(`machine-limits-${name}`)).findByTestId('limits-value')).textContent;
 const field = (part: 'cores' | 'memory') => screen.getByTestId(`limits-${part}`) as HTMLInputElement;
+/** A `Said` in `in`: its line, the fix under it, and what waits behind details. */
+const said = (inside: HTMLElement) => ({
+  line: inside.querySelector('.said > div > span')!.textContent,
+  fix: inside.querySelector('.said .set-note, .said .modal-sub')?.textContent,
+  raw: inside.querySelector('.said .modal-more-body')?.textContent,
+});
 
 beforeEach(() => {
   freshStore();
@@ -89,7 +95,7 @@ describe('a machine\'s limits in Settings → Machines', () => {
     daemon({ [STUDIO]: new ApiError('not_supported', 'studio runs a release that takes no limit; upgrade it under Machines') });
     await machines();
     const r = await screen.findByTestId('limits-read');
-    expect(row('studio')!.querySelector('.said > div > span')!.textContent).toBe('studio runs a release that takes no limit; upgrade it under Machines');
+    expect(said(row('studio')!)).toEqual({ line: 'studio runs a release that takes no limit', fix: 'Upgrade it under Machines', raw: undefined });
     daemon({ [STUDIO]: SET });
     fireEvent.click(r);
     expect(await value('studio')).toBe('11 of 12 cores · 93 of 94 GB');
@@ -108,7 +114,7 @@ describe('a machine\'s limits in Settings → Machines', () => {
     fireEvent.change(field('cores'), { target: { value: '' } });
     fireEvent.change(field('memory'), { target: { value: '200' } });
     const save = screen.getByTestId('limits-save') as HTMLButtonElement;
-    expect([save.disabled, save.dataset.tip]).toEqual([true, 'Memory: 0.5 to 94 GB']);
+    expect([save.disabled, save.dataset.tip]).toEqual([true, '0.5 to 94 GB']);
     fireEvent.change(field('memory'), { target: { value: '64' } });
     fireEvent.click(save);
     expect(call).toHaveBeenCalledWith('machines.setLimits', { machine: STUDIO, cpus: null, memoryMb: 65536 });
@@ -116,15 +122,43 @@ describe('a machine\'s limits in Settings → Machines', () => {
     expect(await value('studio')).toBe('all 12 cores · 64 of 94 GB');
   });
 
-  test('No limit takes a set limit off, and a refusal is said in the editor, which stays open', async () => {
+  test('a refusal is said in the editor, which stays open, as a line with its fix under it and a tool\'s words behind details', async () => {
+    daemon({ [STUDIO]: SET });
+    await machines();
+    await value('studio');
+    fireEvent.click(screen.getByTestId('limits-change'));
+    call.mockImplementationOnce(() => Promise.reject(new ApiError('invalid', '6.2 GB is in use now; stop a robot or allow at least 7 GB')));
+    fireEvent.click(screen.getByTestId('limits-save'));
+    expect(said(await screen.findByTestId('limits-error'))).toEqual({ line: '6.2 GB is in use now', fix: 'Stop a robot or allow at least 7 GB', raw: undefined });
+    call.mockImplementationOnce(() => Promise.reject(new Error('studio did not answer within 30000ms: timed out')));
+    fireEvent.click(screen.getByTestId('limits-save'));
+    await waitFor(() => expect(said(screen.getByTestId('limits-error'))).toEqual({ line: 'studio did not answer', fix: undefined, raw: 'within 30000ms: timed out' }));
+  });
+
+  test('a wrong field is said in one line under its row, and an edit clears a refusal', async () => {
+    daemon({ [STUDIO]: SET });
+    await machines();
+    await value('studio');
+    fireEvent.click(screen.getByTestId('limits-change'));
+    call.mockImplementationOnce(() => Promise.reject(new ApiError('invalid', '6.2 GB is in use now; stop a robot or allow at least 7 GB')));
+    fireEvent.click(screen.getByTestId('limits-save'));
+    await screen.findByTestId('limits-error');
+    fireEvent.change(field('cores'), { target: { value: '20' } });
+    expect(screen.queryByTestId('limits-error')).toBeNull();
+    const wrong = () => screen.getAllByTestId('limits-wrong').map((w) => [w.previousElementSibling, w.textContent]);
+    expect(wrong()).toEqual([[field('cores').closest('.row'), '1 to 12 cores']]);
+    expect((screen.getByTestId('limits-save') as HTMLButtonElement).dataset.tip).toBe('1 to 12 cores');
+    fireEvent.change(field('cores'), { target: { value: '8' } });
+    fireEvent.change(field('memory'), { target: { value: '0.2' } });
+    expect(wrong()).toEqual([[field('memory').closest('.row'), '0.5 to 94 GB']]);
+  });
+
+  test('No limit takes a set limit off', async () => {
     daemon({ [STUDIO]: SET });
     await machines();
     await value('studio');
     fireEvent.click(screen.getByTestId('limits-change'));
     expect([field('cores').value, field('memory').value]).toEqual(['11', '93']);
-    call.mockImplementationOnce(() => Promise.reject(new ApiError('invalid', 'the fleet holds 6.2 GB here now; stop a robot or allow more')));
-    fireEvent.click(screen.getByTestId('limits-save'));
-    expect((await screen.findByTestId('limits-error')).querySelector('.said > div > span')!.textContent).toBe('the fleet holds 6.2 GB here now; stop a robot or allow more');
     fireEvent.click(screen.getByTestId('limits-none'));
     expect(call).toHaveBeenLastCalledWith('machines.setLimits', { machine: STUDIO, cpus: null, memoryMb: null });
     expect(await within(row('studio')!).findByText('no limit')).toBeTruthy();
@@ -201,6 +235,9 @@ describe('Add machine', () => {
     expect([field('cores').value, field('memory').value]).toEqual(['11', '93']);
     // the ask stands for the run's own row, which is not folded under the notes as well
     expect(screen.queryByTestId('host-notes')).toBeNull();
+    call.mockImplementationOnce(() => Promise.reject(new ApiError('invalid', '6.2 GB is in use now; stop a robot or allow at least 7 GB')));
+    fireEvent.click(screen.getByTestId('limits-set'));
+    await waitFor(() => expect(said(ask)).toEqual({ line: '6.2 GB is in use now', fix: 'Stop a robot or allow at least 7 GB', raw: undefined }));
     fireEvent.click(screen.getByTestId('limits-set'));
     expect(call).toHaveBeenCalledWith('machines.setLimits', { machine: STUDIO, cpus: 11, memoryMb: 95232 });
     expect((await screen.findByTestId('limits-done')).textContent).toBe('limits11 of 12 cores · 93 of 94 GB');

@@ -269,23 +269,19 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
             {error && <div role="alert"><Said {...splitRaw(error)} /></div>}
           </>
         )}
-        {asking && <LimitsAsk name={nameFromSsh(ssh.trim())} offer={asking} set={(l) => { join(limitsArg(l)); return Promise.resolve(); }} />}
-        <div className="setup-acts">
-          {asking ? (
-            <>
-              <button type="button" className="btn" data-testid="fork-no-limit" onClick={() => join('none')}>No limit</button>
-              <button type="button" className="btn" data-testid="fork-back" onClick={back}>Back</button>
-            </>
-          ) : running ? <button type="button" className="btn" data-testid="fork-stop" disabled={stopped} onClick={() => { setStopped(true); bridge.send({ type: 'host.cancel' }); }}>{stopped ? 'Stopping…' : 'Stop'}</button> : (
-            <>
-              <button type="button" className="btn pri" data-testid="fork-go" disabled={!!wanting} data-tip={wanting} onClick={() => farRun(fork)}>
-                {farSteps ? 'Try again' : fork === 'server' ? 'Set up and connect' : 'Connect'}
-              </button>
-              <button type="button" className="btn" data-testid="fork-back" disabled={busy} onClick={back}>Back</button>
-              {blockers.length > 0 && <button type="button" className="btn" disabled={busy} onClick={check}>{busy ? 'Checking…' : 'Check again'}</button>}
-            </>
-          )}
-        </div>
+        {asking ? <LimitsAsk name={nameFromSsh(ssh.trim())} offer={asking} back={back} set={(l) => { join(limitsArg(l)); return Promise.resolve(); }} /> : (
+          <div className="setup-acts">
+            {running ? <button type="button" className="btn" data-testid="fork-stop" disabled={stopped} onClick={() => { setStopped(true); bridge.send({ type: 'host.cancel' }); }}>{stopped ? 'Stopping…' : 'Stop'}</button> : (
+              <>
+                <button type="button" className="btn pri" data-testid="fork-go" disabled={!!wanting} data-tip={wanting} onClick={() => farRun(fork)}>
+                  {farSteps ? 'Try again' : fork === 'server' ? 'Set up and connect' : 'Connect'}
+                </button>
+                <button type="button" className="btn" data-testid="fork-back" disabled={busy} onClick={back}>Back</button>
+                {blockers.length > 0 && <button type="button" className="btn" disabled={busy} onClick={check}>{busy ? 'Checking…' : 'Check again'}</button>}
+              </>
+            )}
+          </div>
+        )}
       </Page>
     );
   }

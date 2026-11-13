@@ -7,7 +7,7 @@ import { copyText, openConfig, openUrl, shim, type MachineRow } from './bridge.j
 import { holdCutout } from './cutout.js';
 import { AS_TYPED } from './Field.js';
 import { useApp, useMore } from './hooks.js';
-import { plural, splitRaw, withoutTokens } from './host.js';
+import { plural, splitRaw, splitSaid, withoutTokens } from './host.js';
 import { startHost } from './hostRun.js';
 import { MachineActions } from './HostSetup.js';
 import { Close, Copy, Minus, Plus } from './icons.js';
@@ -202,12 +202,6 @@ function FleetName() {
 const when = (at: number): string => new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 const found = (c: NonNullable<MachineRow['check']>): string | undefined => (c.failed ? `${plural(c.failed, 'check')} failed` : c.warned ? plural(c.warned, 'warning') : undefined);
 // a join's why says its fix after `; `; what ssh or the far svall said comes on the row, or after the sentence from a home that keeps it there
-const joinSaid = (text: string, raw?: string): { line: string; fix?: string; raw?: string } => {
-  const { line: said, raw: told } = splitRaw(text);
-  const at = said.indexOf('; ');
-  const fix = at < 0 ? '' : said.slice(at + 2);
-  return { line: at < 0 ? said : said.slice(0, at), ...(fix && { fix: fix[0].toUpperCase() + fix.slice(1) }), raw: raw ? withoutTokens(raw) : told };
-};
 const DOT = { ok: 'reachable', off: 'not reachable', upgrade: 'needs an upgrade' } as const;
 const UNREAD = "This Mac's list of machines could not be read";
 const ROLE_TIP = { home: 'Holds the fleet and starts new robots.', worker: 'Runs robots moved to it.' } as const;
@@ -275,7 +269,7 @@ function Machines() {
           const dot = m.role === undefined || m.joining !== undefined ? undefined : mismatch ? 'upgrade' : m.reachable ? 'ok' : 'off';
           const robots = m.robots ? plural(m.robots, 'robot') : '';
           const meta = (m.dialsIn ? [`connects out to ${home}`, robots] : [m.ssh, robots, m.release && `release ${m.release}`]).filter(Boolean).join(' · ');
-          const joining = m.joining ? joinSaid(m.joining, m.joinRaw) : undefined;
+          const joining = m.joining ? splitSaid(m.joining, m.joinRaw) : undefined;
           // what a check found waits in the Check sheet, which lists it by checking again; the home says nothing while all is well
           const told = m.check && found(m.check);
           const recheck = () => { app.store.getState().toggleHost(true, m.name); startHost('doctor', { name: m.name, ...(registered.get(m.id)?.far && { id: m.id }) }); };

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { gb, LIMITS_WHY, type Limits, type LimitsOffer, type LimitsReport, type MachineId } from '@svall/protocol';
 import { deps } from './boot.js';
-import { withoutTokens } from './host.js';
+import { splitSaid } from './host.js';
 import { Info } from './Info.js';
 import { Said } from './Said.js';
 
@@ -39,49 +39,54 @@ const hitsLine = (r: LimitsReport): string | undefined => (r.hits
 /** The `11,95232M` a join's `--limits` takes, or `none`. */
 export const limitsArg = (l: Limits): string => (l.cpus || l.memoryMb ? `${l.cpus ?? ''},${l.memoryMb ? `${l.memoryMb}M` : ''}` : 'none');
 
-/** Cores and GB fields, an empty one for no limit on that part; `wanting` says why what they hold cannot be set. */
-function useFields(size: LimitsReport['size'], from: Limits) {
+/** Cores and GB fields, an empty one for no limit on that part, `edited` told of each change; `wrong` is the field that cannot be set and its range. */
+function useFields(size: LimitsReport['size'], from: Limits, edited: () => void) {
   const [cpus, setCpus] = useState(from.cpus ? String(from.cpus) : '');
   const [memory, setMemory] = useState(from.memoryMb ? String(tenths(from.memoryMb)) : '');
   const c = Number(cpus);
   const m = Number(memory);
-  const wanting = cpus && !(Number.isInteger(c) && c >= 1 && c <= size.cores) ? `Cores: 1 to ${size.cores}`
-    : memory && !(m >= 0.5 && m <= tenths(size.memoryMb)) ? `Memory: 0.5 to ${gb(size.memoryMb)}` : undefined;
+  const wrong = cpus && !(Number.isInteger(c) && c >= 1 && c <= size.cores) ? { part: 'cores', says: `1 to ${cores(size.cores)}` } as const
+    : memory && !(m >= 0.5 && m <= tenths(size.memoryMb)) ? { part: 'memory', says: `0.5 to ${gb(size.memoryMb)}` } as const : undefined;
   // a GB typed as the machine's own size is all of it, not the few MiB a tenth rounds up past it
   const limits: Limits = { ...(cpus && { cpus: c }), ...(memory && { memoryMb: Math.min(Math.round(m * 1024), size.memoryMb) }) };
   const field = (part: 'cores' | 'memory', o: { label: string; max: number; step: number }) => (
     <input type="number" className="fld inline limits-fld" aria-label={o.label} data-testid={`limits-${part}`} min={part === 'cores' ? 1 : 0.5} max={o.max} step={o.step}
-      placeholder="all" value={part === 'cores' ? cpus : memory} onChange={(e) => (part === 'cores' ? setCpus : setMemory)(e.target.value)} />
+      placeholder="all" value={part === 'cores' ? cpus : memory} onChange={(e) => { (part === 'cores' ? setCpus : setMemory)(e.target.value); edited(); }} />
   );
-  return { limits, wanting, field };
+  return { limits, wrong, field };
 }
 
 /**
- * A connect's ask: the machine's size and what this fleet may use of it, filled in with the default. `set` resolves once it is
- * set; a rejection is said under it, and Set can be pressed again.
+ * A connect's ask: the machine's size and what this fleet may use of it, filled in with the default, both fields empty for no
+ * limit. `set` resolves once it is set; a rejection is said under it, and Set can be pressed again. `back`: a page's ask, whose
+ * Set leads its foot with Back beside it.
  */
-export function LimitsAsk({ name, offer, set, waits }: { name: string; offer: LimitsOffer; set(l: Limits): Promise<unknown>; waits?: string }) {
-  const { limits, wanting, field } = useFields(offer.size, offer.suggested);
+export function LimitsAsk({ name, offer, set, waits, back }: { name: string; offer: LimitsOffer; set(l: Limits): Promise<unknown>; waits?: string; back?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const { limits, wrong, field } = useFields(offer.size, offer.suggested, () => setError(undefined));
   const press = () => {
     setBusy(true);
     setError(undefined);
     set(limits).catch((e: Error) => setError(e.message)).finally(() => setBusy(false));
   };
-  const why = waits ?? wanting;
+  const why = waits ?? wrong?.says;
+  const button = <button className={back ? 'btn pri' : 'btn sm'} data-testid="limits-set" disabled={busy || !!why} data-tip={why} onClick={press}>{busy ? 'Setting…' : 'Set'}</button>;
   return (
-    <div className="limits-ask" data-testid="limits-ask">
-      <div className="limits-ask-row">
-        <span>
-          {name} has {cores(offer.size.cores)} and {gb(offer.size.memoryMb)}. Let this fleet use{' '}
-          {offer.suggested.cpus !== undefined && <>{field('cores', { label: 'Cores', max: offer.size.cores, step: 1 })} cores{offer.suggested.memoryMb !== undefined && ' and '}</>}
-          {offer.suggested.memoryMb !== undefined && <>{field('memory', { label: 'Memory in GB', max: tenths(offer.size.memoryMb), step: 0.5 })} GB</>}
-        </span>
-        <button className="btn sm" data-testid="limits-set" disabled={busy || !!why} data-tip={why} onClick={press}>{busy ? 'Setting…' : 'Set'}</button>
+    <>
+      <div className="limits-ask" data-testid="limits-ask">
+        <div className="limits-ask-row">
+          <span>
+            {name} has {cores(offer.size.cores)} and {gb(offer.size.memoryMb)}. Let this fleet use{' '}
+            {offer.suggested.cpus !== undefined && <>{field('cores', { label: 'Cores', max: offer.size.cores, step: 1 })} cores{offer.suggested.memoryMb !== undefined && ' and '}</>}
+            {offer.suggested.memoryMb !== undefined && <>{field('memory', { label: 'Memory in GB', max: tenths(offer.size.memoryMb), step: 0.5 })} GB</>}
+          </span>
+          {!back && button}
+        </div>
+        {error && <Said {...splitSaid(error)} mark="warn" />}
       </div>
-      {error && <Said line={withoutTokens(error)} mark="warn" />}
-    </div>
+      {back && <div className="setup-acts">{button}<button type="button" className="btn" data-testid="fork-back" onClick={back}>Back</button></div>}
+    </>
   );
 }
 
@@ -109,7 +114,7 @@ export function MachineLimits({ id, name, ask }: { id: MachineId; name: string; 
         <span>limits</span>
         <b><button className="btn sm" data-testid="limits-read" onClick={() => setReads((n) => n + 1)}>Read again</button></b>
       </div>
-      <div className="set-said"><Said line={withoutTokens(error)} settings mark="warn" /></div>
+      <div className="set-said"><Said {...splitSaid(error)} settings mark="warn" /></div>
     </div>
   );
   if (!report) return (
@@ -137,9 +142,10 @@ export function MachineLimits({ id, name, ask }: { id: MachineId; name: string; 
 
 function LimitsEditor({ id, report, done }: { id: MachineId; report: LimitsReport; done(r: LimitsReport): void }) {
   const set = report.limits.cpus || report.limits.memoryMb;
-  const { limits, wanting, field } = useFields(report.size, set ? report.limits : report.suggested);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const { limits, wrong, field } = useFields(report.size, set ? report.limits : report.suggested, () => setError(undefined));
+  const says = (part: 'cores' | 'memory') => wrong?.part === part && <div className="set-note" data-testid="limits-wrong">{wrong.says}</div>;
   const save = (l: Limits) => {
     setBusy(true);
     setError(undefined);
@@ -150,14 +156,16 @@ function LimitsEditor({ id, report, done }: { id: MachineId; report: LimitsRepor
   return (
     <div className="limits-edit" data-testid="limits-edit">
       {!cpuless && <div className="row"><span>cores</span><b className="set-pair">{field('cores', { label: 'Cores', max: report.size.cores, step: 1 })}of {report.size.cores}</b></div>}
+      {says('cores')}
       <div className="row"><span>memory</span><b className="set-pair">{field('memory', { label: 'Memory in GB', max: tenths(report.size.memoryMb), step: 0.5 })}of {gb(report.size.memoryMb)}</b></div>
+      {says('memory')}
       {report.heldMb !== undefined && <div className="row" data-testid="limits-held"><span>in use now</span><b>{gb(report.heldMb)}</b></div>}
-      {error && <div className="set-said" data-testid="limits-error"><Said line={withoutTokens(error)} settings mark="warn" /></div>}
+      {error && <div className="set-said" data-testid="limits-error"><Said {...splitSaid(error)} settings mark="warn" /></div>}
       <div className="row">
         <span />
         <b className="set-pair">
           <button className="btn sm" data-testid="limits-none" disabled={busy || !set} data-tip={set ? undefined : 'It has none'} onClick={() => save({})}>No limit</button>
-          <button className="btn sm" data-testid="limits-save" disabled={busy || !!wanting} data-tip={wanting} onClick={() => save(limits)}>{busy ? 'Saving…' : 'Save'}</button>
+          <button className="btn sm" data-testid="limits-save" disabled={busy || !!wrong} data-tip={wrong?.says} onClick={() => save(limits)}>{busy ? 'Saving…' : 'Save'}</button>
         </b>
       </div>
     </div>

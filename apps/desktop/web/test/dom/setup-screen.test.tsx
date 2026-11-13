@@ -708,12 +708,18 @@ describe('the first run forks three ways', () => {
       expect(screen.getByTestId('fork-stop')).toBeTruthy();
     });
 
-    test('No limit joins with none, and a server that holds a limit is not asked', () => {
-      const first = shell(ready, { fork: false });
-      added(first.receive, OFFER);
-      fireEvent.click(screen.getByTestId('fork-no-limit'));
-      expect(hosts(first.sent).at(-1)).toEqual(['join', { name: '', ssh: 'ada@studio', limits: 'none' }]);
-      cleanup();
+    test('the ask\'s foot is Set, primary and first, then Back, and Set with both fields empty joins with no limit', () => {
+      const { sent, receive } = shell(ready, { fork: false });
+      added(receive, OFFER);
+      expect([...document.querySelectorAll('.setup-acts button')].map((b) => [b.textContent, b.className])).toEqual([['Set', 'btn pri'], ['Back', 'btn']]);
+      expect(screen.getByTestId('limits-ask').querySelector('button')).toBeNull();
+      fireEvent.change(screen.getByTestId('limits-cores'), { target: { value: '' } });
+      fireEvent.change(screen.getByTestId('limits-memory'), { target: { value: '' } });
+      fireEvent.click(screen.getByTestId('limits-set'));
+      expect(hosts(sent).at(-1)).toEqual(['join', { name: '', ssh: 'ada@studio', limits: 'none' }]);
+    });
+
+    test('a server that holds a limit is not asked', () => {
       const held = shell(ready, { fork: false });
       added(held.receive);
       expect(screen.queryByTestId('limits-ask')).toBeNull();
