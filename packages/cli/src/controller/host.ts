@@ -937,7 +937,9 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     const joining = await joinSettled(entry.id, d, since);
     try {
       const { env, flags } = farFleet(entry.id, d);
-      report = await remoteJson<RemoteDoctor>(master, base, [...flags, 'doctor', '--json'], 'svall doctor --json', env);
+      // its rows name the machine as this one does
+      const named = [...(env.length ? env : ['env']), shq(`SVALL_HOME_WORD=${entry.record.name}`)];
+      report = await remoteJson<RemoteDoctor>(master, base, [...flags, 'doctor', '--json'], 'svall doctor --json', named);
       d.emit({ step: 'doctor', status: 'ok', detail: 'answered' });
       found(...report.checks.map(farRow));
     } catch (err) { found(failed('doctor', err)); }

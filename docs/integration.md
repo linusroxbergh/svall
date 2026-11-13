@@ -28,7 +28,7 @@ pnpm integration:placement --out /tmp/robot-placement
 | `--scenarios <spec>` | The faults of step 5: `all` (default), `none`, `kill`, `drop`, or a list such as `kill@rest,drop@commit`. |
 | `--points <regex>` | Run only the faults of step 17 whose name matches: `out` or `back`, then a boundary, `crew`, `link` or `tar`. |
 | `--keep` | Leave the containers running afterwards, to look around with `docker exec -it -u svall svall-local bash -l`. |
-| `--prefix <name>` | Name the containers `<name>-local`, `<name>-remote` and step 19's `<name>-server` and the network `<name>-it` (default `svall`), so another run can share the Docker host. |
+| `--prefix <name>` | Name the containers `<name>-local`, `<name>-remote`, step 19's `<name>-server` and steps 21 and 24's `<name>-box`, and the network `<name>-it` (default `svall`), so another run can share the Docker host. |
 
 The script builds the companion archive for the Docker host's architecture (`scripts/build-companion.mjs`), and
 `apps/desktop/web/dist-mobile` first if it is missing. It exits 0 when every check passed. Each step prints `PASS`, or
@@ -153,6 +153,10 @@ each machine's daemon and unit logs.
     memory until the kernel kills it; the daemon, tmux and every other pane run on, a window on the home hears
     `machines.limitHit` naming remote, and `host limits` and `svall doctor` count the hit, each daemon answering for its own machine. The default then holds through adding remote again, which
     shows the limit and asks nothing, and, when steps 16 and 18 run, through the home's move to remote and back.
+24. **A machine added with its limit.** `svall host add limited --limits 1,1G` from local makes a fresh machine,
+    `<prefix>-box`, a worker, and its `limits` step sets them without asking. There `node.json` holds them, the unit
+    file has `CPUQuota=100%`, `MemoryMax=1024M` and `MemorySwapMax=0`, its cgroup the same, and `svall fleet limits`
+    says `applied`; all of it holds again after `svall host upgrade limited`. The machine is then forgotten and removed.
 
 Steps 1, 2, 5, 6, 14 and 16 also check that the bare repository on remote is untouched: a move never pushes.
 

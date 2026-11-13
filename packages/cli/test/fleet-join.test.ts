@@ -88,6 +88,12 @@ describe('svall fleet join', () => {
     expect(events.find((e) => e.step === 'limits' && e.status === 'ok')?.detail).toBe('this fleet may use 11 of 12 cores and all its memory on ada@studio');
   });
 
+  it('with no one to ask, names the command that sets the limit later in the fleet the join names', async () => {
+    const none = { size: { cores: 12, memoryMb: 96_000 }, suggested: { cpus: 11, memoryMb: 94_976 }, limits: {}, state: 'none' };
+    await joinHome({ ssh: 'ada@studio', homeProfile: 'work' }, deps({ limits: none }));
+    expect(events.find((e) => e.step === 'limits' && e.status === 'warn')?.detail).toContain('ssh ada@studio, then svall -p work fleet limits set --cpus 11 --memory 94976M keeps the rest');
+  });
+
   it('takes a fleet never opened: the home issues the token, the fleet goes by its id, and it ends on the first snapshot', async () => {
     const d = deps({});
     const out = await joinHome({ ssh: 'ada@studio' }, d);

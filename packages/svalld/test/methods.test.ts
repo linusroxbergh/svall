@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, MachineId, type SetupRow } from '@svall/protocol';
-import { dispatch, systemInfo, type Ctx } from '../src/api/methods.js';
+import { answer, dispatch, systemInfo, type Ctx } from '../src/api/methods.js';
 import { Config } from '../src/config.js';
 import { NotFound } from '../src/errors.js';
 import { Fleet } from '../src/fleet.js';
@@ -256,14 +256,23 @@ describe('machines.limits and machines.setLimits', () => {
     expect(await dispatch({ id: 4, method: 'machines.limits', params: { machine: '33333333-3333-4333-8333-333333333333' } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
   });
 
-  it('is asked of the home by a worker for any machine but its own, and is no phone\'s to ask', async () => {
-    const sent: unknown[][] = [];
-    const router = { onWorker: true, toHome: (...a: unknown[]) => { sent.push(a.slice(0, 2)); return Promise.resolve(report()); } };
+  it('on a worker answers for its own machine alone, asking its home nothing, as the home takes no limit from a worker', async () => {
+    const sent: unknown[] = [];
+    const router = { onWorker: true, toHome: (...a: unknown[]) => { sent.push(a); return Promise.resolve(report()); } };
     const ctx = base({ router, fleetHome: () => ({ machine: FAR, name: 'studio', mine: false, me: ME }), limits: { read: () => Promise.resolve(report({ cpus: 2 })) } });
     expect(await dispatch({ id: 1, method: 'machines.limits', params: { machine: ME } }, ctx)).toEqual({ id: 1, result: report({ cpus: 2 }) });
-    expect(await dispatch({ id: 2, method: 'machines.limits', params: { machine: FAR } }, ctx)).toEqual({ id: 2, result: report() });
-    expect(sent).toEqual([['machines.limits', { machine: FAR }]]);
-    expect(await dispatch({ id: 3, method: 'machines.setLimits', params: { machine: ME, cpus: 1, memoryMb: null } }, { ...base(), viewer: { kind: 'phone' } } as unknown as Ctx)).toMatchObject({ error: {} });
+    expect(await dispatch({ id: 2, method: 'machines.limits', params: { machine: FAR } }, ctx)).toMatchObject({ id: 2, error: { code: 'not_found' } });
+    expect(sent).toEqual([]);
+    const home = base({ limits: { read: () => Promise.resolve(report()), set: () => Promise.resolve(report()) } });
+    for (const method of ['machines.limits', 'machines.setLimits']) {
+      await expect(answer(method, { machine: ME, cpus: 1, memoryMb: null }, home, FAR as MachineId)).rejects.toMatchObject({ code: 'unauthorized' });
+    }
+  });
+
+  it('is no phone\'s to ask', async () => {
+    const ctx = base({ viewer: { kind: 'phone' }, limits: { read: () => Promise.resolve(report()), set: () => Promise.resolve(report()) } });
+    expect(await dispatch({ id: 1, method: 'machines.limits', params: { machine: ME } }, ctx)).toMatchObject({ error: { code: 'forbidden' } });
+    expect(await dispatch({ id: 2, method: 'machines.setLimits', params: { machine: ME, cpus: 1, memoryMb: null } }, ctx)).toMatchObject({ error: { code: 'forbidden' } });
   });
 });
 

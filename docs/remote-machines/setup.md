@@ -378,7 +378,8 @@ else the machine runs. `svall host add` and `svall fleet join` read the machine'
 has 12 cores and 94 GB. This fleet may use [11 cores, 93 GB], or none:". Return takes the default, all but one core and
 1 GB; `4,8G` names another; `none` sets no limit. `--limits 4,8G` and `--no-limits` answer ahead. A run with no one to
 ask sets nothing and says so in its `limits` step, with the command that sets the default. A machine that already
-holds a limit is shown it and not asked. A Mac has no limit.
+holds a limit is shown it and not asked. A Mac has no limit. On a Mac whose fleet's home is a server, the home runs the
+add and reads the size, so the Mac's terminal asks once that run ends, and sets the answer through `svall host limits`.
 
 The app asks the same with the default filled in, both fields left empty for no limit: **Add machine** once the
 machine is added; the first run's server path between installing the server and this Mac joining it; and after a join
@@ -387,7 +388,7 @@ shows each Linux machine's `limits` row, with **Change** for the cores and the m
 
 | Command | Where | What it does |
 | --- | --- | --- |
-| `svall host limits <name>` | the Mac, or the home | Shows the machine's size, the limit, whether it holds and how often the fleet reached it. |
+| `svall host limits <name>` | the Mac, or the home | Shows the machine's size, the limit, whether it holds and how often the fleet reached it. Run anywhere but the home, it runs on the home, which sets every machine's limit. |
 | `svall host limits <name> --cpus 4 --memory 8G` | the same | Sets it; either flag alone limits that part only. `--none` removes it. |
 | `svall fleet limits`, `svall fleet limits set …` | the Linux machine | The same, there. |
 

@@ -62,6 +62,8 @@ export type DoctorDeps = PreflightDeps & {
   machine: { file: string; hardwareId?: string };
   // on Linux, what the fleet may use of this machine, as its daemon says it, or as its unit reads without one
   limits?(t: Target): Promise<LimitsReport>;
+  // what the controller that asks calls this machine, which host doctor hands over as SVALL_HOME_WORD
+  called?: string;
 };
 const LOG_LINES = 20;
 
@@ -308,7 +310,8 @@ async function limits(t: Target, d: DoctorDeps): Promise<Check[]> {
   if (!d.limits) return [];
   try {
     const r = await d.limits(t);
-    return [{ name: 'limits', status: WHY[r.state] || r.hits ? 'warn' : 'ok', detail: limitsLine(r, 'this machine') }];
+    const more = r.hits && r.limits.memoryMb ? { action: `${SHIM} host limits ${d.called ?? '<this machine>'} --memory <amount> allows it more` } : {};
+    return [{ name: 'limits', status: WHY[r.state] || r.hits ? 'warn' : 'ok', detail: limitsLine(r, d.called ?? 'this machine'), ...more }];
   } catch (e) {
     return [{ name: 'limits', status: 'warn', detail: (e as Error).message }];
   }
@@ -505,6 +508,7 @@ export function doctorCommand(target: () => Target, json: () => boolean, platfor
         limits: (t: Target) => withClient(() => Client.connect(t.home), (c) => c.call('machines.limits', {}))
           .catch(() => readLimits({ fleet: t.name, home: t.home, unitDir: unitDirOf(os.homedir()), run: realRun })),
       }),
+      ...(process.env.SVALL_HOME_WORD && { called: process.env.SVALL_HOME_WORD }),
       daemon: ownRuntime().daemon,
       user: os.userInfo().username,
       machine: { file: path.join(configDir(), 'machine.json'), hardwareId: hardwareId() },

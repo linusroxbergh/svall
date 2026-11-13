@@ -229,6 +229,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; ${process.platform === 'linux' ? 'Ubuntu 24.04 ships 3.4' : 'brew upgrade tmux'}`);
   // the app attaches its terminals with this tmux, which an app opened from Finder may not find on its own PATH
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
+  // a pane kept through an upgrade may come from a release that did not mark it
+  await tmux.preferPanes();
   fs.writeFileSync(path.join(paths.home, 'version'), `${runtimeVersion()}\n${process.pid}\n`);
   const me = worker ? workerMachineId(opts.hardware) : ownMachineId(log, opts.hardware);
   store.batchWrites();
@@ -389,7 +391,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   const limitsTarget = { fleet: profile, home: paths.home, unitDir: unitDirOf(os.homedir()), run: realRun, tmuxPid: () => tmux.serverPid() };
   const limits = memoryHits && {
     read: async () => ({ ...await readLimits(limitsTarget), ...memoryHits.hits() }),
-    set: async (l: Limits) => ({ ...await setLimits(l, limitsTarget), ...memoryHits.hits() }),
+    // a pane split in a terminal since the start is tmux's child, unmarked
+    set: async (l: Limits) => { await tmux.preferPanes(); return { ...await setLimits(l, limitsTarget), ...memoryHits.hits() }; },
   };
   if (connection && limits) {
     calls['limits.get'] = () => limits.read();
@@ -493,7 +496,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   });
 
   // run in reverse on stop, and on a failed start for whatever had already started
-  const teardown: (() => unknown)[] = [() => load.stop(), () => fleet.stop(), store.subscribe(() => workspace.retarget()), () => workspace.close()];
+  const teardown: (() => unknown)[] = [() => load.stop(), () => fleet.stop(), store.subscribe(() => workspace.retarget()), () => workspace.close(), () => memoryHits?.stop()];
   // a second stop, as a second signal sends, waits for the first to have the fleet on disk
   let stopping: Promise<void> | undefined;
   // the retro reads this machine's agent stores for the fleet it owns; fleet.json is read at each call
@@ -542,7 +545,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: (m) => (profileOn(m) === PRIVATE ? '' : `-p ${isProfileName(profileOn(m)) ? profileOn(m) : shq(profileOn(m))} `),
-      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(limits && { limits }), onLimitHit: (tell: (hit: LimitHit) => void) => { tellWindows = tell; }, ...(ownSetup && { workerSetup: ownSetup }), fleetHome, workersOwed: () => (worker ? {} : owedWorkers(paths)), rejoinsAgain: () => rejoins?.again(),
+      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(limits && { limits }), onLimitHit: (tell: (hit: LimitHit) => void) => { tellWindows = tell; return () => { tellWindows = () => {}; }; }, ...(ownSetup && { workerSetup: ownSetup }), fleetHome, workersOwed: () => (worker ? {} : owedWorkers(paths)), rejoinsAgain: () => rejoins?.again(),
       ...(!worker && { fleetConfig: fleetConfigFile(paths, log, refused) }), freeze, homeChecks, homeWaits,
       registered: () => new Map(registered().map((m) => [m.id, m.record])),
     });

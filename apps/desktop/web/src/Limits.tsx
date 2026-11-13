@@ -53,7 +53,9 @@ function useFields(size: LimitsReport['size'], from: Limits, edited: () => void,
   const wrong = cpus && !(Number.isInteger(c) && c >= 1 && c <= size.cores) ? { part: 'cores', says: `1 to ${cores(size.cores)}` } as const
     : memory && !(m >= least && m <= tenths(size.memoryMb)) ? { part: 'memory', says: range.memory } as const : undefined;
   // a GB typed as the machine's own size is all of it, not the few MiB a tenth rounds up past it
-  const limits: Limits = { ...(cpus && { cpus: c }), ...(memory && { memoryMb: Math.min(Math.round(m * 1024), size.memoryMb) }) };
+  // memory left as it was keeps its MiB, which the tenths of a GB the field shows would round
+  const kept = from.memoryMb && memory === String(tenths(from.memoryMb)) ? from.memoryMb : undefined;
+  const limits: Limits = { ...(cpus && { cpus: c }), ...(memory && { memoryMb: kept ?? Math.min(Math.round(m * 1024), size.memoryMb) }) };
   const field = (part: 'cores' | 'memory', o: { label: string; max: number; step: number }) => (
     <input type="number" className="fld inline limits-fld" aria-label={o.label} data-testid={`limits-${part}`} min={part === 'cores' ? 1 : least} max={o.max} step={o.step}
       placeholder="all" value={part === 'cores' ? cpus : memory} onChange={(e) => { (part === 'cores' ? setCpus : setMemory)(e.target.value); edited(); }} />
@@ -128,11 +130,16 @@ export function MachineLimits({ id, name, ask }: { id: MachineId; name: string; 
     deps().api.call('machines.limits', { machine: id }).then((r) => { if (!left) setReport(r); }, (e: Error) => { if (!left) setError(e.message); });
     return () => { left = true; };
   }, [id, reads]);
+  // the row an ask opened scrolls into view once, when it holds its limits
+  const scrolled = useRef<object>(undefined);
   useEffect(() => {
-    if (!ask) return;
-    setEditing(true);
-    box.current?.scrollIntoView({ block: 'nearest' });
+    if (ask) setEditing(true);
   }, [ask]);
+  useEffect(() => {
+    if (!ask || !report || scrolled.current === ask) return;
+    scrolled.current = ask;
+    box.current?.scrollIntoView({ block: 'nearest' });
+  }, [ask, report]);
   const label = (
     <span>limits<Info id={`limits-${id}`}>The cores and memory this fleet&apos;s robots share on {name}. At the memory limit, {name} stops the robot process holding most.{report && hitsSaid(report)}</Info></span>
   );

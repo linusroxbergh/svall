@@ -178,7 +178,7 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
         if (served && readWorkerFile(paths).fleetId !== found.fleetId) throw new StepError(`this fleet serves ${served} as a worker, whose robots here this home would close`, `svall -p <new fleet> fleet join ${o.ssh}`);
         return { value: found, detail: `${o.ssh} is the fleet's home, on release ${found.release}`, raw: `machine ${found.id}, fleet ${found.fleetId}` };
       });
-      await run.step('limits', () => limitsStep(master, { svallBase: home.svallBase, env: [], flags: farFlags(o), name: o.ssh, later: `ssh ${o.ssh}, then svall fleet limits set` }, o));
+      await run.step('limits', () => limitsStep(master, { svallBase: home.svallBase, env: [], flags: farFlags(o), name: o.ssh, later: `ssh ${o.ssh}, then svall ${o.homeProfile ? `-p ${o.homeProfile} ` : ''}fleet limits set` }, o));
       const here = d.registry.localMachine();
       const enrolled = await run.step('enrol', async () => {
         const r = await master.run([

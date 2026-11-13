@@ -693,6 +693,36 @@ function limits(ids, fx) {
   ctx.limited = true;
 }
 
+// box holds 1 core and 1 GB in its node.json, its unit and the unit's cgroup, and `svall fleet limits` there says it holds
+function oneAndOne(when) {
+  const saved = JSON.parse(sh(B, 'cat ~/.svall/node.json').stdout).limits;
+  check(`${when}: node.json`, saved?.cpus === 1 && saved.memoryMb === 1024, () => brief(saved));
+  check(`${when}: unit text`, /OOMPolicy=continue\nCPUQuota=100%\nMemoryMax=1024M\nMemorySwapMax=0\n/.test(sh(B, `cat ~/.config/systemd/user/${UNIT}`).stdout), 'the unit file lacks the limit lines');
+  check(`${when}: memory.max`, cgroupOf(B, 'memory.max') === String(1024 * 1024 * 1024), () => cgroupOf(B, 'memory.max'));
+  check(`${when}: no swap`, cgroupOf(B, 'memory.swap.max') === '0', () => cgroupOf(B, 'memory.swap.max'));
+  check(`${when}: cpu.max`, cgroupOf(B, 'cpu.max') === '100000 100000', () => cgroupOf(B, 'cpu.max'));
+  const there = JSON.parse(sh(B, 'svall --json fleet limits').stdout);
+  check(`${when}: fleet limits there`, there.state === 'applied' && there.limits.cpus === 1 && there.limits.memoryMb === 1024, () => brief(there));
+}
+
+function addedLimited() {
+  boxUp();
+  letIn(L);
+  const add = sh(L, `svall --json host add limited --ssh svall@${B} --limits 1,1G --release /opt/it/svall-companion-*.tar.gz --allow-unsigned </dev/null`, { ok: false });
+  const steps = carriedSteps(add);
+  check('the add ran', steps.some((e) => e.step === 'registry' && e.status === 'ok') && !steps.some((e) => e.status === 'fail'), () => `${add.code}: ${brief(steps.filter((e) => e.status === 'fail'))} ${add.stderr.slice(0, 400)}`);
+  const set = steps.findLast((e) => e.step === 'limits');
+  check('its limits step set them', set?.status === 'ok' && /^this fleet may use 1 of \d+ cores and 1 GB of /.test(set.detail), () => brief(set));
+  oneAndOne('added');
+  const up = sh(L, 'svall --json host upgrade limited --release /opt/it/svall-companion-*.tar.gz --allow-unsigned </dev/null', { ok: false });
+  const upSteps = carriedSteps(up);
+  check('the upgrade ran', upSteps.some((e) => e.step === 'probe' && e.status === 'ok') && !upSteps.some((e) => e.status === 'fail'), () => `${up.code}: ${brief(upSteps.filter((e) => e.status !== 'ok'))} ${up.stderr.slice(0, 400)}`);
+  oneAndOne('upgraded');
+  // step 21 makes box anew
+  sh(L, 'svall host remove limited --forget --json </dev/null');
+  docker(['rm', '-f', B]);
+}
+
 function bornOnWorker(ids, fx) {
   const rel = 'src/app/.claude/worktrees/scout';
   sh(R, 'git -C ~/src/app worktree add -q -b scout .claude/worktrees/scout');
@@ -2083,10 +2113,10 @@ const STEPS = {
   7: 'a reviewer started while the Mac sleeps', 8: 'the scribe over a robot on the worker', 9: 'a docs conflict', 10: 'files over the link', 11: 'a delete while the worker is down',
   12: 'agent setup mirror', 13: "the user's ssh config", 14: 'a robot started on the worker comes home', 15: 'a dial-out worker',
   16: 'the home moves to remote', 17: "the home move's fault matrix", 18: 'the home comes back', 19: 'a machine set up first takes a join, and a fleet named apart moves both ways', 20: 'terminals across a dropped master', 21: 'a Linux worker added and looked after from the home', 22: 'a move with a Linux worker, both ways',
-  23: "what the fleet may use of remote",
+  23: "what the fleet may use of remote", 24: 'a machine added with its limit, kept through an upgrade',
 };
 const steps = o.steps === undefined || o.steps === 'all' ? Object.keys(STEPS).map(Number) : String(o.steps).split(',').map(Number);
-if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 23, not ${o.steps}`);
+if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 24, not ${o.steps}`);
 // the home's stop and the return work with the robot the first move placed, 7 to 11 with the one the second placed, and
 // the scribe and the delete with the robots 7 starts
 if ((steps.includes(4) || steps.includes(6)) && !steps.includes(1)) steps.unshift(1);
@@ -2125,6 +2155,7 @@ try {
   if (steps.includes(13)) step(`13. ${STEPS[13]}`, () => sshConfig(ids, fx));
   if (steps.includes(14)) step(`14. ${STEPS[14]}`, () => bornOnWorker(ids, fx));
   if (steps.includes(23)) step(`23. ${STEPS[23]}`, () => limits(ids, fx));
+  if (steps.includes(24)) step(`24. ${STEPS[24]}`, addedLimited);
   if (steps.includes(15)) step(`15. ${STEPS[15]}`, () => dialOut(ids));
   if (steps.includes(16)) step(`16. ${STEPS[16]}`, () => { homeMoves(ids, fx); if (ctx.limited) limitsHold('once remote is the home'); });
   if (steps.includes(18)) step(`18. ${STEPS[18]}`, () => { homeBack(ids); if (ctx.limited) limitsHold('once remote is a worker again'); });

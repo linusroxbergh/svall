@@ -29,7 +29,7 @@ export function parseLimits(text: string): Limits {
   return Limits.parse({ ...(cpus && { cpus: parseCpus(cpus) }), ...(memory && { memoryMb: parseMemory(memory) }) });
 }
 
-export const memoryFlag = (mb: number): string => (mb % 1024 ? `${mb}M` : `${mb / 1024}G`);
+const memoryFlag = (mb: number): string => (mb % 1024 ? `${mb}M` : `${mb / 1024}G`);
 
 /** The flags that set `limits`, as `svall fleet limits set` and `svall host limits` take them. */
 export const limitFlags = (limits: Limits): string[] => (limits.cpus || limits.memoryMb
@@ -43,9 +43,9 @@ export function limitsLine(r: LimitsReport, name: string): string {
   const set = r.limits.cpus || r.limits.memoryMb;
   const why = WHY[r.state];
   const hits = r.hits ? `; it reached its memory limit ${r.hits === 1 ? 'once' : `${r.hits} times`}, last ${new Date(r.lastHit ?? 0).toTimeString().slice(0, 5)}` : '';
-  return set
-    ? `this fleet may use ${limitsWords(r.limits, r.size)} on ${name}${why ? `, but ${why}` : ''}${hits}`
-    : `${name} has ${sizeWords(r)}, and this fleet may use all of it`;
+  return `${set
+    ? `this fleet may use ${limitsWords(r.limits, r.size)} on ${name}${why ? `, but ${why}` : ''}`
+    : `${name} has ${sizeWords(r)}, and this fleet may use all of it`}${hits}`;
 }
 
 type Far = { svallBase: string; env: string[]; flags: string[]; name: string; later: string };

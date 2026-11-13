@@ -7,7 +7,7 @@ import { unitDirOf } from '@svall/svalld/linux/setup';
 import { resolvePaths } from '@svall/svalld/paths';
 import { Tmux } from '@svall/svalld/tmux';
 import { Client, withClient } from '../client.js';
-import { limitsLine, parseCpus, parseLimits, parseMemory, sizeWords, type LimitsAsk, type LimitsChoice } from '../controller/limits.js';
+import { limitFlags, limitsLine, parseCpus, parseLimits, parseMemory, sizeWords, type LimitsAsk, type LimitsChoice } from '../controller/limits.js';
 import { printResult } from '../format.js';
 import { ask } from '../prompt.js';
 import type { Target } from '../target.js';
@@ -78,14 +78,18 @@ export function fleetLimits(target: () => Target, json: () => boolean): Command 
   return cmd;
 }
 
-/** `svall host limits <name>`: the same of any Linux machine of the fleet, through this fleet's daemon. */
-export function hostLimits(target: () => Target, json: () => boolean): Command {
+/** `svall host limits <name>`: the same of any Linux machine of the fleet, through its home's daemon; `onHome` runs it on
+ *  the home where that is another machine, and answers undefined where it is this one. */
+export function hostLimits(target: () => Target, json: () => boolean, onHome: (name: string, flags: string[]) => Promise<void> | undefined): Command {
   return setFlags(new Command('limits').description('the cores and memory the fleet may use of a Linux machine, shown, or set with --cpus, --memory or --none')
-    .argument('<name>', 'the machine, as svall host list names it'))
+    .argument('<name>', 'the machine, as svall host list names it, or its id'))
+    .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
     .action(async (name: string, o: SetFlags) => {
       const limits = flagLimits(o);
+      const far = onHome(name, limits ? limitFlags(limits) : []);
+      if (far) return far;
       const r = await withClient(() => Client.connect(target().home), async (c) => {
-        const machine = (await c.call('machines.list', {})).machines.find((m) => m.name === name)?.id;
+        const machine = (await c.call('machines.list', {})).machines.find((m) => m.name === name || m.id === name)?.id;
         if (!machine) throw new Error(`no machine ${name} in this fleet`);
         return limits ? c.call('machines.setLimits', { machine, cpus: limits.cpus ?? null, memoryMb: limits.memoryMb ?? null }) : c.call('machines.limits', { machine });
       });

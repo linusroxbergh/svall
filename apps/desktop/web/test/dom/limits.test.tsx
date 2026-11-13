@@ -5,6 +5,8 @@ import { ApiError, type LimitsReport, type MachineId } from '@svall/protocol';
 import { bridge, call, freshStore, sent, store } from './harness.js';
 
 bridge.present = true;
+// jsdom lays nothing out
+Element.prototype.scrollIntoView = () => undefined;
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { SettingsCard } = await import('../../src/SettingsCard.js');
@@ -188,6 +190,16 @@ describe('a machine\'s limits in Settings → Machines', () => {
     expect(wrong()).toEqual([[field('memory').closest('.row'), '7 to 94 GB']]);
   });
 
+  test('Save keeps a memory limit to the MiB when only the cores change', async () => {
+    daemon({ [STUDIO]: { ...SET, limits: { cpus: 11, memoryMb: 8000 } } });
+    await machines();
+    await value('studio');
+    fireEvent.click(screen.getByTestId('limits-change'));
+    fireEvent.change(field('cores'), { target: { value: '8' } });
+    fireEvent.click(screen.getByTestId('limits-save'));
+    expect(call).toHaveBeenLastCalledWith('machines.setLimits', { machine: STUDIO, cpus: 8, memoryMb: 8000 });
+  });
+
   test('Save with both fields cleared takes a set limit off', async () => {
     daemon({ [STUDIO]: SET });
     await machines();
@@ -226,6 +238,19 @@ describe('a fleet that reached its memory limit', () => {
     await machines();
     expect(await screen.findByTestId('limits-edit')).toBeTruthy();
     expect(row('studio')!.contains(screen.getByTestId('limits-edit'))).toBe(true);
+  });
+
+  test('Change limits scrolls to the row once its limits are read', async () => {
+    let read: (r: LimitsReport) => void = () => undefined;
+    daemon({ [STUDIO]: new Promise<LimitsReport>((r) => { read = r; }) as never });
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this); };
+    act(() => store.getState().toggleSettings(true, 'machines', STUDIO));
+    await machines();
+    expect(scrolled).toEqual([]);
+    await act(async () => read(SET));
+    await screen.findByTestId('limits-edit');
+    expect(scrolled).toEqual([row('studio')]);
   });
 });
 

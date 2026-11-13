@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { enter } from '@svall/svalld/fleet/home-move';
 import { resolvePaths } from '@svall/svalld/paths';
@@ -22,7 +23,14 @@ const rows = [
   { name: 'stranger', id: crypto.randomUUID(), ssh: 'ada@stranger', platform: 'linux-arm64' },
 ];
 
-async function cli(args: string[], json: boolean): Promise<string> {
+// `typed`: what a person types in this Mac's terminal
+async function cli(args: string[], json: boolean, typed?: string): Promise<string> {
+  if (typed !== undefined) {
+    const input = vi.spyOn(process, 'stdin', 'get').mockReturnValue(Object.assign(Readable.from([typed]), { isTTY: true }) as never);
+    const was = process.stdout.isTTY;
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+    onTestFinished(() => { input.mockRestore(); Object.defineProperty(process.stdout, 'isTTY', { value: was, configurable: true }); });
+  }
   const config = path.join(work, 'config');
   const r = MachineRegistry.load(config);
   r.put(HOME as never, { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'arm64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' });
@@ -200,6 +208,53 @@ describe('a doctor of a far worker', () => {
     expect(out).toContain('no such machine');
     expect(out).not.toContain('{"result"');
     expect(out).not.toContain('"stopped"');
+  });
+});
+
+describe('a limit with a far home', () => {
+  // a far command holding each of `words`, as a word of its own
+  const ran = (...words: string[]) => ssh.remoteCalls().filter((c) => words.every((w) => c.includes(w)));
+  const report = (limits: object) => ({ size: { cores: 12, memoryMb: 96_000 }, suggested: { cpus: 11, memoryMb: 94_976 }, limits, state: 'applied' });
+
+  it('is read and set on that home, of the home itself by its id, and said here in this Mac\'s name for the machine', async () => {
+    ssh.reply(['host', 'limits'], { stdout: `${JSON.stringify(report({ memoryMb: 8192 }))}\n` });
+    expect(await cli(['limits', 'box', '--memory', '8G'], false)).toBe('this fleet may use every core and 8 GB of 93.8 GB on box\n');
+    expect(ran('host', 'limits').at(-1)!.slice(-5)).toEqual(['limits', 'box', '--memory', '8G', '--relayed']);
+    await cli(['limits', 'studio'], true);
+    expect(ran('host', 'limits').at(-1)!.slice(-3)).toEqual(['limits', HOME, '--relayed']);
+  });
+
+  it('a limit the home refuses says why', async () => {
+    ssh.reply(['host', 'limits'], { code: 1, stderr: 'svall: 6.2 GB is in use now; stop a robot or allow at least 7 GB\n' });
+    expect(await cli(['limits', 'box', '--memory', '4G'], false)).toBe('✗ relay  studio did not finish svall host limits\n  svall host limits there exited 1: 6.2 GB is in use now; stop a robot or allow at least 7 GB\n');
+  });
+
+  it('an add asks in this Mac\'s terminal what the fleet may use of the machine, once the home has read its size, and sets the answer there', async () => {
+    const offer = { size: { cores: 12, memoryMb: 96_000 }, suggested: { cpus: 11, memoryMb: 94_976 } };
+    const added = [
+      { step: 'limits', status: 'warn', detail: 'box has 12 cores and 93.8 GB, and this fleet may use all of it', offer },
+      { result: 'ready', actions: [] },
+    ].map((l) => JSON.stringify(l)).join('\n');
+    ssh.reply(['host', 'add'], { stdout: `${added}\n` });
+    ssh.reply(['host', 'limits'], { stdout: `${JSON.stringify(report({ cpus: 4, memoryMb: 8192 }))}\n` });
+    let asked = '';
+    const err = vi.spyOn(process.stderr, 'write').mockImplementation((c: unknown) => { asked += String(c); return true; });
+    onTestFinished(() => { err.mockRestore(); });
+    const out = await cli(['add', 'box', '--ssh', 'ada@box'], false, '4,8G\n');
+    expect(asked).toContain('box has 12 cores and 93.8 GB. This fleet may use [11 cores, 92.8 GB], or none: ');
+    expect(ran('host', 'limits').at(-1)!.slice(-7)).toEqual(['limits', 'box', '--cpus', '4', '--memory', '8G', '--relayed']);
+    expect(out).toContain('this fleet may use 4 of 12 cores and 8 GB of 93.8 GB on box');
+  });
+
+  it('an add told none, or one that names its limit, asks nothing and sets nothing more', async () => {
+    ssh.reply(['host', 'add'], { stdout: `${JSON.stringify({ result: 'ready', actions: [] })}\n` });
+    await cli(['add', 'box', '--ssh', 'ada@box', '--limits', '4,8G'], false, 'none\n');
+    expect(ran('host', 'add').at(-1)!.slice(-3)).toEqual(['--limits', '4,8G', '--relayed']);
+    const offer = { size: { cores: 12, memoryMb: 96_000 }, suggested: { cpus: 11, memoryMb: 94_976 } };
+    ssh.clearReplies();
+    ssh.reply(['host', 'add'], { stdout: `${[{ step: 'limits', status: 'warn', detail: 'all of it', offer }, { result: 'ready', actions: [] }].map((l) => JSON.stringify(l)).join('\n')}\n` });
+    await cli(['add', 'box', '--ssh', 'ada@box'], false, 'none\n');
+    expect(ran('host', 'limits')).toEqual([]);
   });
 });
 

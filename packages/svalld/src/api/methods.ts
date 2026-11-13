@@ -43,8 +43,9 @@ import { classification } from './classify.js';
 export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; drops?: Drops; fleetFlag?: (machine: MachineId) => string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal;
   // the home's: each worker's phone link
   phone?: PhoneFallbacks;
-  // the fleet's home, what this machine's registry says of each machine, and on a worker, how a window reaches its home
+  // on Linux: what this fleet may use of this machine
   limits?: { read(): Promise<LimitsReport>; set(limits: Limits): Promise<LimitsReport> };
+  // the fleet's home, what this machine's registry says of each machine, and on a worker, how a window reaches its home
   fleetHome?: () => Result<'fleet.home'>; registered?: () => Map<string, MachineRecord>; homeApi?: Pick<HomeApi, 'answer'>;
   // the home's: the one copy of a worker's agent setup it takes; a worker's: that setup, and what its first push from the home kept
   setupCopy?: SetupCopy; workerSetup?: WorkerSetup;
@@ -413,14 +414,13 @@ const handlers: Handlers = {
   'feedback.preview': async (_p, { diagnostics }) => ({ text: await diagnostics!() }),
 };
 
-// this machine answers for itself, a worker for any other asks its home, and the home asks the worker over its link
+// this machine answers for itself, and the home asks a worker over its link
 async function limitsOf(ctx: Ctx, machine: MachineId | undefined, call: 'limits.get' | 'limits.set', limits: Limits): Promise<LimitsReport> {
   const home = ctx.fleetHome?.();
   if (machine === undefined || machine === home?.me) {
     if (!ctx.limits) throw new ApiError('not_supported', 'a limit is for a Linux machine');
     return call === 'limits.get' ? ctx.limits.read() : ctx.limits.set(limits);
   }
-  if (ctx.router?.onWorker) return ctx.router.toHome(call === 'limits.get' ? 'machines.limits' : 'machines.setLimits', call === 'limits.get' ? { machine } : { machine, cpus: limits.cpus ?? null, memoryMb: limits.memoryMb ?? null }, ctx.signal) as Promise<LimitsReport>;
   const name = ctx.store.state.machines?.[machine]?.name;
   if (name === undefined || !ctx.links) throw new ApiError('not_found', `no machine ${machine}`);
   if (ctx.registered?.().get(machine)?.platform === 'darwin') throw new ApiError('not_supported', 'a limit is for a Linux machine');

@@ -96,5 +96,7 @@ describe('the words of a limit', () => {
   it('says why a limit does not hold, and how often the fleet reached it', () => {
     const r = { ...SET, state: 'outside', hits: 3, lastHit: new Date(2026, 0, 1, 14, 2).getTime() } as never;
     expect(limitsLine(r, 'studio')).toBe('this fleet may use 11 of 12 cores and 92.8 GB of 93.8 GB on studio, but the fleet\'s terminals run outside its unit, on a tmux Svall did not bring, until every robot there is closed and the daemon restarts; it reached its memory limit 3 times, last 14:02');
+    const cleared = { ...LIMITS, hits: 1, lastHit: new Date(2026, 0, 1, 14, 2).getTime() } as never;
+    expect(limitsLine(cleared, 'studio')).toBe('studio has 12 cores and 93.8 GB, and this fleet may use all of it; it reached its memory limit once, last 14:02');
   });
 });

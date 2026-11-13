@@ -1,8 +1,10 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import type { MachineSize } from '@svall/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { peekConfig, saveLimits } from '../src/config.js';
-import { defaultLimits, limitsState, readLimits, setLimits, watchMemoryHits, withLimits, type LimitsTarget } from '../src/linux/limits.js';
+import { readLimits, setLimits, watchMemoryHits, type LimitsTarget } from '../src/linux/limits.js';
 import type { Run } from '../src/linux/service.js';
 import { serveAsWorker, svalldUnit, unitDirOf, unitLimits, writeUnits } from '../src/linux/setup.js';
 import { resolvePaths } from '../src/paths.js';
@@ -10,7 +12,7 @@ import { releaseRuntime } from '../src/runtime.js';
 import { preferAsVictim } from '../src/tmux/tmux.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
-afterEach(() => { vi.useRealTimers(); cleanHomes(); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); cleanHomes(); });
 
 const MIB = 1024 * 1024;
 const GROUP = '/user.slice/user-1000.slice/user@1000.service/app.slice/app-svall\\x2dsvalld.slice/svall-svalld@private.service';
@@ -18,7 +20,7 @@ const UNIT = 'svall-svalld@private.service';
 const SIZE = { cores: 12, memoryMb: 96_000 };
 
 /** A machine whose systemd puts the unit file's limits on the unit's cgroup at each daemon-reload, as long as it `applies`. */
-function machine(o: { swap?: false; controllers?: string; anonMb?: number; active?: boolean; applies?: boolean; tmuxGroup?: string } = {}) {
+function machine(o: { swap?: false; controllers?: string; anonMb?: number; shmemMb?: number; active?: boolean; applies?: boolean; tmuxGroup?: string } = {}) {
   const root = makeHome();
   const homedir = path.join(root, 'home');
   const home = path.join(homedir, '.svall');
@@ -27,7 +29,7 @@ function machine(o: { swap?: false; controllers?: string; anonMb?: number; activ
   const dir = path.join(kernel.cgroup, GROUP);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(kernel.cgroup, 'user.slice/user-1000.slice/user@1000.service/cgroup.controllers'), `${o.controllers ?? 'cpu memory pids'}\n`);
-  fs.writeFileSync(path.join(dir, 'memory.stat'), `anon ${(o.anonMb ?? 200) * MIB}\nfile 999\n`);
+  fs.writeFileSync(path.join(dir, 'memory.stat'), `anon ${(o.anonMb ?? 200) * MIB}\nfile ${(o.shmemMb ?? 0) * MIB + 999}\nshmem ${(o.shmemMb ?? 0) * MIB}\n`);
   fs.writeFileSync(path.join(dir, 'memory.max'), 'max\n');
   fs.writeFileSync(path.join(dir, 'cpu.max'), 'max 100000\n');
   fs.writeFileSync(path.join(dir, 'memory.events'), 'low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\n');
@@ -57,10 +59,24 @@ function machine(o: { swap?: false; controllers?: string; anonMb?: number; activ
 }
 
 describe('the default', () => {
-  it('leaves the machine one core and 1 GiB, and a small machine half its memory and its one core', () => {
-    expect(defaultLimits(SIZE)).toEqual({ cpus: 11, memoryMb: 94_976 });
-    expect(defaultLimits({ cores: 1, memoryMb: 957 })).toEqual({ cpus: 1, memoryMb: 478 });
-    expect(defaultLimits({ cores: 2, memoryMb: 2048 })).toEqual({ cpus: 1, memoryMb: 1024 });
+  it('leaves the machine one core and 1 GiB, a small machine half its memory and its one core, and asks no less than 512 MiB', async () => {
+    const m = machine();
+    const offered = async (size: MachineSize) => (await readLimits({ ...m.target, size })).suggested;
+    expect(await offered(SIZE)).toEqual({ cpus: 11, memoryMb: 94_976 });
+    expect(await offered({ cores: 2, memoryMb: 2048 })).toEqual({ cpus: 1, memoryMb: 1024 });
+    expect(await offered({ cores: 1, memoryMb: 957 })).toEqual({ cpus: 1, memoryMb: 512 });
+    expect(await offered({ cores: 1, memoryMb: 768 })).toEqual({ cpus: 1, memoryMb: 512 });
+  });
+
+  it('offers no memory limit where 512 MiB would leave the machine under 256 MiB', async () => {
+    const m = machine();
+    expect((await readLimits({ ...m.target, size: { cores: 1, memoryMb: 767 } })).suggested).toEqual({ cpus: 1 });
+  });
+
+  it('sizes the machine by the cores this process may run on', async () => {
+    vi.spyOn(os, 'availableParallelism').mockReturnValue(3);
+    const m = machine();
+    expect((await readLimits({ ...m.target, size: undefined })).size.cores).toBe(3);
   });
 });
 
@@ -96,11 +112,15 @@ describe('the unit', () => {
     expect(m.unit()).toContain('CPUQuota=400%\nMemoryMax=8192M\nMemorySwapMax=0\n');
   });
 
-  it('swaps only its limit lines', () => {
-    const unit = 'a\nOOMPolicy=continue\nCPUQuota=200%\nMemoryMax=1024M\nMemorySwapMax=0\nStandardOutput=x\n';
-    expect(withLimits(unit, { memoryMb: 512 })).toBe('a\nOOMPolicy=continue\nMemoryMax=512M\nMemorySwapMax=0\nStandardOutput=x\n');
-    expect(withLimits(unit, { cpus: 1 })).toBe('a\nOOMPolicy=continue\nCPUQuota=100%\nStandardOutput=x\n');
-    expect(withLimits(unit, {})).toBe('a\nOOMPolicy=continue\nStandardOutput=x\n');
+  it('swaps only its limit lines', async () => {
+    const m = machine();
+    fs.writeFileSync(m.unitFile, 'a\nOOMPolicy=continue\nCPUQuota=200%\nMemoryMax=1024M\nMemorySwapMax=0\nStandardOutput=x\n');
+    await setLimits({ memoryMb: 512 }, m.target);
+    expect(m.unit()).toBe('a\nOOMPolicy=continue\nMemoryMax=512M\nMemorySwapMax=0\nStandardOutput=x\n');
+    await setLimits({ cpus: 1 }, m.target);
+    expect(m.unit()).toBe('a\nOOMPolicy=continue\nCPUQuota=100%\nStandardOutput=x\n');
+    await setLimits({}, m.target);
+    expect(m.unit()).toBe('a\nOOMPolicy=continue\nStandardOutput=x\n');
     expect(unitLimits(undefined)).toBe('');
   });
 });
@@ -126,13 +146,75 @@ describe('setting a limit', () => {
     expect(m.calls.join('\n')).not.toContain('daemon-reload');
   });
 
-  it('takes back a limit systemd did not put on the unit, to the one before', async () => {
+  it('takes all the machine has', async () => {
     const m = machine();
-    await setLimits({ memoryMb: 8192 }, m.target);
-    const stuck = machine({ applies: false });
-    await expect(setLimits({ memoryMb: 8192 }, stuck.target)).rejects.toThrow('the limit was not set: systemd did not put it on the fleet\'s unit');
-    expect(stuck.saved()).toBeUndefined();
-    expect(stuck.unit()).not.toMatch(/MemoryMax/);
+    expect(await setLimits({ cpus: 12, memoryMb: 96_000 }, m.target)).toMatchObject({ limits: { cpus: 12, memoryMb: 96_000 }, state: 'applied' });
+  });
+
+  it('counts shared memory as in use, as the kernel cannot take it back without swap', async () => {
+    const m = machine({ anonMb: 5120, shmemMb: 2048 });
+    expect((await readLimits(m.target)).heldMb).toBe(7168);
+    await expect(setLimits({ memoryMb: 6144 }, m.target)).rejects.toThrow('7 GB is in use now; stop a robot or allow at least 7 GB');
+    expect(m.saved()).toBeUndefined();
+  });
+
+  it('takes back a limit systemd did not put on the unit, to the one before', async () => {
+    const o: { applies?: boolean } = {};
+    const m = machine(o);
+    await setLimits({ memoryMb: 4096 }, m.target);
+    o.applies = false;
+    await expect(setLimits({ memoryMb: 8192 }, m.target)).rejects.toThrow('the limit was not set: systemd did not put it on the fleet\'s unit');
+    expect(m.saved()).toEqual({ memoryMb: 4096 });
+    expect(m.unit()).toContain('MemoryMax=4096M');
+  });
+
+  it('keeps a limit systemd does not take off, and says so', async () => {
+    const o: { applies?: boolean } = {};
+    const m = machine(o);
+    await setLimits({ cpus: 4, memoryMb: 4096 }, m.target);
+    o.applies = false;
+    await expect(setLimits({}, m.target)).rejects.toThrow('the limit was not set: systemd did not put it on the fleet\'s unit');
+    await expect(setLimits({ memoryMb: 4096 }, m.target)).rejects.toThrow('the limit was not set');
+    expect(m.saved()).toEqual({ cpus: 4, memoryMb: 4096 });
+    expect(m.unit()).toContain('CPUQuota=400%\nMemoryMax=4096M\n');
+  });
+
+  it('puts node.json and the unit back when systemd does not reload', async () => {
+    const m = machine();
+    await setLimits({ memoryMb: 4096 }, m.target);
+    const run: Run = (cmd, args) => (args.includes('daemon-reload')
+      ? Promise.reject(Object.assign(new Error('exit 1'), { stderr: 'Failed to reload daemon: Access denied\n' }))
+      : m.target.run(cmd, args));
+    await expect(setLimits({ memoryMb: 8192 }, { ...m.target, run })).rejects.toThrow('systemctl --user daemon-reload: Failed to reload daemon: Access denied');
+    expect(m.saved()).toEqual({ memoryMb: 4096 });
+    expect(m.unit()).toContain('MemoryMax=4096M');
+  });
+
+  it('puts them back when the unit cannot be read after the reload', async () => {
+    const m = machine();
+    await setLimits({ memoryMb: 4096 }, m.target);
+    let shows = 0;
+    const run: Run = (cmd, args) => (args.includes('show') && ++shows === 2 ? Promise.reject(new Error('exit 1')) : m.target.run(cmd, args));
+    await expect(setLimits({ memoryMb: 8192 }, { ...m.target, run })).rejects.toThrow('systemctl --user show');
+    expect(m.saved()).toEqual({ memoryMb: 4096 });
+    expect(m.unit()).toContain('MemoryMax=4096M');
+  });
+
+  it('sets one limit at a time, so a set that fails puts back nothing another set made', async () => {
+    const m = machine();
+    // the first set's reload fails once the second has begun
+    const run: Run = async (cmd, args) => {
+      if (args.includes('daemon-reload') && m.unit().includes('MemoryMax=8192M')) {
+        await new Promise((r) => setTimeout(r, 50));
+        throw Object.assign(new Error('exit 1'), { stderr: 'Failed to reload daemon\n' });
+      }
+      return m.target.run(cmd, args);
+    };
+    const [first, second] = await Promise.allSettled([setLimits({ memoryMb: 8192 }, { ...m.target, run }), setLimits({ memoryMb: 4096 }, { ...m.target, run })]);
+    expect(first.status).toBe('rejected');
+    expect(second).toMatchObject({ status: 'fulfilled', value: { limits: { memoryMb: 4096 }, state: 'applied' } });
+    expect(m.saved()).toEqual({ memoryMb: 4096 });
+    expect(m.unit()).toContain('MemoryMax=4096M');
   });
 
   it('refuses a limit on cores where the account is given no control of them, and offers memory alone', async () => {
@@ -141,6 +223,14 @@ describe('setting a limit', () => {
     await expect(setLimits({ cpus: 4 }, m.target)).rejects.toThrow(/no control of cores: as root, put Delegate=/);
     expect(m.saved()).toBeUndefined();
     expect((await setLimits({ memoryMb: 8192 }, m.target)).state).toBe('applied');
+  });
+
+  it('refuses a limit on memory where the account is given no control of it, and offers cores alone', async () => {
+    const m = machine({ controllers: 'cpu pids' });
+    expect((await readLimits(m.target)).suggested).toEqual({ cpus: 11 });
+    await expect(setLimits({ memoryMb: 8192 }, m.target)).rejects.toThrow('the limit was not set: this account is given no control of memory');
+    expect(m.saved()).toBeUndefined();
+    expect((await setLimits({ cpus: 4 }, m.target)).state).toBe('applied');
   });
 
   it('takes swap from a fleet with a memory limit, gives it back with the limit, and holds where the kernel counts no swap', async () => {
@@ -171,25 +261,41 @@ describe('setting a limit', () => {
   it('says so when the fleet\'s tmux runs outside the unit, where no limit reaches its robots', async () => {
     const m = machine({ tmuxGroup: '/user.slice/user-1000.slice/user@1000.service/tmux-spawn-1.scope' });
     expect((await setLimits({ memoryMb: 8192 }, m.target)).state).toBe('outside');
-    expect((await limitsState({}, { run: m.target.run, unit: UNIT, kernel: m.kernel })).state).toBe('none');
+    expect((await setLimits({}, m.target)).state).toBe('none');
   });
 });
 
 describe('at the memory limit', () => {
-  it('counts each process the kernel stops in the daemon\'s cgroup from the daemon\'s start on', () => {
+  it('counts each process the kernel stops in the daemon\'s cgroup at its limit from the daemon\'s start on', () => {
     vi.useFakeTimers();
     const m = machine();
-    const events = path.join(m.dir, 'memory.events');
-    fs.writeFileSync(events, 'oom 3\noom_kill 3\n');
+    const events = (text: string) => fs.writeFileSync(path.join(m.dir, 'memory.events'), text);
+    events('oom 3\noom_kill 3\n');
     const said: number[] = [];
     const w = watchMemoryHits({ kernel: m.kernel, pid: 5, onHit: (n) => said.push(n), everyMs: 1000 });
     vi.advanceTimersByTime(1000);
     expect(w.hits()).toEqual({ hits: 0 });
-    fs.writeFileSync(events, 'oom 5\noom_kill 5\n');
+    events('oom 5\noom_kill 5\n');
     vi.advanceTimersByTime(1000);
     vi.advanceTimersByTime(1000);
     expect(w.hits()).toMatchObject({ hits: 2, lastHit: expect.any(Number) });
-    expect(said).toEqual([2]);
+    // three processes reached the limit at once, and the kernel stopped one
+    events('oom 8\noom_kill 6\n');
+    vi.advanceTimersByTime(1000);
+    expect(said).toEqual([2, 3]);
+    w.stop();
+  });
+
+  it('counts no hit where the machine itself ran out of memory and the fleet has no limit', () => {
+    vi.useFakeTimers();
+    const m = machine();
+    const said: number[] = [];
+    const w = watchMemoryHits({ kernel: m.kernel, pid: 5, onHit: (n) => said.push(n), everyMs: 1000 });
+    // the kernel's own OOM killer stops a process there: an oom_kill with no oom of the cgroup's own
+    fs.writeFileSync(path.join(m.dir, 'memory.events'), 'oom 0\noom_kill 1\n');
+    vi.advanceTimersByTime(1000);
+    expect(w.hits()).toEqual({ hits: 0 });
+    expect(said).toEqual([]);
     w.stop();
   });
 
