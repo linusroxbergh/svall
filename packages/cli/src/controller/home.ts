@@ -28,6 +28,7 @@ import { farProfile, type Target } from '../target.js';
 import { keepJoined } from './checks.js';
 import { flow, homeProbe, remoteJson, remotePaths, sameRelease, StepError, tailnetHere, unreached, type HostDeps, type HostOutcome, type Runner } from './host.js';
 import type { MachineEntry, MachineRegistry } from './registry.js';
+import { limitsStep, type LimitsChoice } from './limits.js';
 import { classifySsh, inFull, SshError, type SshMaster } from './ssh.js';
 
 const execFileP = promisify(execFile);
@@ -53,7 +54,7 @@ const Enrolled = z.object({
   homeSvallBase: z.string(), homePlatform: z.string(), homeArch: z.string(), homePath: z.string(),
 });
 
-type JoinOptions = { ssh: string; name?: string; homeProfile?: string };
+type JoinOptions = { ssh: string; name?: string; homeProfile?: string } & LimitsChoice;
 
 export type JoinDeps = Pick<HostDeps, 'emit' | 'openMaster' | 'interactiveSsh' | 'tailnet'> & {
   registry: MachineRegistry;
@@ -177,6 +178,7 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
         if (served && readWorkerFile(paths).fleetId !== found.fleetId) throw new StepError(`this fleet serves ${served} as a worker, whose robots here this home would close`, `svall -p <new fleet> fleet join ${o.ssh}`);
         return { value: found, detail: `${o.ssh} is the fleet's home, on release ${found.release}`, raw: `machine ${found.id}, fleet ${found.fleetId}` };
       });
+      await run.step('limits', () => limitsStep(master, { svallBase: home.svallBase, env: [], flags: farFlags(o), name: o.ssh, later: `ssh ${o.ssh}, then svall ${o.homeProfile ? `-p ${o.homeProfile} ` : ''}fleet limits set` }, o));
       const here = d.registry.localMachine();
       const enrolled = await run.step('enrol', async () => {
         const r = await master.run([

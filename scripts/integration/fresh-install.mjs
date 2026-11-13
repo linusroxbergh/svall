@@ -244,10 +244,10 @@ function runs(label, rel, releases) {
 
 // ---------------------------------------------------------------------------------------------- the provisioning
 
-const ADVICE = new Set(['claude', 'codex', 'opencode', 'gh', 'mirror:unchecked']);
+const ADVICE = new Set(['limits', 'claude', 'codex', 'opencode', 'gh', 'mirror:unchecked']);
 // the controller runs no daemon, so the mirror's rows are one not-checked row
 const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'space', 'linger', 'release', 'upload', 'install', 'tmux', 'service',
-  'identity', 'enrol', 'claude', 'codex', 'opencode', 'gh', 'versions', 'probe', 'registry', 'mirror:unchecked'];
+  'identity', 'enrol', 'limits', 'claude', 'codex', 'opencode', 'gh', 'versions', 'probe', 'registry', 'mirror:unchecked'];
 
 // with no --release the controller fetches the companion its manifest pins, checks its digest and caches it
 const named = (rel) => (rel.served || rel.carried ? [] : ['--release', rel.companion, ...(rel.unsigned ? ['--allow-unsigned'] : [])]);
@@ -287,6 +287,10 @@ function hostAdd(a) {
     () => brief(at('service')));
   check('host add enrol', at('enrol')?.detail === 'joined this fleet' && at('enrol').raw?.startsWith('fresh serves this fleet as a worker of '),
     () => brief(at('enrol')));
+  // with no one to ask and no flag, the machine keeps no limit, and the app is handed its size and the default to ask with
+  const offer = at('limits')?.offer;
+  check('host add limits offer', at('limits')?.status === 'warn' && offer?.size.cores > 0 && offer.suggested.cpus === Math.max(1, offer.size.cores - 1)
+    && offer.suggested.memoryMb === Math.max(offer.size.memoryMb - 1024, Math.floor(offer.size.memoryMb / 2)), () => brief(at('limits')));
   check('host add release', at('release')?.detail === a.version && at('release').raw === from(a), () => brief(at('release')));
   downloaded(a, 'host add');
   check('host add home', at('home')?.detail === HOME, () => brief(at('home')));

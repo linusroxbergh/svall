@@ -359,6 +359,7 @@ async function watch(o) {
         const msg = JSON.parse(m.data);
         if (state === 'hello') { state = 'asked'; ws.send(JSON.stringify({ id: 1, method: 'state.get', params: {} })); return; }
         if (state === 'asked' && msg.id === 1) { doc.robots[id] = msg.result?.robots?.[id] ?? null; state = 'live'; say({ connected: true }); show(); return; }
+        if (state === 'live' && msg.event === 'machines.limitHit') say({ limitHit: msg.data });
         if (state === 'live' && msg.event === 'state.patch') {
           for (const op of msg.data.ops) if (op.path === `/robots/${id}` || op.path.startsWith(`/robots/${id}/`)) applyOp(doc, op);
           show();

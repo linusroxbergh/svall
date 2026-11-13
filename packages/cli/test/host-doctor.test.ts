@@ -91,7 +91,7 @@ describe('host doctor', () => {
     expect(at('mirror:var:X')).toBe(events.length - 1);
   });
 
-  it("asks the far doctor about this fleet's own unit there, and has the daemon retry a down link before it reads the rows", async () => {
+  it("asks the far doctor about this fleet's own unit there, in this Mac's name for the machine, and has the daemon retry a down link before it reads the rows", async () => {
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }) });
     ssh.reply(['svall-space'], { stdout: DF });
@@ -102,7 +102,7 @@ describe('host doctor', () => {
       refreshLinks: () => { order.push('refresh'); return Promise.resolve(); },
       setupRows: () => { order.push('rows'); return Promise.resolve([]); },
     }));
-    expect(ssh.remoteCalls().filter((w) => w.includes('doctor'))).toEqual([[SVALL, '-p', 'work', 'doctor', '--json']]);
+    expect(ssh.remoteCalls().filter((w) => w.includes('doctor'))).toEqual([['env', 'SVALL_HOME_WORD=trift', SVALL, '-p', 'work', 'doctor', '--json']]);
     expect(order).toEqual(['refresh', 'rows']);
   });
 

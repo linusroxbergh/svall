@@ -163,6 +163,8 @@ taking the fleet, if the old one served; if Tailscale refuses it there, the move
 "Tailscale on studio does not let Svall share this fleet", with `sudo tailscale set --operator=$USER` to run there once, or
 "The phone link could not start on studio", with what Tailscale said behind it.
 
+What a fleet may use of a Linux machine, its [limits](setup.md#limits), is that machine's own setting and stays on it through a move, whichever way the fleet goes.
+
 A move refuses until it can go through: the other machine linked, on the same release, with Tailscale running and signed in on
 both ("Tailscale is not running on studio", "Tailscale on this Mac is signed out", "studio has no Tailscale"), its clock within 5
 minutes and room for three copies of the fleet's files; those files under 180 MB, the most a move carries either way ("the

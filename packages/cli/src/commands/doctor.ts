@@ -6,13 +6,14 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { Command } from 'commander';
 import type { z } from 'zod';
-import { FleetConfig, NodeConfig, type AgentKind } from '@svall/protocol';
+import { FleetConfig, NodeConfig, type AgentKind, type LimitsReport } from '@svall/protocol';
 import { claudeHooksCurrent, codexHooksCurrent, codexInstalled, hooksInstalled } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents } from '@svall/svalld/agents';
 import { BWRAP_COMMAND, BWRAP_DENIED, BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
 import { Config, configRefusal, configStray, parseConfig, peekConfig } from '@svall/svalld/config';
 import { launchdEnv, plistEnv, plistFile, plistRun } from '@svall/svalld/launchd';
-import { lingerState, unitStatus, type Run } from '@svall/svalld/linux/service';
+import { WHY, readLimits } from '@svall/svalld/linux/limits';
+import { lingerState, realRun, unitStatus, type Run } from '@svall/svalld/linux/service';
 import { agentLoginEnv, svalldUnitName, unitDirOf, unitEnv } from '@svall/svalld/linux/setup';
 import { configDir, copiedRemedy, hardwareId, rebindMachine } from '@svall/svalld/machine';
 import { opencodePaths, opencodePluginCurrent, type OpencodePaths } from '@svall/svalld/opencode/install';
@@ -22,7 +23,8 @@ import { ownRuntime } from '@svall/svalld/runtime';
 import { readOrUndefined } from '@svall/svalld/settings-file';
 import { shimsCurrent } from '@svall/svalld/setup';
 import { MARK, grouped, rawLines, renderGroups, tickMark, useColor, type Check } from '../checks-view.js';
-import { Client, restartHint } from '../client.js';
+import { Client, restartHint, withClient } from '../client.js';
+import { limitsLine } from '../controller/limits.js';
 import { askCodexTrust, type HookTrust } from '@svall/svalld/codex/trust';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
@@ -58,6 +60,10 @@ export type DoctorDeps = PreflightDeps & {
   user: string;
   // machine.json, and the hardware id of the machine doctor runs on
   machine: { file: string; hardwareId?: string };
+  // on Linux, what the fleet may use of this machine, as its daemon says it, or as its unit reads without one
+  limits?(t: Target): Promise<LimitsReport>;
+  // what the controller that asks calls this machine, which host doctor hands over as SVALL_HOME_WORD
+  called?: string;
 };
 const LOG_LINES = 20;
 
@@ -300,6 +306,17 @@ async function linger(d: DoctorDeps): Promise<Check> {
   }
 }
 
+async function limits(t: Target, d: DoctorDeps): Promise<Check[]> {
+  if (!d.limits) return [];
+  try {
+    const r = await d.limits(t);
+    const more = r.hits && r.limits.memoryMb ? { action: `${SHIM} host limits ${d.called ?? '<this machine>'} --memory <amount> allows it more` } : {};
+    return [{ name: 'limits', status: WHY[r.state] || r.hits ? 'warn' : 'ok', detail: limitsLine(r, d.called ?? 'this machine'), ...more }];
+  } catch (e) {
+    return [{ name: 'limits', status: 'warn', detail: (e as Error).message }];
+  }
+}
+
 function hooks(d: DoctorDeps): Check {
   if (d.integrations && !d.integrations.includes('claude')) return { name: 'hooks', status: 'skip', detail: 'turned off in setup' };
   if (!d.found.includes('claude') && !d.exists(path.dirname(d.settingsPath))) return { name: 'hooks', status: 'skip', detail: 'Claude Code is not installed' };
@@ -398,7 +415,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     await svalld(t, d),
     await hookReceiver(t, d),
     ...(linux
-      ? [await systemd(t, d), daemonEnv(t, d), unitDaemonPath(t, d), await linger(d)]
+      ? [await systemd(t, d), daemonEnv(t, d), unitDaemonPath(t, d), await linger(d), ...await limits(t, d)]
       : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d)]),
     hooks(d),
     await codexCheck(d),
@@ -487,6 +504,11 @@ export function doctorCommand(target: () => Target, json: () => boolean, platfor
       integrations,
       codexTrust: () => askCodexTrust({ codexHome: codex.dir, script: resolvePaths(profileHome(PRIVATE)).hookScript }),
       shimsCurrent: shimsCurrent(shimDir, ownRuntime()),
+      ...(process.platform === 'linux' && {
+        limits: (t: Target) => withClient(() => Client.connect(t.home), (c) => c.call('machines.limits', {}))
+          .catch(() => readLimits({ fleet: t.name, home: t.home, unitDir: unitDirOf(os.homedir()), run: realRun })),
+      }),
+      ...(process.env.SVALL_HOME_WORD && { called: process.env.SVALL_HOME_WORD }),
       daemon: ownRuntime().daemon,
       user: os.userInfo().username,
       machine: { file: path.join(configDir(), 'machine.json'), hardwareId: hardwareId() },

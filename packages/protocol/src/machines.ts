@@ -62,6 +62,47 @@ export const FleetConfig = z.object({
 });
 export type FleetConfig = z.infer<typeof FleetConfig>;
 
+/** What a fleet may use of a Linux machine; a part left out has no limit. */
+export const Limits = z.object({ cpus: z.number().int().min(1).optional(), memoryMb: z.number().int().min(512).optional() });
+export type Limits = z.infer<typeof Limits>;
+
+export const MachineSize = z.object({ cores: z.number().int().min(1), memoryMb: z.number().int().min(1) });
+export type MachineSize = z.infer<typeof MachineSize>;
+
+/** A machine's size, the limits to offer for it, those its fleet's unit is written with and whether they hold: `pending` until the unit runs, `no_cpu`
+ *  or `no_memory` where the account is given no such control, `outside` while the fleet's tmux runs outside the unit. `heldMb`:
+ *  the memory the fleet's processes hold now; `hits`: the times it reached its memory limit since its daemon started. */
+export const LimitsReport = z.object({
+  size: MachineSize,
+  suggested: Limits,
+  limits: Limits,
+  state: z.enum(['none', 'applied', 'pending', 'unapplied', 'no_cpu', 'no_memory', 'outside']),
+  heldMb: z.number().int().optional(),
+  hits: z.number().int().optional(),
+  lastHit: z.number().optional(),
+});
+export type LimitsReport = z.infer<typeof LimitsReport>;
+/** MiB as GB, to a tenth. */
+export const gb = (mb: number): string => `${Math.round(mb / 102.4) / 10} GB`;
+
+/** What a connect asks a fleet to keep to on a machine that holds no limit yet. */
+export type LimitsOffer = Pick<LimitsReport, 'size' | 'suggested'>;
+
+/** Why a limit a report holds does not hold, in the words of systemd and the kernel. */
+export const LIMITS_WHY: Record<LimitsReport['state'], string | undefined> = {
+  none: undefined,
+  applied: undefined,
+  pending: 'it holds once the fleet\'s daemon starts',
+  unapplied: 'systemd did not put it on the fleet\'s unit',
+  no_cpu: 'this account is given no control of cores: as root, put Delegate=cpu cpuset io memory pids under [Service] in /etc/systemd/system/user@.service.d/delegate.conf and reboot',
+  no_memory: 'this account is given no control of memory',
+  outside: 'the fleet\'s terminals run outside its unit, on a tmux Svall did not bring, until every robot there is closed and the daemon restarts',
+};
+
+/** A fleet reached its memory limit on `machine`, where the kernel stopped one of its processes: the `hits`th since that machine's daemon started. */
+export const LimitHit = z.object({ machine: MachineId, name: z.string(), hits: z.number().int(), at: z.number() });
+export type LimitHit = z.infer<typeof LimitHit>;
+
 /** node.json: what belongs to this machine. */
 export const NodeConfig = z.object({
   port: z.number().int().default(47800),
@@ -71,6 +112,8 @@ export const NodeConfig = z.object({
   agentsOff: z.array(AgentKind).optional(),
   // the agents whose hooks setup installs; absent, every agent found. Read from agentsOff, else from an integrations list
   integrations: z.array(AgentKind).optional(),
+  // on Linux, what the fleet's systemd unit caps the fleet at
+  limits: Limits.optional(),
   mobile: z.object({
     // the https port this fleet is reached on, which svalld saves once it serves there
     httpsPort: z.number().int().min(1).max(65535).optional(),
@@ -118,8 +161,8 @@ export function agentsInUse(fleet: FleetAgents): Set<AgentKind> {
 // a warning on these needs a person, whatever the fleet runs
 const TODO_WARNS = new Set(['linger', 'release', 'worker', 'service', 'systemd', 'versions', 'hooks', 'codex hooks', 'opencode plugin']);
 
-// a warning in a step flow that needs no one: the join's offer to copy the agent setup, and an Ubuntu that is not LTS
-const FLOW_NOTES = new Set(['seed', 'os']);
+// a warning in a step flow that needs no one: the join's offer to copy the agent setup, a machine's limits, and an Ubuntu that is not LTS
+const FLOW_NOTES = new Set(['seed', 'limits', 'os']);
 
 /**
  * A row's tier: a failure is to do, and so is a warning in a step flow (`flow`) but those of FLOW_NOTES, on a check that needs

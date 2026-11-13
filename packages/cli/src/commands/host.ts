@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Command, Option } from 'commander';
-import { ApiError, aside, asideLine, checksAgain, ellipsis, keyLabel, keyMask, notNeeded, PROTOCOL_VERSION, tierOf, toTick, wayOn, type FleetAgents, type MachineId, type SetupRow } from '@svall/protocol';
+import { ApiError, aside, asideLine, checksAgain, ellipsis, keyLabel, keyMask, notNeeded, PROTOCOL_VERSION, tierOf, toTick, wayOn, type FleetAgents, type LimitsReport, type MachineId, type SetupRow } from '@svall/protocol';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@svall/svalld/mobile';
 import { resolvePaths } from '@svall/svalld/paths';
@@ -16,6 +16,7 @@ import { Client, withClient } from '../client.js';
 import { printResult, table } from '../format.js';
 import { addHost, consentHost, dialingFleet, doctorHost, fleetOf, removeHost, rollbackHost, rowStep, sameRelease, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
 import { carriedCompanion } from '../controller/install.js';
+import { limitFlags, limitsLine } from '../controller/limits.js';
 import { byHome, carriedDir, farDocument, relay, relayFor, type FarHome } from '../controller/on-home.js';
 import { forgetCheck, lastChecks, recordCheck, type LastCheck } from '../controller/checks.js';
 import { MachineRegistry } from '../controller/registry.js';
@@ -23,6 +24,7 @@ import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { ask } from '../prompt.js';
 import { farProfile, type Target } from '../target.js';
 import { MARK, rawLines, tickMark, type Check } from '../checks-view.js';
+import { askLimits, connectArgs, connectChoice, hostLimits } from './limits.js';
 import { checkLines } from './doctor.js';
 
 /**
@@ -366,11 +368,10 @@ export const carriedGoes = (release: string | undefined, fleet: Pick<Target, 'ho
   if (release && path.dirname(path.resolve(release)) === dir) on.once('exit', () => { fs.rmSync(release, { force: true }); });
 };
 
-/** Runs a host command for a machine of a far home on that home, its steps handed on as they come: as they are for the app and --json, as a run's lines in a terminal. */
-async function onHome(home: FarHome, args: string[], json: boolean, last: (final: unknown, steps: StepEvent[]) => string, o: { steps?: boolean; installs?: boolean } = {}): Promise<void> {
-  const { steps = true } = o;
+/** Runs a host command for a machine of a far home on that home, its steps handed on as they come: as they are for the app and --json, as a run's lines in a terminal, kept in `seen`. */
+async function onHome(home: FarHome, args: string[], json: boolean, last: (final: unknown, steps: StepEvent[]) => string, o: { steps?: boolean; installs?: boolean; seen?: StepEvent[] } = {}): Promise<void> {
+  const { steps = true, seen = [] } = o;
   let rest = '';
-  const seen: StepEvent[] = [];
   const code = await relay(home, args, { open, ...(o.installs && { carried }), line: (l) => {
     if (json) { process.stdout.write(`${l}\n`); return; }
     let step: StepEvent | undefined;
@@ -399,6 +400,8 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
       }
     });
   const farFor = (name?: string) => relayFor(target().home, MachineRegistry.load(dir()), name);
+  // the home sets every machine's limit, its own and this machine's included, as a worker's daemon takes none to set
+  const limitsOn = (home: FarHome, name: string, flags: string[]) => onHome(home, ['host', 'limits', MachineRegistry.load(dir()).get(name)?.id ?? name, ...flags], json(), orLeft((r: LimitsReport) => limitsLine(r, name)), { steps: false });
   const farLines = async (home: FarHome, name: string): Promise<There> => farThere(home, json() ? name : await destinationOn(home, name, MachineRegistry.load(dir())), target());
 
   host.command('add')
@@ -408,14 +411,26 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .option('--release <archive>', 'install this companion archive instead of the one this release publishes')
     .option('--allow-unsigned', 'install a --release archive that carries no signature')
     .option('--as-home', 'leave it a fleet\'s home, for svall fleet join to follow, not a worker of this fleet')
+    .addOption(new Option('--limits <cores,memory>', 'what the fleet may use of the machine, such as 11,93G, set without asking'))
+    .addOption(new Option('--no-limits', 'leave the fleet all of the machine, without asking'))
     .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
-    .action((name: string, { relayed: _, ...o }: { ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean; relayed?: boolean }) => {
+    .action(async (name: string, { relayed: _, limits, ...o }: { ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean; relayed?: boolean; limits?: string | false }) => {
       const home = o.asHome ? undefined : farFor(name);
-      if (home) return onHome(home, [...['host', 'add', name, '--ssh', o.ssh], ...companionFlags(o)], json(), (r, steps) => outcomeText(r as HostOutcome, 'add', name, { there: farThere(home, o.ssh, target()), steps, fleet: fleetOf(target().home) }), { installs: true });
+      if (home) {
+        const seen: StepEvent[] = [];
+        await onHome(home, [...['host', 'add', name, '--ssh', o.ssh], ...companionFlags(o), ...connectArgs({ limits })], json(), (r, steps) => outcomeText(r as HostOutcome, 'add', name, { there: farThere(home, o.ssh, target()), steps, fleet: fleetOf(target().home) }), { installs: true, seen });
+        // the home reads the machine's size as it adds it, so this terminal is asked once that run is done
+        const offer = askable(json()) ? seen.find((s) => s.step === 'limits' && s.offer)?.offer : undefined;
+        const wanted = offer && await askLimits()({ name, report: { ...offer, limits: {}, state: 'none' } });
+        if (wanted && (wanted.cpus || wanted.memoryMb)) await limitsOn(home, name, limitFlags(wanted));
+        return;
+      }
       carriedGoes(o.release, target());
       const there = { ...thereOf(name, dir(), target()), ssh: o.ssh };
-      return runFlow(json(), 'add', (out, ends) => outcomeText(out, 'add', name, { there, ...ends }), (d) => addHost({ name, ...o }, d), dir(), target(), { name, there });
+      return runFlow(json(), 'add', (out, ends) => outcomeText(out, 'add', name, { there, ...ends }), (d) => addHost({ name, ...o, ...connectChoice({ limits }, askable(json())) }, d), dir(), target(), { name, there });
     });
+
+  host.addCommand(hostLimits(target, json, (name, flags) => { const home = farFor(); return home && limitsOn(home, name, flags); }));
 
   host.command('list')
     .description('every machine in the registry and its last check')

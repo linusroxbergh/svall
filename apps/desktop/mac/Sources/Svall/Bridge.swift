@@ -198,6 +198,12 @@ enum FromShell {
             if let gap = step.gap { event["gap"] = ["name": gap.name, "what": gap.what] }
             if let here = step.here { event["here"] = here }
             if let raw = step.raw { event["raw"] = raw }
+            if let offer = step.offer {
+                var suggested: [String: Any] = [:]
+                if let cpus = offer.suggested.cpus { suggested["cpus"] = cpus }
+                if let memoryMb = offer.suggested.memoryMb { suggested["memoryMb"] = memoryMb }
+                event["offer"] = ["size": ["cores": offer.size.cores, "memoryMb": offer.size.memoryMb], "suggested": suggested]
+            }
             return ["type": "host.step", "op": op, "event": event]
         case .hostDone(let op, let code): return ["type": "host.done", "op": op, "code": Int(code)]
         case .hostMachines(let machines, let error):

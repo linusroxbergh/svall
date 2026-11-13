@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { AGENT_LABEL, agentsInUse, FleetConfig, MachineId, MachineRecord, migrateState, ON_THIS_MAC, WorkerFile, type AgentKind, type FleetState, type SetupRow } from '@svall/protocol';
+import { AGENT_LABEL, agentsInUse, FleetConfig, MachineId, MachineRecord, migrateState, ON_THIS_MAC, WorkerFile, type AgentKind, type FleetState, type LimitsOffer, type SetupRow } from '@svall/protocol';
 import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@svall/svalld/agents';
 import { readFleetConfig } from '@svall/svalld/config';
 import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld/linux/setup';
@@ -25,6 +25,7 @@ import {
   bootstrapSetup, companionAsset, companionCache, currentRelease, downloadCompanion, inspectCompanion, noCompanion, ownCompanion,
   remoteRollback, requireCompatible, rollbackRefusal, uploadArchive, type CompanionArchive, type FetchLike,
 } from './install.js';
+import { limitsStep, type LimitsChoice } from './limits.js';
 import { redact } from './process.js';
 import { MachineRegistry, reservedName, type MachineEntry } from './registry.js';
 import { classifySsh, inFull, SshError, type SshMaster } from './ssh.js';
@@ -41,10 +42,11 @@ export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain; forward: the
 // port its terminal forwards from this Mac; tick: the consent a mirror row toggles; gap: what will not work there yet;
 // here: that this Mac has the variable a row is about
-// say: what a window shows in place of `action`, where a button stands for the command; raw: what a tool said, word for word
+// say: what a window shows in place of `action`, where a button stands for the command; raw: what a tool said, word for word;
+// offer: the machine's size and the limits a window asks the fleet to keep to, while none is set
 export type StepEvent = {
   step: string; status: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'];
-  raw?: string;
+  raw?: string; offer?: LimitsOffer;
 };
 // actions: the things to fix there; stopped: the step a run failed at, past which nothing ran; setup: the mirror rows of
 // what will not work there yet, which never stop a robot moving there
@@ -81,7 +83,7 @@ export type HostDeps = {
   joining(machine: MachineId): Promise<{ why: string; tried?: number } | undefined>;
 };
 
-export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean };
+export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean } & LimitsChoice;
 
 /** A step that could not finish, with the one thing the user can do about it. */
 export class StepError extends Error {
@@ -95,6 +97,7 @@ class OtherRelease extends StepError {
 
 type Outcome<T> = {
   value: T; status?: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here']; raw?: string;
+  offer?: LimitsOffer;
 };
 
 // an SshError that only says a command there exited goes behind the step's own words; one in Svall's words stays the step's
@@ -130,7 +133,7 @@ export class Runner {
       step, status: r.status ?? 'ok',
       ...(r.detail ? { detail: r.detail } : {}), ...(r.action ? { action: r.action } : {}), ...(r.run ? { run: r.run } : {}), ...(r.say ? { say: r.say } : {}),
       ...(r.forward !== undefined ? { forward: r.forward } : {}), ...(r.tick ? { tick: r.tick } : {}), ...(r.gap ? { gap: r.gap } : {}), ...(r.here ? { here: r.here } : {}),
-      ...(r.raw ? { raw: r.raw } : {}),
+      ...(r.raw ? { raw: r.raw } : {}), ...(r.offer ? { offer: r.offer } : {}),
     };
     if (step.startsWith('mirror:')) {
       if (r.gap) this.setup.push(event);
@@ -812,6 +815,11 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         });
       }
 
+      await run.step('limits', () => limitsStep(master, {
+        svallBase: remote.svallBase, ...(o.asHome ? { env: [], flags: [] } : farFleet(machine, d)), name: o.name,
+        later: o.asHome ? `ssh ${o.ssh}, then svall fleet limits set` : `${hostCmd(d)} limits ${o.name}`,
+      }, o));
+
       const versions = await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase, report, fleet: d.fleet.home }, run);
       await run.step('versions', async () => versionsOutcome(versions, await d.localAgents().catch((err: Error) => err), o.ssh));
 
@@ -929,7 +937,9 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     const joining = await joinSettled(entry.id, d, since);
     try {
       const { env, flags } = farFleet(entry.id, d);
-      report = await remoteJson<RemoteDoctor>(master, base, [...flags, 'doctor', '--json'], 'svall doctor --json', env);
+      // its rows name the machine as this one does
+      const named = [...(env.length ? env : ['env']), shq(`SVALL_HOME_WORD=${entry.record.name}`)];
+      report = await remoteJson<RemoteDoctor>(master, base, [...flags, 'doctor', '--json'], 'svall doctor --json', named);
       d.emit({ step: 'doctor', status: 'ok', detail: 'answered' });
       found(...report.checks.map(farRow));
     } catch (err) { found(failed('doctor', err)); }

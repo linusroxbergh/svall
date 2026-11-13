@@ -483,6 +483,25 @@ describe('doctor on Linux', () => {
     expect(f.calls.some((call) => call.startsWith('launchctl'))).toBe(false);
   });
 
+  it('says what the fleet may use of the machine, warns when the limit does not hold or was reached, and has no such check without one to ask', async () => {
+    const report = { size: { cores: 12, memoryMb: 96_000 }, suggested: {}, limits: { cpus: 11 }, state: 'applied' as const };
+    const check = async (r: object) => byName(await doctor(priv, { ...linux().deps, limits: () => Promise.resolve({ ...report, ...r }) })).limits;
+    expect(await check({})).toEqual({ name: 'limits', status: 'ok', detail: 'this fleet may use 11 of 12 cores and all its memory on this machine' });
+    expect(await check({ state: 'pending' })).toMatchObject({ status: 'warn', detail: expect.stringContaining('it holds once the fleet\'s daemon starts') });
+    expect(await check({ hits: 1, lastHit: 0 })).toMatchObject({ status: 'warn', detail: expect.stringContaining('reached its memory limit once') });
+    expect(byName(await doctor(priv, linux().deps)).limits).toBeUndefined();
+  });
+
+  it('names the machine as the controller that asks calls it, and says how to allow more where the fleet reached its memory limit', async () => {
+    const report = { size: { cores: 12, memoryMb: 96_000 }, suggested: {}, limits: { memoryMb: 8192 }, state: 'applied' as const, hits: 3, lastHit: 0 };
+    const check = async (called?: string) => byName(await doctor(priv, { ...linux().deps, ...(called && { called }), limits: () => Promise.resolve(report) })).limits;
+    expect(await check('studio')).toMatchObject({
+      status: 'warn', detail: expect.stringMatching(/^this fleet may use every core and 8 GB of 93.8 GB on studio; it reached its memory limit 3 times/),
+      action: 'svall host limits studio --memory <amount> allows it more',
+    });
+    expect(await check()).toMatchObject({ detail: expect.stringContaining('on this machine;'), action: 'svall host limits <this machine> --memory <amount> allows it more' });
+  });
+
   it('fails a unit that is not installed or not running, and warns when lingering is off', async () => {
     const stopped = linux({
       [show]: 'LoadState=loaded\nActiveState=inactive\nSubState=dead\nUnitFileState=enabled\n',

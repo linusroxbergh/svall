@@ -22,7 +22,7 @@ const VERSION = { release: '1.0.0', machineId: HOME_ID, protocol: PROTOCOL_VERSI
 const ENROLLED = { homeMachineId: HOME_ID, homeName: 'studio', fleetId: FLEET, socket: '/home/ada/.svall/w/abc.sock', token: TOKEN, homeSvallBase: '/home/ada/.local/share/svall', homePlatform: 'linux', homeArch: 'x64', homePath: '/home/ada' };
 const INFO = { fleetId: FLEET, machineId: HOME_ID, release: '1.0.0', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: 47800, token: 'api', fleetHome: '/home/ada/.svall' };
 
-type Far = { version?: unknown; enrolled?: unknown; enrolCode?: number; enrolStderr?: string; versionCode?: number; tailscale?: { host?: string; error?: string } };
+type Far = { limits?: unknown; version?: unknown; enrolled?: unknown; enrolCode?: number; enrolStderr?: string; versionCode?: number; tailscale?: { host?: string; error?: string } };
 
 function master(far: Far): { master: SshMaster; asked: string[]; closed: () => boolean } {
   const asked: string[] = [];
@@ -36,6 +36,7 @@ function master(far: Far): { master: SshMaster; asked: string[]; closed: () => b
       if (line.includes('svall-home')) return ok('/home/ada\nada\n');
       if (line.includes('version')) return far.versionCode ? Promise.resolve({ code: far.versionCode, signal: null, stdout: '', stderr: 'not found' }) : ok(far.version ?? VERSION);
       if (line.includes('connection-info')) return ok(INFO);
+      if (line.includes('fleet limits')) return ok(far.limits ?? { size: { cores: 12, memoryMb: 96_000 }, suggested: { cpus: 11, memoryMb: 94_976 }, limits: { cpus: 11 }, state: 'applied' });
       if (line.includes('fleet facts')) return ok({ machineId: HOME_ID, role: 'home', fleetId: FLEET, tailscale: far.tailscale ?? { host: 'studio.tail1234.ts.net' } });
       throw new Error(`unexpected ${line}`);
     },
@@ -73,11 +74,31 @@ beforeEach(() => {
 afterEach(cleanHomes);
 
 describe('svall fleet join', () => {
+  it('sets what the fleet may use of a home that has no limit, in the fleet the join names, and leaves a limit it finds', async () => {
+    const none = { size: { cores: 12, memoryMb: 96_000 }, suggested: { cpus: 11, memoryMb: 94_976 }, limits: {}, state: 'none' };
+    const d = deps({ limits: none });
+    await joinHome({ ssh: 'ada@studio', homeProfile: 'work', limits: { cpus: 11, memoryMb: 94_976 } }, d);
+    expect(d.far.asked.filter((l) => l.includes('fleet limits')).map((l) => l.slice(l.indexOf('-p')))).toEqual([
+      "-p 'work' --json fleet limits", "-p 'work' --json fleet limits set --cpus 11 --memory 94976M",
+    ]);
+    events = [];
+    const held = deps({});
+    await joinHome({ ssh: 'ada@studio', ask: () => { throw new Error('asked'); } }, held);
+    expect(held.far.asked.filter((l) => l.includes('limits set'))).toEqual([]);
+    expect(events.find((e) => e.step === 'limits' && e.status === 'ok')?.detail).toBe('this fleet may use 11 of 12 cores and all its memory on ada@studio');
+  });
+
+  it('with no one to ask, names the command that sets the limit later in the fleet the join names', async () => {
+    const none = { size: { cores: 12, memoryMb: 96_000 }, suggested: { cpus: 11, memoryMb: 94_976 }, limits: {}, state: 'none' };
+    await joinHome({ ssh: 'ada@studio', homeProfile: 'work' }, deps({ limits: none }));
+    expect(events.find((e) => e.step === 'limits' && e.status === 'warn')?.detail).toContain('ssh ada@studio, then svall -p work fleet limits set --cpus 11 --memory 94976M keeps the rest');
+  });
+
   it('takes a fleet never opened: the home issues the token, the fleet goes by its id, and it ends on the first snapshot', async () => {
     const d = deps({});
     const out = await joinHome({ ssh: 'ada@studio' }, d);
     expect(out.result).toBe('ready');
-    expect(events.filter((e) => e.status === 'ok').map((e) => e.step)).toEqual(['fleet', 'tailscale', 'ssh', 'master', 'home', 'enrol', 'worker', 'snapshot', 'seed']);
+    expect(events.filter((e) => e.status === 'ok').map((e) => e.step)).toEqual(['fleet', 'tailscale', 'ssh', 'master', 'home', 'limits', 'enrol', 'worker', 'snapshot', 'seed']);
     expect(enrolled).toEqual([expect.objectContaining({ homeMachine: HOME_ID, homeName: 'studio', fleetId: FLEET, homeSsh: 'ada@studio', homeSocket: ENROLLED.socket, homePath: '/home/ada', token: TOKEN, takesFleetId: true, homeProfile: 'private' })]);
     expect(d.far.closed()).toBe(true);
     enrolled = [];

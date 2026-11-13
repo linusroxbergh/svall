@@ -246,6 +246,25 @@ final class HostProcessTests: XCTestCase {
         XCTAssertEqual(event?["raw"] as? String, "Command failed: tailscale status --json")
     }
 
+    func testALimitsOfferReachesThePageWithTheMachinesSizeAndWhatItSuggests() throws {
+        let row = #"{"step":"limits","status":"warn","detail":"studio has 12 cores and 94 GB","offer":{"size":{"cores":12,"memoryMb":96256},"suggested":{"memoryMb":95232}}}"#
+        let step = try JSONDecoder().decode(HostProcess.Step.self, from: Data(row.utf8))
+        XCTAssertEqual(step.offer, HostProcess.Offer(size: .init(cores: 12, memoryMb: 96256), suggested: .init(memoryMb: 95232)))
+        let event = FromShell.hostStep(op: "add", step: step).json["event"] as? [String: Any]
+        XCTAssertEqual(event?["offer"] as? NSDictionary, ["size": ["cores": 12, "memoryMb": 96256], "suggested": ["memoryMb": 95232]])
+        XCTAssertNil((FromShell.hostStep(op: "add", step: HostProcess.Step(step: "ssh", status: "ok", detail: nil, action: nil)).json["event"] as? [String: Any])?["offer"])
+    }
+
+    func testAJoinCarriesItsLimitsAndNoOtherRunTakesThem() {
+        let join = { (limits: String) in HostCommand.arguments(op: .join, args: HostArgs(name: "", ssh: "ada@studio", limits: limits)) }
+        XCTAssertEqual(join("11,95232M"), ["--json", "fleet", "join", "ada@studio", "--limits", "11,95232M"])
+        XCTAssertEqual(join(",2048M"), ["--json", "fleet", "join", "ada@studio", "--limits", ",2048M"])
+        XCTAssertEqual(join("4,"), ["--json", "fleet", "join", "ada@studio", "--limits", "4,"])
+        XCTAssertEqual(join("none"), ["--json", "fleet", "join", "ada@studio", "--no-limits"])
+        for bad in [",", "0,1024M", "11,93G", "11,10M", "--no-limits", "11,95232M --as-home"] { XCTAssertNil(join(bad), bad) }
+        XCTAssertNil(HostCommand.arguments(op: .add, args: HostArgs(name: "studio", ssh: "ada@studio", asHome: true, limits: "none")))
+    }
+
     func testAVariableRowCarriesThatThisMacHasItToThePage() throws {
         let row = #"{"step":"mirror:var:X","status":"warn","detail":"ad reads X, which is not set on studio","action":"set X on studio","run":"svall worker env X","gap":{"name":"X","what":"not set; ad reads it"},"here":true}"#
         let step = try JSONDecoder().decode(HostProcess.Step.self, from: Data(row.utf8))

@@ -439,7 +439,7 @@ describe('host add', () => {
     const names = events.filter((e) => e.status !== 'start').map((e) => e.step);
     expect(names).toEqual([
       'name', 'ssh', 'master', 'os', 'home', 'tools', 'space', 'linger',
-      'release', 'upload', 'install', 'tmux', 'service', 'identity', 'enrol', 'claude', 'codex', 'opencode', 'gh', 'versions', 'probe', 'registry',
+      'release', 'upload', 'install', 'tmux', 'service', 'identity', 'enrol', 'limits', 'claude', 'codex', 'opencode', 'gh', 'versions', 'probe', 'registry',
     ]);
   });
 

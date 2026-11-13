@@ -58,6 +58,8 @@ struct HostArgs: Decodable, Equatable {
     var asHome: Bool?
     // a person's choice that what mission control's robots run is interrupted, for a home move or bringing them back
     var interrupt: Bool?
+    // what a join leaves the fleet of its home: `none`, or cores and MiB as `11,95232M`, either part empty for no limit on it
+    var limits: String?
 }
 
 extension String {
@@ -74,10 +76,14 @@ let machineIdPattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F
 /// An ssh destination the app hands to ssh: never one that reads as a flag.
 let sshDestinationPattern = "^[A-Za-z0-9][A-Za-z0-9._@:\\[\\]-]*$"
 
+/// A join's `--limits`, or `none` for `--no-limits`.
+let limitsPattern = "^(none|[1-9][0-9]{0,3},([1-9][0-9]{2,7}M)?|,[1-9][0-9]{2,7}M)$"
+
 /// The argv of `svall host <op> … --json`, or of what `svall fleet` does to the fleet as a whole. The page never passes argv: it names an operation and its
 /// arguments, and every one of them is held to the flag it belongs to before it becomes a word here.
 enum HostCommand {
     static func arguments(op: HostOp, args: HostArgs) -> [String]? {
+        guard args.limits == nil || op == .join else { return nil }
         switch op {
         case .home:
             guard args.ssh == nil, args.forget == nil, args.asHome == nil, args.name.allowed(by: machineNamePattern) else { return nil }
@@ -90,7 +96,9 @@ enum HostCommand {
             return ["--json", "fleet", "home", op == .homeRetry ? "retry" : "abort"]
         case .join:
             guard args.name.isEmpty, args.forget == nil, args.asHome == nil, args.interrupt == nil, let ssh = args.ssh, ssh.allowed(by: sshDestinationPattern) else { return nil }
-            return ["--json", "fleet", "join", ssh]
+            guard let limits = args.limits else { return ["--json", "fleet", "join", ssh] }
+            guard limits.allowed(by: limitsPattern) else { return nil }
+            return ["--json", "fleet", "join", ssh] + (limits == "none" ? ["--no-limits"] : ["--limits", limits])
         default: break
         }
         guard args.interrupt == nil else { return nil }
@@ -139,6 +147,14 @@ final class HostProcess {
         let what: String
     }
 
+    /// A machine's size and the limits a connect offers its fleet, while none is set.
+    struct Offer: Decodable, Equatable {
+        struct Size: Decodable, Equatable { let cores: Int; let memoryMb: Int }
+        struct Limits: Decodable, Equatable { var cpus: Int? = nil; var memoryMb: Int? = nil }
+        let size: Size
+        let suggested: Limits
+    }
+
     struct Step: Decodable, Equatable {
         let step: String, status: String
         let detail: String?, action: String?
@@ -154,6 +170,7 @@ final class HostProcess {
         var here: Bool? = nil
         // what a tool said, word for word
         var raw: String? = nil
+        var offer: Offer? = nil
     }
 
     /// The result a run that went its whole way ends with, which the page has no row for.

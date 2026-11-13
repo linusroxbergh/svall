@@ -64,6 +64,8 @@ const SECTIONS_KEY = 'svall.side.sections';
 export const SETTINGS_KEY = 'svall.settings';
 // the first-run tour's step, or 'done'
 export const TOUR_KEY = 'svall.tour';
+// set by a join that left its home's limits unset, for the window it opens to ask once
+export const LIMITS_ASK_KEY = 'svall.limitsAsk';
 
 // stored side card sections and shelf groups may still name a robot `character`
 const liftRobot = (raw: string | null): string | null => raw?.replaceAll('"character', '"robot') ?? null;

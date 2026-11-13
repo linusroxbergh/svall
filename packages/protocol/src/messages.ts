@@ -1,7 +1,7 @@
 import type { Operation } from 'fast-json-patch';
 import { z } from 'zod';
 import { Enrolment, HomeMoveId, HomeMoving, HomeSheet } from './home-move.js';
-import { FleetId, MachineId, SystemInfo } from './machines.js';
+import { FleetId, LimitsReport, MachineId, SystemInfo, type LimitHit } from './machines.js';
 import { HomeState, MoveId, MoveSheet, Refusal, SetupRow } from './placement.js';
 import { DismissReason, RetroPlan, RetroReport, RetroSpan, RetroStatus } from './retro.js';
 import { AgentKind, AgentStatus, BrowserTab, Cell, Column, Robot, ContextItem, FleetState, Island, Size } from './state.js';
@@ -352,6 +352,13 @@ export const methods = {
     params: z.object({ machine: MachineId, name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), value: z.string().min(1).max(4096).optional(), fromMac: z.literal(true).optional() }),
     result: z.object({ rows: z.array(SetupRow) }),
   },
+  // what the fleet may use of Linux machine `machine`, read there; with none, of the machine the daemon asked runs on
+  'machines.limits': { params: z.object({ machine: MachineId.optional() }), result: LimitsReport },
+  // sets it there, null for no limit on that part, and answers what then holds
+  'machines.setLimits': {
+    params: z.object({ machine: MachineId, cpus: z.number().int().min(1).nullable(), memoryMb: z.number().int().min(512).nullable() }),
+    result: LimitsReport,
+  },
   // each answers the board's columns, left to right. A name is trimmed and unlike every other column's in any case;
   // without afterId the column goes last, and a deleted column's robots go to moveTo
   'column.add': { params: z.object({ name: z.string(), afterId: z.string().optional() }), result: z.array(Column) },
@@ -558,7 +565,8 @@ export type Event =
   | { event: 'term.resync'; data: { id: string; screen: string } }
   | { event: 'repo.changed'; data: { id: string } }
   | { event: 'mobile.phones'; data: { phones: PhoneSession[] } }
-  | { event: 'app.show'; data: AppShow };
+  | { event: 'app.show'; data: AppShow }
+  | { event: 'machines.limitHit'; data: LimitHit };
 
 // a caller from another machine says what it calls this home and which machine it is on, for the words the daemon makes for its calls
 export const Hello = z.object({ token: z.string(), home: z.string().optional(), me: MachineId.optional() });
@@ -573,4 +581,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 46;
+export const PROTOCOL_VERSION = 47;

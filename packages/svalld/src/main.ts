@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { HomeReach, HomeWorker, MachineId, type HomeFacts, type HomeMoving, type ParsedParams, type Robot } from '@svall/protocol';
+import { HomeReach, HomeWorker, LimitHit, Limits, MachineId, type HomeFacts, type HomeMoving, type ParsedParams, type Robot } from '@svall/protocol';
 import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
@@ -27,7 +27,9 @@ import { HomeDial } from './link/dialout.js';
 import { HomeLinks, socketTransport, sshTransport, UnknownEvent } from './link/home.js';
 import { daemonLock } from './kernel-lock.js';
 import { HomeConnection } from './link/worker.js';
+import { readLimits, setLimits, watchMemoryHits } from './linux/limits.js';
 import { lingerState, realRun } from './linux/service.js';
+import { unitDirOf } from './linux/setup.js';
 import { hooklessGit } from './links/git.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
 import { configDir, homeWord, homeWordOnWorker, listsWorker, machineId, machineIdentity, machineIdFailure, ownName, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
@@ -227,6 +229,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; ${process.platform === 'linux' ? 'Ubuntu 24.04 ships 3.4' : 'brew upgrade tmux'}`);
   // the app attaches its terminals with this tmux, which an app opened from Finder may not find on its own PATH
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
+  // a pane kept through an upgrade may come from a release that did not mark it
+  await tmux.preferPanes();
   fs.writeFileSync(path.join(paths.home, 'version'), `${runtimeVersion()}\n${process.pid}\n`);
   const me = worker ? workerMachineId(opts.hardware) : ownMachineId(log, opts.hardware);
   store.batchWrites();
@@ -253,6 +257,9 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   // while the fleet moves, what a worker sends but its running fields stays in its outbox
   let holding = false;
   let rejoins: Rejoins | undefined;
+  // the windows this daemon serves, once its API is up
+  let tellWindows: (hit: LimitHit) => void = () => {};
+  const limitHit = (hit: LimitHit): void => tellWindows(hit);
   const links = worker ? undefined : new HomeLinks({
     paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log, profileOf: profileOn }), dialIn: socketTransport({ paths }),
     onReport: (r, machine) => { if (applyReport(store, r, machine) === 'applied') replay?.reported(r.robotId); },
@@ -265,6 +272,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     onInventory: (inv, machine) => router.reconcileWorker(inv, machine),
     onCall: (method, params, machine) => answer!(method, params, machine),
     onNotify: (kind, data, machine) => {
+      // the link says which machine it is; the worker says only how often
+      if (kind === 'limit.hit') return limitHit({ ...LimitHit.pick({ hits: true, at: true }).parse(data), machine, name: store.state.machines?.[machine]?.name ?? machine });
       if (kind === 'screen') {
         const s = ScreenNotice.parse(data);
         if (terminals.sawScreen(s.id, s.text, s.at, machine)) relayScreen(links!, s, machine);
@@ -371,6 +380,24 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   });
   // what a worker's agent CLIs are, which the home reads before it moves a robot there
   if (connection) calls['system.info'] = info;
+  const memoryHits = process.platform === 'linux' ? watchMemoryHits({
+    onHit: (hits) => {
+      log.error(`the fleet reached its memory limit: the kernel stopped one of its processes (${hits} since this daemon started)`);
+      // a worker's home tells the windows; a home tells its own
+      if (connection) connection.notify('limit.hit', { hits, at: Date.now() });
+      else limitHit({ machine: me, name: ownName(), hits, at: Date.now() });
+    },
+  }) : undefined;
+  const limitsTarget = { fleet: profile, home: paths.home, unitDir: unitDirOf(os.homedir()), run: realRun, tmuxPid: () => tmux.serverPid() };
+  const limits = memoryHits && {
+    read: async () => ({ ...await readLimits(limitsTarget), ...memoryHits.hits() }),
+    // a pane split in a terminal since the start is tmux's child, unmarked
+    set: async (l: Limits) => { await tmux.preferPanes(); return { ...await setLimits(l, limitsTarget), ...memoryHits.hits() }; },
+  };
+  if (connection && limits) {
+    calls['limits.get'] = () => limits.read();
+    calls['limits.set'] = (p) => limits.set(Limits.parse(p));
+  }
   const claude = claudePaths();
   const codex = codexPaths();
   // looked up on every call, so a fleet made while this one runs is kept out too; any folder named like a fleet home
@@ -469,7 +496,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   });
 
   // run in reverse on stop, and on a failed start for whatever had already started
-  const teardown: (() => unknown)[] = [() => load.stop(), () => fleet.stop(), store.subscribe(() => workspace.retarget()), () => workspace.close()];
+  const teardown: (() => unknown)[] = [() => load.stop(), () => fleet.stop(), store.subscribe(() => workspace.retarget()), () => workspace.close(), () => memoryHits?.stop()];
   // a second stop, as a second signal sends, waits for the first to have the fleet on disk
   let stopping: Promise<void> | undefined;
   // the retro reads this machine's agent stores for the fleet it owns; fleet.json is read at each call
@@ -518,7 +545,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: (m) => (profileOn(m) === PRIVATE ? '' : `-p ${isProfileName(profileOn(m)) ? profileOn(m) : shq(profileOn(m))} `),
-      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(ownSetup && { workerSetup: ownSetup }), fleetHome, workersOwed: () => (worker ? {} : owedWorkers(paths)), rejoinsAgain: () => rejoins?.again(),
+      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(limits && { limits }), onLimitHit: (tell: (hit: LimitHit) => void) => { tellWindows = tell; return () => { tellWindows = () => {}; }; }, ...(ownSetup && { workerSetup: ownSetup }), fleetHome, workersOwed: () => (worker ? {} : owedWorkers(paths)), rejoinsAgain: () => rejoins?.again(),
       ...(!worker && { fleetConfig: fleetConfigFile(paths, log, refused) }), freeze, homeChecks, homeWaits,
       registered: () => new Map(registered().map((m) => [m.id, m.record])),
     });

@@ -181,8 +181,14 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 46', () => {
-    expect(PROTOCOL_VERSION).toBe(46);
+  it('is 47', () => {
+    expect(PROTOCOL_VERSION).toBe(47);
+  });
+
+  it('was 46 without a machine\'s limits and the event that says its fleet hit one', () => {
+    const limits = { size: { cores: 12, memoryMb: 96256 }, suggested: { cpus: 11, memoryMb: 95232 }, limits: {}, state: 'none' };
+    expect(methods['machines.limits'].result.parse(limits).state).toBe('none');
+    expect(methods['machines.setLimits'].params.parse({ machine: UUID_A, cpus: null, memoryMb: 2048 }).memoryMb).toBe(2048);
   });
 
   it('was 45 without what a tool said beside a move\'s refusal and a setup row, and a phone problem\'s fix, command and tool words', () => {
@@ -401,7 +407,7 @@ describe('system.info and requests in parts', () => {
 describe('events', () => {
   // the compiler refuses a missing or a stray one
   it('names every event the union carries', () => {
-    expectTypeOf<Event['event']>().toEqualTypeOf<'state.patch' | 'term.output' | 'term.resync' | 'repo.changed' | 'mobile.phones' | 'app.show'>();
+    expectTypeOf<Event['event']>().toEqualTypeOf<'state.patch' | 'term.output' | 'term.resync' | 'repo.changed' | 'mobile.phones' | 'app.show' | 'machines.limitHit'>();
   });
 });
 

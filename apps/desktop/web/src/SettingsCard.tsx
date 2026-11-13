@@ -7,12 +7,13 @@ import { copyText, openConfig, openUrl, shim, type MachineRow } from './bridge.j
 import { holdCutout } from './cutout.js';
 import { AS_TYPED } from './Field.js';
 import { useApp, useMore } from './hooks.js';
-import { plural, splitRaw, withoutTokens } from './host.js';
+import { plural, splitRaw, splitSaid, withoutTokens } from './host.js';
 import { startHost } from './hostRun.js';
 import { MachineActions } from './HostSetup.js';
 import { Close, Copy, Minus, Plus } from './icons.js';
 import { Group, Info } from './Info.js';
 import { Keybindings } from './Keybindings.js';
+import { MachineLimits } from './Limits.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
 import { MobilePanel, MobileSwitch, PhoneAway, PhoneProblem, useMobileSwitch, usePhoneAway } from './PhonePanel.js';
 import { NO_PAGE, phonesHere } from './phoneText.js';
@@ -201,12 +202,6 @@ function FleetName() {
 const when = (at: number): string => new Date(at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 const found = (c: NonNullable<MachineRow['check']>): string | undefined => (c.failed ? `${plural(c.failed, 'check')} failed` : c.warned ? plural(c.warned, 'warning') : undefined);
 // a join's why says its fix after `; `; what ssh or the far svall said comes on the row, or after the sentence from a home that keeps it there
-const joinSaid = (text: string, raw?: string): { line: string; fix?: string; raw?: string } => {
-  const { line: said, raw: told } = splitRaw(text);
-  const at = said.indexOf('; ');
-  const fix = at < 0 ? '' : said.slice(at + 2);
-  return { line: at < 0 ? said : said.slice(0, at), ...(fix && { fix: fix[0].toUpperCase() + fix.slice(1) }), raw: raw ? withoutTokens(raw) : told };
-};
 const DOT = { ok: 'reachable', off: 'not reachable', upgrade: 'needs an upgrade' } as const;
 const UNREAD = "This Mac's list of machines could not be read";
 const ROLE_TIP = { home: 'Holds the fleet and starts new robots.', worker: 'Runs robots moved to it.' } as const;
@@ -221,6 +216,7 @@ function Machines() {
   const home = useApp((s) => (s.via ? homeName(s.fleet, s.via) : 'this Mac'));
   const online = useApp((s) => s.status === 'online');
   const running = useApp((s) => !!s.host?.running);
+  const ask = useApp((s) => s.settingsAsk);
   const [fleetRows, setFleetRows] = useState<FleetMachine[]>();
   const [asks, setAsks] = useState(0);
   const [listFailed, setListFailed] = useState<string>();
@@ -244,11 +240,11 @@ function Machines() {
     ...fleetRows?.map((f) => {
       const r = registered.get(f.id);
       return { id: f.id, name: r?.name ?? f.name, role: f.role as string | undefined, dialsIn: f.dialsIn, robots: f.robots as number | undefined, ssh: r?.ssh, check: r?.check,
-        joining: f.joining, joinRaw: f.raw, reachable: f.reachable as boolean | undefined, since: f.since, release: f.release ?? r?.check?.release };
+        joining: f.joining, joinRaw: f.raw, reachable: f.reachable as boolean | undefined, since: f.since, release: f.release ?? r?.check?.release, platform: f.platform };
     }) ?? [],
     // on a registry here and not yet a machine of this fleet
     ...machines?.filter((m) => m.ssh && !known.has(m.id)).map((m) => ({ id: m.id, name: m.name, role: undefined, dialsIn: undefined, robots: undefined, ssh: m.ssh, check: m.check,
-      joining: undefined, joinRaw: undefined, reachable: undefined, since: undefined, release: m.check?.release })) ?? [],
+      joining: undefined, joinRaw: undefined, reachable: undefined, since: undefined, release: m.check?.release, platform: undefined })) ?? [],
   ];
   // a home on this Mac with no worker is what it always was
   const shown = !via && !rows.some((r) => r.role !== 'home') ? [] : rows;
@@ -273,7 +269,7 @@ function Machines() {
           const dot = m.role === undefined || m.joining !== undefined ? undefined : mismatch ? 'upgrade' : m.reachable ? 'ok' : 'off';
           const robots = m.robots ? plural(m.robots, 'robot') : '';
           const meta = (m.dialsIn ? [`connects out to ${home}`, robots] : [m.ssh, robots, m.release && `release ${m.release}`]).filter(Boolean).join(' · ');
-          const joining = m.joining ? joinSaid(m.joining, m.joinRaw) : undefined;
+          const joining = m.joining ? splitSaid(m.joining, m.joinRaw) : undefined;
           // what a check found waits in the Check sheet, which lists it by checking again; the home says nothing while all is well
           const told = m.check && found(m.check);
           const recheck = () => { app.store.getState().toggleHost(true, m.name); startHost('doctor', { name: m.name, ...(registered.get(m.id)?.far && { id: m.id }) }); };
@@ -286,6 +282,10 @@ function Machines() {
               </span>
               {acts && <MachineActions id={m.id} name={m.name} home={m.role === 'home'} worker={!via && m.role === 'worker' && !m.dialsIn} />}
               {meta && <span className="machine-meta" data-tip={m.dialsIn ? `${label === 'this Mac' ? 'This Mac' : label} connects to ${home}; nothing connects in.` : undefined}>{meta}</span>}
+              {/* a Linux machine of this fleet that answers; a Mac has no such setting */}
+              {m.platform === 'linux' && m.role !== undefined && m.joining === undefined && m.reachable !== false && (
+                <MachineLimits id={m.id as MachineId} name={m.name} ask={ask?.limits === m.id ? ask : undefined} />
+              )}
               {m.joining !== undefined ? (
                 <div className="machine-said" data-testid={`machine-joining-${m.name}`}>
                   <span>has not joined yet</span>

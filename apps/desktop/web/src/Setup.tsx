@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { AGENT_LABEL, tierOf, type AgentKind, type SetupPlan, type Tier } from '@svall/protocol';
+import { AGENT_LABEL, tierOf, type AgentKind, type LimitsOffer, type SetupPlan, type Tier } from '@svall/protocol';
 import { copyText, createBridge, openUrl, type Bridge, type HostOp, type HostStep } from './bridge.js';
 import { FeedbackPopover } from './FeedbackPanel.js';
 import { AS_TYPED } from './Field.js';
@@ -8,7 +8,8 @@ import { shortPath } from './paths.js';
 import { Caret, Close, Mark } from './icons.js';
 import { Said } from './Said.js';
 import { DEFAULT_SETTINGS, type Settings } from './settings.js';
-import { localAppStorage, TOUR_KEY } from './store/persist.js';
+import { LIMITS_ASK_KEY, localAppStorage, TOUR_KEY } from './store/persist.js';
+import { LimitsAsk, limitsArg } from './Limits.js';
 import { Tips } from './Tips.js';
 
 export function Setup() {
@@ -40,8 +41,11 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
   const [farSteps, setFarSteps] = useState<FarRow[]>();
   // a server path's run that ended short with no failed row: its exit code; and a Stop pressed during it
   const [farCode, setFarCode] = useState<number>();
+  // a server's size and the limits to offer, asked between its add and the join
+  const [asking, setAsking] = useState<LimitsOffer>();
   const [stopped, setStopped] = useState(false);
-  const going = useRef<{ fork: Fork; ssh: string; warnings?: string[] } | undefined>(undefined);
+  // limited: the person's answer to the limits ask was a limit
+  const going = useRef<{ fork: Fork; ssh: string; warnings?: string[]; limited?: boolean } | undefined>(undefined);
   const farRows = useRef<FarRow[]>([]);
   const [plan, setPlan] = useState<SetupPlan>();
   const [step, setStep] = useState(1);
@@ -78,12 +82,19 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       if (!to) return;
       const failed = farRows.current.some((r) => r.status === 'fail');
       // an add that warns exits 1 too, so its last step says as well that it ran through
-      if (!stopped && !failed && m.op === 'add' && (m.code === 0 || farRows.current.some((r) => r.step === 'registry' && r.status === 'ok'))) bridge.send({ type: 'host.start', op: 'join', args: { name: '', ssh: to.ssh } });
+      if (!stopped && !failed && m.op === 'add' && (m.code === 0 || farRows.current.some((r) => r.step === 'registry' && r.status === 'ok'))) {
+        // a server with no limit waits for the person's answer, which the join sets there before this Mac joins
+        const offer = farRows.current.find((r) => r.op === 'add' && r.offer)?.offer;
+        if (offer) { setRunning(false); setBusy(false); setAsking(offer); } else bridge.send({ type: 'host.start', op: 'join', args: { name: '', ssh: to.ssh } });
+      }
       // a join that went through as Stop went out has joined, so the window opens
       else if (m.op !== 'add' && !failed && m.code === 0) {
-        // a warning the join leaves a person, as a last check it could not save, is said before the window opens
-        const left = farRows.current.filter((r) => r.op === 'join' && r.status === 'warn' && stepTier(r, 'join', undefined) === 'todo')
-          .map((r) => `${stepLabel(r.step)} ${r.detail ?? ''}${r.raw ? `\n  ${r.raw}` : ''}`);
+        // a home with no limit is asked for one by the window, once it reaches the home
+        if (farRows.current.some((r) => r.op === 'join' && r.offer)) { try { localStorage.setItem(LIMITS_ASK_KEY, '1'); } catch { /* optional persistence */ } }
+        // a warning the join leaves a person, as a last check it could not save or a limit they asked for, is said before the window opens
+        const left = farRows.current.filter((r) => r.op === 'join' && r.status === 'warn' && (stepTier(r, 'join', undefined) === 'todo' || (r.step === 'limits' && to.limited)))
+          // a limits row's detail is a sentence of its own
+          .map((r) => `${r.step === 'limits' ? (r.detail ?? '').replace(/^./, (c) => c.toUpperCase()) : `${stepLabel(r.step)} ${r.detail ?? ''}`}${r.raw ? `\n  ${r.raw}` : ''}`);
         const all = [...(to.warnings ?? []), ...left];
         if (all.length) setWarnings(all); else window.location.replace('/');
       }
@@ -222,8 +233,18 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
     // after a run that did not open the window, Back gives the form back as it was filled
     const back = () => {
       going.current = undefined;
+      pending.current = undefined;
+      setAsking(undefined);
       farRows.current = [];
       if (farSteps) setFarSteps(undefined); else setFork(undefined);
+    };
+    // the person's answer to the ask, which the join sets on the server before this Mac joins
+    const join = (limits: string) => {
+      if (going.current) going.current.limited = limits !== 'none';
+      setAsking(undefined);
+      setRunning(true);
+      setBusy(true);
+      bridge.send({ type: 'host.start', op: 'join', args: { name: '', ssh: ssh.trim(), limits } });
     };
     const wanting = busy ? 'Waits while Svall checks this Mac' : blockers.length > 0 ? 'Fix what is listed above first'
       : !/^[A-Za-z0-9][A-Za-z0-9._@:[\]-]*$/.test(ssh.trim()) ? 'Needs the server\'s ssh destination' : undefined;
@@ -234,7 +255,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
           <p>{farSteps ? ssh.trim() : 'Needs Tailscale on this Mac and on the server.'}</p>
         </header>
         {blockers.map((b) => <p key={b} className="setup-blocker">{b}</p>)}
-        {farSteps ? <FarSteps rows={farSteps} running={running} code={farCode} stopped={stopped} bridge={bridge} server={ssh.trim()} /> : (
+        {farSteps ? <FarSteps rows={farSteps.filter((r) => !(r.op === 'add' && r.offer))} running={running} code={farCode} stopped={stopped} bridge={bridge} server={ssh.trim()} /> : (
           <>
             <fieldset className="setup-fields" aria-busy={busy}>
               <label className="setup-field">
@@ -251,17 +272,19 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
             {error && <div role="alert"><Said {...splitRaw(error)} /></div>}
           </>
         )}
-        <div className="setup-acts">
-          {running ? <button type="button" className="btn" data-testid="fork-stop" disabled={stopped} onClick={() => { setStopped(true); bridge.send({ type: 'host.cancel' }); }}>{stopped ? 'Stopping…' : 'Stop'}</button> : (
-            <>
-              <button type="button" className="btn pri" data-testid="fork-go" disabled={!!wanting} data-tip={wanting} onClick={() => farRun(fork)}>
-                {farSteps ? 'Try again' : fork === 'server' ? 'Set up and connect' : 'Connect'}
-              </button>
-              <button type="button" className="btn" data-testid="fork-back" disabled={busy} onClick={back}>Back</button>
-              {blockers.length > 0 && <button type="button" className="btn" disabled={busy} onClick={check}>{busy ? 'Checking…' : 'Check again'}</button>}
-            </>
-          )}
-        </div>
+        {asking ? <LimitsAsk name={nameFromSsh(ssh.trim())} offer={asking} back={back} set={(l) => join(limitsArg(l))} /> : (
+          <div className="setup-acts">
+            {running ? <button type="button" className="btn" data-testid="fork-stop" disabled={stopped} onClick={() => { setStopped(true); bridge.send({ type: 'host.cancel' }); }}>{stopped ? 'Stopping…' : 'Stop'}</button> : (
+              <>
+                <button type="button" className="btn pri" data-testid="fork-go" disabled={!!wanting} data-tip={wanting} onClick={() => farRun(fork)}>
+                  {farSteps ? 'Try again' : fork === 'server' ? 'Set up and connect' : 'Connect'}
+                </button>
+                <button type="button" className="btn" data-testid="fork-back" disabled={busy} onClick={back}>Back</button>
+                {blockers.length > 0 && <button type="button" className="btn" disabled={busy} onClick={check}>{busy ? 'Checking…' : 'Check again'}</button>}
+              </>
+            )}
+          </div>
+        )}
       </Page>
     );
   }

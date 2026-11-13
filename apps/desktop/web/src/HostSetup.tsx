@@ -1,6 +1,6 @@
-import { AGENT_UPDATE, notNeeded, updatesHere, updatesIn, type AgentKind, type MachineId, type SetupRow } from '@svall/protocol';
+import { AGENT_UPDATE, notNeeded, updatesHere, updatesIn, type AgentKind, type LimitsReport, type MachineId, type SetupRow } from '@svall/protocol';
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { app } from './boot.js';
+import { app, deps } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
@@ -11,6 +11,7 @@ import {
 import { useApp, useMeasure } from './hooks.js';
 import { startHost } from './hostRun.js';
 import { Info } from './Info.js';
+import { LimitsAskRow, limitsValue } from './Limits.js';
 import { MachineTerminal } from './MachineTerminal.js';
 import { answers, homeName } from './placement.js';
 import { Said } from './Said.js';
@@ -144,7 +145,7 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
 }
 
 /** The foot of a run: Stop while it runs; then its verdict, the way on first and the way out after it. `edit`: an add not made, asked again. */
-function Outcome({ run, edit }: { run: HostRun; edit(): void }) {
+function Outcome({ run, edit, asking }: { run: HostRun; edit(): void; asking?: boolean }) {
   const fleet = useApp((s) => s.fleet);
   if (run.running) {
     return (
@@ -156,8 +157,11 @@ function Outcome({ run, edit }: { run: HostRun; edit(): void }) {
       </div>
     );
   }
-  const o = outcomeOf(run, fleet);
+  const told = outcomeOf(run, fleet);
   const name = run.args.name;
+  // an add that went through while its limits are asked above is added, not yet done
+  const waiting = asking && told.done;
+  const o = waiting ? { text: `${name} is added` } : told;
   const close = (pri: boolean, label = 'Done') => (
     <button className={pri ? 'btn pri' : 'btn'} data-testid="host-done" onClick={() => app.store.getState().toggleHost(false)}>{label}</button>
   );
@@ -175,6 +179,7 @@ function Outcome({ run, edit }: { run: HostRun; edit(): void }) {
       </>
     )
     : run.op === 'add' && o.done ? close(true)
+    : waiting ? close(false)
     : run.op === 'add' || TITLED.has(run.op) ? <>{again}{end}</>
     : end;
   return (
@@ -391,7 +396,8 @@ function Sections({ rows, name, row }: { rows: HostStep[]; name: string; row: (r
 function Checklist({ run, terminal, open, unfold }: { run: HostRun; terminal?: Terminal; open: Open; unfold: (o: Open) => void }) {
   const fleet = useApp((s) => s.fleet);
   const name = run.args.name;
-  const steps = run.steps.filter((s) => !isSetup(s));
+  // the limits a machine was offered are asked under the list, not listed
+  const steps = run.steps.filter((s) => !isSetup(s) && !s.offer);
   const now = run.running ? steps.filter((s) => s.status === 'start').at(-1) : undefined;
   // a step still under way when the run ended is where it stopped; while the service is said not to run, its port's missing file
   // (svalld's one warn) only says so again, and any other port row stands
@@ -470,6 +476,37 @@ function Checklist({ run, terminal, open, unfold }: { run: HostRun; terminal?: T
   );
 }
 
+// the limits an add that went through offers for a machine with none
+const limitsOffer = (run: HostRun) => (run.op === 'add' && !run.running && addedBy(run) ? run.steps.find((s) => s.offer)?.offer : undefined);
+
+/**
+ * An added machine with no limit yet: what this fleet may use of it, set through the fleet's own daemon now that it is linked;
+ * `answer`, what was set, which Change asks again.
+ */
+function AddLimits({ run, answer, answered }: { run: HostRun; answer?: LimitsReport; answered(r: LimitsReport): void }) {
+  const offer = limitsOffer(run);
+  const name = run.args.name;
+  const id = useApp((s) => s.machines?.find((m) => m.name === name)?.id as MachineId | undefined);
+  const [changing, setChanging] = useState(false);
+  if (!offer) return null;
+  return (
+    <div className="host-form">
+      {answer && !changing ? (
+        <div className="host-limits" data-testid="limits-done">
+          <span className="modal-sub">limits</span>
+          <div className="host-limits-line">
+            <span>{limitsValue(answer)}</span>
+            <button className="btn sm limits-change" data-testid="limits-change" onClick={() => setChanging(true)}>Change</button>
+          </div>
+        </div>
+      ) : (
+        <LimitsAskRow offer={offer} from={answer?.limits ?? offer.suggested} waits={id ? undefined : `Check again to list ${name} here first`}
+          set={(l) => deps().api.call('machines.setLimits', { machine: id!, cpus: l.cpus ?? null, memoryMb: l.memoryMb ?? null }).then((r) => { answered(r); setChanging(false); })} />
+      )}
+    </div>
+  );
+}
+
 /** What a new machine needs, its name and ssh, and Add machine; `from`, an add that stopped short, whose name and ssh fill it in again. */
 function AddForm({ from }: { from?: HostArgs }) {
   const home = useApp(homeOf);
@@ -530,9 +567,11 @@ export function HostSetup() {
   const [unfolded, unfold] = useState<Open>(SHUT);
   // the add that did not go through, asked again with its form filled
   const [editing, edit] = useState<HostRun>();
+  // the limits an add's ask set, by the machine's name
+  const [limitsSet, setLimitsSet] = useState<{ name: string; report: LimitsReport }>();
 
   useEffect(() => {
-    if (!open) { unfold(SHUT); edit(undefined); return; }
+    if (!open) { unfold(SHUT); edit(undefined); setLimitsSet(undefined); return; }
     // a terminal there holds the keys, and a focused button would take its Return
     if (!app.store.getState().hostTerminal) shut.current?.focus();
     const key = (e: KeyboardEvent) => {
@@ -579,6 +618,7 @@ export function HostSetup() {
     : name;
   const menu = !!machine && !term && !form && !confirm && !adding && !gone && (!shown || shown.args.name === machine);
   const failed = adding && !running ? shown.steps.find((s) => s.status === 'fail') : undefined;
+  const answer = limitsSet?.name === shown?.args.name ? limitsSet?.report : undefined;
 
   return (
     <div className="modal-back" data-testid="host-setup" onPointerDown={term ? undefined : close}>
@@ -623,9 +663,9 @@ export function HostSetup() {
             <div className="host-body">
               {adding && running && <span className="modal-sub">{shown.args.ssh}</span>}
               {adding && !running ? failed && <NotAdded row={failed} terminal={opens} />
-                : <Checklist run={shown} terminal={opens} open={unfolded} unfold={unfold} />}
+                : <><AddLimits run={shown} answer={answer} answered={(r) => setLimitsSet({ name: shown.args.name, report: r })} /><Checklist run={shown} terminal={opens} open={unfolded} unfold={unfold} /></>}
             </div>
-            <Outcome run={shown} edit={() => edit(shown)} />
+            <Outcome run={shown} edit={() => edit(shown)} asking={!!limitsOffer(shown) && !answer} />
           </>
         )}
       </div>

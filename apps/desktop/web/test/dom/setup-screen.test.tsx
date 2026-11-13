@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import './setup.js';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { SetupPlan } from '@svall/protocol';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stepLabel } from '../../src/host.js';
@@ -677,5 +677,87 @@ describe('the first run forks three ways', () => {
       expect(screen.getByTestId('fork-steps').querySelectorAll('[data-step="ssh"]')).toHaveLength(2);
       expect(said.mock.calls.flat().join(' ')).not.toMatch(/same key/);
     } finally { said.mockRestore(); }
+  });
+  describe('what the fleet may use of the server', () => {
+    const OFFER = { size: { cores: 12, memoryMb: 96256 }, suggested: { cpus: 11, memoryMb: 95232 } };
+    const limitsRow = (op: string, offer?: object) => ({ type: 'host.step', op, event: { step: 'limits', status: 'warn', detail: 'studio has 12 cores and 94 GB, and this fleet may use all of it', ...(offer && { offer }) } });
+    const added = (receive: (m: object) => void, offer?: object) => {
+      fireEvent.click(screen.getByTestId('fork-server'));
+      toSsh('ada@studio');
+      fireEvent.click(screen.getByTestId('fork-go'));
+      receive(FAR);
+      receive(limitsRow('add', offer));
+      receive({ type: 'host.step', op: 'add', event: { step: 'registry', status: 'ok', detail: 'listed' } });
+      receive({ type: 'host.done', op: 'add', code: 0 });
+    };
+    beforeEach(() => localStorage.clear());
+
+    test('a server with no limit is asked between its add and the join, the default filled in, and the join sets the answer there', () => {
+      const { sent, receive } = shell(ready, { fork: false });
+      added(receive, OFFER);
+      expect(hosts(sent).map(([op]) => op)).toEqual(['add']);
+      const ask = screen.getByTestId('limits-ask');
+      expect(ask.querySelector('.limits-ask-row > span')!.textContent).toBe('studio has 12 cores and 94 GB. Let this fleet use  cores and  GB');
+      expect([(screen.getByTestId('limits-cores') as HTMLInputElement).value, (screen.getByTestId('limits-memory') as HTMLInputElement).value]).toEqual(['11', '93']);
+      // the ask stands for the add's row, which is not listed as well
+      expect(screen.getByTestId('fork-steps').querySelector('li[data-step="limits"]')).toBeNull();
+      fireEvent.change(screen.getByTestId('limits-cores'), { target: { value: '8' } });
+      fireEvent.click(screen.getByTestId('limits-set'));
+      expect(hosts(sent).at(-1)).toEqual(['join', { name: '', ssh: 'ada@studio', limits: '8,95232M' }]);
+      expect(screen.queryByTestId('limits-ask')).toBeNull();
+      expect(screen.getByTestId('fork-stop')).toBeTruthy();
+    });
+
+    test('the ask\'s foot is Set, primary and first, then Back, and Set with both fields empty joins with no limit', () => {
+      const { sent, receive } = shell(ready, { fork: false });
+      added(receive, OFFER);
+      expect([...document.querySelectorAll('.setup-acts button')].map((b) => [b.textContent, b.className])).toEqual([['Set', 'btn pri'], ['Back', 'btn']]);
+      expect(screen.getByTestId('limits-ask').querySelector('button')).toBeNull();
+      fireEvent.change(screen.getByTestId('limits-cores'), { target: { value: '20' } });
+      expect([screen.getByTestId('limits-wrong').textContent, (screen.getByTestId('limits-set') as HTMLButtonElement).disabled]).toEqual(['1 to 12 cores', true]);
+      fireEvent.change(screen.getByTestId('limits-cores'), { target: { value: '' } });
+      fireEvent.change(screen.getByTestId('limits-memory'), { target: { value: '' } });
+      expect(screen.queryByTestId('limits-wrong')).toBeNull();
+      fireEvent.click(screen.getByTestId('limits-set'));
+      expect(hosts(sent).at(-1)).toEqual(['join', { name: '', ssh: 'ada@studio', limits: 'none' }]);
+    });
+
+    test('a limit the server refused at the join is said before the window opens', () => {
+      const { receive } = shell(ready, { fork: false });
+      added(receive, OFFER);
+      fireEvent.click(screen.getByTestId('limits-set'));
+      receive({ type: 'host.step', op: 'join', event: { step: 'limits', status: 'warn', detail: 'no limit was set on studio: 6.2 GB is in use now; stop a robot or allow at least 7 GB; svall host limits studio sets one' } });
+      receive({ type: 'host.done', op: 'join', code: 0 });
+      expect(replaced).not.toHaveBeenCalled();
+      expect(screen.getByText('Svall is set up')).toBeTruthy();
+      expect(screen.getByText('No limit was set on studio: 6.2 GB is in use now; stop a robot or allow at least 7 GB; svall host limits studio sets one')).toBeTruthy();
+    });
+
+    test('a server that holds a limit is not asked', () => {
+      const held = shell(ready, { fork: false });
+      added(held.receive);
+      expect(screen.queryByTestId('limits-ask')).toBeNull();
+      expect(hosts(held.sent).at(-1)).toEqual(['join', { name: '', ssh: 'ada@studio' }]);
+    });
+
+    test('a join that left its home with no limit has the window ask, once; one whose home holds a limit does not', () => {
+      const run = (offer?: object) => {
+        const { receive } = shell(ready, { fork: false });
+        fireEvent.click(screen.getByTestId('fork-join'));
+        toSsh('ada@studio');
+        fireEvent.click(screen.getByTestId('fork-go'));
+        receive(FAR);
+        receive(limitsRow('join', offer));
+        receive({ type: 'host.done', op: 'join', code: 0 });
+        cleanup();
+      };
+      run();
+      expect(replaced).toHaveBeenCalledWith('/');
+      expect(localStorage.getItem('svall.limitsAsk')).toBeNull();
+      run(OFFER);
+      // a limits row is advice in a join, not a warning said before the window opens
+      expect(replaced).toHaveBeenCalledTimes(2);
+      expect(localStorage.getItem('svall.limitsAsk')).toBe('1');
+    });
   });
 });

@@ -119,12 +119,12 @@ function install() {
   const add = sh(L, `svall host add remote --ssh svall@${R} --release /opt/it/svall-companion-*.tar.gz --allow-unsigned --json </dev/null`, { ok: false });
   const events = lines(add.stdout);
   const steps = events.filter((e) => e.step && e.status !== 'start');
-  // there is no Codex or gh on the machine, and a mirror not yet checked, which are advice, not failures
-  const isAdvice = (s) => s.status === 'warn' && (/codex/i.test(`${s.step} ${s.detail ?? ''}`) || (s.step === 'gh' && !s.action) || s.step === 'mirror:unchecked');
+  // there is no Codex or gh on the machine, a mirror not yet checked, and no limit with no one to ask, which are advice, not failures
+  const isAdvice = (s) => s.status === 'warn' && (/codex/i.test(`${s.step} ${s.detail ?? ''}`) || ((s.step === 'gh' || s.step === 'limits') && !s.action) || s.step === 'mirror:unchecked');
   for (const s of steps) {
     check(`host add ${s.step}`, s.status === 'ok' || s.status === 'skip' || isAdvice(s), `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
   }
-  for (const want of ['os', 'home', 'tools', 'linger', 'release', 'upload', 'install', 'service', 'identity', 'enrol', 'probe', 'registry']) {
+  for (const want of ['os', 'home', 'tools', 'linger', 'release', 'upload', 'install', 'service', 'identity', 'enrol', 'limits', 'probe', 'registry']) {
     check(`host add ${want}`, steps.some((s) => s.step === want), 'step missing');
   }
   const advised = new Set(steps.filter(isAdvice).map((s) => s.action));
@@ -616,6 +616,113 @@ function deleteWorkerDown(ids, fx) {
 }
 
 /** A robot started on remote in a worktree of its own there comes home into a new worktree of the Mac's clone, with all it holds. */
+const TMUX_R = '~/.local/share/svall/current/bin/tmux -S ~/.svall/tmux.sock';
+const cgroupOf = (m, file) => sh(m, `cat "/sys/fs/cgroup$(systemctl --user show -p ControlGroup --value ${UNIT})/${file}"`, { ok: false }).stdout.trim();
+const farLimits = (flags = '') => {
+  const r = sh(L, `svall --json host limits remote ${flags}`, { ok: false });
+  return { ...r, report: r.code === 0 ? JSON.parse(r.stdout) : undefined };
+};
+
+/** Remote's unit holds what its node.json says: the same quota and memory in its cgroup, on a daemon that was not restarted for it. */
+function limitsHold(when) {
+  const { limits } = JSON.parse(sh(R, 'svall --json fleet limits').stdout);
+  check(`limits ${when}: saved`, limits.cpus > 0 && limits.memoryMb > 0, () => brief(limits));
+  check(`limits ${when}: memory.max`, cgroupOf(R, 'memory.max') === String(limits.memoryMb * 1024 * 1024), () => cgroupOf(R, 'memory.max'));
+  check(`limits ${when}: no swap`, cgroupOf(R, 'memory.swap.max') === '0', () => cgroupOf(R, 'memory.swap.max'));
+  check(`limits ${when}: cpu.max`, cgroupOf(R, 'cpu.max') === `${limits.cpus * 100000} 100000`, () => cgroupOf(R, 'cpu.max'));
+}
+
+function limits(ids, fx) {
+  const main = () => sh(R, `systemctl --user show -p MainPID --value ${UNIT}`).stdout.trim();
+  const none = farLimits();
+  check('no limit after host add', none.report?.state === 'none' && cgroupOf(R, 'memory.max') === 'max', () => `${brief(none.report)} ${none.stderr}`);
+  const [daemon, tmux] = [main(), sh(R, `${TMUX_R} display -p '#{pid}'`).stdout.trim()];
+  const over = farLimits(`--cpus ${none.report.size.cores + 1}`);
+  check('more cores than it has', over.code !== 0 && /this machine has \d+ cores/.test(over.stderr), () => over.stderr);
+  const set = farLimits('--cpus 1 --memory 1G');
+  check('limit set', set.report?.state === 'applied' && set.report.limits.memoryMb === 1024, () => `${brief(set.report)} ${set.stderr}`);
+  check('memory.max', cgroupOf(R, 'memory.max') === String(1024 * 1024 * 1024), () => cgroupOf(R, 'memory.max'));
+  check('cpu.max', cgroupOf(R, 'cpu.max') === '100000 100000', () => cgroupOf(R, 'cpu.max'));
+  check('no swap', cgroupOf(R, 'memory.swap.max') === '0', () => cgroupOf(R, 'memory.swap.max'));
+  check('nothing restarted', main() === daemon, () => `${daemon} -> ${main()}`);
+  check('unit text', /OOMPolicy=continue\nCPUQuota=100%\nMemoryMax=1024M\nMemorySwapMax=0\n/.test(sh(R, `cat ~/.config/systemd/user/${UNIT}`).stdout), 'the unit file lacks the limit lines');
+
+  // a robot's process that takes more than the fleet may is stopped; the daemon, tmux and the fleet's other robots run on
+  const id = JSON.parse(sh(R, `svall --json robot new --island ${fx.island} --cwd ${HOMES[R]} --name hog --command bash`).stdout).id;
+  const paneId = until(R, (x) => robotIn(x, id)?.tmux?.paneId, 30) && robotIn(snap(R, true), id)?.tmux?.paneId;
+  check('hog pane', Boolean(paneId), () => brief(robotIn(snap(R, true), id)));
+  const panePid = sh(R, `${TMUX_R} display -p -t '${paneId}' '#{pane_pid}'`).stdout.trim();
+  check('pane marked', sh(R, `cat /proc/${panePid}/oom_score_adj`).stdout.trim() === '500', () => sh(R, `cat /proc/${panePid}/oom_score_adj`, { ok: false }).stdout);
+  check('daemon and tmux not marked', [daemon, tmux].every((p) => Number(sh(R, `cat /proc/${p}/oom_score_adj`).stdout) < 500), 'the daemon or tmux carries the pane mark');
+  const before = sh(R, `${TMUX_R} list-panes -a -F '#{pane_pid}' | sort`).stdout;
+  // a window on the home, which hears of the hit as it happens
+  sh(L, 'rm -f /tmp/it-limit.ndjson');
+  if (docker(['exec', '-d', '-u', 'svall', '-e', `HOME=${HOMES[L]}`, L, '/opt/it/node/bin/node', '/opt/it/machine.mjs', 'watch', id, '--out', '/tmp/it-limit.ndjson', '--for', '240']).code !== 0) throw new Error('the watcher did not start');
+  for (let i = 0; i < 40 && !/connected/.test(sh(L, 'cat /tmp/it-limit.ndjson', { ok: false }).stdout); i++) sh(L, 'sleep 0.5');
+  sh(R, `${TMUX_R} send-keys -t '${paneId}' -l "/opt/it/node/bin/node -e 'const a=[];for(;;)a.push(Buffer.alloc(32<<20,1))'; echo hog-ended-\\$?" && ${TMUX_R} send-keys -t '${paneId}' Enter`);
+  let ended = '';
+  for (let i = 0; i < 180 && !/hog-ended-\d+/.test(ended); i++) { sh(R, 'sleep 1'); ended = sh(R, `${TMUX_R} capture-pane -p -t '${paneId}'`, { ok: false }).stdout; }
+  check('hog killed', /hog-ended-137/.test(ended), () => ended.trim().split('\n').slice(-4).join(' | '));
+  check('daemon runs on', main() === daemon && sh(R, `systemctl --user is-active ${UNIT}`).stdout.trim() === 'active', () => `${daemon} -> ${main()}`);
+  check('tmux and every pane run on', sh(R, `${TMUX_R} display -p '#{pid}'`).stdout.trim() === tmux && sh(R, `${TMUX_R} list-panes -a -F '#{pane_pid}' | sort`).stdout === before, 'a pane or the tmux server is gone');
+  let hits = 0;
+  for (let i = 0; i < 20 && !hits; i++) { sh(R, 'sleep 1'); hits = farLimits().report?.hits ?? 0; }
+  check('hit counted', hits >= 1, () => brief(farLimits().report));
+  const told = sh(L, 'cat /tmp/it-limit.ndjson').stdout.trim().split('\n').map((l) => JSON.parse(l).limitHit).filter(Boolean);
+  check('the window heard', told.length === 1 && told[0].machine === ids.remote && told[0].name === 'remote' && told[0].hits === 1 && told[0].at > 0, () => brief(told));
+  sh(L, 'pkill -f "^/opt/it/node/bin/node /opt/it/machine.mjs watch" || true');
+  check('doctor warns', /limits .*reached its memory limit/.test(sh(R, 'svall doctor', { ok: false }).stdout), 'svall doctor on remote does not say the limit was reached');
+  sh(L, `svall robot close ${id}`, { ok: false });
+  // each daemon answers for its own machine: the worker asked there, and the home, a Linux machine too
+  const own = sh(R, 'svall --json host limits remote', { ok: false });
+  check('the worker answers for itself', own.code === 0 && JSON.parse(own.stdout).hits >= 1, () => `${own.stdout} ${own.stderr}`);
+  const homeName = JSON.parse(sh(L, 'svall --json host list').stdout).find((r) => r.id === ids.local)?.name;
+  const home = sh(L, `svall --json host limits ${homeName}`, { ok: false });
+  check('the home answers for itself', home.code === 0 && JSON.parse(home.stdout).state === 'none', () => `${homeName}: ${home.stdout} ${home.stderr}`);
+
+  // the default, which adding the machine again keeps: its setup and its enrolment write the unit anew, and it is shown its limit, not asked
+  const dflt = farLimits(`--cpus ${none.report.suggested.cpus} --memory ${none.report.suggested.memoryMb}M`);
+  check('default set', dflt.report?.state === 'applied', () => `${brief(dflt.report)} ${dflt.stderr}`);
+  const [at, was] = [Date.now(), main()];
+  const again = sh(L, `svall host add remote --ssh svall@${R} --release /opt/it/svall-companion-*.tar.gz --allow-unsigned --json </dev/null`, { ok: false });
+  const shown = again.stdout.trim().split('\n').map((l) => JSON.parse(l)).findLast((e) => e.step === 'limits');
+  check('add again shows the limit', shown?.status === 'ok' && shown.detail.startsWith(`this fleet may use ${none.report.suggested.cpus} of ${none.report.size.cores} cores`), () => brief(shown));
+  if (main() !== was) linked(ids, at);
+  limitsHold('after adding it again');
+  check('worker unit after adding it again', /--worker/.test(sh(R, `systemctl --user cat ${UNIT}`).stdout), 'the unit lost --worker');
+  ctx.limited = true;
+}
+
+// box holds 1 core and 1 GB in its node.json, its unit and the unit's cgroup, and `svall fleet limits` there says it holds
+function oneAndOne(when) {
+  const saved = JSON.parse(sh(B, 'cat ~/.svall/node.json').stdout).limits;
+  check(`${when}: node.json`, saved?.cpus === 1 && saved.memoryMb === 1024, () => brief(saved));
+  check(`${when}: unit text`, /OOMPolicy=continue\nCPUQuota=100%\nMemoryMax=1024M\nMemorySwapMax=0\n/.test(sh(B, `cat ~/.config/systemd/user/${UNIT}`).stdout), 'the unit file lacks the limit lines');
+  check(`${when}: memory.max`, cgroupOf(B, 'memory.max') === String(1024 * 1024 * 1024), () => cgroupOf(B, 'memory.max'));
+  check(`${when}: no swap`, cgroupOf(B, 'memory.swap.max') === '0', () => cgroupOf(B, 'memory.swap.max'));
+  check(`${when}: cpu.max`, cgroupOf(B, 'cpu.max') === '100000 100000', () => cgroupOf(B, 'cpu.max'));
+  const there = JSON.parse(sh(B, 'svall --json fleet limits').stdout);
+  check(`${when}: fleet limits there`, there.state === 'applied' && there.limits.cpus === 1 && there.limits.memoryMb === 1024, () => brief(there));
+}
+
+function addedLimited() {
+  boxUp();
+  letIn(L);
+  const add = sh(L, `svall --json host add limited --ssh svall@${B} --limits 1,1G --release /opt/it/svall-companion-*.tar.gz --allow-unsigned </dev/null`, { ok: false });
+  const steps = carriedSteps(add);
+  check('the add ran', steps.some((e) => e.step === 'registry' && e.status === 'ok') && !steps.some((e) => e.status === 'fail'), () => `${add.code}: ${brief(steps.filter((e) => e.status === 'fail'))} ${add.stderr.slice(0, 400)}`);
+  const set = steps.findLast((e) => e.step === 'limits');
+  check('its limits step set them', set?.status === 'ok' && /^this fleet may use 1 of \d+ cores and 1 GB of /.test(set.detail), () => brief(set));
+  oneAndOne('added');
+  const up = sh(L, 'svall --json host upgrade limited --release /opt/it/svall-companion-*.tar.gz --allow-unsigned </dev/null', { ok: false });
+  const upSteps = carriedSteps(up);
+  check('the upgrade ran', upSteps.some((e) => e.step === 'probe' && e.status === 'ok') && !upSteps.some((e) => e.status === 'fail'), () => `${up.code}: ${brief(upSteps.filter((e) => e.status !== 'ok'))} ${up.stderr.slice(0, 400)}`);
+  oneAndOne('upgraded');
+  // step 21 makes box anew
+  sh(L, 'svall host remove limited --forget --json </dev/null');
+  docker(['rm', '-f', B]);
+}
+
 function bornOnWorker(ids, fx) {
   const rel = 'src/app/.claude/worktrees/scout';
   sh(R, 'git -C ~/src/app worktree add -q -b scout .claude/worktrees/scout');
@@ -2006,9 +2113,10 @@ const STEPS = {
   7: 'a reviewer started while the Mac sleeps', 8: 'the scribe over a robot on the worker', 9: 'a docs conflict', 10: 'files over the link', 11: 'a delete while the worker is down',
   12: 'agent setup mirror', 13: "the user's ssh config", 14: 'a robot started on the worker comes home', 15: 'a dial-out worker',
   16: 'the home moves to remote', 17: "the home move's fault matrix", 18: 'the home comes back', 19: 'a machine set up first takes a join, and a fleet named apart moves both ways', 20: 'terminals across a dropped master', 21: 'a Linux worker added and looked after from the home', 22: 'a move with a Linux worker, both ways',
+  23: "what the fleet may use of remote", 24: 'a machine added with its limit, kept through an upgrade',
 };
 const steps = o.steps === undefined || o.steps === 'all' ? Object.keys(STEPS).map(Number) : String(o.steps).split(',').map(Number);
-if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 22, not ${o.steps}`);
+if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 24, not ${o.steps}`);
 // the home's stop and the return work with the robot the first move placed, 7 to 11 with the one the second placed, and
 // the scribe and the delete with the robots 7 starts
 if ((steps.includes(4) || steps.includes(6)) && !steps.includes(1)) steps.unshift(1);
@@ -2046,9 +2154,11 @@ try {
   if (steps.includes(12)) step(`12. ${STEPS[12]}`, () => agentSetup(ids, fx));
   if (steps.includes(13)) step(`13. ${STEPS[13]}`, () => sshConfig(ids, fx));
   if (steps.includes(14)) step(`14. ${STEPS[14]}`, () => bornOnWorker(ids, fx));
+  if (steps.includes(23)) step(`23. ${STEPS[23]}`, () => limits(ids, fx));
+  if (steps.includes(24)) step(`24. ${STEPS[24]}`, addedLimited);
   if (steps.includes(15)) step(`15. ${STEPS[15]}`, () => dialOut(ids));
-  if (steps.includes(16)) step(`16. ${STEPS[16]}`, () => homeMoves(ids, fx));
-  if (steps.includes(18)) step(`18. ${STEPS[18]}`, () => homeBack(ids));
+  if (steps.includes(16)) step(`16. ${STEPS[16]}`, () => { homeMoves(ids, fx); if (ctx.limited) limitsHold('once remote is the home'); });
+  if (steps.includes(18)) step(`18. ${STEPS[18]}`, () => { homeBack(ids); if (ctx.limited) limitsHold('once remote is a worker again'); });
   if (steps.includes(21)) step(`21. ${STEPS[21]}`, () => workerFromHome(ids));
   if (steps.includes(22)) step(`22. ${STEPS[22]}`, () => moveWithWorker(ids));
   if (steps.includes(17)) homeFaults(ids);

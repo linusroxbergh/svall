@@ -6,8 +6,27 @@ import { promisify } from 'node:util';
 import { onPath } from '../agents.js';
 import { releaseTmux } from '../release.js';
 import { helper } from '../runtime.js';
+import { readOrUndefined } from '../settings-file.js';
 import { shq } from '../text.js';
 import { ControlClient } from './control.js';
+
+/** Has the kernel stop a robot's process before the daemon or tmux when the fleet's unit runs out of the memory it may use. */
+export function preferAsVictim(pid: number, proc = '/proc'): void {
+  try { fs.writeFileSync(path.join(proc, String(pid), 'oom_score_adj'), '500'); } catch { /* the pane is gone already */ }
+}
+
+// every process under `pids`; a stat's parent is the second field after the command, which may hold parentheses itself
+function descendants(pids: Set<number>, proc: string): number[] {
+  const children = new Map<number, number[]>();
+  for (const name of fs.readdirSync(proc).filter((n) => /^\d+$/.test(n))) {
+    const stat = readOrUndefined(path.join(proc, name, 'stat')) ?? '';
+    const ppid = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]);
+    children.set(ppid, [...children.get(ppid) ?? [], Number(name)]);
+  }
+  const out: number[] = [];
+  for (const queue = [...pids]; queue.length;) for (const child of children.get(queue.shift()!) ?? []) { out.push(child); queue.push(child); }
+  return out;
+}
 
 const exec = promisify(execFile);
 // a tmux server that stops answering must not hang every poll and API call behind it
@@ -169,7 +188,7 @@ export class Tmux {
   private rawPaste?: Promise<string[]>;
   private control?: ControlClient;
 
-  constructor(readonly socket: string, private conf: string, readonly binary = resolveTmux()) {}
+  constructor(readonly socket: string, private conf: string, readonly binary = resolveTmux(), private proc = '/proc') {}
 
   async run(...args: string[]): Promise<string> {
     return this.call(args);
@@ -312,15 +331,24 @@ export class Tmux {
     const unset = Object.keys(secret).flatMap((k) => [';', 'set-environment', '-t', SESSION, '-u', k]);
     const out = await this.call([
       ...(set ? ['source-file', '-', ';'] : []),
-      'new-window', '-d', '-P', '-F', '#{window_id} #{pane_id}', '-a', '-t', `${SESSION}:`,
+      'new-window', '-d', '-P', '-F', '#{window_id} #{pane_id} #{pane_pid}', '-a', '-t', `${SESSION}:`,
       '-n', name, '-c', dir, ...envArgs,
       ...unset,
     ], undefined, set)
       // a new-window that failed ends the sequence before the unset
       .catch(async (e) => { if (set) await this.run(...unset.slice(1)).catch(() => {}); throw e; });
-    const [windowId, paneId] = out.trim().split(' ');
+    const [windowId, paneId, pid] = out.trim().split(' ');
     if (!windowId || !paneId) throw new Error(`tmux new-window returned ${JSON.stringify(out)}`);
+    if (process.platform === 'linux' && Number(pid)) preferAsVictim(Number(pid), this.proc);
     return { windowId, paneId };
+  }
+
+  /** On Linux, what preferAsVictim does for each pane's process and every process under it, as they run now. */
+  async preferPanes(): Promise<void> {
+    if (process.platform !== 'linux') return;
+    const out = await this.run('list-panes', '-a', '-F', '#{pane_pid}').catch(() => '');
+    const panes = new Set(out.split('\n').map(Number).filter(Boolean));
+    for (const pid of [...panes, ...descendants(panes, this.proc)]) preferAsVictim(pid, this.proc);
   }
 
   // the bytes go in on stdin: as arguments tmux caps them at about 16 KB and reads a trailing ; as syntax.

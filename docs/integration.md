@@ -28,7 +28,7 @@ pnpm integration:placement --out /tmp/robot-placement
 | `--scenarios <spec>` | The faults of step 5: `all` (default), `none`, `kill`, `drop`, or a list such as `kill@rest,drop@commit`. |
 | `--points <regex>` | Run only the faults of step 17 whose name matches: `out` or `back`, then a boundary, `crew`, `link` or `tar`. |
 | `--keep` | Leave the containers running afterwards, to look around with `docker exec -it -u svall svall-local bash -l`. |
-| `--prefix <name>` | Name the containers `<name>-local`, `<name>-remote` and step 19's `<name>-server` and the network `<name>-it` (default `svall`), so another run can share the Docker host. |
+| `--prefix <name>` | Name the containers `<name>-local`, `<name>-remote`, step 19's `<name>-server` and steps 21 and 24's `<name>-box`, and the network `<name>-it` (default `svall`), so another run can share the Docker host. |
 
 The script builds the companion archive for the Docker host's architecture (`scripts/build-companion.mjs`), and
 `apps/desktop/web/dist-mobile` first if it is missing. It exits 0 when every check passed. Each step prints `PASS`, or
@@ -147,6 +147,16 @@ each machine's daemon and unit logs.
     remote the way the app attaches them, over local's ssh master, and a tmux on local stands in for the terminal. The
     master is killed: every terminal ends, the daemon opens the master again, each comes back to its own pane with its
     process unchanged, and an OSC 52 copy in a far pane reaches the terminal.
+23. **What the fleet may use of remote.** `host add` left no limit. `svall host limits remote --cpus 1 --memory 1G` on
+    local puts both in the cgroup of remote's unit (`cpu.max`, `memory.max`, and `memory.swap.max` 0) and in its unit file with no restart, and
+    more cores than remote has is refused. A process in a robot's pane there, marked as the one to stop first, takes
+    memory until the kernel kills it; the daemon, tmux and every other pane run on, a window on the home hears
+    `machines.limitHit` naming remote, and `host limits` and `svall doctor` count the hit, each daemon answering for its own machine. The default then holds through adding remote again, which
+    shows the limit and asks nothing, and, when steps 16 and 18 run, through the home's move to remote and back.
+24. **A machine added with its limit.** `svall host add limited --limits 1,1G` from local makes a fresh machine,
+    `<prefix>-box`, a worker, and its `limits` step sets them without asking. There `node.json` holds them, the unit
+    file has `CPUQuota=100%`, `MemoryMax=1024M` and `MemorySwapMax=0`, its cgroup the same, and `svall fleet limits`
+    says `applied`; all of it holds again after `svall host upgrade limited`. The machine is then forgotten and removed.
 
 Steps 1, 2, 5, 6, 14 and 16 also check that the bare repository on remote is untouched: a move never pushes.
 
@@ -293,7 +303,8 @@ JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with
    - Whichever route, the release step says whether the release is signed, as its manifest does.
    - Every step is `ok` but the advice a fresh machine gets: Claude Code, Codex, OpenCode and `gh` not installed,
      `versions` skipped with no agent to compare, and `mirror:unchecked`, as no daemon runs on the controller. The
-     linger step turns lingering on, and the tmux step finds the release's own.
+     linger step turns lingering on, and the tmux step finds the release's own. The limits step sets no limit, with no
+     one to ask, and hands the app the machine's size and the default it asks with.
    - The enrol step makes the machine a worker of the controller's private fleet, whose `fleet.json` the run writes
      first, as Svall's first start does.
    - The JSON result's `actions` are exactly the three installs, the things the text line `fresh has 3 things to fix`

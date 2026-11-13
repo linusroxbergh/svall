@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import { z, type ZodTypeAny } from 'zod';
-import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type AppShow, type LoadSnapshot, type MachineId, type MachineRecord, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type AppShow, type Limits, LimitsReport, type LoadSnapshot, type MachineId, type MachineRecord, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import type { HomeFreeze } from '../fleet/home-freeze.js';
@@ -43,6 +43,8 @@ import { classification } from './classify.js';
 export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; drops?: Drops; fleetFlag?: (machine: MachineId) => string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal;
   // the home's: each worker's phone link
   phone?: PhoneFallbacks;
+  // on Linux: what this fleet may use of this machine
+  limits?: { read(): Promise<LimitsReport>; set(limits: Limits): Promise<LimitsReport> };
   // the fleet's home, what this machine's registry says of each machine, and on a worker, how a window reaches its home
   fleetHome?: () => Result<'fleet.home'>; registered?: () => Map<string, MachineRecord>; homeApi?: Pick<HomeApi, 'answer'>;
   // the home's: the one copy of a worker's agent setup it takes; a worker's: that setup, and what its first push from the home kept
@@ -55,7 +57,7 @@ export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () =
 export type AppWindows = { show(p: AppShow): number };
 
 // what starts launchd agents and names fleets stays with the Mac, and so does what its window shows
-const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'machines.copySetupFrom', 'machines.holdsSetup', 'home.setup', 'home.setupConsent', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop', 'fleet.home', 'home.connection', 'home.fallback', 'fleet.config', 'workspace.clones', 'fleet.freeze', 'fleet.thaw', 'fleet.homeCheck', 'fleet.homeMove'] satisfies MethodName[]);
+const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'machines.limits', 'machines.setLimits', 'machines.copySetupFrom', 'machines.holdsSetup', 'home.setup', 'home.setupConsent', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop', 'fleet.home', 'home.connection', 'home.fallback', 'fleet.config', 'workspace.clones', 'fleet.freeze', 'fleet.thaw', 'fleet.homeCheck', 'fleet.homeMove'] satisfies MethodName[]);
 // what hands over the home's token never leaves this machine, whatever node.json's host says
 const LOOPBACK_ONLY = new Set<string>(['home.connection', 'fleet.homeMove', 'fleet.freeze', 'fleet.thaw'] satisfies MethodName[]);
 // the fleets beside this one are a Mac's: a Linux daemon has no launchd to start them with
@@ -250,6 +252,8 @@ const handlers: Handlers = {
     });
     return setupOf(ctx, p.machine, 0);
   },
+  'machines.limits': (p, ctx) => limitsOf(ctx, p.machine, 'limits.get', {}),
+  'machines.setLimits': (p, ctx) => limitsOf(ctx, p.machine, 'limits.set', { ...(p.cpus && { cpus: p.cpus }), ...(p.memoryMb && { memoryMb: p.memoryMb }) }),
   'column.add': (p, { fleet }) => fleet.addColumn(p.name, p.afterId),
   'column.rename': (p, { fleet }) => fleet.renameColumn(p.id, p.name),
   'column.reorder': (p, { fleet }) => fleet.reorderColumn(p.id, p.targetId, p.after),
@@ -409,6 +413,22 @@ const handlers: Handlers = {
   },
   'feedback.preview': async (_p, { diagnostics }) => ({ text: await diagnostics!() }),
 };
+
+// this machine answers for itself, and the home asks a worker over its link
+async function limitsOf(ctx: Ctx, machine: MachineId | undefined, call: 'limits.get' | 'limits.set', limits: Limits): Promise<LimitsReport> {
+  const home = ctx.fleetHome?.();
+  if (machine === undefined || machine === home?.me) {
+    if (!ctx.limits) throw new ApiError('not_supported', 'a limit is for a Linux machine');
+    return call === 'limits.get' ? ctx.limits.read() : ctx.limits.set(limits);
+  }
+  const name = ctx.store.state.machines?.[machine]?.name;
+  if (name === undefined || !ctx.links) throw new ApiError('not_found', `no machine ${machine}`);
+  if (ctx.registered?.().get(machine)?.platform === 'darwin') throw new ApiError('not_supported', 'a limit is for a Linux machine');
+  return LimitsReport.parse(await ctx.links.call(machine, call, limits, { timeoutMs: 30_000 }).catch((e: Error) => {
+    if (e instanceof ApiError && e.code === 'unknown_method') throw new ApiError('not_supported', `${name}'s release has no limits yet; upgrade it from its ⋯ menu`);
+    throw e;
+  }));
+}
 
 /** What this machine is and runs, as system.info answers here and a worker answers its home. */
 export async function systemInfo(o: { machineId: MachineId; agents: AgentProber; linger?: () => Promise<NonNullable<SystemInfo['linger']>> }): Promise<SystemInfo> {
