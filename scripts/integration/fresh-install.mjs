@@ -313,7 +313,9 @@ function doctor(rel, label) {
   for (const name of ['systemd', 'worker', 'linger', 'svalld', 'release', 'home']) {
     check(`${label} doctor ${name}`, checks[name]?.status === 'ok', () => brief(checks[name]));
   }
-  check(`${label} doctor release`, checks.release?.detail === `${rel.version}, same as this Mac`, () => brief(checks.release));
+  // the CLI names its own machine "this Mac" on a Mac and by its hostname elsewhere, as on the release workflow's runner
+  const here = process.platform === 'darwin' ? 'this Mac' : os.hostname().split('.')[0];
+  check(`${label} doctor release`, checks.release?.detail === `${rel.version}, same as ${here}`, () => brief(checks.release));
 }
 
 function upgrade(b) {
