@@ -17,7 +17,8 @@ const MIB = 1024 * 1024;
 const LEAST_MB = 512;
 const KEEP_MB = 256;
 
-const machineSize = (): MachineSize => ({ cores: os.availableParallelism(), memoryMb: Math.floor(os.totalmem() / MIB) });
+// every core, as availableParallelism follows the daemon's own unit and would shrink with the limit set on it
+const machineSize = (): MachineSize => ({ cores: os.cpus().length, memoryMb: Math.floor(os.totalmem() / MIB) });
 
 /** All but one core and 1 GiB, never under half of a small machine's memory nor 512 MiB; no memory where that leaves the machine under 256 MiB. */
 const defaultLimits = (size: MachineSize): Limits => ({

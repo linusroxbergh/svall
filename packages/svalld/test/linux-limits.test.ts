@@ -73,10 +73,11 @@ describe('the default', () => {
     expect((await readLimits({ ...m.target, size: { cores: 1, memoryMb: 767 } })).suggested).toEqual({ cpus: 1 });
   });
 
-  it('sizes the machine by the cores this process may run on', async () => {
-    vi.spyOn(os, 'availableParallelism').mockReturnValue(3);
+  it('sizes the machine by all its cores, not the few its own limit leaves the daemon', async () => {
+    vi.spyOn(os, 'availableParallelism').mockReturnValue(1);
+    vi.spyOn(os, 'cpus').mockReturnValue(Array.from({ length: 10 }, () => ({}) as os.CpuInfo));
     const m = machine();
-    expect((await readLimits({ ...m.target, size: undefined })).size.cores).toBe(3);
+    expect((await readLimits({ ...m.target, size: undefined })).size.cores).toBe(10);
   });
 });
 
