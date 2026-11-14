@@ -4,7 +4,7 @@ import { lastTokenCount, type RawRateLimits, type RawRateWindow } from '../agent
 import { readTail as readFileTail } from '../agent/transcript.js';
 import { spawnClaude } from '../claude.js';
 import { codexPaths } from '../codex/install.js';
-import { accountLine, codexAccount } from './account.js';
+import { codexAccount } from './account.js';
 
 export type FetchUsage = () => Promise<UsageSnapshot>;
 
@@ -86,7 +86,7 @@ export function usageFetcher(o: { cwd: string; envFile: string; timeoutMs?: numb
             return;
           }
           const snapshot = toSnapshot(r.response);
-          finish(() => resolve(account ? { ...snapshot, account } : snapshot));
+          finish(() => resolve(account ? { ...snapshot, windows: snapshot.windows.map((w) => ({ ...w, account })) } : snapshot));
           return;
         }
       } catch (e) {
@@ -145,14 +145,6 @@ const CODEX_TAIL = 64 * 1024;
 // so they are read off the live sessions' rollouts when the panel asks, no older than an open session's last turn
 export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; readTail?: (file: string) => string; runsHere?: (c: Robot) => boolean }): FetchUsage {
   const tail = o.readTail ?? ((file: string) => readFileTail(file, CODEX_TAIL));
-  // the login line names only the plans whose windows show
-  const withAccount = (snapshot: UsageSnapshot, claude: UsageSnapshot | undefined, codex: boolean): UsageSnapshot => {
-    const account = accountLine([
-      ...(claude?.windows.length ? [{ agent: 'Claude', email: claude.account }] : []),
-      ...(codex ? [{ agent: 'Codex', email: codexAccount(path.join(codexPaths().dir, 'auth.json')) }] : []),
-    ]);
-    return account ? { ...snapshot, account } : snapshot;
-  };
   return async () => {
     // a robot runsHere leaves out is read on the machine it runs on, where its transcript is
     const agents = Object.values(o.state().robots).flatMap((c) => (c.tmux && c.agent && (o.runsHere?.(c) ?? true) ? [c.agent] : []));
@@ -160,13 +152,14 @@ export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; rea
       .flatMap((a) => (a.kind === 'codex' && a.transcriptPath ? [lastTokenCount(tail(a.transcriptPath))] : []))
       .flatMap((t) => (t?.limits ? [{ at: t.at, limits: t.limits }] : []))
       .sort((a, b) => b.at - a.at)[0];
-    const codex = newest ? codexWindows(newest.limits).map((w) => ({ ...w, at: newest.at })) : [];
+    const account = newest && codexAccount(path.join(codexPaths().dir, 'auth.json'));
+    const codex = newest ? codexWindows(newest.limits).map((w) => ({ ...w, at: newest.at, ...(account && { account }) })) : [];
     if (!agents.length) return { available: true, idle: true, windows: [] };
     // OpenCode runs on any provider and reports no plan's limits
     if (agents.every((a) => a.kind === 'opencode')) return { available: false, windows: [] };
-    if (!agents.some((a) => a.kind === 'claude')) return withAccount({ available: true, windows: codex }, undefined, codex.length > 0);
+    if (!agents.some((a) => a.kind === 'claude')) return { available: true, windows: codex };
     // a claude that is logged out or slow must not take the codex windows down with it
     const claude = await o.claude().catch((e: unknown): UsageSnapshot => { if (!codex.length) throw e; return { available: false, windows: [] }; });
-    return withAccount({ available: claude.available || codex.length > 0, windows: [...claude.windows, ...codex] }, claude, codex.length > 0);
+    return { available: claude.available || codex.length > 0, windows: [...claude.windows, ...codex] };
   };
 }

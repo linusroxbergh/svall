@@ -14,14 +14,3 @@ export function codexAccount(file: string): string | undefined {
   if (!payload) return undefined;
   try { return str((JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { email?: unknown }).email); } catch { return undefined; }
 }
-
-export type Account = { agent: string; email?: string };
-
-/** One login reads as its email; otherwise each known one names its agent, since the windows above them do too. */
-export function accountLine(accounts: Account[]): string | undefined {
-  const named = accounts.filter((a): a is Required<Account> => !!a.email);
-  const emails = new Set(named.map((a) => a.email));
-  if (emails.size === 0) return undefined;
-  if (emails.size === 1 && named.length === accounts.length) return named[0].email;
-  return named.map((a) => `${a.agent} ${a.email}`).join(' · ');
-}

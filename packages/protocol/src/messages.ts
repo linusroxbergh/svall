@@ -31,22 +31,22 @@ export const DROP_PART = 1024 * 1024;
 const Upload = z.string().regex(/^[0-9a-f]{32}$/);
 
 // one plan rate-limit window: the five-hour session, the week, or a model the week is scoped by;
-// at is when the agent reported a window read off its transcript, in ms, and a window read live has none
+// at is when the agent reported a window read off its transcript, in ms, and a window read live has none;
+// account, the login it was read under, when known
 export const UsageWindow = z.object({
   key: z.string(),
   label: z.string(),
   pct: z.number(),
   resetsAt: z.string().optional(),
   at: z.number().optional(),
+  account: z.string().optional(),
 });
 export type UsageWindow = z.infer<typeof UsageWindow>;
 
-// available is false for logins plan limits do not cover (API key, Bedrock, Vertex); idle, no agent running so no plan
-// is asked; account, the login(s) the windows belong to, when known
+// available is false for logins plan limits do not cover (API key, Bedrock, Vertex); idle, no agent running so no plan is asked
 export const UsageSnapshot = z.object({
   available: z.boolean(),
   idle: z.boolean().optional(),
-  account: z.string().optional(),
   windows: z.array(UsageWindow),
 });
 export type UsageSnapshot = z.infer<typeof UsageSnapshot>;
@@ -595,4 +595,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 48;
+export const PROTOCOL_VERSION = 49;

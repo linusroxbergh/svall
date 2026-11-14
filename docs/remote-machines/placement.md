@@ -15,7 +15,9 @@ the prompt: press Return to go there. Finder is not offered: a path there can na
 opens one only for this machine. A file or folder in the robot's context opens the same terminal; a path added to it,
 `~` included, is looked for on the worker, as its files are read there, so the worker must be reachable for that edit. The Usage
 panel counts the robots on each worker too, read on the worker where their
-transcripts are; a worker that does not answer within 5 seconds is left out, and the home's own limits still show. The
+transcripts are, and shows each login's limits under its email: a worker logged in to another Claude Code or Codex
+account than the home's adds that account's limits beside the home's, and machines on one account show it once. A
+worker that does not answer within 5 seconds is left out, and the home's own limits still show. The
 scribe names, notes and links a robot on a worker, and places it on the board, as it does one here: the home asks, the
 worker reads the transcript, and the home writes the answer.
 

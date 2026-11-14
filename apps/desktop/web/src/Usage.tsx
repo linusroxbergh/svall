@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { UsageSnapshot } from '@svall/protocol';
+import type { UsageSnapshot, UsageWindow } from '@svall/protocol';
 import { app } from './boot.js';
 import { resetAt, untilReset } from './usageText.js';
 
@@ -9,7 +9,7 @@ const TICK_MS = 30_000;
 function Limit({ label, pct, resetsAt, now }: { label: string; pct: number; resetsAt?: string; now: number }) {
   const width = Math.min(100, Math.max(0, pct));
   return (
-    <div className="use-win">
+    <div className="use-win" data-testid="usage-window">
       <div className="use-head">
         <span className="use-label">{label}</span>
         <b className="tnum">{Math.round(width)}%</b>
@@ -18,6 +18,13 @@ function Limit({ label, pct, resetsAt, now }: { label: string; pct: number; rese
       {resetsAt && <div className="use-reset">resets {resetAt(resetsAt)} · in {untilReset(resetsAt, now)}</div>}
     </div>
   );
+}
+
+// each login's windows together, in the order the fleet read them; windows whose login is unknown come first, under no name
+function byLogin(windows: UsageWindow[]): [string | undefined, UsageWindow[]][] {
+  const groups = new Map<string | undefined, UsageWindow[]>([[undefined, []]]);
+  for (const w of windows) groups.set(w.account, [...groups.get(w.account) ?? [], w]);
+  return [...groups].filter(([, ws]) => ws.length);
 }
 
 export function UsagePanel() {
@@ -41,11 +48,15 @@ export function UsagePanel() {
   if (snapshot.idle) return <div className="use-note" data-testid="usage-idle">No agent is running.</div>;
   if (!snapshot.windows.length) return <div className="use-note" data-testid="usage-waiting">No plan limits reported yet.</div>;
   return (
-    <>
-      {snapshot.account && <div className="use-account" data-testid="usage-account">{snapshot.account}</div>}
-      <div className="use-wins" data-testid="usage-windows">
-        {snapshot.windows.map((w) => <Limit key={w.key} label={w.label} pct={w.pct} resetsAt={w.resetsAt} now={now} />)}
-      </div>
-    </>
+    <div data-testid="usage-windows">
+      {byLogin(snapshot.windows).map(([account, windows]) => (
+        <div className="use-login" key={account ?? ''}>
+          {account && <div className="use-account" data-testid="usage-account">{account}</div>}
+          <div className="use-wins">
+            {windows.map((w) => <Limit key={w.key} label={w.label} pct={w.pct} resetsAt={w.resetsAt} now={now} />)}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

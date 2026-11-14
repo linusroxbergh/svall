@@ -181,8 +181,13 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 48', () => {
-    expect(PROTOCOL_VERSION).toBe(48);
+  it('is 49', () => {
+    expect(PROTOCOL_VERSION).toBe(49);
+  });
+
+  it('was 48 with one login line for all of usage.get, not the login each window was read under', () => {
+    const usage = methods['usage.get'].result.parse({ available: true, account: 'a@x.io', windows: [{ key: 'week', label: 'Week', pct: 5, account: 'b@x.io' }] });
+    expect(usage).toEqual({ available: true, windows: [{ key: 'week', label: 'Week', pct: 5, account: 'b@x.io' }] });
   });
 
   it('was 47 without an island\'s folder, the clones New robot offers for it, and the remote robot.create clones', () => {

@@ -265,8 +265,8 @@ has the steps.
   waiting on you or your phone when set to need you; each fleet sets its own.
   Work in worktrees tells each agent in a git repo to make a worktree for its
   task and leave the main checkout alone unless you say so.
-  `Usage`, next to it, shows the plan limits of your running agents without using any, and the
-  login they belong to.
+  `Usage`, next to it, shows the plan limits of your running agents without using any, each
+  under the login it belongs to.
 
 ### Keyboard
 
