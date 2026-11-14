@@ -57,8 +57,74 @@ $ svall status --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall status
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
-[exit 1]
+svalld running on port <port> (home <home>)
+1 island(s), 1 robot(s)
+
+island  name  kind  robots
+x       x           1
+
+robot  name  island  state  ctx  cwd  note
+x      x     x       shell       /x
+[exit 0]
+$ svall --json status
+{
+  "version": 12,
+  "islands": {
+    "x": {
+      "id": "x",
+      "name": "x",
+      "description": "",
+      "instructions": "",
+      "context": [],
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "w": 4,
+        "h": 3
+      },
+      "seed": 0
+    }
+  },
+  "robots": {
+    "x": {
+      "id": "x",
+      "islandId": "x",
+      "cell": {
+        "x": 0,
+        "y": 0
+      },
+      "name": "x",
+      "portrait": "fox",
+      "note": "",
+      "instructions": "",
+      "cwd": "/x",
+      "context": [],
+      "tmux": {
+        "windowId": "@1",
+        "paneId": "%1"
+      },
+      "shell": {
+        "lastOutputAt": 0
+      },
+      "unread": false
+    }
+  },
+  "home": {
+    "cwd": "~",
+    "command": "x",
+    "actions": []
+  },
+  "defaultCwd": "~",
+  "columns": [
+    {
+      "id": "x",
+      "name": "x"
+    }
+  ]
+}
+[exit 0]
 $ svall island --help
 Usage: svall island [options] [command]
 
@@ -93,8 +159,29 @@ $ svall island list --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall island list
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
-[exit 1]
+id  name  kind  robots  size  at
+x   x           1       4x3   0,0
+[exit 0]
+$ svall --json island list
+[
+  {
+    "id": "x",
+    "name": "x",
+    "description": "",
+    "instructions": "",
+    "context": [],
+    "position": {
+      "x": 0,
+      "y": 0
+    },
+    "size": {
+      "w": 4,
+      "h": 3
+    },
+    "seed": 0
+  }
+]
+[exit 0]
 $ svall island create --help
 Usage: svall island create [options] <name>
 
@@ -118,7 +205,10 @@ $ svall island create --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall island create x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: island "x" already exists (x); move robots onto it or pick another name
+[exit 1]
+$ svall --json island create x
+svall: island "x" already exists (x); move robots onto it or pick another name
 [exit 1]
 $ svall island update --help
 Usage: svall island update [options] <id>
@@ -144,7 +234,10 @@ $ svall island update --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall island update x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: island.update {"id":"x"}
+[exit 1]
+$ svall --json island update x
+svall: island.update {"id":"x"}
 [exit 1]
 $ svall island arrange --help
 Usage: svall island arrange [options]
@@ -159,7 +252,10 @@ $ svall island arrange --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall island arrange
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: island.arrange {}
+[exit 1]
+$ svall --json island arrange
+svall: island.arrange {}
 [exit 1]
 $ svall island show --help
 Usage: svall island show [options] <id>
@@ -173,7 +269,10 @@ $ svall island show --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall island show x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: island.show {"id":"x"}
+[exit 1]
+$ svall --json island show x
+svall: island.show {"id":"x"}
 [exit 1]
 $ svall island delete --help
 Usage: svall island delete [options] <id>
@@ -187,7 +286,10 @@ $ svall island delete --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall island delete x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: island.delete {"id":"x"}
+[exit 1]
+$ svall --json island delete x
+svall: island.delete {"id":"x"}
 [exit 1]
 $ svall robot --help
 Usage: svall robot|char [options] [command]
@@ -239,8 +341,35 @@ $ svall robot list --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall robot list
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
-[exit 1]
+id  island  name  state  ctx  branch  cwd  cell
+x   x       x     shell               /x   0,0
+[exit 0]
+$ svall --json robot list
+[
+  {
+    "id": "x",
+    "islandId": "x",
+    "cell": {
+      "x": 0,
+      "y": 0
+    },
+    "name": "x",
+    "portrait": "fox",
+    "note": "",
+    "instructions": "",
+    "cwd": "/x",
+    "context": [],
+    "tmux": {
+      "windowId": "@1",
+      "paneId": "%1"
+    },
+    "shell": {
+      "lastOutputAt": 0
+    },
+    "unread": false
+  }
+]
+[exit 0]
 $ svall robot new --help
 Usage: svall robot new [options]
 
@@ -281,7 +410,10 @@ $ svall robot new --no-such-flag
 error: required option '--island <id>' not specified
 [exit 1]
 $ svall robot new --island x --cwd x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: robot.create {"islandId":"x","cwd":"<cwd>/x","startedBy":"x"}
+[exit 1]
+$ svall --json robot new --island x --cwd x
+svall: robot.create {"islandId":"x","cwd":"<cwd>/x","startedBy":"x"}
 [exit 1]
 $ svall robot move --help
 Usage: svall robot move [options] <id>
@@ -310,6 +442,9 @@ error: unknown option '--no-such-flag'
 $ svall robot move x
 svall: name one of --island, --machine and --retry
 [exit 1]
+$ svall --json robot move x
+svall: name one of --island, --machine and --retry
+[exit 1]
 $ svall robot run --help
 Usage: svall robot run [options] <id> <text...>
 
@@ -326,7 +461,10 @@ $ svall robot run --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall robot run x x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: robot.run {"id":"x","text":"x","enter":true}
+[exit 1]
+$ svall --json robot run x x
+svall: robot.run {"id":"x","text":"x","enter":true}
 [exit 1]
 $ svall robot send --help
 Usage: svall robot send [options] <id> <text...>
@@ -343,7 +481,10 @@ $ svall robot send --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall robot send x x
-svall: run this inside a robot; svall robot run types as the user
+svall: robot.send {"id":"x","from":"x","text":"x"}
+[exit 1]
+$ svall --json robot send x x
+svall: robot.send {"id":"x","from":"x","text":"x"}
 [exit 1]
 $ svall robot read --help
 Usage: svall robot read [options] <id>
@@ -362,7 +503,10 @@ $ svall robot read --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall robot read x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: robot.read {"id":"x","source":"screen","lines":50}
+[exit 1]
+$ svall --json robot read x
+svall: robot.read {"id":"x","source":"screen","lines":50}
 [exit 1]
 $ svall robot wait --help
 Usage: svall robot wait [options] <id>
@@ -380,7 +524,10 @@ $ svall robot wait --no-such-flag
 error: required option '--until <statuses>' not specified
 [exit 1]
 $ svall robot wait x --until x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: robot.wait {"id":"x","until":["x"],"timeoutMs":600000}
+[exit 1]
+$ svall --json robot wait x --until x
+svall: robot.wait {"id":"x","until":["x"],"timeoutMs":600000}
 [exit 1]
 $ svall robot update --help
 Usage: svall robot update [options] <id>
@@ -409,7 +556,10 @@ $ svall robot update --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall robot update x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: robot.update {"id":"x"}
+[exit 1]
+$ svall --json robot update x
+svall: robot.update {"id":"x"}
 [exit 1]
 $ svall robot show --help
 Usage: svall robot show [options] <id>
@@ -423,7 +573,10 @@ $ svall robot show --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall robot show x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: robot.show {"id":"x"}
+[exit 1]
+$ svall --json robot show x
+svall: robot.show {"id":"x"}
 [exit 1]
 $ svall robot seen --help
 Usage: svall robot seen [options] <id>
@@ -437,7 +590,10 @@ $ svall robot seen --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall robot seen x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: robot.seen {"id":"x"}
+[exit 1]
+$ svall --json robot seen x
+svall: robot.seen {"id":"x"}
 [exit 1]
 $ svall robot revive --help
 Usage: svall robot revive [options] <id>
@@ -454,7 +610,10 @@ $ svall robot revive --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall robot revive x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: robot.revive {"id":"x"}
+[exit 1]
+$ svall --json robot revive x
+svall: robot.revive {"id":"x"}
 [exit 1]
 $ svall robot close --help
 Usage: svall robot close [options] <id>
@@ -468,7 +627,10 @@ $ svall robot close --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall robot close x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: robot.close {"id":"x"}
+[exit 1]
+$ svall --json robot close x
+svall: robot.close {"id":"x"}
 [exit 1]
 $ svall scribe --help
 Usage: svall scribe [options] [command]
@@ -499,7 +661,10 @@ $ svall scribe sweep --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall scribe sweep
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: scribe.sweep {}
+[exit 1]
+$ svall --json scribe sweep
+svall: scribe.sweep {}
 [exit 1]
 $ svall retro --help
 Usage: svall retro [options] [command]
@@ -542,6 +707,12 @@ Options:
 $ svall retro plan --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
+$ svall retro plan
+svall: retro.plan {"span":"last"}
+[exit 1]
+$ svall --json retro plan
+svall: retro.plan {"span":"last"}
+[exit 1]
 $ svall retro run --help
 Usage: svall retro run [options] <plan>
 
@@ -558,6 +729,12 @@ Options:
 $ svall retro run --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
+$ svall retro run x
+svall: retro.run {"plan":"x","robot":"x"}
+[exit 1]
+$ svall --json retro run x
+svall: retro.run {"plan":"x","robot":"x"}
+[exit 1]
 $ svall retro wait --help
 Usage: svall retro wait [options] [run]
 
@@ -568,6 +745,12 @@ Options:
 [exit 0]
 $ svall retro wait --no-such-flag
 error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro wait
+svall: retro.status {}
+[exit 1]
+$ svall --json retro wait
+svall: retro.status {}
 [exit 1]
 $ svall retro status --help
 Usage: svall retro status [options] [run]
@@ -580,6 +763,12 @@ Options:
 $ svall retro status --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
+$ svall retro status
+svall: retro.status {}
+[exit 1]
+$ svall --json retro status
+svall: retro.status {}
+[exit 1]
 $ svall retro findings --help
 Usage: svall retro findings [options] [run]
 
@@ -590,6 +779,12 @@ Options:
 [exit 0]
 $ svall retro findings --no-such-flag
 error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro findings
+svall: retro.findings {}
+[exit 1]
+$ svall --json retro findings
+svall: retro.findings {}
 [exit 1]
 $ svall retro show --help
 Usage: svall retro show [options] <n> [run]
@@ -602,6 +797,12 @@ Options:
 [exit 0]
 $ svall retro show --no-such-flag
 error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro show x
+svall: bad finding "x", expected its number in the findings
+[exit 1]
+$ svall --json retro show x
+svall: bad finding "x", expected its number in the findings
 [exit 1]
 $ svall retro mark --help
 Usage: svall retro mark [options] <action> <findings...>
@@ -616,6 +817,12 @@ Options:
 $ svall retro mark --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
+$ svall retro mark x x
+svall: bad action "x", expected fix, dismiss or later
+[exit 1]
+$ svall --json retro mark x x
+svall: bad action "x", expected fix, dismiss or later
+[exit 1]
 $ svall retro apply --help
 Usage: svall retro apply [options] <finding>
 
@@ -627,6 +834,12 @@ Options:
 [exit 0]
 $ svall retro apply --no-such-flag
 error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro apply x
+svall: retro.apply {"id":"x"}
+[exit 1]
+$ svall --json retro apply x
+svall: retro.apply {"id":"x"}
 [exit 1]
 $ svall retro config --help
 Usage: svall retro config [options]
@@ -651,6 +864,12 @@ Options:
 [exit 0]
 $ svall retro config --no-such-flag
 error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro config
+svall: ENOENT: no such file or directory, open '<home>/fleet.json'
+[exit 1]
+$ svall --json retro config
+svall: ENOENT: no such file or directory, open '<home>/fleet.json'
 [exit 1]
 $ svall browser --help
 Usage: svall browser [options] [command]
@@ -682,7 +901,10 @@ $ svall browser open --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall browser open x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: browser.open {"id":"x","url":"x"}
+[exit 1]
+$ svall --json browser open x
+svall: browser.open {"id":"x","url":"x"}
 [exit 1]
 $ svall browser list --help
 Usage: svall browser list [options]
@@ -697,8 +919,11 @@ $ svall browser list --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall browser list
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
-[exit 1]
+(none)
+[exit 0]
+$ svall --json browser list
+[]
+[exit 0]
 $ svall browser close --help
 Usage: svall browser close [options] <tab>
 
@@ -712,7 +937,10 @@ $ svall browser close --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall browser close x
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: browser.close {"id":"x","tab":"x"}
+[exit 1]
+$ svall --json browser close x
+svall: browser.close {"id":"x","tab":"x"}
 [exit 1]
 $ svall app --help
 Usage: svall app [options] [command]
@@ -763,7 +991,10 @@ $ svall app show --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall app show
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: app.show {}
+[exit 1]
+$ svall --json app show
+svall: app.show {}
 [exit 1]
 $ svall mobile --help
 Usage: svall mobile [options] [command]
@@ -793,7 +1024,10 @@ $ svall mobile on --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall mobile on
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: mobile.set {"enabled":true}
+[exit 1]
+$ svall --json mobile on
+svall: mobile.set {"enabled":true}
 [exit 1]
 $ svall mobile off --help
 Usage: svall mobile off [options]
@@ -807,7 +1041,10 @@ $ svall mobile off --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
 $ svall mobile off
-svall: svalld is not running (no <home>/port): it runs while Svall is open on this fleet; `svall doctor` says more
+svall: mobile.set {"enabled":false}
+[exit 1]
+$ svall --json mobile off
+svall: mobile.set {"enabled":false}
 [exit 1]
 $ svall setup --help
 Usage: svall setup [options]
@@ -934,6 +1171,12 @@ Options:
 [exit 0]
 $ svall host limits --no-such-flag
 error: unknown option '--no-such-flag'
+[exit 1]
+$ svall host limits x
+svall: machines.list {}
+[exit 1]
+$ svall --json host limits x
+svall: machines.list {}
 [exit 1]
 $ svall host list --help
 Usage: svall host list [options]
@@ -1173,6 +1416,12 @@ Options:
 $ svall fleet limits set --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
+$ svall fleet limits set
+svall: a limit is for a Linux machine
+[exit 1]
+$ svall --json fleet limits set
+svall: a limit is for a Linux machine
+[exit 1]
 $ svall fleet join --help
 Usage: svall fleet join [options] <ssh>
 
@@ -1327,6 +1576,16 @@ Options:
 $ svall fleet home set --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
+$ svall fleet home set x
+✗ check  no machine x with an ssh destination in the registry -> add it under Machines first
+✗ check  no machine x with an ssh destination in the registry -> add it under Machines first
+The move did not finish.
+[exit 1]
+$ svall --json fleet home set x
+{"step":"check","status":"start"}
+{"step":"check","status":"fail","detail":"no machine x with an ssh destination in the registry","action":"add it under Machines first"}
+{"result":"actions","actions":["add it under Machines first"],"stopped":"check"}
+[exit 1]
 $ svall fleet home retry --help
 Usage: svall fleet home retry [options]
 
@@ -1337,6 +1596,16 @@ Options:
 [exit 0]
 $ svall fleet home retry --no-such-flag
 error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet home retry
+✗ check  no move of the fleet waits on this Mac
+✗ check  no move of the fleet waits on this Mac
+The move did not finish.
+[exit 1]
+$ svall --json fleet home retry
+{"step":"check","status":"start"}
+{"step":"check","status":"fail","detail":"no move of the fleet waits on this Mac"}
+{"result":"actions","actions":["no move of the fleet waits on this Mac"],"stopped":"check"}
 [exit 1]
 $ svall fleet home abort --help
 Usage: svall fleet home abort [options]
@@ -1349,6 +1618,16 @@ Options:
 [exit 0]
 $ svall fleet home abort --no-such-flag
 error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet home abort
+✗ abort  fleet.homeMove {"op":"status"}
+✗ abort  fleet.homeMove {"op":"status"}
+The move was not called off.
+[exit 1]
+$ svall --json fleet home abort
+{"step":"abort","status":"start"}
+{"step":"abort","status":"fail","detail":"fleet.homeMove {\"op\":\"status\"}"}
+{"result":"actions","actions":["fleet.homeMove {\"op\":\"status\"}"],"stopped":"abort"}
 [exit 1]
 $ svall fleet home crew-back --help
 Usage: svall fleet home crew-back [options]
@@ -1364,6 +1643,19 @@ Options:
 $ svall fleet home crew-back --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
+$ svall fleet home crew-back
+✓ check  this Mac is the home
+– crew  mission control's robots are all on the home
+✓ 2 checks fine
+Mission control's robots are on the home.
+[exit 0]
+$ svall --json fleet home crew-back
+{"step":"check","status":"start"}
+{"step":"check","status":"ok","detail":"this Mac is the home"}
+{"step":"crew","status":"start"}
+{"step":"crew","status":"skip","detail":"mission control's robots are all on the home"}
+{"result":"ready","actions":[]}
+[exit 0]
 $ svall uninstall --help
 Usage: svall uninstall [options]
 
@@ -1404,5 +1696,25 @@ Options:
   -h, --help  display help for command
 [exit 0]
 $ svall version --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall setup --help
+Usage: svall setup [options]
+
+install hooks, systemd user units and the svall shim
+
+Options:
+  --no-launchctl        write files only, do not (re)start the systemd unit
+  --check               only check what setup needs; change nothing
+  --release <path>      install this release tree or archive and run the daemon
+                        from it
+  --allow-unsigned      install a --release that carries no signature
+  --replace-settings    replace the mission-control .claude/settings.json you
+                        have edited, keeping a copy
+  --rollback [release]  put current back on this release, or on the one before,
+                        and restart the daemon
+  -h, --help            display help for command
+[exit 0]
+$ svall setup --no-such-flag
 error: unknown option '--no-such-flag'
 [exit 1]
