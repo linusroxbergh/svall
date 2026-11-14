@@ -647,6 +647,19 @@ test('an update there and then on this Mac says which one runs', async () => {
   expect(screen.getByTestId('host-updating-versions').textContent).toBe('updating Codex on this Mac…');
   await act(async () => finish[1]());
   expect(screen.queryByTestId('host-updating-versions')).toBeNull();
+
+  act(() => {
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'versions', status: 'warn', detail: 'claude 1.2.4 there, ahead of 1.2.3 on this Mac', action: 'on this Mac, run claude update' });
+    store.getState().hostDone('doctor', 1);
+  });
+  fireEvent.click(screen.getByTestId('host-update-versions'));
+  expect(screen.getByTestId('host-updating-versions').textContent).toBe('updating Claude Code on this Mac…');
+  expect(screen.getByTestId('host-step-versions').querySelector('.host-mark .move-spin')).not.toBeNull();
+  expect((screen.getByTestId('host-update-versions') as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => {});
+  await act(async () => finish[2]());
+  expect(call).toHaveBeenLastCalledWith('machines.updateAgents', { kinds: ['claude'] });
 });
 
 test('a check row whose agent is behind on this Mac updates it here, after the ones there, from the same button', async () => {

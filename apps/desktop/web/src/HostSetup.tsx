@@ -250,7 +250,7 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
   const update = (machine: MachineId, there?: AgentKind[], mac?: AgentKind[]) => {
     const agents = (kinds: AgentKind[]) => kinds.map((k) => AGENT_LABEL[k]).join(' and ');
     setFailed(undefined);
-    if (there) setUpdating(`${agents(there)} on ${name}`);
+    setUpdating(there ? `${agents(there)} on ${name}` : `${agents(mac!)} on this Mac`);
     (there ? app.api().call('machines.updateAgents', { machine, kinds: there }) : Promise.resolve({}))
       .then(() => { if (mac) { setUpdating(`${agents(mac)} on this Mac`); return app.api().call('machines.updateAgents', { kinds: mac }); } })
       .then(() => { if (!app.store.getState().host?.running) startHost('doctor', { name, ...farId(run.args) }); }, fail)
@@ -332,7 +332,7 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
       <span className="host-mark">{updating ? <span className="move-spin" /> : <Mark status={isSetup(row) && row.status === 'warn' ? 'start' : row.status} />}</span>
       <span className="host-name" data-tip={label}>{label}</span>
       <div className="host-said">
-        {updating ? <span id={sentence} data-testid={`host-updating-${row.step}`}>updating {updating}…</span>
+        {updating ? <span id={sentence} role="status" data-testid={`host-updating-${row.step}`}>updating {updating}…</span>
           : asked !== undefined ? <span id={sentence} data-testid={`host-pushing-${row.step}`}>pushing to {name}…</span>
           : <span id={sentence}>{state}{leads && <>: <span className="host-leads">{leads}</span></>}</span>}
         {(action || fix.runs || more.length > 0) && (
