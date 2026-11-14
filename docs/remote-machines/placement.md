@@ -222,6 +222,7 @@ moves, the way back refuses:
 - A robot in the worker clone's main checkout: "scout works in app's main checkout on linus-vault; give it its own
   worktree on linus-vault first".
 - No clone at that place: "app is not cloned on this Mac; git clone 'git@github.com:ada/app.git' '/Users/ada/code/app'".
+  On a far home, **New robot** on the robot's island clones it there ([A fleet whose home is a server](home.md#what-the-window-shows)).
 - Something else there: "/Users/ada/code/app on this Mac is not a clone of app; move it out of the way first".
 - A shallow clone of app there: "app is a shallow clone; git -C '/Users/ada/code/app' fetch --unshallow".
 - A folder at the worktree's place: "/Users/ada/code/app/.claude/worktrees/scout on this Mac is in the way; move it out
