@@ -5,5 +5,5 @@
   "compatibility_date": "2026-10-23",
   "assets": { "directory": "../dist/site" },
   "workers_dev": true,
-  "routes": [{ "pattern": "svall.dev", "custom_domain": true }]
+  "routes": [{ "pattern": "svall.dev/*", "zone_name": "svall.dev" }]
 }
