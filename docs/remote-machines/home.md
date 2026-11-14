@@ -70,7 +70,7 @@ shows; the cause is in svalld's log.
   [While the home is away](placement.md#while-the-home-is-away). A change to a robot elsewhere is refused in words.
 - A new robot starts on this Mac, inside a clone it has, with the note "started on ada-mac while studio was away", at most five
   until studio answers again. **New robot** lists this Mac's clones and says they are this Mac's.
-- Moves, phone settings and what a machine's setup offers are hidden: only the home answers them.
+- Moves, phone settings, each Linux machine's limits and what a machine's setup offers are hidden: only the home answers them.
 
 When studio answers, the window goes back to it and reopens its terminals without a reload, and what you did here lands there once.
 Each change is applied by the rules in [Moving a robot](placement.md#while-the-home-is-away). A server whose daemon restarts or dies does
@@ -231,4 +231,4 @@ written after the copy goes to the new home, and one the new home changed too is
 - A dev server on a far robot is not forwarded to this Mac.
 - A Mac whose home dials it over Remote Login, set up with the CLI, has no route to the home's API. Its window lists this Mac's folders, its
   shelf shows this Mac's files with Finder, and **New robot** starts on this Mac. Fleet config is off, its tip naming the home, and the Phone tab
-  is hidden.
+  and each Linux machine's limits are hidden: `svall host limits <name>` on the home reads and sets them.
