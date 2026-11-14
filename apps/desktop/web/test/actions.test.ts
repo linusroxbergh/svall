@@ -86,6 +86,18 @@ describe('the + beside an island with no robot folder beside it', () => {
     expect([s.namingRobot, s.selectedIslandId, s.toast]).toEqual([true, 'i_b', undefined]);
   });
 
+  it('on a far home says why the home refused the island\'s folder for anything but a missing folder, rather than ask', async () => {
+    const c = ctx();
+    const f = fleet();
+    f.islands.i_e.folder = '~/code/x';
+    c.store.getState().setFleet(f);
+    c.store.getState().setVia({ machine: MAC, home: HOME, online: true });
+    const full = { call: () => Promise.reject(new ApiError('invalid', 'island i_e is full')) } as unknown as Api;
+    await newRobotOn({ ...c, api: full }, 'i_e');
+    const s = c.store.getState();
+    expect([s.namingRobot, s.toast?.text]).toEqual([false, 'island i_e is full']);
+  });
+
   it('on a far home asks for a folder once the home has none at the island\'s, though no robot of the island is anywhere', async () => {
     const c = ctx();
     const f = fleet();
@@ -173,6 +185,12 @@ describe('newRobotTarget', () => {
     const c = ctx();
     c.store.getState().setView('board');
     expect(await newRobotTarget(c)).toEqual({ islandId: 'i_a', cwd: '/tmp' });
+  });
+
+  it('with no robot to go by starts in the folder of the island it lands on', async () => {
+    const c = ctx();
+    c.store.getState().setFleet({ ...fleet(), robots: {}, islands: { i_x: isl('i_x', 'x', 0, { folder: '~/code/x' }) } });
+    expect(await newRobotTarget(c)).toEqual({ islandId: 'i_x', cwd: '~/code/x' });
   });
 
   it('prefers the island selected on the map, in the fleet default cwd when it has no crew', async () => {

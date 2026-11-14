@@ -25,6 +25,10 @@ const listable = (p: string): boolean => {
   try { return isFolder(p); } catch { return false; }
 };
 const holdsClone = (p: string): boolean => fs.existsSync(path.join(p, '.git'));
+// a place under a file, or one it may not look at, is no place to clone into
+const absent = (p: string): boolean => {
+  try { return !fs.lstatSync(p, { throwIfNoEntry: false }); } catch { return false; }
+};
 
 // a link is left out, as it may lead anywhere and what it leads to is listed where it is, and a dot folder, which is a tool's checkout
 function clonesIn(dir: string): string[] {
@@ -63,7 +67,7 @@ async function islandRows(state: FleetState, island: Island, runsHere: (c: Robot
   for (const { from, src, repo } of sources) {
     const at = relocate(src, { from: homeOf(from)!, to: homedir });
     add(at, repo);
-    if (!held(at) && !fs.lstatSync(at, { throwIfNoEntry: false }) && !asks.some((a) => a.path === at)) asks.push({ from, src, path: at });
+    if (!held(at) && absent(at) && !asks.some((a) => a.path === at)) asks.push({ from, src, path: at });
   }
   const remotes = await Promise.all(asks.map((a) => probe?.(a.from, a.src)));
   asks.forEach((a, n) => { const remote = remotes[n]; if (remote) rows.push({ path: a.path, clone: true, remote: withoutToken(remote), from: a.from }); });
@@ -90,7 +94,8 @@ export async function startFolders(state: FleetState, runsHere: (c: Robot) => bo
 const cloning = new Map<string, Promise<void>>();
 
 /** Clones `remote` into `dest` when nothing is there. */
-export async function cloneHere(remote: string, dest: string, git: GitRunner = cloneGit): Promise<void> {
+export async function cloneHere(remote: string, to: string, git: GitRunner = cloneGit): Promise<void> {
+  const dest = path.resolve(to);
   while (cloning.has(dest)) await cloning.get(dest)!.catch(() => {});
   if (fs.lstatSync(dest, { throwIfNoEntry: false })) return;
   const run = (async () => {
@@ -98,6 +103,8 @@ export async function cloneHere(remote: string, dest: string, git: GitRunner = c
     try {
       await must(git, ['clone', '-q', '--', remote, dest], path.dirname(dest), dest);
     } catch (e) {
+      // git keeps a clone whose checkout failed, which would pass for a finished one
+      fs.rmSync(dest, { recursive: true, force: true });
       throw new Invalid((e as Error).message);
     }
   })();

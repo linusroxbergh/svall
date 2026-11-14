@@ -147,6 +147,19 @@ test('a robot made in the sheet on a directory that is gone starts in the fleet 
   call.mockImplementation(() => Promise.resolve({}));
 });
 
+test('a robot made in the sheet on an island folder that is gone starts in a robot of the island\'s folder', async () => {
+  const f = fleet();
+  f.islands.i_b.folder = '~/code/x';
+  store.getState().setFleet(f);
+  call.mockImplementation(((_m: string, p: { cwd: string }) => (p.cwd === '~/code/x'
+    ? Promise.reject(new ApiError('invalid', 'cwd ~/code/x is not a directory')) : Promise.resolve({ id: 'c_new' }))) as never);
+  render(<NewRobot islandId="i_b" onClose={() => {}} onCreated={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+  await act(async () => {});
+  expect(call.mock.calls).toEqual([['robot.create', { islandId: 'i_b', cwd: '~/code/x' }], ['robot.create', { islandId: 'i_b', cwd: '/tmp' }]]);
+  call.mockImplementation(() => Promise.resolve({}));
+});
+
 test('a robot made on mission control from the phone starts the home command, by one tap or the sheet', async () => {
   store.getState().setFleet(fleet());
   call.mockImplementation((() => Promise.resolve({ id: 'c_new' })) as never);

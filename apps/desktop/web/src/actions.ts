@@ -249,10 +249,10 @@ export function newRobotFolder(s: AppState): string {
 // which comes back with the robot, else a fresh island, named for `folder` when the caller chose one; `made` says it is fresh
 export async function newRobotTarget(d: ActionDeps, folder?: string): Promise<{ islandId: string; cwd: string; made?: true }> {
   const s = d.store.getState();
-  const { start } = besideOf(s);
+  const { base, start } = besideOf(s);
   const found = landingOf(s);
   const islandId = found || (await d.api.call('island.create', { name: islandName(folder ?? start) })).id;
-  const cwd = s.fleet.islands[islandId]?.kind === 'home' ? s.fleet.home.cwd : start;
+  const cwd = (found && startCwds(s.fleet, found, s.via, base)[0]) || start;
   return { islandId, cwd, ...(!found && { made: true as const }) };
 }
 
