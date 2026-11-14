@@ -230,14 +230,16 @@ describe('markDormant', () => {
       expect(c.revive).toEqual({ command: `claude --resume ${SID}` });
     }
   });
-  it('marks an agent whose monitors were still watching or subagents still running interrupted, and forgets them', () => {
-    for (const running of [{ monitors: ['b1'] }, { subagents: ['a1'] }]) {
+  it('marks an agent whose monitors were still watching, or subagents or shells still running, interrupted, and forgets them', () => {
+    for (const running of [{ monitors: ['b1'] }, { subagents: ['a1'] }, { background: true as const, shellsOnly: true as const }]) {
       const c = robot({ agent: agent({ status: 'done', ...running }) });
       markDormant(c);
       expect(c.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
       expect(c.agent).toMatchObject({ status: 'done' });
       expect(c.agent?.monitors).toBeUndefined();
       expect(c.agent?.subagents).toBeUndefined();
+      expect(c.agent?.background).toBeUndefined();
+      expect(c.agent?.shellsOnly).toBeUndefined();
     }
   });
   it('resumes with the flags remembered at the start when none are read off the process', () => {

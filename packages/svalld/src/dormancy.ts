@@ -51,6 +51,8 @@ export function markSlotDormant(t: TerminalSlot, flags?: string[]): void {
   t.revive = { command: reviveCommand(t, flags ?? t.agent?.flags) };
   delete t.agent?.monitors;
   delete t.agent?.subagents;
+  delete t.agent?.background;
+  delete t.agent?.shellsOnly;
   // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
   if (t.agent && (t.agent.status === 'blocked' || t.agent.status === 'working')) {
     settle(t.agent, 'idle');
@@ -75,8 +77,8 @@ export function markDormant(c: Robot, flags?: string[]): void {
   delete c.codexDaemon;
   if (c.agent) c.agent.lastActivityAt = lastActive(c.agent);
   delete c.agent?.restingSince;
-  // its monitors and subagents die with it, which a finished turn says nothing of
-  const interrupted = !!c.agent?.monitors || !!c.agent?.subagents || c.agent?.status === 'blocked' || c.agent?.status === 'working';
+  // its monitors, subagents and background shells die with it, which a finished turn says nothing of
+  const interrupted = !!c.agent?.monitors || !!c.agent?.subagents || !!c.agent?.background || c.agent?.status === 'blocked' || c.agent?.status === 'working';
   markSlotDormant(c, flags);
   if (interrupted && c.revive?.command) c.revive.interrupted = true;
 }

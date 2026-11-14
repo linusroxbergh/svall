@@ -11,7 +11,10 @@ export type Notify = (id: string, text: string) => Promise<'sent' | 'retry'>;
 function ending(c: Robot): string | undefined {
   const a = c.agent;
   if (!a || !c.tmux) return 'stopped: its agent exited';
-  if (a.status === 'done') return a.prompt ? `stopped on an API error: ${a.prompt}` : `is done; full answer: svall robot read ${c.id} --last`;
+  if (a.status === 'done') {
+    if (a.prompt) return `stopped on an API error: ${a.prompt}`;
+    return `is done${a.shellsOnly ? ', a shell it started still running' : ''}; full answer: svall robot read ${c.id} --last`;
+  }
   if (a.status === 'idle') return 'stopped: its turn was interrupted';
   return undefined;
 }

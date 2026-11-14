@@ -55,6 +55,12 @@ test('a card whose turn left only shells running marks it on its corner, as the 
   expect(screen.getByTestId('kc-shell-c1').getAttribute('data-kind')).toBe('shell');
 });
 
+test("a second terminal's shells mark the card as the main one's do", () => {
+  const second = { cwd: '/tmp', unread: false, agent: { ...agent(), status: 'done' as const, background: true as const, shellsOnly: true as const } };
+  card(chr('c1', 'i', { x: 0, y: 0 }, { agent: agent(), second }));
+  expect(screen.getByTestId('token-shell-c1')).toBeTruthy();
+});
+
 test('a draft PR and no monitor leave the card without marks', () => {
   card(chr('c1', 'i', { x: 0, y: 0 }, { context: [pr(41, 'draft')], agent: agent() }));
   expect(screen.getByTestId('token-c1').querySelector('.mark')).toBeNull();

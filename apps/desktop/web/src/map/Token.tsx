@@ -1,6 +1,6 @@
 import type { Cell, Robot, ContextItem } from '@svall/protocol';
 import { memoByValue } from '../hooks.js';
-import { Bot, Eye, Pr, Prompt } from '../icons.js';
+import { Bot, Eye, Pr, Shell } from '../icons.js';
 import { MachineLine, MONITORING, reviewText, SHELL_RUNNING, subagentsText } from '../indicators.js';
 import { contextPctOf, inReview, isMonitoring, isShellRunning, isUnread, mainPr, subagentCount, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
@@ -124,7 +124,7 @@ export const Token = memoByValue(function Token({
               </button>
             )}
             {monitor && <span className="mark monitor" data-tip={MONITORING} data-testid={`token-monitor-${c.id}`}><Eye /></span>}
-            {shell && <span className="mark shell" data-tip={SHELL_RUNNING} data-testid={`token-shell-${c.id}`}><Prompt /></span>}
+            {shell && <span className="mark shell" data-tip={SHELL_RUNNING} data-testid={`token-shell-${c.id}`}><Shell /></span>}
           </span>
           {subs > 0 && (
             <span className="marks left">

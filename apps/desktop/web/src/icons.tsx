@@ -117,7 +117,7 @@ export const Eye = ({ size }: Props) => (
   </Svg>
 );
 
-export const Prompt = ({ size }: Props) => <Svg grid={12} size={size}><path d="M2.5 3.5 5 6 2.5 8.5M6.5 8.5h3" /></Svg>;
+export const Shell = ({ size }: Props) => <Svg grid={12} size={size}><path d="M2.5 3.5 5 6 2.5 8.5M6.5 8.5h3" /></Svg>;
 
 export const Hand = ({ size }: Props) => (
   <Svg grid={12} size={size}>

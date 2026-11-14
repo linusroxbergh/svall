@@ -34,6 +34,12 @@ describe('needOf', () => {
     expect(needOf(f, [])).toMatchObject({ working: 0, shells: 2, waiting: 1 });
   });
 
+  it("counts a second terminal's shells while that terminal's window lives", () => {
+    let f = patch(fleet(), 'c0', { agent: agent('idle'), second: second('done', { background: true, shellsOnly: true }) });
+    f = patch(f, 'c1', { agent: agent('idle'), second: { ...second('done', { background: true, shellsOnly: true })!, tmux: undefined } });
+    expect(needOf(f, [])).toMatchObject({ shells: 1 });
+  });
+
   it('counts the robots blocked or done and unread, and the phones on the fleet', () => {
     let f = patch(fleet(), 'c0', { agent: agent('blocked') });
     f = patch(f, 'c1', { agent: agent('done'), unread: true });
