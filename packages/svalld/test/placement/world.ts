@@ -94,12 +94,12 @@ export function world(o: {
   /** What w1's hello says it calls the home, and itself as a Mac. */
   names?: { home: string; me?: MachineId };
   mirror?: { home: MirrorHomes; worker: MirrorHomes & { overrides: string; backups?: string; platform?: NodeJS.Platform } }; homeLog?: Logger;
-  usage?: { claude?: FetchUsage; tails?: Record<string, string> }; scribe?: { home?: RunScribe; worker?: RunScribe };
+  usage?: { claude?: FetchUsage; workerClaude?: FetchUsage; tails?: Record<string, string> }; scribe?: { home?: RunScribe; worker?: RunScribe };
 }) {
   const config = Config.parse({});
   const stops: (() => unknown)[] = [];
-  const usageOf = (store: Store, router: Router): FetchUsage => fleetUsage({
-    state: () => store.state, claude: o.usage?.claude ?? (async () => ({ available: false, windows: [] })),
+  const usageOf = (store: Store, router: Router, claude = o.usage?.claude): FetchUsage => fleetUsage({
+    state: () => store.state, claude: claude ?? (async () => ({ available: false, windows: [] })),
     readTail: (file) => o.usage?.tails?.[file] ?? '', runsHere: (c) => router.runsHere(c),
   });
 
@@ -207,7 +207,7 @@ export function world(o: {
   const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger, undefined, W);
   const screens = new ScreenTails({ fleet: workerFleet, store: workerStore, tmux: workerTmux, connection, runsHere: (c) => c.machine === W });
   screens.start();
-  const workerUsage = usageOf(workerStore, workerRouter);
+  const workerUsage = usageOf(workerStore, workerRouter, o.usage?.workerClaude);
   const workerClaude = { dir: path.join(workerPaths.home, 'claude'), json: path.join(workerPaths.home, 'claude.json') };
   const workerRoots = rootHere((c) => workerRouter.runsHere(c));
   const workerWorkspace = new Workspace(

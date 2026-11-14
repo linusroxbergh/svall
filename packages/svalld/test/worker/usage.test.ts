@@ -55,15 +55,39 @@ describe('usage across machines', () => {
     expect(claude).toHaveBeenCalledTimes(1);
   });
 
-  it('merges plan limits as available when a running machine\'s are, idle when every machine is, and names the home\'s login', () => {
+  it('merges plan limits as available when a running machine\'s are, and idle when every machine is', () => {
     const idle: UsageSnapshot = { available: true, idle: true, windows: [] };
     const codex = [{ key: 'codex:primary', label: 'Codex', pct: 40 }];
     expect(mergeUsage(idle, [idle])).toEqual(idle);
-    expect(mergeUsage({ ...session, account: 'a@x.io' }, [idle])).toEqual({ ...session, account: 'a@x.io' });
-    expect(mergeUsage({ available: false, windows: [] }, [{ available: true, account: 'b@x.io', windows: codex }])).toEqual({ available: true, windows: codex });
+    expect(mergeUsage(session, [idle])).toEqual(session);
+    expect(mergeUsage({ available: false, windows: [] }, [{ available: true, windows: codex }])).toEqual({ available: true, windows: codex });
     // an idle machine asks no plan, so it says nothing of whether plan limits apply
     expect(mergeUsage({ available: false, windows: [] }, [idle])).toEqual({ available: false, windows: [] });
     expect(mergeUsage(idle, [{ available: false, windows: [] }])).toEqual({ available: false, windows: [] });
+  });
+
+  it('windows read under different logins each stand, and one login\'s merge as one', () => {
+    const week = (account: string, pct: number) => ({ key: 'week', label: 'Week', pct, account });
+    const codex = (account: string, pct: number, at: number) => ({ key: 'codex:primary', label: 'Codex 5 hours', pct, at, account });
+    expect(mergeUsage({ available: true, windows: [week('d@x.io', 98)] }, [{ available: true, windows: [week('r@x.io', 33), codex('r@x.io', 1, 2_000)] }]).windows)
+      .toEqual([week('d@x.io', 98), week('r@x.io', 33), codex('r@x.io', 1, 2_000)]);
+    expect(mergeUsage({ available: true, windows: [week('r@x.io', 98)] }, [{ available: true, windows: [week('r@x.io', 33)] }]).windows).toEqual([week('r@x.io', 98)]);
+    // a newer reading of another login's window is that login's, not a newer one of this
+    expect(mergeUsage({ available: true, windows: [codex('d@x.io', 5, 1_000)] }, [{ available: true, windows: [codex('r@x.io', 40, 3_000)] }]).windows)
+      .toEqual([codex('d@x.io', 5, 1_000), codex('r@x.io', 40, 3_000)]);
+    // a window whose login is unknown is no known login's, on whichever machine it was read
+    const unknown = { key: 'week', label: 'Week', pct: 50 };
+    expect(mergeUsage({ available: true, windows: [unknown] }, [{ available: true, windows: [week('r@x.io', 33)] }]).windows).toEqual([unknown, week('r@x.io', 33)]);
+    expect(mergeUsage({ available: true, windows: [week('r@x.io', 33)] }, [{ available: true, windows: [unknown] }]).windows).toEqual([week('r@x.io', 33), unknown]);
+  });
+
+  it('the home\'s usage.get shows a worker\'s Claude login beside its own when they differ', async () => {
+    const week = (account: string, pct: number): UsageSnapshot => ({ available: true, windows: [{ key: 'week', label: 'Week', pct, account }] });
+    const robots = { c_m: fleet.c_m, c_2: running(placed, 'c_2', 'claude', '/w1/c_2.jsonl') };
+    const w = world({ home: { robots }, worker: { robots }, usage: { claude: async () => week('d@x.io', 98), workerClaude: async () => week('r@x.io', 33) } });
+    await linked(w);
+    expect(await dispatch({ id: 1, method: 'usage.get', params: {} }, w.home.ctx))
+      .toEqual({ id: 1, result: { available: true, windows: [...week('d@x.io', 98).windows, ...week('r@x.io', 33).windows] } });
   });
 
   it('a worker that does not answer leaves the home\'s windows standing', async () => {

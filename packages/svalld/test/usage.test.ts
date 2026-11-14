@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentKind, FleetState, UsageSnapshot } from '@svall/protocol';
 import { dispatch, type Ctx } from '../src/api/methods.js';
-import { accountLine, codexAccount } from '../src/usage/account.js';
+import { codexAccount } from '../src/usage/account.js';
 import { cachedUsage, codexWindows, fleetUsage, usageFetcher } from '../src/usage/usage.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -60,15 +60,14 @@ describe('usageFetcher', () => {
     cleanHomes();
   });
 
-  it('reads the session, week and model-scoped windows, in that order', async () => {
+  it('reads the session, week and model-scoped windows, in that order, each under the login', async () => {
     vi.stubEnv('FAKE_CLAUDE', 'ok');
     const snap = await fetch();
     expect(snap.available).toBe(true);
-    expect(snap.account).toBe('linus@example.com');
     expect(snap.windows).toEqual([
-      { key: 'session', label: 'Session', pct: 35, resetsAt: '2026-09-16T13:50:00Z' },
-      { key: 'week', label: 'Week', pct: 56, resetsAt: '2026-09-20T22:00:00Z' },
-      { key: 'model:0:Fable', label: 'Fable', pct: 52, resetsAt: '2026-09-20T21:59:59Z' },
+      { key: 'session', label: 'Session', pct: 35, resetsAt: '2026-09-16T13:50:00Z', account: 'linus@example.com' },
+      { key: 'week', label: 'Week', pct: 56, resetsAt: '2026-09-20T22:00:00Z', account: 'linus@example.com' },
+      { key: 'model:0:Fable', label: 'Fable', pct: 52, resetsAt: '2026-09-20T21:59:59Z', account: 'linus@example.com' },
     ]);
   });
 
@@ -77,7 +76,8 @@ describe('usageFetcher', () => {
     const snap = await fetch();
     expect(snap).toMatchObject({ available: true });
     // an initialize that fails names no login, and takes no window down with it
-    expect(snap).not.toHaveProperty('account');
+    expect(snap.windows).toHaveLength(3);
+    expect(snap.windows.filter((w) => 'account' in w)).toEqual([]);
   });
 
   it('reports a login with no plan limits as unavailable rather than failing', async () => {
@@ -230,27 +230,18 @@ describe('fleetUsage', () => {
     expect((await fleetUsage({ state: both, claude: apiKeyLogin, readTail: noon })()).available).toBe(true);
   });
 
-  it('names the login behind the windows it shows, and none while nothing shows', async () => {
+  it('names the Codex login its windows were read under, and leaves Claude\'s windows under their own', async () => {
     const codexHome = makeHome();
     vi.stubEnv('CODEX_HOME', codexHome);
     fs.writeFileSync(path.join(codexHome, 'auth.json'), JSON.stringify({ tokens: { id_token: jwt({ email: 'b@x.io' }) } }));
-    const claude = async (): Promise<UsageSnapshot> => ({ ...claudeSnapshot, account: 'a@x.io' });
+    const claude = async (): Promise<UsageSnapshot> => ({ available: true, windows: [{ key: 'session', label: 'Session', pct: 5, account: 'a@x.io' }] });
     const both = stateOf(robot('a', 'claude'), robot('b', 'codex', { transcriptPath: '/b.jsonl' }));
+    expect((await fleetUsage({ state: both, claude, readTail: noon })()).windows.map((w) => [w.key, w.account]))
+      .toEqual([['session', 'a@x.io'], ['codex:primary', 'b@x.io'], ['codex:secondary', 'b@x.io']]);
+    // an API-key login carries no email, and its windows no login
+    fs.writeFileSync(path.join(codexHome, 'auth.json'), JSON.stringify({ OPENAI_API_KEY: 'sk-test' }));
     const codexOnly = stateOf(robot('b', 'codex', { transcriptPath: '/b.jsonl' }));
-    expect((await fleetUsage({ state: both, claude, readTail: noon })()).account).toBe('Claude a@x.io · Codex b@x.io');
-    expect((await fleetUsage({ state: stateOf(robot('a', 'claude')), claude })()).account).toBe('a@x.io');
-    expect((await fleetUsage({ state: codexOnly, claude, readTail: noon })()).account).toBe('b@x.io');
-    // a codex that has reported nothing yet, a claude with no windows and an idle fleet show no login for them
-    expect(await fleetUsage({ state: codexOnly, claude, readTail: () => '' })()).not.toHaveProperty('account');
-    const noWindows = async (): Promise<UsageSnapshot> => ({ available: true, windows: [], account: 'a@x.io' });
-    expect(await fleetUsage({ state: stateOf(robot('a', 'claude')), claude: noWindows })()).not.toHaveProperty('account');
-    expect((await fleetUsage({ state: both, claude: noWindows, readTail: noon })()).account).toBe('b@x.io');
-    expect(await fleetUsage({ state: stateOf(robot('a', 'claude', { live: false })), claude })()).not.toHaveProperty('account');
-    // a claude that failed while codex still shows names codex alone
-    const broken = async (): Promise<UsageSnapshot> => { throw new Error('claude exited 1'); };
-    expect((await fleetUsage({ state: both, claude: broken, readTail: noon })()).account).toBe('b@x.io');
-    // a plan whose login is unknown leaves the known one naming its agent
-    expect((await fleetUsage({ state: both, claude: async () => claudeSnapshot, readTail: noon })()).account).toBe('Codex b@x.io');
+    expect((await fleetUsage({ state: codexOnly, claude, readTail: noon })()).windows.filter((w) => 'account' in w)).toEqual([]);
   });
 });
 
@@ -270,14 +261,5 @@ describe('account readers', () => {
     fs.writeFileSync(file, JSON.stringify({ tokens: { id_token: jwt({ sub: 'x' }) } }));
     expect(codexAccount(file)).toBeUndefined();
     expect(codexAccount(path.join(home, 'missing.json'))).toBeUndefined();
-  });
-
-  it('names one login plainly, two by their agent, and the same login once', () => {
-    expect(accountLine([{ agent: 'Claude', email: 'a@x.io' }])).toBe('a@x.io');
-    expect(accountLine([{ agent: 'Claude', email: 'a@x.io' }, { agent: 'Codex', email: 'b@x.io' }])).toBe('Claude a@x.io · Codex b@x.io');
-    expect(accountLine([{ agent: 'Claude', email: 'a@x.io' }, { agent: 'Codex', email: 'a@x.io' }])).toBe('a@x.io');
-    expect(accountLine([{ agent: 'Claude' }, { agent: 'Codex', email: 'b@x.io' }])).toBe('Codex b@x.io');
-    expect(accountLine([{ agent: 'Codex', email: 'b@x.io' }])).toBe('b@x.io');
-    expect(accountLine([{ agent: 'Claude' }])).toBeUndefined();
   });
 });

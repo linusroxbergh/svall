@@ -33,6 +33,9 @@
 }
 /* the login the windows belong to, pulled up under the title */
 .use-account { margin: calc(-1 * var(--sp-lg)) 0 var(--sp-xl); font-size: var(--text-sm); color: var(--ink-3); overflow-wrap: anywhere; }
+/* each further login's windows, ruled off from the ones above */
+.use-login + .use-login { margin-top: var(--sp-2xl); padding-top: var(--sp-xl); border-top: 1px solid var(--line-soft); }
+.use-login + .use-login .use-account { margin-top: 0; }
 .use-wins { display: flex; flex-direction: column; gap: var(--sp-2xl); }
 .use-win { display: flex; flex-direction: column; gap: var(--sp-sm); }
 .use-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-lg); }
