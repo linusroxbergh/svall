@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { FleetState, Island, MachineId, Robot } from '@svall/protocol';
+import { Invalid } from '../errors.js';
+import { cloneGit, must, type GitRunner } from '../links/git.js';
 import { expandHome } from '../paths.js';
 import { withoutToken } from '../placement/checks.js';
 import { relocate } from '../placement/relocate.js';
@@ -76,4 +78,23 @@ export async function startFolders(state: FleetState, runsHere: (c: Robot) => bo
   const folders = [...own, ...paths.filter(listable).map((p) => ({ path: p, clone: inClone.has(p) || holdsClone(p) }))];
   const start = island?.kind === 'home' ? defaults.home : own[0]?.path;
   return { folders, defaults, ...(start && { start }) };
+}
+
+// one clone into a folder at a time; a robot started into it meanwhile waits and finds it there
+const cloning = new Map<string, Promise<void>>();
+
+/** Clones `remote` into `dest` when nothing is there. */
+export async function cloneHere(remote: string, dest: string, git: GitRunner = cloneGit): Promise<void> {
+  while (cloning.has(dest)) await cloning.get(dest)!.catch(() => {});
+  if (fs.lstatSync(dest, { throwIfNoEntry: false })) return;
+  const run = (async () => {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    try {
+      await must(git, ['clone', '-q', '--', remote, dest], path.dirname(dest), dest);
+    } catch (e) {
+      throw new Invalid((e as Error).message);
+    }
+  })();
+  cloning.set(dest, run);
+  try { await run; } finally { cloning.delete(dest); }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
-  BrowserTab, DROP_PART, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MachineRecord, MobileStatus, PART_BYTES,
+  BrowserTab, CLONE_TIMEOUT_MS, DROP_PART, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MachineRecord, MobileStatus, PART_BYTES,
   PROTOCOL_VERSION, ROBOT_NOTE_MAX, RUN_TEXT_MAX, RUN_TIMEOUT_MS, Refusal, Request, RequestPart, Robot, TerminalSlot, WorkerFile, emptyState, methods, robotMessage, serverWait, type Event,
 } from '../src/index.js';
 
@@ -181,8 +181,18 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 47', () => {
-    expect(PROTOCOL_VERSION).toBe(47);
+  it('is 48', () => {
+    expect(PROTOCOL_VERSION).toBe(48);
+  });
+
+  it('was 47 without an island\'s folder, the clones New robot offers for it, and the remote robot.create clones', () => {
+    expect(methods['island.update'].params.parse({ id: 'i_1', folder: '~/code/x' }).folder).toBe('~/code/x');
+    expect(methods['workspace.clones'].params.parse({ islandId: 'i_1', beside: 'c_1' })).toEqual({ islandId: 'i_1', beside: 'c_1' });
+    const row = { path: '/home/a/x', clone: true, remote: 'git@github.com:a/x.git', from: UUID_A };
+    expect(methods['workspace.clones'].result.parse({ machine: UUID_A, folders: [row], defaults: { cwd: '/home/a', home: '/home/a/.svall/home' }, start: '/home/a/x' }).folders).toEqual([row]);
+    expect(methods['robot.create'].params.parse({ islandId: 'i_1', cwd: '/home/a/x', remote: 'git@github.com:a/x.git' }).remote).toBe('git@github.com:a/x.git');
+    expect(() => methods['robot.create'].params.parse({ islandId: 'i_1', cwd: '/x', remote: '--upload-pack=x' })).toThrow();
+    expect(serverWait('robot.create', { remote: 'r' })).toBe(CLONE_TIMEOUT_MS);
   });
 
   it('was 46 without a machine\'s limits and the event that says its fleet hit one', () => {

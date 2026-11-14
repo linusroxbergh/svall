@@ -94,6 +94,8 @@ export type PhoneFallback = z.infer<typeof PhoneFallback>;
 
 // how long the daemon waits for a fresh agent to attach before it answers robot.create with a run
 export const RUN_TIMEOUT_MS = 30_000;
+/** How long robot.create may clone a remote into its folder: svalld's clone git gives up then. */
+export const CLONE_TIMEOUT_MS = 600_000;
 
 // how long enabling the phone link may take, since a checkout with no phone bundle builds one first
 const MOBILE_SET_TIMEOUT_MS = 3 * 60_000;
@@ -132,7 +134,7 @@ const FREEZE_MS = 60_000;
 // how long the daemon may hold a call before it answers, which a client adds to its own timeout
 export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'robot.wait') return (params as { timeoutMs?: number }).timeoutMs ?? WAIT_DEFAULT_MS;
-  if (method === 'robot.create' && (params as { run?: string }).run) return RUN_TIMEOUT_MS;
+  if (method === 'robot.create') return ((params as { run?: string }).run ? RUN_TIMEOUT_MS : 0) + ((params as { remote?: string }).remote ? CLONE_TIMEOUT_MS : 0);
   if (method === 'scribe.sweep') return SWEEP_TIMEOUT_MS;
   // a far command, its forward and a greeting through it, each with a timeout of its own
   if (method === 'home.connection' || method === 'fleet.homeCheck' || method === 'fleet.homeMove') return HOME_CONNECTION_MS;
@@ -263,6 +265,8 @@ export const methods = {
       run: RunText.optional(), agentProfile: z.string().optional(),
       // the robot starting it; report, that robot is owed a report on the run
       startedBy: z.string().optional(), report: z.boolean().optional(),
+      // what to clone into cwd when nothing is there, as workspace.clones names it
+      remote: z.string().regex(/^[^-]/).optional(),
     }),
     result: Robot.extend({ runSent: z.boolean().optional() }),
   },
@@ -591,4 +595,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 47;
+export const PROTOCOL_VERSION = 48;

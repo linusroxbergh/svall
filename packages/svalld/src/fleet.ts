@@ -32,11 +32,12 @@ import type { SocketEvent } from './hooks/receiver.js';
 import { newId } from './ids.js';
 import { arrangeIslands, createIsland, deleteIsland, reorderIsland, updateIsland, type IslandPatch, type NewIsland } from './islands.js';
 import { blockedCells, defaultPosition, freePosition, occupiedCells, placeOnIsland, settleHome, unfold, uniqueName } from './layout.js';
+import type { GitRunner } from './links/git.js';
 import { refreshLinks, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
 import { homeWord, machineWord } from './machine.js';
 import { randomName } from './names.js';
-import { isFolder } from './workspace/clones.js';
+import { cloneHere, isFolder } from './workspace/clones.js';
 import { linkOpencodeConfig, opencodePaths } from './opencode/install.js';
 import { claudePaths, expandHome, userPaths, type Paths } from './paths.js';
 import { seedTrust, trustRecordFile } from './placement/trust.js';
@@ -78,9 +79,10 @@ type Deps = {
   repoRoot?: (c: Robot) => string | undefined;
   // variable names beyond the agent keys that robots here get from the fleet's .env
   extraKeys?: () => string[];
+  cloneGit?: GitRunner;
 };
 // a note given at the start is the user's; report, robot `startedBy` is owed a report on `run`
-type NewRobot = { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string; note?: string; startedBy?: string; report?: boolean };
+type NewRobot = { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string; note?: string; startedBy?: string; report?: boolean; remote?: string };
 const STALE_SNAPSHOT_MS = 3_600_000;
 const RESUME_GAP_MS = 2000;
 const isDir = (p: string) => !!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory();
@@ -571,6 +573,7 @@ export class Fleet extends EventEmitter<Events> {
     const cwd = expandHome(p.cwd);
     // tmux would start the window in the daemon's own directory, or in $HOME
     if (!path.isAbsolute(cwd)) throw new NotAFolder(`cwd ${p.cwd} is not an absolute path`);
+    if (p.remote) await cloneHere(p.remote, cwd, this.deps.cloneGit);
     if (!isFolder(cwd)) throw new NotAFolder(`cwd ${p.cwd} is not a directory`, { kind: fs.existsSync(cwd) ? 'file' : 'missing' });
     const id = newId('c');
     // the path tmux reports for a pane started here, as for /tmp, so a poll moves the robot only once the pane moves

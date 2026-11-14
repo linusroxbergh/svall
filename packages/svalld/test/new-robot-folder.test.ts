@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -9,7 +10,7 @@ import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
 import { silentLogger } from '../src/log.js';
 import { fleetKeys, resolvePaths } from '../src/paths.js';
-import { resolveRepo } from '../src/links/git.js';
+import { cloneGit, resolveRepo, type GitRunner } from '../src/links/git.js';
 import { workspaceRoot } from '../src/resources/scan.js';
 import { Store } from '../src/store.js';
 import type { Tmux } from '../src/tmux/tmux.js';
@@ -242,6 +243,54 @@ describe('a typed path, which the home checks before the robot starts', () => {
     const { fleet, islandId, root } = fleetOn();
     fs.symlinkSync(folder(makeHome(), 'elsewhere'), path.join(root, 'l'));
     await expect(fleet.createRobot({ islandId, cwd: path.join(root, 'l') })).rejects.toThrow('a window opened');
+  });
+});
+
+describe('a folder New robot clones before the robot starts', () => {
+  const window = vi.fn(() => Promise.reject(new Error('a window opened')));
+  const source = () => {
+    const src = folder(makeHome(), 'src');
+    execFileSync('git', ['init', '-q', src]);
+    execFileSync('git', ['-C', src, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'one']);
+    return src;
+  };
+  const fleetOn = () => {
+    const paths = resolvePaths(makeHome());
+    const store = Store.load(paths.state, () => {});
+    const clones: string[][] = [];
+    const counted: GitRunner = (args, cwd) => { clones.push([...args]); return cloneGit(args, cwd); };
+    const fleet = new Fleet({ store, tmux: { newWindow: window } as unknown as Tmux, paths, config: Config.parse({}), log: silentLogger, cloneGit: counted });
+    return { fleet, islandId: fleet.createIsland({ name: 'x' }).id, root: paths.home, clones };
+  };
+
+  it('clones the remote into a folder that is not there, then starts in it', async () => {
+    const { fleet, islandId, root } = fleetOn();
+    const cwd = path.join(root, 'code', 'app');
+    await expect(fleet.createRobot({ islandId, cwd, remote: source() })).rejects.toThrow('a window opened');
+    expect(fs.existsSync(path.join(cwd, '.git'))).toBe(true);
+  });
+
+  it('clones once for two robots started into the same folder at once', async () => {
+    const { fleet, islandId, root, clones } = fleetOn();
+    const [cwd, remote] = [path.join(root, 'app'), source()];
+    const both = await Promise.allSettled([fleet.createRobot({ islandId, cwd, remote }), fleet.createRobot({ islandId, cwd, remote })]);
+    expect(both.map((r) => r.status === 'rejected' && (r.reason as Error).message)).toEqual(['a window opened', 'a window opened']);
+    expect(clones).toHaveLength(1);
+  });
+
+  it('says why a clone failed, and opens no window', async () => {
+    window.mockClear();
+    const { fleet, islandId, root } = fleetOn();
+    const cwd = path.join(root, 'app');
+    await expect(fleet.createRobot({ islandId, cwd, remote: path.join(root, 'no-such-repo') })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('git clone') });
+    expect(fs.existsSync(cwd)).toBe(false);
+    expect(window).not.toHaveBeenCalled();
+  });
+
+  it('clones nothing into a folder already there', async () => {
+    const { fleet, islandId, root, clones } = fleetOn();
+    await expect(fleet.createRobot({ islandId, cwd: folder(root, 'app'), remote: source() })).rejects.toThrow('a window opened');
+    expect(clones).toEqual([]);
   });
 });
 
