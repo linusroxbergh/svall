@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { promptLine } from '../agent/composer.js';
 import { onPath } from '../agents.js';
 import { releaseTmux } from '../release.js';
 import { helper } from '../runtime.js';
@@ -121,10 +122,12 @@ export function parseScreen(out: string): Screen {
 }
 
 // capture-pane -e rows as -p prints them, but with the url after a link whose text is not that url, once per url: Codex
-// and OpenCode mark links with OSC 8, often over a label alone, which -p drops
+// and OpenCode mark links with OSC 8, often over a label alone, which -p drops. A prompt line keeps only what was typed
 export function screenText(out: string): string {
   const named = new Set<string>();
   return out.split('\n').map((row) => {
+    const typed = promptLine(row);
+    if (typed !== undefined) return typed.replace(/ +$/, '');
     let text = '';
     let link: { url: string; label: string } | undefined;
     const end = () => {

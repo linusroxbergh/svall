@@ -44,6 +44,12 @@ function readOpencode(rows: string[], cursor: number): Composer {
   return input.every((t) => OPENCODE_PLACEHOLDER.test(t)) ? 'empty' : 'draft';
 }
 
+// the row the keys go to: Claude Code's marker takes a no-break space, and Codex's alone is bold without faint
+const PROMPT_LINE = /^(?:\x1b\[[\d;:]*m)*❯ |^\x1b\[1m›\x1b\[0m(?:\x1b\[[\d;:]*m)* /;
+
+/** A capture-pane -e row that is the agent's prompt line, without the placeholder or suggested prompt it draws faint there. */
+export const promptLine = (row: string): string | undefined => (PROMPT_LINE.test(row) ? plain(row, false) : undefined);
+
 type Attrs = { dim: boolean; inverse: boolean };
 
 // a row as capture-pane -e prints it, without its escapes, and without its faint text unless `faint`; with that text goes
