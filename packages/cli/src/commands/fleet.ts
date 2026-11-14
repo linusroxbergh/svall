@@ -1,6 +1,5 @@
 import os from 'node:os';
 import readline from 'node:readline';
-import { Command } from 'commander';
 import { z } from 'zod';
 import { Enrolment, FleetId, HomeManifest, HomeMoveId, MachineId, MachineRecord, type AdoptAnswer } from '@svall/protocol';
 import { readFleetConfig } from '@svall/svalld/config';
@@ -8,7 +7,7 @@ import { homeFacts } from '@svall/svalld/fleet/home-freeze';
 import { abortAdopt, adoptStatus, carriedWorkers, installAdopt, packFleet, readMarker, settleMove, stageAdopt, type AdoptDeps, type Asker } from '@svall/svalld/fleet/home-move';
 import { dialSocket, dialSocketTooLong, resolvePaths } from '@svall/svalld/paths';
 import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
-import { fleetHomes } from '@svall/svalld/uninstall';
+import { fleetHomes } from '@svall/svalld/fleet-homes';
 import { installPrefix } from '@svall/svalld/release';
 import { machineId } from '@svall/svalld/machine';
 import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@svall/svalld/mobile';
@@ -22,7 +21,7 @@ import { SshMaster } from '../controller/ssh.js';
 import { printResult } from '../format.js';
 import { farProfile, type Target } from '../target.js';
 import { ended, interactiveSsh, stepLine, tiered } from './host.js';
-import { connectChoice, connectFlags, fleetLimits } from './limits.js';
+import { connectChoice } from './limits.js';
 import { parseDuration } from './parse.js';
 import { enrollHere, realEnrol } from './worker.js';
 
@@ -120,134 +119,23 @@ export function finishFlow(out: HostOutcome, json: boolean, steps: StepEvent[], 
   if (out.stopped) process.exitCode = 1;
 }
 
-/** A home move's commands: those the far machine runs for a driver over ssh, and `home`, the driver. */
-function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolean): void {
+/** The line a join that went through ends on, the home by the name this machine knows it by. */
+export const joinedLine = (home: string, platform: NodeJS.Platform = process.platform): string => `This fleet runs on ${home} now, and ${thisMachine(platform)} is its worker.`;
+
+export function fleetActions(target: () => Target, json: () => boolean) {
   const idOf = (id: string): HomeMoveId => {
     const parsed = HomeMoveId.safeParse(id);
     if (!parsed.success) throw new Error(`${id} is not a home move's id`);
     return parsed.data;
   };
   const answer = (a: AdoptAnswer): void => printResult(a, true);
-  cmd.command('facts').description('what this machine says of itself to a home move\'s check').action(async () => {
-    const t = target();
-    const paths = resolvePaths(t.home);
-    const worker = isWorker(paths);
-    // the fleet this folder holds: a worker's own fleet.json may go by an id of its own
-    printResult(await homeFacts(paths, { me: machineId(), role: worker ? 'worker' : 'home', fleetId: worker ? readWorkerFile(paths).fleetId : readFleetConfig(paths).id, ...(!worker && { carried: carriedWorkers(paths, MachineRegistry.load().list(), t.name) ?? [] }) }), json());
-  });
-  // the driver runs it over ssh, the install with its key on stdin once the old home is marked; nothing a person types takes the fleet
-  cmd.command('adopt', { hidden: true }).description('take the fleet from the home it leaves: --stage reads its archive from stdin; alone, reads the key of the move\'s driver from stdin, then stops, installs and starts this machine as its home')
-    .argument('<id>', 'the move\'s id')
-    .option('--stage', 'stage the archive on stdin, in base64')
-    .option('--sha256 <sha>', 'the archive\'s sha256')
-    .option('--home-ssh <destination>', 'the destination the old home dials this machine at')
-    .action(async (raw: string, o: { stage?: boolean; sha256?: string; homeSsh?: string }) => {
-      const t = target();
-      const id = idOf(raw);
-      const d = adoptDeps(t);
-      // an ssh that goes away leaves this to finish
-      process.on('SIGHUP', () => undefined);
-      process.stdout.on('error', () => undefined);
-      if (o.stage) {
-        if (!o.sha256) throw new Error('--stage takes --sha256');
-        return answer(await stageAdopt(d, id, o.sha256, Buffer.from(await readStdin(), 'base64')));
-      }
-      const key = process.stdin.isTTY ? undefined : (await readStdin()).trim();
-      const registry = MachineRegistry.load();
-      answer(await installAdopt(d, id, key, enrolmentFor(d.paths, d.me, { ...(o.homeSsh && { ssh: o.homeSsh }), home: { ...registry.localMachine(), svallBase: installPrefix() }, ...(t.managed && { profile: t.name }) })));
-    });
-  const asks = (c: Command): Command => c.argument('<id>', 'the move\'s id').option('--asker <machine-id>', 'the home that asks, which only its worker can tell the move was not taken').option('--fleet <fleet-id>', 'the fleet it asks of');
   const askerOf = (o: { asker?: string; fleet?: string }): Asker | undefined => (o.asker && o.fleet ? { machine: MachineId.parse(o.asker), fleetId: FleetId.parse(o.fleet) } : undefined);
-  asks(cmd.command('status').description('what this machine says of a home move; to the home it serves, a move it never heard of it refuses for good'))
-    .action(async (raw: string, o: { asker?: string; fleet?: string }) => answer(await adoptStatus(adoptDeps(target()), idOf(raw), askerOf(o))));
-  asks(cmd.command('abort').description('call a home move off here, for good, unless it has gone through'))
-    .action(async (raw: string, o: { asker?: string; fleet?: string }) => answer(await abortAdopt(adoptDeps(target()), idOf(raw), askerOf(o))));
-  cmd.command('export').description('the fleet\'s archive as JSON, in base64, for the machine it moves to; reads what the archive says of itself from stdin').argument('<id>', 'the move\'s id')
-    .action(async (raw: string) => {
-      const m = HomeManifest.parse(JSON.parse(await readStdin()));
-      if (m.id !== idOf(raw)) throw new Error('the manifest is of another move');
-      const t = target();
-      const paths = resolvePaths(t.home);
-      const workers = carriedWorkers(paths, MachineRegistry.load().list(), t.name);
-      if (!workers) throw new Error(`${paths.workersFile} cannot be read, so which workers this move carries is not known; fix it, then try again`);
-      const { bytes, sha256 } = await packFleet(paths, { ...m, workers: workers.filter((w) => w.id !== m.to) });
-      printResult({ sha256, archive: bytes.toString('base64') }, true);
-    });
-  // the machine that took the fleet tells the old home over ssh, with its driver's key on stdin; nothing a person types ends the wait
-  cmd.command('settle', { hidden: true }).argument('<id>', 'the move\'s id')
-    .requiredOption('--outcome <outcome>', 'adopted or not-adopted')
-    .action(async (raw: string, o: { outcome: string }) => {
-      const t = target();
-      const id = idOf(raw);
-      if (o.outcome !== 'adopted' && o.outcome !== 'not-adopted') throw new Error(`--outcome takes adopted or not-adopted, not ${o.outcome}`);
-      const sent = Settle.parse(process.stdin.isTTY ? {} : JSON.parse((await readStdin()) || '{}'));
-      if (o.outcome === 'adopted' && sent.key && !sent.enrol) throw new Error('--outcome adopted takes the enrolment on stdin');
-      // without the key the settle refuses before it reads the enrolment
-      const told = o.outcome === 'adopted' ? { status: 'adopted' as const, enrol: sent.enrol! } : { status: 'not-adopted' as const };
-      printResult(await settleMove(resolvePaths(t.home), id, told, sent.key, {
-        join: (enrol, key) => withClient(() => Client.connect(t.home), (c) => c.call('fleet.homeMove', { op: 'join', id, enrol, key })),
-        thaw: (key) => withClient(() => Client.connect(t.home), (c) => c.call('fleet.homeMove', { op: 'told', id, key })),
-        start: () => realHomeDaemon(t).start(),
-      }), true);
-    });
-  const home = cmd.command('home').description('where the fleet runs').action(async () => {
-    const t = target();
-    const h = await withClient(() => Client.connect(t.home), (c) => c.call('fleet.home', {}));
-    printResult(h, json(), () => (h.mine ? `the fleet runs here, on ${h.name}` : `the fleet runs on ${h.name}, and this machine is its worker`));
-  });
-  home.command('set').description('move the fleet to <machine>, or back here with local: its islands, notes, settings and phone pairing; robots stay where they run')
-    .argument('<machine>', 'a worker of this fleet, or local')
-    .option('--interrupt-after <duration>', 'interrupt what a robot of mission control runs after this long, 0 at once; without it, one at work stops the move before anything moves')
-    .action(async (machine: string, o: { interruptAfter?: string }) => {
-      const t = target();
-      const steps: StepEvent[] = [];
-      const d = moveDeps(t, json(), steps);
-      const out = await (machine === 'local' ? moveHomeBack(d, crewChoice(o)) : moveHomeOut(machine, d, crewChoice(o)));
-      finishFlow(out, json(), steps, { done: `The fleet runs on ${machine === 'local' ? thisMachine() : machine}. Open the phone from its new QR code once.`, stopped: 'The move did not finish.' });
-    });
-  home.command('retry').description('go on with the move this machine waits on, from what stays staged').action(async () => {
-    const steps: StepEvent[] = [];
-    finishFlow(await resumeHome(moveDeps(target(), json(), steps)), json(), steps, { done: 'The move has gone through. Open the phone from its new QR code once.', stopped: 'The move did not finish.' });
-  });
-  home.command('abort').description('call off the move this machine waits on, once the machine that holds it says it was not taken').action(async () => {
-    const steps: StepEvent[] = [];
-    // mission control's robots stay where the move sent them unless a person brings them back
-    finishFlow(await abortHome(moveDeps(target(), json(), steps)), json(), steps, {
-      done: 'mission control\'s robots that went ahead stay there: svall fleet home crew-back brings them back', stopped: 'The move was not called off.',
-    });
-  });
-  home.command('crew-back').description('bring back mission control\'s robots a move that stopped left away from the home')
-    .option('--interrupt-after <duration>', 'interrupt what they run after this long, 0 at once; without it, one at work stays there and says so')
-    .action(async (o: { interruptAfter?: string }) => {
-      const steps: StepEvent[] = [];
-      finishFlow(await bringCrewBack(moveDeps(target(), json(), steps), crewChoice(o)), json(), steps, { done: 'Mission control\'s robots are on the home.', stopped: 'Mission control\'s robots did not all come back.' });
-    });
-}
-
-/** The line a join that went through ends on, the home by the name this machine knows it by. */
-export const joinedLine = (home: string, platform: NodeJS.Platform = process.platform): string => `This fleet runs on ${home} now, and ${thisMachine(platform)} is its worker.`;
-
-/** What a fleet's home runs for the fleet as a whole: taking a worker that opens the link itself. */
-export function fleetCommands(target: () => Target, json: () => boolean): Command {
-  const cmd = new Command('fleet').description("the fleet this machine is the home of");
-  cmd.command('enroll-worker').description('take a machine as a worker that dials in: its record, and a new token printed once with --json')
-    .argument('<machine-id>', "the worker's machine id")
-    .requiredOption('--name <name>', 'the name the fleet knows it by')
-    .requiredOption('--platform <platform>', 'darwin or linux')
-    .requiredOption('--arch <arch>', 'its architecture, as node names it')
-    .requiredOption('--home <path>', "its account's home")
-    .requiredOption('--svall-base <path>', 'where svall is installed there')
-    .option('--keep-token', 'answer with the token this home holds for it, where it holds one')
-    .action(async (id: string, o: Facts & { keepToken?: boolean }) => {
+  return {
+    enrollWorker: async (id: string, o: Facts & { keepToken?: boolean }) => {
       if (!json()) throw new Error('fleet enroll-worker prints a new token for svall worker enroll to read; run it with --json');
       printResult(await enrollWorker(target(), id, o), true);
-    });
-  cmd.addCommand(fleetLimits(target, json));
-  connectFlags(cmd.command('join').description('make this fleet, empty, a worker of the fleet whose home is at <ssh>; the home never dials this machine')
-    .argument('<ssh>', "the home's ssh destination")
-    .option('--name <name>', 'the name the fleet knows this machine by; this machine\'s own, by default')
-    .option('--home-profile <name>', 'the fleet there, when it is not the private one'))
-    .action(async (ssh: string, { limits, ...o }: { name?: string; homeProfile?: string; limits?: string | false }) => {
+    },
+    join: async (ssh: string, { limits, ...o }: { name?: string; homeProfile?: string; limits?: string | false }) => {
       const t = target();
       const steps: StepEvent[] = [];
       const emit = flowReporter(json(), steps);
@@ -270,7 +158,81 @@ export function fleetCommands(target: () => Target, json: () => boolean): Comman
       });
       // a join that went through left this fleet a worker of the home, by the name this machine knows it by
       finishFlow(out, json(), steps, { done: out.stopped ? '' : joinedLine(readWorkerFile(resolvePaths(t.home)).homeName), stopped: `${thisMachine()} did not join the fleet.` });
-    });
-  homeMoveCommands(cmd, target, json);
-  return cmd;
+    },
+    facts: async () => {
+      const t = target();
+      const paths = resolvePaths(t.home);
+      const worker = isWorker(paths);
+      // the fleet this folder holds: a worker's own fleet.json may go by an id of its own
+      printResult(await homeFacts(paths, { me: machineId(), role: worker ? 'worker' : 'home', fleetId: worker ? readWorkerFile(paths).fleetId : readFleetConfig(paths).id, ...(!worker && { carried: carriedWorkers(paths, MachineRegistry.load().list(), t.name) ?? [] }) }), json());
+    },
+    adopt: async (raw: string, o: { stage?: boolean; sha256?: string; homeSsh?: string }) => {
+      const t = target();
+      const id = idOf(raw);
+      const d = adoptDeps(t);
+      // an ssh that goes away leaves this to finish
+      process.on('SIGHUP', () => undefined);
+      process.stdout.on('error', () => undefined);
+      if (o.stage) {
+        if (!o.sha256) throw new Error('--stage takes --sha256');
+        return answer(await stageAdopt(d, id, o.sha256, Buffer.from(await readStdin(), 'base64')));
+      }
+      const key = process.stdin.isTTY ? undefined : (await readStdin()).trim();
+      const registry = MachineRegistry.load();
+      answer(await installAdopt(d, id, key, enrolmentFor(d.paths, d.me, { ...(o.homeSsh && { ssh: o.homeSsh }), home: { ...registry.localMachine(), svallBase: installPrefix() }, ...(t.managed && { profile: t.name }) })));
+    },
+    status: async (raw: string, o: { asker?: string; fleet?: string }) => answer(await adoptStatus(adoptDeps(target()), idOf(raw), askerOf(o))),
+    abort: async (raw: string, o: { asker?: string; fleet?: string }) => answer(await abortAdopt(adoptDeps(target()), idOf(raw), askerOf(o))),
+    export: async (raw: string) => {
+      const m = HomeManifest.parse(JSON.parse(await readStdin()));
+      if (m.id !== idOf(raw)) throw new Error('the manifest is of another move');
+      const t = target();
+      const paths = resolvePaths(t.home);
+      const workers = carriedWorkers(paths, MachineRegistry.load().list(), t.name);
+      if (!workers) throw new Error(`${paths.workersFile} cannot be read, so which workers this move carries is not known; fix it, then try again`);
+      const { bytes, sha256 } = await packFleet(paths, { ...m, workers: workers.filter((w) => w.id !== m.to) });
+      printResult({ sha256, archive: bytes.toString('base64') }, true);
+    },
+    settle: async (raw: string, o: { outcome: string }) => {
+      const t = target();
+      const id = idOf(raw);
+      if (o.outcome !== 'adopted' && o.outcome !== 'not-adopted') throw new Error(`--outcome takes adopted or not-adopted, not ${o.outcome}`);
+      const sent = Settle.parse(process.stdin.isTTY ? {} : JSON.parse((await readStdin()) || '{}'));
+      if (o.outcome === 'adopted' && sent.key && !sent.enrol) throw new Error('--outcome adopted takes the enrolment on stdin');
+      // without the key the settle refuses before it reads the enrolment
+      const told = o.outcome === 'adopted' ? { status: 'adopted' as const, enrol: sent.enrol! } : { status: 'not-adopted' as const };
+      printResult(await settleMove(resolvePaths(t.home), id, told, sent.key, {
+        join: (enrol, key) => withClient(() => Client.connect(t.home), (c) => c.call('fleet.homeMove', { op: 'join', id, enrol, key })),
+        thaw: (key) => withClient(() => Client.connect(t.home), (c) => c.call('fleet.homeMove', { op: 'told', id, key })),
+        start: () => realHomeDaemon(t).start(),
+      }), true);
+    },
+    home: async () => {
+      const t = target();
+      const h = await withClient(() => Client.connect(t.home), (c) => c.call('fleet.home', {}));
+      printResult(h, json(), () => (h.mine ? `the fleet runs here, on ${h.name}` : `the fleet runs on ${h.name}, and this machine is its worker`));
+    },
+    homeSet: async (machine: string, o: { interruptAfter?: string }) => {
+      const t = target();
+      const steps: StepEvent[] = [];
+      const d = moveDeps(t, json(), steps);
+      const out = await (machine === 'local' ? moveHomeBack(d, crewChoice(o)) : moveHomeOut(machine, d, crewChoice(o)));
+      finishFlow(out, json(), steps, { done: `The fleet runs on ${machine === 'local' ? thisMachine() : machine}. Open the phone from its new QR code once.`, stopped: 'The move did not finish.' });
+    },
+    homeRetry: async () => {
+      const steps: StepEvent[] = [];
+      finishFlow(await resumeHome(moveDeps(target(), json(), steps)), json(), steps, { done: 'The move has gone through. Open the phone from its new QR code once.', stopped: 'The move did not finish.' });
+    },
+    homeAbort: async () => {
+      const steps: StepEvent[] = [];
+      // mission control's robots stay where the move sent them unless a person brings them back
+      finishFlow(await abortHome(moveDeps(target(), json(), steps)), json(), steps, {
+        done: 'mission control\'s robots that went ahead stay there: svall fleet home crew-back brings them back', stopped: 'The move was not called off.',
+      });
+    },
+    crewBack: async (o: { interruptAfter?: string }) => {
+      const steps: StepEvent[] = [];
+      finishFlow(await bringCrewBack(moveDeps(target(), json(), steps), crewChoice(o)), json(), steps, { done: 'Mission control\'s robots are on the home.', stopped: 'Mission control\'s robots did not all come back.' });
+    },
+  };
 }

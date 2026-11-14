@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ProtocolMismatch } from '@svall/svalld/fleets';
+import { ProtocolMismatch } from '@svall/svalld/handshake';
 import type { HomeSetup } from '@svall/svalld/setup';
 import { checkoutRuntime, bundleRuntime } from '@svall/svalld/runtime';
 import { launch, type LaunchDeps } from '../src/launch.js';

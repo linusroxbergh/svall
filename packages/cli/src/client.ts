@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import WebSocket from 'ws';
-import { handshake, handshakeHome, ProtocolMismatch } from '@svall/svalld/fleets';
+import { handshake, handshakeHome, ProtocolMismatch } from '@svall/svalld/handshake';
 import { machineId } from '@svall/svalld/machine';
 import { svallHome, resolvePaths } from '@svall/svalld/paths';
 import { SHIM, profileLabel } from '@svall/svalld/profile';
-import { ApiError, PART_BYTES, serverWait, type Event, type FleetState, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
+import type { Event, FleetState, MethodName, Params, Response, Result } from '@svall/protocol';
+import { ApiError, PART_BYTES, serverWait } from '@svall/protocol/wire';
+import { LOCAL, MachineRegistry } from './controller/registry.js';
 import { resolveTarget, type Target } from './target.js';
 
 // a wedged daemon must not hang the control loop, which shells out to svall and expects it to return.
@@ -123,6 +125,13 @@ export class Client {
   onClose(fn: () => void): void {
     this.ws.once('close', fn);
   }
+}
+
+/** The client a command works through: the daemon here, or the one on the machine `host` names. */
+export async function connectFor(o: { home: string; host?: string; profile?: string }): Promise<Client> {
+  if (o.host === undefined || o.host === LOCAL) return Client.connect(o.home);
+  const { connectRemote } = await import('./controller/connection.js');
+  return connectRemote({ registry: MachineRegistry.load(), machine: o.host, fleetHome: o.home, profile: o.profile });
 }
 
 export async function withClient<T>(connect: () => Promise<Client>, f: (c: Client) => Promise<T>): Promise<T> {

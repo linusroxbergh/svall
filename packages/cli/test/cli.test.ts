@@ -15,7 +15,7 @@ import { BUNDLE_ID, isProfileName, LAUNCHD_LABEL, profileLabel } from '@svall/sv
 import { cleanHomes, daemonStarts, hasTmux, makeHome, waitFor } from '@svall/svalld/test-helpers';
 import { Tmux } from '@svall/svalld/tmux';
 import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
-import { setupCommand } from '../src/commands/setup.js';
+import { setupCommand } from '../src/definitions/setup.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { buildProgram, typo } from '../src/program.js';
 import { installFakeSsh } from './controller/fake-ssh.js';

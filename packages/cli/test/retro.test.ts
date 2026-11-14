@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RetroPlan, RetroStatus } from '@svall/protocol';
 import { finding, report } from '@svall/svalld/retro/test-report';
 import type { Client } from '../src/client.js';
-import { formatPlan, retroCommands } from '../src/commands/retro.js';
+import { formatPlan } from '../src/commands/retro.js';
+import { retroCommands } from '../src/definitions/retro.js';
 
 const plan: RetroPlan = {
   version: 2, id: 'r_1761562980', created: 0, span: { from: 0, to: 1, label: 'since the last retro (2026-10-13)' },

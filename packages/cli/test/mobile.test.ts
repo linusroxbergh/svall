@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MobileStatus } from '@svall/protocol';
 import type { Client } from '../src/client.js';
-import { mobileCommand } from '../src/commands/mobile.js';
+import { mobileCommand } from '../src/definitions/mobile.js';
 
 const SERVING: MobileStatus = { serving: true, url: 'https://mac.tailnet.ts.net:8443/', pair: 'https://mac.tailnet.ts.net:8443/#p4ss', port: 8443, logins: [], phones: [] };
 

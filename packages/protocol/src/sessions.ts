@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Sha256 } from './ids.js';
-import { PUSH_STATUSES, type PushStatus } from './messages.js';
+import { PUSH_STATUSES } from './enums.js';
+import type { PushStatus } from './messages.js';
 import { shownAgent } from './robot-message.js';
 import { AgentKind, type Agent, type AgentStatus, type Robot, type FleetState } from './state.js';
 

@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { PROTOCOL_VERSION } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
-import { agentCommand, setMainAgentCli, type AgentDeps } from '../src/commands/agent.js';
+import { setMainAgentCli, type AgentDeps } from '../src/commands/agent.js';
+import { agentCommand } from '../src/definitions/agent.js';
 
 function deps(o: Partial<AgentDeps> = {}) {
   const paths = resolvePaths(fs.mkdtempSync(path.join(os.tmpdir(), 'svall-agent-')));

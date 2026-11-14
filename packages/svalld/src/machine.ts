@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { MachineId, MachineRecord } from '@svall/protocol';
+import { MachineId } from '@svall/protocol/ids';
+import { MachineRecord } from '@svall/protocol/machines';
 import { createDurable, writeDurable } from './durable.js';
 
 // the hardware the id was made on, which a copy of the file to another machine no longer matches

@@ -17,6 +17,8 @@
     "./tmux": "./src/tmux/tmux.ts",
     "./test-helpers": "./test/helpers.ts",
     "./config": "./src/config.ts",
+    "./fleet-homes": "./src/fleet-homes.ts",
+    "./handshake": "./src/handshake.ts",
     "./machine": "./src/machine.ts",
     "./link/ssh": "./src/link/ssh.ts",
     "./link/connection-info": "./src/link/connection-info.ts",

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RETRO_SPANS } from './enums.js';
 import { AgentKind, RetroStage } from './state.js';
 
 /** What a retro finding is about, which sets what one occurrence of it costs. */
@@ -80,7 +81,7 @@ export type Preset = z.infer<typeof Preset>;
 export const Billing = z.enum(['api-key', 'subscription', 'provider']);
 export type Billing = z.infer<typeof Billing>;
 
-export const RetroSpan = z.enum(['last', '7d', '30d']);
+export const RetroSpan = z.enum(RETRO_SPANS);
 export type RetroSpan = z.infer<typeof RetroSpan>;
 
 /** A plan: what is in scope, what was left out and why, and the work frozen for its run. */

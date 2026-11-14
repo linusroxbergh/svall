@@ -28,8 +28,8 @@ vi.mock('../src/client.js', async (actual) => {
   return { ...real, withClient: (connect: Parameters<typeof real.withClient>[0], f: Parameters<typeof real.withClient>[1]) => (up.on ? f({ call: (m: string, p: unknown) => { up.calls.push([m, p]); return Promise.resolve({}); }, close: () => {} } as never) : real.withClient(connect, f)) };
 });
 
-const { fleetCommands } = await import('../src/commands/fleet.js');
-const { versionCommand } = await import('../src/commands/version.js');
+const { fleetCommands } = await import('../src/definitions/fleet.js');
+const { versionCommand } = await import('../src/definitions/version.js');
 type MoveDeps = import('../src/controller/home.js').MoveDeps;
 
 const ID = 'hm_abcdefghij';

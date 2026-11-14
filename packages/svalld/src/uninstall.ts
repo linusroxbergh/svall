@@ -8,12 +8,13 @@ import { setSvallPermissions } from './svall-permissions.js';
 import { removeOwnedTrust, trustRecordFile } from './placement/trust.js';
 import { unmergeHooks, unmergeStatusLine } from './agent-hooks.js';
 import { codexPaths, type CodexPaths } from './codex/install.js';
+import { fleetHomes } from './fleet-homes.js';
 import { SystemdError, daemonReload, disableUnit, realRun, type Run } from './linux/service.js';
 import { agentHomesEnv, ourUnits } from './linux/setup.js';
 import { fleetOrigin, portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { opencodePaths, removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
 import { claudePaths, resolvePaths } from './paths.js';
-import { BUNDLE_ID, homePrefix, isFleetName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
+import { BUNDLE_ID, LAUNCHD_LABEL, SHIM } from './profile.js';
 import { readJsonSettings, readOrUndefined, requireWritable, writeJsonSettings, type JsonSettings } from './settings-file.js';
 import { shimNames } from './setup.js';
 import { resolveTmux } from './tmux/tmux.js';
@@ -238,18 +239,6 @@ export async function runUninstall(o: {
   }
   return [...done, ...removeShims(o.shimDir)];
 }
-
-// a fleet home is one that holds a fleet.json, the config.json it is split out of, or the config.json.bak a split
-// left, so a folder of the user's that happens to be named like one is never offered up for deletion
-const isFleetHome = (p: string): boolean =>
-  fs.statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
-  && [resolvePaths(p).fleetConfig, resolvePaths(p).legacyConfig, `${resolvePaths(p).legacyConfig}.bak`].some((f) => fs.existsSync(f));
-
-export const fleetHomes = (homedir: string): string[] => fs.readdirSync(homedir)
-  .filter((f) => f === path.basename(profileHome(PRIVATE, homedir)) || (f.startsWith(homePrefix) && isFleetName(f.slice(homePrefix.length))))
-  .sort()
-  .map((f) => path.join(homedir, f))
-  .filter(isFleetHome);
 
 /** Each fleet home's folder of copies of a person's own agent files. */
 export const fleetBackups = (homedir: string): string[] => fleetHomes(homedir).map((h) => resolvePaths(h).mirrorBackup).filter((f) => fs.existsSync(f));

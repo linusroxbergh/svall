@@ -1,7 +1,7 @@
 import path from 'node:path';
-import { Command } from 'commander';
 import { expandHome } from '@svall/svalld/paths';
-import { bareUrl, contextKind, isPathRef, itemUrl, type ContextItem } from '@svall/protocol';
+import type { ContextItem } from '@svall/protocol';
+import { bareUrl, contextKind, isPathRef, itemUrl } from '@svall/protocol/links';
 
 // a token with a scheme or an absolute path starts an item; everything else is the label of the item before it
 const startsItem = (token: string): boolean => /^[a-z][a-z0-9+.-]*:\/\//i.test(token) || isPathRef(token);
@@ -22,7 +22,6 @@ export function parseContext(spec: string): ContextItem[] {
 }
 
 export type ContextFlags = { context: string[]; pin: string[]; unpin: string[]; drop: string[] };
-const repeat = (v: string, acc: string[]) => [...acc, v];
 
 // a ref as svalld stores it: a path expanded and resolved, a link at the level worth a chip; so a ~ path or a view
 // inside a PR given here matches the stored item, and an item given as ~/x in the same command matches its own ref
@@ -44,13 +43,4 @@ export function editContext(current: ContextItem[], o: ContextFlags): ContextIte
     if (unpin.includes(ref)) { const { pinned: _p, ...rest } = it; return rest; }
     return it;
   });
-}
-
-export function contextOptions(cmd: Command): Command {
-  return cmd
-    .option('--context <spec>', '<ref>[ label]..., repeatable; each URL or absolute path starts a new item; replaces the manual items', repeat, [] as string[])
-    .option('--pin <ref>', 'mark an item to read before starting, repeatable', repeat, [] as string[])
-    .option('--unpin <ref>', 'unmark a pinned item, repeatable', repeat, [] as string[])
-    .option('--drop <ref>', 'remove an item, repeatable', repeat, [] as string[])
-    .option('--instructions <text>', 'agent-only instructions');
 }

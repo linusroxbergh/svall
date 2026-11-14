@@ -2,7 +2,7 @@ import QRCode from 'qrcode';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppShow } from '@svall/protocol';
 import type { Client } from '../src/client.js';
-import { appCommands } from '../src/commands/app.js';
+import { appCommands } from '../src/definitions/app.js';
 
 const PAIR = 'https://mac.tail1234ab.ts.net:8443/#p4ssw0rdp4ssw0rdp4ssw0rd';
 

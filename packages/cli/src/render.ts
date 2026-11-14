@@ -1,4 +1,6 @@
-import { contextPctOf, shownAgent, type Agent, type Robot, type TerminalSlot } from '@svall/protocol';
+import type { Agent, Robot, TerminalSlot } from '@svall/protocol';
+import { shownAgent } from '@svall/protocol/robot-message';
+import { contextPctOf } from '@svall/protocol/sessions';
 
 const sessionState = (s: TerminalSlot, agent: Agent | undefined = s.agent): string =>
   (!s.tmux ? 'dormant' : agent ? agent.status + (s.unread ? '*' : '') : 'shell');

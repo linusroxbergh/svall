@@ -865,7 +865,8 @@ esac
     far.registry.save();
     // a doctor's check from before, which host list would go on showing
     fs.writeFileSync(path.join(work, 'config', 'checks.json'), JSON.stringify({ [REMOTE]: { at: 1, failed: 2, warned: 0, release: '1.2.3' } }));
-    const { hostCommands, lastChecks } = await import('../src/commands/host.js');
+    const { hostCommands } = await import('../src/definitions/host.js');
+    const { lastChecks } = await import('../src/commands/host.js');
     const cli = () => hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => path.join(work, 'config'));
     const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     try {

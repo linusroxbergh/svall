@@ -400,7 +400,8 @@ describe('the last check', () => {
     const before = { [REMOTE]: { at: 1, failed: 0, warned: 0, release: '1.2.3' } };
     fs.writeFileSync(path.join(config, 'checks.json'), JSON.stringify(before));
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    const { hostCommands, lastChecks } = await import('../src/commands/host.js');
+    const { hostCommands } = await import('../src/definitions/host.js');
+    const { lastChecks } = await import('../src/commands/host.js');
     try {
       await hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => config).parseAsync(['add', 'trift', '--ssh', 'refused.test'], { from: 'user' });
     } finally { vi.restoreAllMocks(); process.exitCode = 0; }
@@ -412,7 +413,7 @@ describe('ndjson output', () => {
   it('writes one event per line and a final result', async () => {
     const out: string[] = [];
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
-    const { hostCommands } = await import('../src/commands/host.js');
+    const { hostCommands } = await import('../src/definitions/host.js');
     try {
       await hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => path.join(work, 'config'))
         .parseAsync(['add', 'trift', '--ssh', 'refused.test'], { from: 'user' });

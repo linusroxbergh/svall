@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Command, Option } from 'commander';
+import type { Command } from 'commander';
 import { ApiError, aside, asideLine, checksAgain, ellipsis, keyLabel, keyMask, notNeeded, PROTOCOL_VERSION, tierOf, toTick, wayOn, type FleetAgents, type LimitsReport, type MachineId, type SetupRow } from '@svall/protocol';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@svall/svalld/mobile';
@@ -24,7 +24,7 @@ import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { ask } from '../prompt.js';
 import { farProfile, type Target } from '../target.js';
 import { MARK, rawLines, tickMark, type Check } from '../checks-view.js';
-import { askLimits, connectArgs, connectChoice, hostLimits } from './limits.js';
+import { askLimits, connectArgs, connectChoice } from './limits.js';
 import { checkLines } from './doctor.js';
 
 /**
@@ -389,32 +389,22 @@ async function onHome(home: FarHome, args: string[], json: boolean, last: (final
 }
 
 /** `target`: the fleet a machine added or upgraded becomes a worker of. */
-export function hostCommands(json: () => boolean, target: () => Target, dir: () => string = configDir): Command {
-  const host = new Command('host').description('the machines robots can run on')
-    // the app's Stop is a SIGTERM, which would otherwise leave this command's master running
-    .hook('preAction', (_host, action) => {
-      closeMastersOnSignal();
-      if ((action.opts() as { relayed?: boolean }).relayed) {
-        relayedRun = true;
-        endsWithConnection(process.stdin, () => process.kill(process.pid, 'SIGTERM'));
-      }
-    });
+export function hostActions(json: () => boolean, target: () => Target, dir: () => string = configDir) {
   const farFor = (name?: string) => relayFor(target().home, MachineRegistry.load(dir()), name);
   // the home sets every machine's limit, its own and this machine's included, as a worker's daemon takes none to set
   const limitsOn = (home: FarHome, name: string, flags: string[]) => onHome(home, ['host', 'limits', MachineRegistry.load(dir()).get(name)?.id ?? name, ...flags], json(), orLeft((r: LimitsReport) => limitsLine(r, name)), { steps: false });
   const farLines = async (home: FarHome, name: string): Promise<There> => farThere(home, json() ? name : await destinationOn(home, name, MachineRegistry.load(dir())), target());
 
-  host.command('add')
-    .description('provision a remote Svall host and add it to the registry')
-    .argument('<name>', 'what to call the machine here')
-    .requiredOption('--ssh <destination>', 'the ssh destination to reach it at')
-    .option('--release <archive>', 'install this companion archive instead of the one this release publishes')
-    .option('--allow-unsigned', 'install a --release archive that carries no signature')
-    .option('--as-home', 'leave it a fleet\'s home, for svall fleet join to follow, not a worker of this fleet')
-    .addOption(new Option('--limits <cores,memory>', 'what the fleet may use of the machine, such as 11,93G, set without asking'))
-    .addOption(new Option('--no-limits', 'leave the fleet all of the machine, without asking'))
-    .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
-    .action(async (name: string, { relayed: _, limits, ...o }: { ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean; relayed?: boolean; limits?: string | false }) => {
+  return {
+    preAction: (_host: Command, action: Command) => {
+      closeMastersOnSignal();
+      if ((action.opts() as { relayed?: boolean }).relayed) {
+        relayedRun = true;
+        endsWithConnection(process.stdin, () => process.kill(process.pid, 'SIGTERM'));
+      }
+    },
+
+    add: async (name: string, { relayed: _, limits, ...o }: { ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean; relayed?: boolean; limits?: string | false }) => {
       const home = o.asHome ? undefined : farFor(name);
       if (home) {
         const seen: StepEvent[] = [];
@@ -428,14 +418,16 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
       carriedGoes(o.release, target());
       const there = { ...thereOf(name, dir(), target()), ssh: o.ssh };
       return runFlow(json(), 'add', (out, ends) => outcomeText(out, 'add', name, { there, ...ends }), (d) => addHost({ name, ...o, ...connectChoice({ limits }, askable(json())) }, d), dir(), target(), { name, there });
-    });
+    },
 
-  host.addCommand(hostLimits(target, json, (name, flags) => { const home = farFor(); return home && limitsOn(home, name, flags); }));
+    limitsOnHome: async (name: string, flags: string[]): Promise<boolean> => {
+      const home = farFor();
+      if (!home) return false;
+      await limitsOn(home, name, flags);
+      return true;
+    },
 
-  host.command('list')
-    .description('every machine in the registry and its last check')
-    .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
-    .action(async (o: { relayed?: boolean }) => {
+    list: async (o: { relayed?: boolean }) => {
       const registry = MachineRegistry.load(dir());
       const home = relayFor(target().home, registry);
       const far = home ? await farRows(home, registry) : [];
@@ -446,15 +438,9 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
         name: r.name, ssh: r.far ? `${r.ssh ?? '(dials in)'} (from ${home!.name})` : r.ssh ?? (r.id === registry.localId ? '(this machine)' : '(dials in)'), platform: r.platform,
         release: r.check?.release ?? '', checked: r.joining !== undefined ? `has not joined yet${r.joining && `: ${r.joining}`}` : r.check ? checkedLine(r.check) : '', id: r.id,
       }))));
-    });
+    },
 
-  host.command('doctor')
-    .description('what the machine answers about itself, and what only this controller can check')
-    .argument('<name>', 'the machine in the registry')
-    .option('--all', 'list every check and each part of your agent setup, not only what needs you')
-    .addOption(new Option('--steps', 'with --json, print each step as an NDJSON line as it goes, before the report').hideHelp())
-    .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
-    .action(async (name: string, o: { steps?: boolean; all?: boolean }) => {
+    doctor: async (name: string, o: { steps?: boolean; all?: boolean }) => {
       const shown = { fleet: fleetOf(target().home), all: o.all };
       const far = farFor(name);
       if (far) {
@@ -472,16 +458,9 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
       const there = thereOf(name, dir(), target());
       printResult(report, json(), () => doctorText(report, name, there, shown));
       if (report.checks.some((c) => c.status === 'fail')) process.exitCode = 1;
-    });
+    },
 
-  host.command('consent')
-    .description('tick or untick one item of your agent setup for the machine, as host doctor --all lists it')
-    .argument('<name>', 'the machine in the registry')
-    .argument('<item>', 'the agent setup item, such as claude:mcp:linear')
-    .argument('<state>', 'on to copy its keys there, off to stop')
-    .option('--field <field...>', 'with on, only these keys of it; off takes every key')
-    .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
-    .action(async (name: string, item: string, state: string, o: { field?: string[] }) => {
+    consent: async (name: string, item: string, state: string, o: { field?: string[] }) => {
       if (state !== 'on' && state !== 'off') throw new Error(`${state} is not on or off`);
       const far = farFor(name);
       if (far) return onHome(far, ['host', 'consent', name, item, state, ...(o.field ? ['--field', ...o.field] : [])], json(), orLeft((r: SetupRow[]) => r.map((row) => stepLine(rowStep(row))).join('\n')));
@@ -495,16 +474,9 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
         return;
       }
       printResult(rows, json(), () => rows.map((r) => stepLine(rowStep(r))).join('\n'));
-    });
+    },
 
-  host.command('upgrade')
-    .description('install a new companion release, and go back to the old one if it does not answer')
-    .argument('<name>', 'the machine in the registry')
-    .option('--release <archive>', 'install this companion archive instead of the one this release publishes')
-    .option('--allow-unsigned', 'install a --release archive that carries no signature')
-    .option('--rollback [release]', 'put the machine back on this release, or on the one before, and check its daemons answer from it')
-    .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
-    .action((name: string, { relayed: _, ...o }: { release?: string; allowUnsigned?: boolean; rollback?: boolean | string; relayed?: boolean }) => {
+    upgrade: (name: string, { relayed: _, ...o }: { release?: string; allowUnsigned?: boolean; rollback?: boolean | string; relayed?: boolean }) => {
       const far = farFor(name);
       if (far) {
         const back = o.rollback === undefined ? [] : ['--rollback', ...(typeof o.rollback === 'string' ? [o.rollback] : [])];
@@ -518,20 +490,14 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
       if (o.release !== undefined || o.allowUnsigned) throw new Error('--rollback installs nothing, so it takes no --release or --allow-unsigned');
       const to = typeof o.rollback === 'string' ? o.rollback : undefined;
       return runFlow(json(), 'rollback', (out, ends) => outcomeText(out, 'rollback', name, ends), (d) => rollbackHost(name, { ...(to !== undefined && { to }) }, d), dir(), target(), { name, there: thereOf(name, dir(), target()) });
-    });
+    },
 
-  host.command('remove')
-    .description('uninstall Svall on the machine and drop its route')
-    .argument('<name>', 'the machine in the registry')
-    .option('--forget', 'drop the route for a machine that cannot be reached, leaving it untouched')
-    .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
-    .action(async (name: string, o: { forget?: boolean }) => {
+    remove: async (name: string, o: { forget?: boolean }) => {
       const far = farFor(name);
       if (far) return onHome(far, ['host', 'remove', name, ...(o.forget ? ['--forget'] : [])], json(), (r, steps) => outcomeText(r as HostOutcome, 'remove', name, { ...o, steps }));
       const id = MachineRegistry.load(dir()).get(name)?.id;
       await runFlow(json(), 'remove', (out, ends) => outcomeText(out, 'remove', name, { ...o, ...ends }), (d) => removeHost(name, o, d), dir(), target());
       if (id && !MachineRegistry.load(dir()).get(id)) forgetCheck(dir(), id);
-    });
-
-  return host;
+    },
+  };
 }

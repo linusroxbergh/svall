@@ -1,0 +1,1720 @@
+$ svall --help
+Usage: svall [options] [command] [profile]
+
+Svall fleet control; with no command it opens the app
+
+Arguments:
+  profile               open this profile, offering to create it if missing
+
+Options:
+  --json                machine-readable output
+  -p, --profile <name>  the fleet to work on (default: $SVALL_HOME, else
+                        private)
+  --host <name|local>   the machine to reach (default: this one)
+  -V, --version         print the app version, the release installed, or the
+                        commit a checkout is on
+  -h, --help            display help for command
+
+Commands:
+  status                show every island and robot
+  island                manage islands
+  robot|char            manage robots
+  scribe                write names, notes, island descriptions and links from
+                        what each agent is doing
+  retro                 read what the agents did and propose changes to skills,
+                        reviews and instructions
+  browser               a robot's browser tabs
+  app                   what the app window on this fleet shows
+  mobile                serve the fleet to your phone over Tailscale
+  setup [options]       install hooks, the launchd agent and the svall shim
+  agent [name]          show or set the main agent: what the scribe, mission
+                        control and svall robot new --run run by default
+  doctor [options]      check what the fleet needs and show the end of its log;
+                        changes nothing unless --rebind
+  host                  the machines robots can run on
+  worker                this machine as a worker of a home's fleet
+  fleet                 the fleet this machine is the home of
+  uninstall [options]   remove what svall setup added and stop every fleet; asks
+                        before deleting the fleets and the app
+  connection-info       what a controller needs to reach this fleet over a
+                        tunnel
+  version               the release, the versions every machine of a fleet has
+                        to agree on, and the runtime running them
+  help [command]        display help for command
+[exit 0]
+$ svall --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall status --help
+Usage: svall status [options]
+
+show every island and robot
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall status --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall status
+svalld running on port <port> (home <home>)
+1 island(s), 1 robot(s)
+
+island  name  kind  robots
+x       x           1
+
+robot  name  island  state  ctx  cwd  note
+x      x     x       shell       /x
+[exit 0]
+$ svall --json status
+{
+  "version": 12,
+  "islands": {
+    "x": {
+      "id": "x",
+      "name": "x",
+      "description": "",
+      "instructions": "",
+      "context": [],
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "w": 4,
+        "h": 3
+      },
+      "seed": 0
+    }
+  },
+  "robots": {
+    "x": {
+      "id": "x",
+      "islandId": "x",
+      "cell": {
+        "x": 0,
+        "y": 0
+      },
+      "name": "x",
+      "portrait": "fox",
+      "note": "",
+      "instructions": "",
+      "cwd": "/x",
+      "context": [],
+      "tmux": {
+        "windowId": "@1",
+        "paneId": "%1"
+      },
+      "shell": {
+        "lastOutputAt": 0
+      },
+      "unread": false
+    }
+  },
+  "home": {
+    "cwd": "~",
+    "command": "x",
+    "actions": []
+  },
+  "defaultCwd": "~",
+  "columns": [
+    {
+      "id": "x",
+      "name": "x"
+    }
+  ]
+}
+[exit 0]
+$ svall island --help
+Usage: svall island [options] [command]
+
+manage islands
+
+Options:
+  -h, --help               display help for command
+
+Commands:
+  list                     list every island
+  create [options] <name>  make an island
+  update [options] <id>    change an island's name, description, place, size,
+                           context or instructions
+  arrange [options]        resize every island to its crew and pack the fleet
+                           together
+  show <id>                print the brief the agent gets
+  delete <id>              delete an empty island and its docs
+  help [command]           display help for command
+[exit 0]
+$ svall island --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall island list --help
+Usage: svall island list [options]
+
+list every island
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall island list --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall island list
+id  name  kind  robots  size  at
+x   x           1       4x3   0,0
+[exit 0]
+$ svall --json island list
+[
+  {
+    "id": "x",
+    "name": "x",
+    "description": "",
+    "instructions": "",
+    "context": [],
+    "position": {
+      "x": 0,
+      "y": 0
+    },
+    "size": {
+      "w": 4,
+      "h": 3
+    },
+    "seed": 0
+  }
+]
+[exit 0]
+$ svall island create --help
+Usage: svall island create [options] <name>
+
+make an island
+
+Options:
+  --at <x,y>
+  --size <w,h>
+  --description <d>
+  --context <spec>       <ref>[ label]..., repeatable; each URL or absolute path
+                         starts a new item; replaces the manual items (default:
+                         [])
+  --pin <ref>            mark an item to read before starting, repeatable
+                         (default: [])
+  --unpin <ref>          unmark a pinned item, repeatable (default: [])
+  --drop <ref>           remove an item, repeatable (default: [])
+  --instructions <text>  agent-only instructions
+  -h, --help             display help for command
+[exit 0]
+$ svall island create --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall island create x
+svall: island "x" already exists (x); move robots onto it or pick another name
+[exit 1]
+$ svall --json island create x
+svall: island "x" already exists (x); move robots onto it or pick another name
+[exit 1]
+$ svall island update --help
+Usage: svall island update [options] <id>
+
+change an island's name, description, place, size, context or instructions
+
+Options:
+  --name <n>
+  --description <d>
+  --at <x,y>
+  --size <w,h>
+  --context <spec>       <ref>[ label]..., repeatable; each URL or absolute path
+                         starts a new item; replaces the manual items (default:
+                         [])
+  --pin <ref>            mark an item to read before starting, repeatable
+                         (default: [])
+  --unpin <ref>          unmark a pinned item, repeatable (default: [])
+  --drop <ref>           remove an item, repeatable (default: [])
+  --instructions <text>  agent-only instructions
+  -h, --help             display help for command
+[exit 0]
+$ svall island update --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall island update x
+svall: island.update {"id":"x"}
+[exit 1]
+$ svall --json island update x
+svall: island.update {"id":"x"}
+[exit 1]
+$ svall island arrange --help
+Usage: svall island arrange [options]
+
+resize every island to its crew and pack the fleet together
+
+Options:
+  --aspect <n>  width over height of the window to fill
+  -h, --help    display help for command
+[exit 0]
+$ svall island arrange --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall island arrange
+svall: island.arrange {}
+[exit 1]
+$ svall --json island arrange
+svall: island.arrange {}
+[exit 1]
+$ svall island show --help
+Usage: svall island show [options] <id>
+
+print the brief the agent gets
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall island show --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall island show x
+svall: island.show {"id":"x"}
+[exit 1]
+$ svall --json island show x
+svall: island.show {"id":"x"}
+[exit 1]
+$ svall island delete --help
+Usage: svall island delete [options] <id>
+
+delete an empty island and its docs
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall island delete --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall island delete x
+svall: island.delete {"id":"x"}
+[exit 1]
+$ svall --json island delete x
+svall: island.delete {"id":"x"}
+[exit 1]
+$ svall robot --help
+Usage: svall robot|char [options] [command]
+
+manage robots
+
+Options:
+  -h, --help                     display help for command
+
+Commands:
+  list [options]                 list every robot, or one island's
+  new [options]                  make a robot: a terminal on an island
+  move [options] <id>            move a robot to another island or cell, or to
+                                 run on another machine; a refused move exits 2
+  run [options] <id> <text...>   type text into a robot's terminal, then Enter;
+                                 prints delivered or queued, exits 2 when
+                                 refused
+  send [options] <id> <text...>  message a robot as this one, which can answer
+                                 the same way; prints delivered, queued or held,
+                                 exits 2 when refused
+  read [options] <id>            print the end of a robot's screen, or of its
+                                 transcript, or its agent's last answer
+  wait [options] <id>            wait for a status; exits 0 on a match, 2 on
+                                 timeout, 3 when the robot has no terminal
+                                 (deleted or dormant)
+  update [options] <id>          change a robot's name, note, island, context,
+                                 instructions or agent profile
+  show <id>                      print the brief the agent gets
+  seen <id>                      mark a robot's last turn seen: done turns idle
+  revive [options] <id>          resume a dormant robot's session in a new
+                                 terminal
+  close <id>                     delete a robot, its terminal and its docs
+  help [command]                 display help for command
+[exit 0]
+$ svall robot --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall robot list --help
+Usage: svall robot list [options]
+
+list every robot, or one island's
+
+Options:
+  --island <id>
+  --started-by <id>  only the robots that robot started
+  -h, --help         display help for command
+[exit 0]
+$ svall robot list --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall robot list
+id  island  name  state  ctx  branch  cwd  cell
+x   x       x     shell               /x   0,0
+[exit 0]
+$ svall --json robot list
+[
+  {
+    "id": "x",
+    "islandId": "x",
+    "cell": {
+      "x": 0,
+      "y": 0
+    },
+    "name": "x",
+    "portrait": "fox",
+    "note": "",
+    "instructions": "",
+    "cwd": "/x",
+    "context": [],
+    "tmux": {
+      "windowId": "@1",
+      "paneId": "%1"
+    },
+    "shell": {
+      "lastOutputAt": 0
+    },
+    "unread": false
+  }
+]
+[exit 0]
+$ svall robot new --help
+Usage: svall robot new [options]
+
+make a robot: a terminal on an island
+
+Options:
+  --island <id>
+  --cwd <path>
+  --name <name>
+  --agent [name]          start claude, codex or opencode in its terminal;
+                          without a name, the main agent
+  --claude                the same as --agent claude
+  --codex                 the same as --agent codex
+  --opencode              the same as --agent opencode
+  --command <cmd>
+  --cell <x,y>
+  --run <text>            type text and Enter once the agent has started; starts
+                          the main agent unless --agent or --command says
+                          otherwise; exits 2 when it could not be sent
+  --agent-profile <name>  a role from the fleet's agent-profiles folder, e.g.
+                          reviewer
+  --report                with --run, hear back when it is done, blocked or
+                          stops: svalld types a line into this robot
+  -h, --help              display help for command
+
+Handing work to a new robot:
+  svall robot new --island <id> --cwd <path> --name "<name>" --run "<prompt>" --report
+  - In a git repo, a robot is told to start in a new worktree unless Settings turns that off; --cwd can name a worktree whose branch is the work and no other agent is in.
+  - The prompt is all it knows: goal, paths, links, what done looks like.
+  - Names: at most 24 characters, lower case: PR or ticket id, area, task, one or two words each: "#472 auth review", not "#472 deep review".
+  - New island: svall island create "<name>" --description "<one line>".
+  - --report: svalld types "[svall] <name> (<id>) …" into your prompt line when it is done, blocked or stops, so neither of you waits or polls. Closing it is the user's call.
+  - Check its work: svall robot read <id> --transcript, and its cwd and branch in svall status --json.
+  - Message it, or any robot: svall robot send <id> "<text>" [--report]; it answers the same way. Its final message in full: svall robot read <id> --last.
+  - Write ids out: a command holding $SVALL_ROBOT_ID asks the user for permission.
+[exit 0]
+$ svall robot new --no-such-flag
+error: required option '--island <id>' not specified
+[exit 1]
+$ svall robot new --island x --cwd x
+svall: robot.create {"islandId":"x","cwd":"<cwd>/x","startedBy":"x"}
+[exit 1]
+$ svall --json robot new --island x --cwd x
+svall: robot.create {"islandId":"x","cwd":"<cwd>/x","startedBy":"x"}
+[exit 1]
+$ svall robot move --help
+Usage: svall robot move [options] <id>
+
+move a robot to another island or cell, or to run on another machine; a refused
+move exits 2
+
+Options:
+  --island <id>
+  --cell <x,y>                  omit it and the daemon picks a free cell
+  --machine <name>              a machine under Machines, or local for this
+                                machine; prints what travels, then moves it
+  --interrupt-after <duration>  interrupt what still runs after this long, e.g.
+                                30s or 0
+  --carry <file>                take a credential file such as .env along;
+                                repeatable
+  --own-worktree                on a main checkout, move into a new worktree of
+                                its own at HEAD; the checkout keeps its changes
+  --retry                       run on the move the robot is in, from the step
+                                it stopped at
+  -h, --help                    display help for command
+[exit 0]
+$ svall robot move --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall robot move x
+svall: name one of --island, --machine and --retry
+[exit 1]
+$ svall --json robot move x
+svall: name one of --island, --machine and --retry
+[exit 1]
+$ svall robot run --help
+Usage: svall robot run [options] <id> <text...>
+
+type text into a robot's terminal, then Enter; prints delivered or queued, exits
+2 when refused
+
+Options:
+  --no-enter  leave the text in the prompt line, where runs after it queue until
+              it is sent or cleared
+  --term <n>  terminal to type into: 1 (default) or 2
+  -h, --help  display help for command
+[exit 0]
+$ svall robot run --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall robot run x x
+svall: robot.run {"id":"x","text":"x","enter":true}
+[exit 1]
+$ svall --json robot run x x
+svall: robot.run {"id":"x","text":"x","enter":true}
+[exit 1]
+$ svall robot send --help
+Usage: svall robot send [options] <id> <text...>
+
+message a robot as this one, which can answer the same way; prints delivered,
+queued or held, exits 2 when refused
+
+Options:
+  --report    hear back when it is done, blocked or stops: svalld types a line
+              into this robot
+  -h, --help  display help for command
+[exit 0]
+$ svall robot send --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall robot send x x
+svall: robot.send {"id":"x","from":"x","text":"x"}
+[exit 1]
+$ svall --json robot send x x
+svall: robot.send {"id":"x","from":"x","text":"x"}
+[exit 1]
+$ svall robot read --help
+Usage: svall robot read [options] <id>
+
+print the end of a robot's screen, or of its transcript, or its agent's last
+answer
+
+Options:
+  --transcript
+  --last        the final message of the agent's newest turn, in full
+  --lines <n>   screen lines, or turns with --transcript (default: "50")
+  --term <n>    terminal to read: 1 (default) or 2
+  -h, --help    display help for command
+[exit 0]
+$ svall robot read --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall robot read x
+svall: robot.read {"id":"x","source":"screen","lines":50}
+[exit 1]
+$ svall --json robot read x
+svall: robot.read {"id":"x","source":"screen","lines":50}
+[exit 1]
+$ svall robot wait --help
+Usage: svall robot wait [options] <id>
+
+wait for a status; exits 0 on a match, 2 on timeout, 3 when the robot has no
+terminal (deleted or dormant)
+
+Options:
+  --until <statuses>
+  --timeout <seconds>  (default: "600")
+  --term <n>           terminal to wait on: 1 (default) or 2
+  -h, --help           display help for command
+[exit 0]
+$ svall robot wait --no-such-flag
+error: required option '--until <statuses>' not specified
+[exit 1]
+$ svall robot wait x --until x
+svall: robot.wait {"id":"x","until":["x"],"timeoutMs":600000}
+[exit 1]
+$ svall --json robot wait x --until x
+svall: robot.wait {"id":"x","until":["x"],"timeoutMs":600000}
+[exit 1]
+$ svall robot update --help
+Usage: svall robot update [options] <id>
+
+change a robot's name, note, island, context, instructions or agent profile
+
+Options:
+  --name <n>
+  --note <n>
+  --note-file <path>      read the note from a file, for text a shell would
+                          mangle
+  --island <id>
+  --agent-profile <name>  a role from the fleet's agent-profiles folder; ''
+                          clears it
+  --context <spec>        <ref>[ label]..., repeatable; each URL or absolute
+                          path starts a new item; replaces the manual items
+                          (default: [])
+  --pin <ref>             mark an item to read before starting, repeatable
+                          (default: [])
+  --unpin <ref>           unmark a pinned item, repeatable (default: [])
+  --drop <ref>            remove an item, repeatable (default: [])
+  --instructions <text>   agent-only instructions
+  -h, --help              display help for command
+[exit 0]
+$ svall robot update --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall robot update x
+svall: robot.update {"id":"x"}
+[exit 1]
+$ svall --json robot update x
+svall: robot.update {"id":"x"}
+[exit 1]
+$ svall robot show --help
+Usage: svall robot show [options] <id>
+
+print the brief the agent gets
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall robot show --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall robot show x
+svall: robot.show {"id":"x"}
+[exit 1]
+$ svall --json robot show x
+svall: robot.show {"id":"x"}
+[exit 1]
+$ svall robot seen --help
+Usage: svall robot seen [options] <id>
+
+mark a robot's last turn seen: done turns idle
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall robot seen --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall robot seen x
+svall: robot.seen {"id":"x"}
+[exit 1]
+$ svall --json robot seen x
+svall: robot.seen {"id":"x"}
+[exit 1]
+$ svall robot revive --help
+Usage: svall robot revive [options] <id>
+
+resume a dormant robot's session in a new terminal
+
+Options:
+  --fresh     start a new session instead, told what the one that could not
+              resume held; that session's files stay
+  --term <n>  with --fresh, the terminal: 1 (default) or 2
+  -h, --help  display help for command
+[exit 0]
+$ svall robot revive --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall robot revive x
+svall: robot.revive {"id":"x"}
+[exit 1]
+$ svall --json robot revive x
+svall: robot.revive {"id":"x"}
+[exit 1]
+$ svall robot close --help
+Usage: svall robot close [options] <id>
+
+delete a robot, its terminal and its docs
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall robot close --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall robot close x
+svall: robot.close {"id":"x"}
+[exit 1]
+$ svall --json robot close x
+svall: robot.close {"id":"x"}
+[exit 1]
+$ svall scribe --help
+Usage: svall scribe [options] [command]
+
+write names, notes, island descriptions and links from what each agent is doing
+
+Options:
+  -h, --help       display help for command
+
+Commands:
+  sweep [options]  refresh the whole fleet now; prints one line per change
+  help [command]   display help for command
+[exit 0]
+$ svall scribe --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall scribe sweep --help
+Usage: svall scribe sweep [options]
+
+refresh the whole fleet now; prints one line per change
+
+Options:
+  --names     write only names
+  --islands   write only island descriptions and links
+  -h, --help  display help for command
+[exit 0]
+$ svall scribe sweep --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall scribe sweep
+svall: scribe.sweep {}
+[exit 1]
+$ svall --json scribe sweep
+svall: scribe.sweep {}
+[exit 1]
+$ svall retro --help
+Usage: svall retro [options] [command]
+
+read what the agents did and propose changes to skills, reviews and instructions
+
+Options:
+  -h, --help                             display help for command
+
+Commands:
+  plan [options]                         read the stores and print the scope, the cards to make and each preset's tokens and cost; sends nothing to a model
+  run [options] <plan>                   card the plan's sessions and judge them with a preset, within the budget; svalld carries on if this exits
+  wait [run]                             follow a run until it ends; exits 1 when it failed or was interrupted
+  status [run]                           the stage of the newest run, or of the one named
+  findings [run]                         print a run's summary: how the span went and the top findings, numbered
+  show <n> [run]                         print finding n of a run's report: why it matters, what was seen, the change, the verdict
+  mark [options] <action> <findings...>  fix, dismiss or later findings by their number in the last findings, or by id
+  apply <finding>                        apply a finding's diff to its file outside git, after the user said yes; keeps a backup
+  config [options]                       show or change what the retro leaves out and the models it uses (fleet.json retro)
+  help [command]                         display help for command
+[exit 0]
+$ svall retro --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro plan --help
+Usage: svall retro plan [options]
+
+read the stores and print the scope, the cards to make and each preset's tokens
+and cost; sends nothing to a model
+
+Options:
+  --span <span>            since the last retro, or the last 7 or 30 days
+                           (choices: "last", "7d", "30d", default: "last")
+  --exclude-repo <path>    leave out a repo (saved)
+  --exclude-island <name>  leave out an island by name or id (saved)
+  --pick <repo>            read the sessions no fleet recorded in this repo
+                           (saved)
+  -h, --help               display help for command
+[exit 0]
+$ svall retro plan --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro plan
+svall: retro.plan {"span":"last"}
+[exit 1]
+$ svall --json retro plan
+svall: retro.plan {"span":"last"}
+[exit 1]
+$ svall retro run --help
+Usage: svall retro run [options] <plan>
+
+card the plan's sessions and judge them with a preset, within the budget; svalld
+carries on if this exits
+
+Options:
+  --preset <name>    the preset to read and judge with (default: balanced where
+                     the plan has it, else its first)
+  --budget <tokens>  the most tokens the run may spend (default: the preset's
+                     cap)
+  -h, --help         display help for command
+[exit 0]
+$ svall retro run --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro run x
+svall: retro.run {"plan":"x","robot":"x"}
+[exit 1]
+$ svall --json retro run x
+svall: retro.run {"plan":"x","robot":"x"}
+[exit 1]
+$ svall retro wait --help
+Usage: svall retro wait [options] [run]
+
+follow a run until it ends; exits 1 when it failed or was interrupted
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall retro wait --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro wait
+svall: retro.status {}
+[exit 1]
+$ svall --json retro wait
+svall: retro.status {}
+[exit 1]
+$ svall retro status --help
+Usage: svall retro status [options] [run]
+
+the stage of the newest run, or of the one named
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall retro status --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro status
+svall: retro.status {}
+[exit 1]
+$ svall --json retro status
+svall: retro.status {}
+[exit 1]
+$ svall retro findings --help
+Usage: svall retro findings [options] [run]
+
+print a run's summary: how the span went and the top findings, numbered
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall retro findings --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro findings
+svall: retro.findings {}
+[exit 1]
+$ svall --json retro findings
+svall: retro.findings {}
+[exit 1]
+$ svall retro show --help
+Usage: svall retro show [options] <n> [run]
+
+print finding n of a run's report: why it matters, what was seen, the change,
+the verdict
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall retro show --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro show x
+svall: bad finding "x", expected its number in the findings
+[exit 1]
+$ svall --json retro show x
+svall: bad finding "x", expected its number in the findings
+[exit 1]
+$ svall retro mark --help
+Usage: svall retro mark [options] <action> <findings...>
+
+fix, dismiss or later findings by their number in the last findings, or by id
+
+Options:
+  --reason <reason>  why a dismissed finding is dismissed (choices: "wrong",
+                     "not-worth-it")
+  -h, --help         display help for command
+[exit 0]
+$ svall retro mark --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro mark x x
+svall: bad action "x", expected fix, dismiss or later
+[exit 1]
+$ svall --json retro mark x x
+svall: bad action "x", expected fix, dismiss or later
+[exit 1]
+$ svall retro apply --help
+Usage: svall retro apply [options] <finding>
+
+apply a finding's diff to its file outside git, after the user said yes; keeps a
+backup
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall retro apply --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro apply x
+svall: retro.apply {"id":"x"}
+[exit 1]
+$ svall --json retro apply x
+svall: retro.apply {"id":"x"}
+[exit 1]
+$ svall retro config --help
+Usage: svall retro config [options]
+
+show or change what the retro leaves out and the models it uses (fleet.json
+retro)
+
+Options:
+  --exclude-repo <path>    leave out a repo
+  --exclude-island <name>  leave out an island
+  --include-repo <path>    stop leaving out a repo
+  --include-island <name>  stop leaving out an island
+  --agent <cli>            the CLI the model options are for (choices: "claude",
+                           "codex", "opencode", default: "claude")
+  --read-model <model>     the model that cards the sessions
+  --judge-model <model>    the model that synthesizes the findings
+  --verify-model <model>   the model that checks each finding against its
+                           evidence
+  --review-skills <names>  skills to read as reviews, comma-separated, beside
+                           those named for one
+  -h, --help               display help for command
+[exit 0]
+$ svall retro config --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall retro config
+svall: ENOENT: no such file or directory, open '<home>/fleet.json'
+[exit 1]
+$ svall --json retro config
+svall: ENOENT: no such file or directory, open '<home>/fleet.json'
+[exit 1]
+$ svall browser --help
+Usage: svall browser [options] [command]
+
+a robot's browser tabs
+
+Options:
+  -h, --help             display help for command
+
+Commands:
+  open [options] <url>   open a url in a new tab
+  list [options]         list the tabs, the active one starred
+  close [options] <tab>  close a tab
+  help [command]         display help for command
+[exit 0]
+$ svall browser --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall browser open --help
+Usage: svall browser open [options] <url>
+
+open a url in a new tab
+
+Options:
+  --robot <id>
+  -h, --help    display help for command
+[exit 0]
+$ svall browser open --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall browser open x
+svall: browser.open {"id":"x","url":"x"}
+[exit 1]
+$ svall --json browser open x
+svall: browser.open {"id":"x","url":"x"}
+[exit 1]
+$ svall browser list --help
+Usage: svall browser list [options]
+
+list the tabs, the active one starred
+
+Options:
+  --robot <id>
+  -h, --help    display help for command
+[exit 0]
+$ svall browser list --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall browser list
+(none)
+[exit 0]
+$ svall --json browser list
+[]
+[exit 0]
+$ svall browser close --help
+Usage: svall browser close [options] <tab>
+
+close a tab
+
+Options:
+  --robot <id>
+  -h, --help    display help for command
+[exit 0]
+$ svall browser close --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall browser close x
+svall: browser.close {"id":"x","tab":"x"}
+[exit 1]
+$ svall --json browser close x
+svall: browser.close {"id":"x","tab":"x"}
+[exit 1]
+$ svall app --help
+Usage: svall app [options] [command]
+
+what the app window on this fleet shows
+
+Options:
+  -h, --help              display help for command
+
+Commands:
+  show [options] [robot]  show a robot's card, its panes and the window's sides;
+                          what is left out stays
+  help [command]          display help for command
+[exit 0]
+$ svall app --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall app show --help
+Usage: svall app show [options] [robot]
+
+show a robot's card, its panes and the window's sides; what is left out stays
+
+Arguments:
+  robot                the robot whose card opens
+
+Options:
+  --left <pane>        the left pane (choices: "terminal", "browser", "files",
+                       "changes")
+  --right <pane>       the right pane, or none for the left alone (choices:
+                       "terminal", "browser", "files", "changes", "none")
+  --ratio <share>      the left pane's share of the card, 0.25 to 0.75
+  --file <path>        open a file in the robot's Files, as a link in its
+                       terminal would
+  --tree <state>       the folders beside Files' editor (choices: "show",
+                       "hide")
+  --card <size>        the robot's card; closed leaves the robot selected
+                       (choices: "half", "full", "closed")
+  --sidebar <state>    the islands list on the left (choices: "show", "hide")
+  --side-card <state>  the selected robot's details on the right (choices:
+                       "show", "hide")
+  --view <view>        the map or the board (choices: "map", "board")
+  --panel <panel>      the dock's panel, or none (choices: "phone", "usage",
+                       "load", "none")
+  --size <w,h>         the window's size in points, like 1280,820
+  -h, --help           display help for command
+[exit 0]
+$ svall app show --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall app show
+svall: app.show {}
+[exit 1]
+$ svall --json app show
+svall: app.show {}
+[exit 1]
+$ svall mobile --help
+Usage: svall mobile [options] [command]
+
+serve the fleet to your phone over Tailscale
+
+Options:
+  -h, --help      display help for command
+
+Commands:
+  on              have the daemon start tailscale serve, and print a QR code
+  off             stop serving; the daemon stays up
+  help [command]  display help for command
+[exit 0]
+$ svall mobile --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall mobile on --help
+Usage: svall mobile on [options]
+
+have the daemon start tailscale serve, and print a QR code
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall mobile on --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall mobile on
+svall: mobile.set {"enabled":true}
+[exit 1]
+$ svall --json mobile on
+svall: mobile.set {"enabled":true}
+[exit 1]
+$ svall mobile off --help
+Usage: svall mobile off [options]
+
+stop serving; the daemon stays up
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall mobile off --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall mobile off
+svall: mobile.set {"enabled":false}
+[exit 1]
+$ svall --json mobile off
+svall: mobile.set {"enabled":false}
+[exit 1]
+$ svall setup --help
+Usage: svall setup [options]
+
+install hooks, the launchd agent and the svall shim
+
+Options:
+  --no-launchctl                write files only; leave launchd alone
+  --check                       only check what setup needs; change nothing
+  --plan                        print what setup would do, as the app shows it;
+                                change nothing
+  --agents <list>               the agents to install hooks for,
+                                comma-separated; saved for later runs
+  --found <list>                the agents the setup screen showed; those left
+                                out of --agents stay off (default: the agents
+                                found now)
+  --projects <dir>              where new robots start, made if missing; saved
+                                as defaultCwd
+  --main-agent <kind>           main agent selected during setup
+  --first-project <dir>         project for the first island and robot
+  --scribe <on|off>             automatic notes selected during onboarding
+  --new-robots <agent|shell>    what the app starts for new robots
+  --svall-permissions <on|off>  allow robot svall commands
+  --if-needed                   set up only what is missing or out of date, and
+                                restart daemons of another version
+  --login-shell                 take PATH and where the agents keep their files
+                                from the login shell, as an app opened from
+                                Finder has none
+  --joining                     for a Mac that joins a fleet on a server next:
+                                no agent CLI needed here, and the app starts no
+                                fleet until the join lands
+  -h, --help                    display help for command
+[exit 0]
+$ svall setup --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall agent --help
+Usage: svall agent [options] [name]
+
+show or set the main agent: what the scribe, mission control and svall robot new
+--run run by default
+
+Arguments:
+  name        claude, codex or opencode
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall agent --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall doctor --help
+Usage: svall doctor [options]
+
+check what the fleet needs and show the end of its log; changes nothing unless
+--rebind
+
+Options:
+  --rebind    bind machine.json to this machine's hardware, after the hardware
+              changed under it
+  -h, --help  display help for command
+[exit 0]
+$ svall doctor --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall host --help
+Usage: svall host [options] [command]
+
+the machines robots can run on
+
+Options:
+  -h, --help                               display help for command
+
+Commands:
+  add [options] <name>                     provision a remote Svall host and add it to the registry
+  limits [options] <name>                  the cores and memory the fleet may use of a Linux machine, shown, or set with --cpus, --memory or --none
+  list [options]                           every machine in the registry and its last check
+  doctor [options] <name>                  what the machine answers about itself, and what only this controller can check
+  consent [options] <name> <item> <state>  tick or untick one item of your agent setup for the machine, as host doctor --all lists it
+  upgrade [options] <name>                 install a new companion release, and go back to the old one if it does not answer
+  remove [options] <name>                  uninstall Svall on the machine and drop its route
+  help [command]                           display help for command
+[exit 0]
+$ svall host --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall host add --help
+Usage: svall host add [options] <name>
+
+provision a remote Svall host and add it to the registry
+
+Arguments:
+  name                     what to call the machine here
+
+Options:
+  --ssh <destination>      the ssh destination to reach it at
+  --release <archive>      install this companion archive instead of the one
+                           this release publishes
+  --allow-unsigned         install a --release archive that carries no signature
+  --as-home                leave it a fleet's home, for svall fleet join to
+                           follow, not a worker of this fleet
+  --limits <cores,memory>  what the fleet may use of the machine, such as
+                           11,93G, set without asking
+  --no-limits              leave the fleet all of the machine, without asking
+  -h, --help               display help for command
+[exit 0]
+$ svall host add --no-such-flag
+error: required option '--ssh <destination>' not specified
+[exit 1]
+$ svall host limits --help
+Usage: svall host limits [options] <name>
+
+the cores and memory the fleet may use of a Linux machine, shown, or set with
+--cpus, --memory or --none
+
+Arguments:
+  name               the machine, as svall host list names it, or its id
+
+Options:
+  --cpus <n>         the cores the fleet may use
+  --memory <amount>  the memory it may use, such as 8G
+  --none             no limit
+  -h, --help         display help for command
+[exit 0]
+$ svall host limits --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall host limits x
+svall: machines.list {}
+[exit 1]
+$ svall --json host limits x
+svall: machines.list {}
+[exit 1]
+$ svall host list --help
+Usage: svall host list [options]
+
+every machine in the registry and its last check
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall host list --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall host doctor --help
+Usage: svall host doctor [options] <name>
+
+what the machine answers about itself, and what only this controller can check
+
+Arguments:
+  name        the machine in the registry
+
+Options:
+  --all       list every check and each part of your agent setup, not only what
+              needs you
+  -h, --help  display help for command
+[exit 0]
+$ svall host doctor --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall host consent --help
+Usage: svall host consent [options] <name> <item> <state>
+
+tick or untick one item of your agent setup for the machine, as host doctor
+--all lists it
+
+Arguments:
+  name                the machine in the registry
+  item                the agent setup item, such as claude:mcp:linear
+  state               on to copy its keys there, off to stop
+
+Options:
+  --field <field...>  with on, only these keys of it; off takes every key
+  -h, --help          display help for command
+[exit 0]
+$ svall host consent --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall host upgrade --help
+Usage: svall host upgrade [options] <name>
+
+install a new companion release, and go back to the old one if it does not
+answer
+
+Arguments:
+  name                  the machine in the registry
+
+Options:
+  --release <archive>   install this companion archive instead of the one this
+                        release publishes
+  --allow-unsigned      install a --release archive that carries no signature
+  --rollback [release]  put the machine back on this release, or on the one
+                        before, and check its daemons answer from it
+  -h, --help            display help for command
+[exit 0]
+$ svall host upgrade --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall host remove --help
+Usage: svall host remove [options] <name>
+
+uninstall Svall on the machine and drop its route
+
+Arguments:
+  name        the machine in the registry
+
+Options:
+  --forget    drop the route for a machine that cannot be reached, leaving it
+              untouched
+  -h, --help  display help for command
+[exit 0]
+$ svall host remove --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall worker --help
+Usage: svall worker [options] [command]
+
+this machine as a worker of a home's fleet
+
+Options:
+  -h, --help        display help for command
+
+Commands:
+  link              carry the home's link to this machine's svalld on stdin and
+                    stdout; the home runs it over ssh
+  enroll [options]  serve the fleet of the home named, with the token read from
+                    stdin; its daemon restarts as a worker
+  env <VAR>         set a variable for this fleet's robots on this machine, its
+                    value read from stdin
+  help [command]    display help for command
+[exit 0]
+$ svall worker --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall worker link --help
+Usage: svall worker link [options]
+
+carry the home's link to this machine's svalld on stdin and stdout; the home
+runs it over ssh
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall worker link --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall worker enroll --help
+Usage: svall worker enroll [options]
+
+serve the fleet of the home named, with the token read from stdin; its daemon
+restarts as a worker
+
+Options:
+  --home-machine <id>         the home's machine id
+  --home-name <name>          the home's name
+  --fleet-id <id>             the fleet's id
+  --home-ssh <destination>    the home this machine dials itself, which then
+                              needs no ssh to it
+  --home-socket <path>        the socket on the home its link is forwarded to,
+                              as svall fleet enroll-worker there names it
+  --home-svall-base <path>    where svall is installed on the home, as svall
+                              fleet enroll-worker there names it
+  --home-platform <platform>  the home's platform, as svall fleet enroll-worker
+                              there names it
+  --home-arch <arch>          the home's architecture, as svall fleet
+                              enroll-worker there names it
+  --home-path <path>          the home's user folder, as svall fleet
+                              enroll-worker there names it
+  -h, --help                  display help for command
+[exit 0]
+$ svall worker enroll --no-such-flag
+error: required option '--home-machine <id>' not specified
+[exit 1]
+$ svall worker env --help
+Usage: svall worker env [options] <VAR>
+
+set a variable for this fleet's robots on this machine, its value read from
+stdin
+
+Arguments:
+  VAR         the variable's name
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall worker env --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet --help
+Usage: svall fleet [options] [command]
+
+the fleet this machine is the home of
+
+Options:
+  -h, --help                            display help for command
+
+Commands:
+  enroll-worker [options] <machine-id>  take a machine as a worker that dials
+                                        in: its record, and a new token printed
+                                        once with --json
+  limits                                the cores and memory this fleet may use
+                                        of this Linux machine
+  join [options] <ssh>                  make this fleet, empty, a worker of the
+                                        fleet whose home is at <ssh>; the home
+                                        never dials this machine
+  facts                                 what this machine says of itself to a
+                                        home move's check
+  status [options] <id>                 what this machine says of a home move;
+                                        to the home it serves, a move it never
+                                        heard of it refuses for good
+  abort [options] <id>                  call a home move off here, for good,
+                                        unless it has gone through
+  export <id>                           the fleet's archive as JSON, in base64,
+                                        for the machine it moves to; reads what
+                                        the archive says of itself from stdin
+  home                                  where the fleet runs
+  help [command]                        display help for command
+[exit 0]
+$ svall fleet --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet enroll-worker --help
+Usage: svall fleet enroll-worker [options] <machine-id>
+
+take a machine as a worker that dials in: its record, and a new token printed
+once with --json
+
+Arguments:
+  machine-id             the worker's machine id
+
+Options:
+  --name <name>          the name the fleet knows it by
+  --platform <platform>  darwin or linux
+  --arch <arch>          its architecture, as node names it
+  --home <path>          its account's home
+  --svall-base <path>    where svall is installed there
+  --keep-token           answer with the token this home holds for it, where it
+                         holds one
+  -h, --help             display help for command
+[exit 0]
+$ svall fleet enroll-worker --no-such-flag
+error: required option '--name <name>' not specified
+[exit 1]
+$ svall fleet limits --help
+Usage: svall fleet limits [options] [command]
+
+the cores and memory this fleet may use of this Linux machine
+
+Options:
+  -h, --help     display help for command
+
+Commands:
+  set [options]  set them on the fleet's unit as it runs; nothing restarts
+[exit 0]
+$ svall fleet limits --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet limits set --help
+Usage: svall fleet limits set [options]
+
+set them on the fleet's unit as it runs; nothing restarts
+
+Options:
+  --cpus <n>         the cores the fleet may use
+  --memory <amount>  the memory it may use, such as 8G
+  --none             no limit
+  -h, --help         display help for command
+[exit 0]
+$ svall fleet limits set --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet limits set
+svall: a limit is for a Linux machine
+[exit 1]
+$ svall --json fleet limits set
+svall: a limit is for a Linux machine
+[exit 1]
+$ svall fleet join --help
+Usage: svall fleet join [options] <ssh>
+
+make this fleet, empty, a worker of the fleet whose home is at <ssh>; the home
+never dials this machine
+
+Arguments:
+  ssh                      the home's ssh destination
+
+Options:
+  --name <name>            the name the fleet knows this machine by; this
+                           machine's own, by default
+  --home-profile <name>    the fleet there, when it is not the private one
+  --limits <cores,memory>  what the fleet may use of the machine, such as
+                           11,93G, set without asking
+  --no-limits              leave the fleet all of the machine, without asking
+  -h, --help               display help for command
+[exit 0]
+$ svall fleet join --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet facts --help
+Usage: svall fleet facts [options]
+
+what this machine says of itself to a home move's check
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall fleet facts --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet adopt --help
+Usage: svall fleet adopt [options] <id>
+
+take the fleet from the home it leaves: --stage reads its archive from stdin;
+alone, reads the key of the move's driver from stdin, then stops, installs and
+starts this machine as its home
+
+Arguments:
+  id                        the move's id
+
+Options:
+  --stage                   stage the archive on stdin, in base64
+  --sha256 <sha>            the archive's sha256
+  --home-ssh <destination>  the destination the old home dials this machine at
+  -h, --help                display help for command
+[exit 0]
+$ svall fleet adopt --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet status --help
+Usage: svall fleet status [options] <id>
+
+what this machine says of a home move; to the home it serves, a move it never
+heard of it refuses for good
+
+Arguments:
+  id                    the move's id
+
+Options:
+  --asker <machine-id>  the home that asks, which only its worker can tell the
+                        move was not taken
+  --fleet <fleet-id>    the fleet it asks of
+  -h, --help            display help for command
+[exit 0]
+$ svall fleet status --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet abort --help
+Usage: svall fleet abort [options] <id>
+
+call a home move off here, for good, unless it has gone through
+
+Arguments:
+  id                    the move's id
+
+Options:
+  --asker <machine-id>  the home that asks, which only its worker can tell the
+                        move was not taken
+  --fleet <fleet-id>    the fleet it asks of
+  -h, --help            display help for command
+[exit 0]
+$ svall fleet abort --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet export --help
+Usage: svall fleet export [options] <id>
+
+the fleet's archive as JSON, in base64, for the machine it moves to; reads what
+the archive says of itself from stdin
+
+Arguments:
+  id          the move's id
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall fleet export --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet settle --help
+Usage: svall fleet settle [options] <id>
+
+Arguments:
+  id                   the move's id
+
+Options:
+  --outcome <outcome>  adopted or not-adopted
+  -h, --help           display help for command
+[exit 0]
+$ svall fleet settle --no-such-flag
+error: required option '--outcome <outcome>' not specified
+[exit 1]
+$ svall fleet home --help
+Usage: svall fleet home [options] [command]
+
+where the fleet runs
+
+Options:
+  -h, --help               display help for command
+
+Commands:
+  set [options] <machine>  move the fleet to <machine>, or back here with local:
+                           its islands, notes, settings and phone pairing;
+                           robots stay where they run
+  retry                    go on with the move this machine waits on, from what
+                           stays staged
+  abort                    call off the move this machine waits on, once the
+                           machine that holds it says it was not taken
+  crew-back [options]      bring back mission control's robots a move that
+                           stopped left away from the home
+[exit 0]
+$ svall fleet home --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet home set --help
+Usage: svall fleet home set [options] <machine>
+
+move the fleet to <machine>, or back here with local: its islands, notes,
+settings and phone pairing; robots stay where they run
+
+Arguments:
+  machine                       a worker of this fleet, or local
+
+Options:
+  --interrupt-after <duration>  interrupt what a robot of mission control runs
+                                after this long, 0 at once; without it, one at
+                                work stops the move before anything moves
+  -h, --help                    display help for command
+[exit 0]
+$ svall fleet home set --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet home set x
+✗ check  no machine x with an ssh destination in the registry -> add it under Machines first
+✗ check  no machine x with an ssh destination in the registry -> add it under Machines first
+The move did not finish.
+[exit 1]
+$ svall --json fleet home set x
+{"step":"check","status":"start"}
+{"step":"check","status":"fail","detail":"no machine x with an ssh destination in the registry","action":"add it under Machines first"}
+{"result":"actions","actions":["add it under Machines first"],"stopped":"check"}
+[exit 1]
+$ svall fleet home retry --help
+Usage: svall fleet home retry [options]
+
+go on with the move this machine waits on, from what stays staged
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall fleet home retry --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet home retry
+✗ check  no move of the fleet waits on this Mac
+✗ check  no move of the fleet waits on this Mac
+The move did not finish.
+[exit 1]
+$ svall --json fleet home retry
+{"step":"check","status":"start"}
+{"step":"check","status":"fail","detail":"no move of the fleet waits on this Mac"}
+{"result":"actions","actions":["no move of the fleet waits on this Mac"],"stopped":"check"}
+[exit 1]
+$ svall fleet home abort --help
+Usage: svall fleet home abort [options]
+
+call off the move this machine waits on, once the machine that holds it says it
+was not taken
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall fleet home abort --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet home abort
+✗ abort  fleet.homeMove {"op":"status"}
+✗ abort  fleet.homeMove {"op":"status"}
+The move was not called off.
+[exit 1]
+$ svall --json fleet home abort
+{"step":"abort","status":"start"}
+{"step":"abort","status":"fail","detail":"fleet.homeMove {\"op\":\"status\"}"}
+{"result":"actions","actions":["fleet.homeMove {\"op\":\"status\"}"],"stopped":"abort"}
+[exit 1]
+$ svall fleet home crew-back --help
+Usage: svall fleet home crew-back [options]
+
+bring back mission control's robots a move that stopped left away from the home
+
+Options:
+  --interrupt-after <duration>  interrupt what they run after this long, 0 at
+                                once; without it, one at work stays there and
+                                says so
+  -h, --help                    display help for command
+[exit 0]
+$ svall fleet home crew-back --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall fleet home crew-back
+✓ check  this Mac is the home
+– crew  mission control's robots are all on the home
+✓ 2 checks fine
+Mission control's robots are on the home.
+[exit 0]
+$ svall --json fleet home crew-back
+{"step":"check","status":"start"}
+{"step":"check","status":"ok","detail":"this Mac is the home"}
+{"step":"crew","status":"start"}
+{"step":"crew","status":"skip","detail":"mission control's robots are all on the home"}
+{"result":"ready","actions":[]}
+[exit 0]
+$ svall uninstall --help
+Usage: svall uninstall [options]
+
+remove what svall setup added and stop every fleet; asks before deleting the
+fleets and the app
+
+Options:
+  --purge         also delete every fleet, the copies of your own agent files in
+                  its mirror-backup with it, and the app, without asking
+  --from-app      run by the app itself: leave it open and in place
+  --login-shell   take PATH and where the agents keep their files from the login
+                  shell, as an app opened from Finder has none
+  --no-launchctl  leave the daemons running, only delete the files that start
+                  them
+  -h, --help      display help for command
+[exit 0]
+$ svall uninstall --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall connection-info --help
+Usage: svall connection-info [options]
+
+what a controller needs to reach this fleet over a tunnel
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall connection-info --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall version --help
+Usage: svall version [options]
+
+the release, the versions every machine of a fleet has to agree on, and the
+runtime running them
+
+Options:
+  -h, --help  display help for command
+[exit 0]
+$ svall version --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
+$ svall setup --help
+Usage: svall setup [options]
+
+install hooks, systemd user units and the svall shim
+
+Options:
+  --no-launchctl        write files only, do not (re)start the systemd unit
+  --check               only check what setup needs; change nothing
+  --release <path>      install this release tree or archive and run the daemon
+                        from it
+  --allow-unsigned      install a --release that carries no signature
+  --replace-settings    replace the mission-control .claude/settings.json you
+                        have edited, keeping a copy
+  --rollback [release]  put current back on this release, or on the one before,
+                        and restart the daemon
+  -h, --help            display help for command
+[exit 0]
+$ svall setup --no-such-flag
+error: unknown option '--no-such-flag'
+[exit 1]
