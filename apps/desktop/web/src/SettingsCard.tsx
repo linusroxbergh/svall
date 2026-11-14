@@ -282,8 +282,8 @@ function Machines() {
               </span>
               {acts && <MachineActions id={m.id} name={m.name} home={m.role === 'home'} worker={!via && m.role === 'worker' && !m.dialsIn} />}
               {meta && <span className="machine-meta" data-tip={m.dialsIn ? `${label === 'this Mac' ? 'This Mac' : label} connects to ${home}; nothing connects in.` : undefined}>{meta}</span>}
-              {/* a Linux machine of this fleet that answers; a Mac has no such setting */}
-              {m.platform === 'linux' && m.role !== undefined && m.joining === undefined && m.reachable !== false && (
+              {/* a Linux machine of this fleet that answers, read through the home, as a worker's daemon answers only for itself; a Mac has no such setting */}
+              {m.platform === 'linux' && m.role !== undefined && m.joining === undefined && m.reachable !== false && (!via || (via.online && !via.served)) && (
                 <MachineLimits id={m.id as MachineId} name={m.name} ask={ask?.limits === m.id ? ask : undefined} />
               )}
               {m.joining !== undefined ? (
