@@ -250,6 +250,8 @@ function Machines() {
   const shown = !via && !rows.some((r) => r.role !== 'home') ? [] : rows;
   // the registry's rows wait for the fleet's, which place them, unless the fleet's cannot be read
   const unread = online && fleetRows === undefined ? listFailed : undefined;
+  // a worker's daemon answers limits only for itself, so they are read through the home
+  const limits = !via || (via.online && !via.served);
   const reading = (machines === undefined && !error && app.bridge.present) || (online && fleetRows === undefined && !unread);
   return (
     <Group name="Machines" info={<Info id="machines">The home holds the fleet and starts new robots. A worker runs robots moved to it.</Info>}
@@ -283,7 +285,7 @@ function Machines() {
               {acts && <MachineActions id={m.id} name={m.name} home={m.role === 'home'} worker={!via && m.role === 'worker' && !m.dialsIn} />}
               {meta && <span className="machine-meta" data-tip={m.dialsIn ? `${label === 'this Mac' ? 'This Mac' : label} connects to ${home}; nothing connects in.` : undefined}>{meta}</span>}
               {/* a Linux machine of this fleet that answers; a Mac has no such setting */}
-              {m.platform === 'linux' && m.role !== undefined && m.joining === undefined && m.reachable !== false && (
+              {limits && m.platform === 'linux' && m.role !== undefined && m.joining === undefined && m.reachable !== false && (
                 <MachineLimits id={m.id as MachineId} name={m.name} ask={ask?.limits === m.id ? ask : undefined} />
               )}
               {m.joining !== undefined ? (

@@ -82,6 +82,22 @@ describe('a machine\'s limits in Settings → Machines', () => {
     expect([row('away'), row('new')]).toEqual([null, null]);
   });
 
+  test('on a far home, read only while the window follows the home, which alone answers for it', async () => {
+    const asked = () => call.mock.calls.filter(([m]) => m === 'machines.limits');
+    daemon({ [STUDIO]: SET }, [
+      { id: STUDIO, name: 'studio', role: 'home', platform: 'linux', reachable: true, robots: 4 },
+      { id: MAC, name: 'mac', role: 'worker', platform: 'darwin', dialsIn: true, reachable: true, robots: 23 },
+    ]);
+    act(() => store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio' }));
+    await machines();
+    expect([row('studio'), asked()]).toEqual([null, []]);
+    act(() => store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true, served: true }));
+    expect([row('studio'), asked()]).toEqual([null, []]);
+    act(() => store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true }));
+    expect(await value('studio')).toBe('11 of 12 cores · 93 of 94 GB');
+    expect(asked()).toEqual([['machines.limits', { machine: STUDIO }]]);
+  });
+
   test('a limit that does not hold says why in a line and what to do under it, a tool\'s words alone behind details, never daemon', async () => {
     const PENDING = 'dddddddd-0000-4000-8000-000000000000' as MachineId;
     daemon({ [STUDIO]: { ...SET, state: 'outside' }, [VAULT]: { ...SET, state: 'unapplied' }, [PENDING]: { ...SET, state: 'pending' } }, [...LIST,

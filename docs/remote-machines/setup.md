@@ -384,7 +384,9 @@ add and reads the size, so the Mac's terminal asks once that run ends, and sets 
 The app asks the same with the default filled in, both fields left empty for no limit: **Add machine** once the
 machine is added; the first run's server path between installing the server and this Mac joining it; and after a join
 that finds the home with no limit, the window opens Settings → Machines on the home's limits, once. Settings → Machines
-shows each Linux machine's `limits` row, with **Change** for the cores and the memory, and why a limit does not hold.
+shows each Linux machine's `limits` row, with **Change** for the cores and the memory, and why a limit does not hold. On a
+far home the rows show while the window reaches the home, which answers for every machine; a Mac its home dials never
+reaches it, and shows none.
 
 | Command | Where | What it does |
 | --- | --- | --- |
