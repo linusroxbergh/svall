@@ -85,7 +85,7 @@
 .side .fld.desc[readonly] { background: none; cursor: default; }
 .side .fld.desc[readonly]:focus { border-color: var(--line); }
 .side .fld.desc[readonly]:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
-.side .fld.inline { width: auto; text-align: right; padding: 0; border: 0; background: none; color: var(--ink); font-size: var(--text-sm); font-weight: var(--w-medium); appearance: none; cursor: pointer; }
+.side .fld.inline { width: auto; field-sizing: content; text-align: right; padding: 0; border: 0; background: none; color: var(--ink); font-size: var(--text-sm); font-weight: var(--w-medium); appearance: none; cursor: pointer; }
 .side .fld.inline:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
 /* in the settings a field and a pick read as controls */
 .set-win select.fld.inline, .set-win input.fld.inline { height: var(--ctl-sm); padding: 0 var(--sp-md); border: 0; border-radius: var(--r-sm); background-color: var(--fill-2);
