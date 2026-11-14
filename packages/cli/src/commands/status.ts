@@ -1,14 +1,13 @@
 import fs from 'node:fs';
-import { Command } from 'commander';
-import { ellipsis } from '@svall/protocol';
+import { ellipsis } from '@svall/protocol/text';
 import { resolvePaths } from '@svall/svalld/paths';
 import type { Client } from '../client.js';
 import { printResult, table } from '../format.js';
 import { contextOf, resumeFailures, stateOf } from '../render.js';
 import { withFleet } from '../client.js';
 
-export function statusCommand(connect: () => Promise<Client>, json: () => boolean, home: () => string): Command {
-  return new Command('status').description('show every island and robot').action(() => withFleet(connect, async (c, state) => {
+export function statusActions(connect: () => Promise<Client>, json: () => boolean, home: () => string) {
+  return { status: () => withFleet(connect, async (c, state) => {
     const paths = resolvePaths(home());
     const robots = Object.values(state.robots);
     const islands = Object.values(state.islands);
@@ -26,5 +25,5 @@ export function statusCommand(connect: () => Promise<Client>, json: () => boolea
       }))),
       ...robots.flatMap(resumeFailures),
     ].join('\n'));
-  }));
+  }) };
 }

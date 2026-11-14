@@ -18,3 +18,5 @@ export * from './journal.js';
 export * from './retro.js';
 export * from './feedback.js';
 export * from './robot-message.js';
+export * from './enums.js';
+export * from './wire.js';

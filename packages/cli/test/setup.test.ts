@@ -11,7 +11,8 @@ import { PROTOCOL_VERSION } from '@svall/protocol';
 import { installOpencodePlugin, opencodePaths } from '@svall/svalld/opencode/install';
 import { resolvePaths } from '@svall/svalld/paths';
 import { LAUNCHD_LABEL } from '@svall/svalld/profile';
-import { daemonRuns, setupCommand } from '../src/commands/setup.js';
+import { daemonRuns } from '../src/commands/setup.js';
+import { setupCommand } from '../src/definitions/setup.js';
 import { companionArchive } from './controller/archive.js';
 
 const exec = promisify(execFile);

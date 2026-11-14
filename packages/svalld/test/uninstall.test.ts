@@ -18,7 +18,8 @@ import { bundleRuntime, checkoutRuntime } from '../src/runtime.js';
 import { runSetup, shimText } from '../src/setup.js';
 import { pathRecordFile, setupPath, startupFile } from '../src/setup-path.js';
 import { seedTrust, trustRecordFile } from '../src/placement/trust.js';
-import { appQuit, fleetData, fleetHomes, purge, quitApp, runUninstall, type AppQuit } from '../src/uninstall.js';
+import { fleetHomes } from '../src/fleet-homes.js';
+import { appQuit, fleetData, purge, quitApp, runUninstall, type AppQuit } from '../src/uninstall.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 afterEach(() => { vi.unstubAllEnvs(); cleanHomes(); });

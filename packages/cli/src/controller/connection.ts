@@ -12,7 +12,7 @@ import { svallExe, releaseVersion } from '@svall/svalld/release';
 import { shq } from '@svall/svalld/text';
 import { Client } from '../client.js';
 import { redact } from './process.js';
-import { LOCAL, MachineRegistry, type MachineEntry } from './registry.js';
+import type { MachineEntry, MachineRegistry } from './registry.js';
 import { SshError, SshMaster, type SshErrorKind } from './ssh.js';
 
 export { FleetMismatch, MachineMismatch, remoteConnectionInfo };
@@ -138,10 +138,4 @@ export async function connectRemote(o: { registry: MachineRegistry; machine: str
     client.onClose(() => { void forward.cancel().catch(() => undefined).then(() => master.close()).catch(() => undefined); });
     return client;
   });
-}
-
-/** The client a command works through: the daemon here, or the one on the machine `host` names. */
-export async function connectFor(o: { home: string; host?: string; profile?: string }): Promise<Client> {
-  if (o.host === undefined || o.host === LOCAL) return Client.connect(o.home);
-  return connectRemote({ registry: MachineRegistry.load(), machine: o.host, fleetHome: o.home, profile: o.profile });
 }

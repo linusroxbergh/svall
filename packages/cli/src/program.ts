@@ -1,27 +1,24 @@
 import fs from 'node:fs';
 import { Command } from 'commander';
-import { configDir } from '@svall/svalld/machine';
 import { SHIM } from '@svall/svalld/profile';
-import { agentCommand } from './commands/agent.js';
-import { appCommands } from './commands/app.js';
-import { browserCommands } from './commands/browser.js';
-import { retroCommands } from './commands/retro.js';
-import { robotCommands } from './commands/robot.js';
-import { connectionInfoCommand } from './commands/connection.js';
-import { doctorCommand } from './commands/doctor.js';
-import { fleetCommands } from './commands/fleet.js';
-import { hostCommands, thereOf } from './commands/host.js';
-import { islandCommands } from './commands/island.js';
-import { mobileCommand } from './commands/mobile.js';
-import { scribeCommands } from './commands/scribe.js';
-import { setupCommand } from './commands/setup.js';
-import { statusCommand } from './commands/status.js';
-import { uninstallCommand } from './commands/uninstall.js';
-import { versionCommand } from './commands/version.js';
-import { workerCommands } from './commands/worker.js';
-import { connectFor } from './controller/connection.js';
+import { agentCommand } from './definitions/agent.js';
+import { appCommands } from './definitions/app.js';
+import { browserCommands } from './definitions/browser.js';
+import { retroCommands } from './definitions/retro.js';
+import { robotCommands } from './definitions/robot.js';
+import { connectionInfoCommand } from './definitions/connection.js';
+import { doctorCommand } from './definitions/doctor.js';
+import { fleetCommands } from './definitions/fleet.js';
+import { hostCommands } from './definitions/host.js';
+import { islandCommands } from './definitions/island.js';
+import { mobileCommand } from './definitions/mobile.js';
+import { scribeCommands } from './definitions/scribe.js';
+import { setupCommand } from './definitions/setup.js';
+import { statusCommand } from './definitions/status.js';
+import { uninstallCommand } from './definitions/uninstall.js';
+import { versionCommand } from './definitions/version.js';
+import { workerCommands } from './definitions/worker.js';
 import { closeMastersOnSignal } from './controller/ssh.js';
-import { launch, realDeps } from './launch.js';
 import { farProfile, resolveTarget, targetFor } from './target.js';
 import { checkoutVersion } from './version.js';
 
@@ -61,9 +58,10 @@ export function buildProgram(): Command {
   const target = () => resolveTarget({ profile: program.opts().profile, env: process.env.SVALL_HOME });
   const home = () => target().home;
   const profile = () => farProfile(target());
-  const connect = () => {
+  const connect = async () => {
     // a command routed to another machine holds a master there, which must not outlive it
     closeMastersOnSignal();
+    const { connectFor } = await import('./client.js');
     return connectFor({ home: home(), host: program.opts().host, profile: profile() });
   };
 
@@ -74,11 +72,15 @@ export function buildProgram(): Command {
     const meant = profile !== undefined && !fs.existsSync(t.home)
       ? [...program.commands.map((c) => c.name()), 'help'].find((c) => typo(profile, c)) : undefined;
     if (meant) throw new Error(`unknown command ${profile}; did you mean ${meant}? (${SHIM} -p ${profile} makes a fleet by that name)`);
+    const { launch, realDeps } = await import('./launch.js');
     await launch(t, realDeps());
   });
   program.addCommand(statusCommand(connect, json, home));
   program.addCommand(islandCommands(connect, json));
-  program.addCommand(robotCommands(connect, json, (name) => thereOf(name, configDir(), target())));
+  program.addCommand(robotCommands(connect, json, async (name) => {
+    const [{ thereOf }, { configDir }] = await Promise.all([import('./commands/host.js'), import('@svall/svalld/machine')]);
+    return thereOf(name, configDir(), target());
+  }));
   program.addCommand(scribeCommands(connect, json));
   program.addCommand(retroCommands(connect, json, home));
   program.addCommand(browserCommands(connect, json));

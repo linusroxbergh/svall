@@ -15,7 +15,8 @@ import type { AgentKind } from '@svall/protocol';
 import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { grouped } from '../src/checks-view.js';
 import type { HookTrust } from '@svall/svalld/codex/trust';
-import { codexCheck, doctor, doctorCommand, opencodeCheck, rebindMachineFile, reportLines, unattended, type DoctorDeps, type Report } from '../src/commands/doctor.js';
+import { codexCheck, doctor, opencodeCheck, rebindMachineFile, reportLines, unattended, type DoctorDeps, type Report } from '../src/commands/doctor.js';
+import { doctorCommand } from '../src/definitions/doctor.js';
 import { resolvePaths } from '@svall/svalld/paths';
 import { preflight, realPreflightDeps, requireReady } from '../src/commands/preflight.js';
 

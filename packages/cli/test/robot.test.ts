@@ -2,8 +2,9 @@ import type { Command } from 'commander';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, WORKTREE_ACTION, type MoveSheet, type Refusal, type Robot, type SetupRow } from '@svall/protocol';
 import type { Client } from '../src/client.js';
-import { agentFor, robotCommands, termOf } from '../src/commands/robot.js';
-import { statusCommand } from '../src/commands/status.js';
+import { agentFor, termOf } from '../src/commands/robot.js';
+import { robotCommands } from '../src/definitions/robot.js';
+import { statusCommand } from '../src/definitions/status.js';
 import { contextOf, stateOf } from '../src/render.js';
 
 // how a machine is reached from this Mac's terminal, as the registry names it

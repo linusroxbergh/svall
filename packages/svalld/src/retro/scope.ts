@@ -9,7 +9,7 @@ import { resolveRepo, type GitRunner } from '../links/git.js';
 import { realPath, resolvePaths } from '../paths.js';
 import { cliRunner } from '../sessions/registry.js';
 import type { CliRun } from '../sessions/types.js';
-import { fleetHomes } from '../uninstall.js';
+import { fleetHomes } from '../fleet-homes.js';
 import type { Work } from './outline.js';
 import { readSessions, type SessionRecord } from './sessions.js';
 

@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { Command } from 'commander';
 import type { AgentKind } from '@svall/protocol';
 import { CODEX_TRUST, claudeHooksCurrent, codexHooksCurrent, readCodexHooks, requireWritableHooks } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents, mainAgent, onPath } from '@svall/svalld/agents';
@@ -21,7 +20,7 @@ import { readJsonSettings, readOrUndefined } from '@svall/svalld/settings-file';
 import { cliCommand, refreshFleetPlists, runSetup, setupState, shimsCurrent, type SetupOptions, type SetupState } from '@svall/svalld/setup';
 import { inheritingFleets, integrationsFor, projectsFolder, requireInstalledApp, setupPlan, staleFleets, suggestProjects } from '@svall/svalld/setup-plan';
 import { writableStartupFile } from '@svall/svalld/setup-path';
-import { fleetHomes } from '@svall/svalld/uninstall';
+import { fleetHomes } from '@svall/svalld/fleet-homes';
 import { isWorker, readWorkerFile } from '@svall/svalld/worker/mode';
 import { DEFAULT_PREFIX, allowedSigners, installRelease, rollbackRelease } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
@@ -310,16 +309,9 @@ async function linuxSetup(t: Target, o: LinuxFlags, json: boolean): Promise<void
 }
 
 // a companion runs from an installed release under systemd, with none of the app's setup screen
-function linuxSetupCommand(target: () => Target, json: () => boolean, probe: Probe): Command {
-  return new Command('setup')
-    .description('install hooks, systemd user units and the svall shim')
-    .option('--no-launchctl', 'write files only, do not (re)start the systemd unit')
-    .option('--check', 'only check what setup needs; change nothing')
-    .option('--release <path>', 'install this release tree or archive and run the daemon from it')
-    .option('--allow-unsigned', 'install a --release that carries no signature')
-    .option('--replace-settings', 'replace the mission-control .claude/settings.json you have edited, keeping a copy')
-    .option('--rollback [release]', 'put current back on this release, or on the one before, and restart the daemon')
-    .action(async (o: LinuxFlags) => {
+export function setupActions(target: () => Target, json: () => boolean, probe: Probe = realProbe) {
+  return {
+    linux: async (o: LinuxFlags) => {
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
       if (t.name !== PRIVATE) throw new Error(`${SHIM} setup configures the private fleet; run ${SHIM} ${t.name} to open that one`);
@@ -330,28 +322,9 @@ function linuxSetupCommand(target: () => Target, json: () => boolean, probe: Pro
         return;
       }
       return linuxSetup(t, o, json());
-    });
-}
+    },
 
-export function setupCommand(target: () => Target, json: () => boolean, platform: NodeJS.Platform = process.platform, probe: Probe = realProbe): Command {
-  if (platform === 'linux') return linuxSetupCommand(target, json, probe);
-  return new Command('setup')
-    .description('install hooks, the launchd agent and the svall shim')
-    .option('--no-launchctl', 'write files only; leave launchd alone')
-    .option('--check', 'only check what setup needs; change nothing')
-    .option('--plan', 'print what setup would do, as the app shows it; change nothing')
-    .option('--agents <list>', 'the agents to install hooks for, comma-separated; saved for later runs')
-    .option('--found <list>', 'the agents the setup screen showed; those left out of --agents stay off (default: the agents found now)')
-    .option('--projects <dir>', 'where new robots start, made if missing; saved as defaultCwd')
-    .option('--main-agent <kind>', 'main agent selected during setup')
-    .option('--first-project <dir>', 'project for the first island and robot')
-    .option('--scribe <on|off>', 'automatic notes selected during onboarding')
-    .option('--new-robots <agent|shell>', 'what the app starts for new robots')
-    .option('--svall-permissions <on|off>', 'allow robot svall commands')
-    .option('--if-needed', 'set up only what is missing or out of date, and restart daemons of another version')
-    .option('--login-shell', 'take PATH and where the agents keep their files from the login shell, as an app opened from Finder has none')
-    .option('--joining', 'for a Mac that joins a fleet on a server next: no agent CLI needed here, and the app starts no fleet until the join lands')
-    .action(async (o: Flags) => {
+    mac: async (o: Flags) => {
       const answered = o.loginShell ? await takeLoginEnv() : true;
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
@@ -402,5 +375,6 @@ export function setupCommand(target: () => Target, json: () => boolean, platform
         if (!answered || !state || (!state.hooksStale && !state.shimsStale && !state.plistStale && !fleetsStale)) return refreshAction(r, d.stale, system, unwritable);
       }
       return runAction(r, { ...d, choices, options, system, ifNeeded: o.ifNeeded, joining: o.joining });
-    });
+    },
+  };
 }

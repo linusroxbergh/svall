@@ -4,19 +4,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { promisify } from 'node:util';
-import WebSocket from 'ws';
-import { ApiError, fleetNameProblem, HelloReply, MAX_REQUEST_BYTES, PROTOCOL_VERSION, type FleetEntry } from '@svall/protocol';
-import { peekConfig } from './config.js';
+import { ApiError, fleetNameProblem, type FleetEntry } from '@svall/protocol';
 import { Invalid, NotFound } from './errors.js';
+import { configName, homesIn } from './fleet-homes.js';
+import { handshakeHome, ProtocolMismatch } from './handshake.js';
 import { plistFile } from './launchd.js';
-import { resolvePaths, userPaths } from './paths.js';
+import { userPaths } from './paths.js';
 import { PRIVATE, profileHome, profileLabel, profileOf } from './profile.js';
-import { ownRuntime, variant, type Runtime } from './runtime.js';
+import { ownRuntime, type Runtime } from './runtime.js';
 import { setupHome, type HomeSetup } from './setup.js';
-import { appPid, appQuit, fleetHomes } from './uninstall.js';
-
-// the daemon and this build disagree on the protocol: waiting will not fix it
-export class ProtocolMismatch extends Error {}
+import { appPid, appQuit } from './uninstall.js';
 
 // managed is false for a home that is not a profile's own directory: it gets no launchd agent
 type FleetTarget = { name: string; home: string; managed: boolean };
@@ -70,77 +67,14 @@ export async function startFleet(t: FleetTarget, d: StartDeps): Promise<void> {
   }
 }
 
-const configName = (home: string): string | undefined => {
-  try { return peekConfig(resolvePaths(home)).name; } catch { return undefined; }
-};
-
 export const displayName = (home: string, homedir = os.homedir()): string => configName(home) ?? profileOf(home, homedir);
-
-const homesIn = (homedir: string): string[] => {
-  try { return fleetHomes(homedir); } catch { return []; }
-};
 
 /** What the fleets other than `except` go by, their config names and their directories alike. */
 export const takenNames = (homedir = os.homedir(), except?: string): string[] => [...new Set(homesIn(homedir)
   .filter((h) => except === undefined || h !== path.resolve(except))
   .flatMap((h) => [configName(h), profileOf(h, homedir)].filter((n) => n !== undefined)))];
 
-export const fleetNamed = (name: string, homedir = os.homedir()): string | undefined =>
-  homesIn(homedir).find((h) => configName(h) === name);
-
 const CONNECT_TIMEOUT = 2000;
-
-const deadline = <T>(p: Promise<T>, ms: number, message: string): Promise<T> => {
-  let timer: NodeJS.Timeout;
-  return Promise.race([
-    p.finally(() => clearTimeout(timer)),
-    new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); }),
-  ]);
-};
-
-/** A socket to the daemon at `url` that took `token`; given `mismatch`, one that speaks another protocol is refused with what it says. */
-export async function handshake({ url, token, timeoutMs, maxPayload = MAX_REQUEST_BYTES, mismatch, homeWord }: {
-  url: string; token: string; timeoutMs: number; maxPayload?: number; mismatch?: (theirs: number) => string; homeWord?: string;
-}): Promise<WebSocket> {
-  const ws = new WebSocket(url, { maxPayload });
-  try {
-    await deadline(new Promise<void>((resolve, reject) => {
-      ws.once('open', () => resolve());
-      ws.once('error', (e) => reject(new Error(`Svall's background service is not reachable on ${url}: ${e.message}`)));
-    }), timeoutMs, `Svall's background service did not accept a connection on ${url} within ${timeoutMs}ms`);
-    ws.send(JSON.stringify({ token, home: homeWord }));
-    await deadline(new Promise<void>((resolve, reject) => {
-      ws.once('message', (raw) => {
-        let msg: unknown;
-        try { msg = JSON.parse(raw.toString()); } catch { msg = undefined; }
-        const r = HelloReply.safeParse(msg);
-        if (!r.success) reject(new Error("Svall's background service refused the token"));
-        else if (mismatch && r.data.result.protocol !== PROTOCOL_VERSION) reject(new ProtocolMismatch(mismatch(r.data.result.protocol)));
-        else resolve();
-      });
-      ws.once('close', (code) => reject(new Error(`Svall's background service closed the connection (${code})`)));
-    }), timeoutMs, `Svall's background service did not answer the handshake within ${timeoutMs}ms`);
-  } catch (e) {
-    // a socket left open keeps a caller that handles the error from exiting
-    ws.terminate();
-    throw e;
-  }
-  return ws;
-}
-
-/** The daemon at `home`, once it takes its token and, unless `anyProtocol`, speaks this protocol; `restart` adds a way out of a mismatch. */
-export function handshakeHome(home: string, timeoutMs: number, o: { anyProtocol?: boolean; restart?: string } = {}): Promise<WebSocket> {
-  const paths = resolvePaths(home);
-  const port = Number(fs.readFileSync(paths.port, 'utf8'));
-  const fix = variant === 'release' ? 'quit and reopen Svall' : 'run `pnpm desktop:install`';
-  // a run relayed to the home names it as the Mac that drives it does, and so do the daemon's words for its calls
-  return handshake({
-    url: `ws://${peekConfig(paths).host}:${port}`, token: fs.readFileSync(paths.token, 'utf8').trim(), timeoutMs, homeWord: process.env.SVALL_HOME_WORD,
-    ...(!o.anyProtocol && {
-      mismatch: (theirs: number) => `Svall's background service for ${home} speaks protocol ${theirs} and this build speaks ${PROTOCOL_VERSION}: ${fix}${o.restart ? `, or ${o.restart}` : ''}`,
-    }),
-  });
-}
 
 /** Holds once the daemon at `home` takes its token and speaks this protocol. */
 export async function answers(home: string): Promise<{ close(): void }> {

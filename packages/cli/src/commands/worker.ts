@@ -4,7 +4,6 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 import { Writable } from 'node:stream';
-import { Command } from 'commander';
 import { z } from 'zod';
 import { MachineRecord, WorkerFile } from '@svall/protocol';
 import { VAR_NAME } from '@svall/svalld/claude';
@@ -22,7 +21,7 @@ import { releaseVersion } from '@svall/svalld/release';
 import { ownRuntime } from '@svall/svalld/runtime';
 import { setupFleetHome } from '@svall/svalld/setup';
 import { tokenFor } from '@svall/svalld/placement/workers';
-import { fleetHomes } from '@svall/svalld/uninstall';
+import { fleetHomes } from '@svall/svalld/fleet-homes';
 import { heldAsHome, isWorker, readWorkerFile } from '@svall/svalld/worker/mode';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { Client } from '../client.js';
@@ -143,24 +142,11 @@ export async function enrollHere(t: Target, o: Enrol, d: EnrolDeps = realEnrol):
 }
 
 /** What the home runs on a worker it links to: the link itself, and the enrolment that names the home. */
-export function workerCommands(target: () => Target): Command {
-  const cmd = new Command('worker').description('this machine as a worker of a home\'s fleet');
-  cmd.command('link').description('carry the home\'s link to this machine\'s svalld on stdin and stdout; the home runs it over ssh')
-    .action(() => proxy(resolvePaths(target().home).linkSock));
-  cmd.command('enroll').description('serve the fleet of the home named, with the token read from stdin; its daemon restarts as a worker')
-    .requiredOption('--home-machine <id>', 'the home\'s machine id')
-    .requiredOption('--home-name <name>', 'the home\'s name')
-    .requiredOption('--fleet-id <id>', 'the fleet\'s id')
-    .option('--home-ssh <destination>', 'the home this machine dials itself, which then needs no ssh to it')
-    .option('--home-socket <path>', 'the socket on the home its link is forwarded to, as svall fleet enroll-worker there names it')
-    .option('--home-svall-base <path>', 'where svall is installed on the home, as svall fleet enroll-worker there names it')
-    .option('--home-platform <platform>', "the home's platform, as svall fleet enroll-worker there names it")
-    .option('--home-arch <arch>', "the home's architecture, as svall fleet enroll-worker there names it")
-    .option('--home-path <path>', "the home's user folder, as svall fleet enroll-worker there names it")
-    .action((o: Enrol) => enrollHere(target(), o));
-  cmd.command('env').description('set a variable for this fleet\'s robots on this machine, its value read from stdin')
-    .argument('<VAR>', 'the variable\'s name')
-    .action(async (name: string) => {
+export function workerActions(target: () => Target) {
+  return {
+    link: () => proxy(resolvePaths(target().home).linkSock),
+    enroll: (o: Enrol) => enrollHere(target(), o),
+    env: async (name: string) => {
       if (!VAR_NAME.test(name)) throw new Error(`${name} is not a variable name`);
       const value = await readSecret(name);
       if (!value) throw new Error('no value given');
@@ -168,6 +154,6 @@ export function workerCommands(target: () => Target): Command {
       if (fault) throw new Error(fault);
       writeEnvVar(resolvePaths(target().home).env, name, value);
       process.stdout.write(`${name} is set in this fleet's .env on this machine\n`);
-    });
-  return cmd;
+    },
+  };
 }

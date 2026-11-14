@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fleetNamed } from '@svall/svalld/fleets';
+import { fleetNamed } from '@svall/svalld/fleet-homes';
 import { isProfileName, PRIVATE, profileHome, profileOf } from '@svall/svalld/profile';
 
 // managed is false for a home that is not a profile's own directory: it gets no launchd agent

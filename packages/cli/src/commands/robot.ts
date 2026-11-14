@@ -1,15 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Command, Option } from 'commander';
 import { homeWord } from '@svall/svalld/machine';
 import { expandHome } from '@svall/svalld/paths';
-import { AgentKind, ApiError, RELAY_LIMIT, Refusal, WORKTREE_ACTION, convertLine, keptSession, moveSummary, type AgentStatus, type Blocker, type MoveSheet, type SendDelivery } from '@svall/protocol';
+import type { AgentStatus, Blocker, MoveSheet, SendDelivery } from '@svall/protocol';
+import { Refusal, WORKTREE_ACTION, convertLine, moveSummary } from '@svall/protocol/placement';
+import { RELAY_LIMIT } from '@svall/protocol/robot-message';
+import { AgentKind, keptSession } from '@svall/protocol/state';
+import { ApiError } from '@svall/protocol/wire';
 import type { Client } from '../client.js';
 import { LOCAL } from '../controller/registry.js';
-import { contextOptions, editContext, type ContextFlags } from '../context.js';
+import { editContext, type ContextFlags } from '../context.js';
 import { printResult, table } from '../format.js';
 import { contextOf, resumeFailures, stateOf } from '../render.js';
-import { robotSetupText, type There } from './host.js';
+import type { There } from './host.js';
 import { int, parseDuration, point } from './parse.js';
 import { robotId, islandId, machineId, NoMatch } from './resolve.js';
 import { withFleet } from '../client.js';
@@ -18,7 +21,6 @@ const MODEL_ONLY = /^(claude|codex|opencode) (--model|-m) [\w.:/-]+$/;
 
 // the robot this CLI runs in; a session an older svalld started carries SVALL_CHAR_ID
 const callerRobot = (): string | undefined => process.env.SVALL_ROBOT_ID ?? process.env.SVALL_CHAR_ID;
-const REPORT_HELP = 'hear back when it is done, blocked or stops: svalld types a line into this robot';
 
 /** The agent `svall robot new` starts: a named one, or the main agent for a bare --agent or a --run with no --command. */
 export function agentFor(o: { agent?: string | true; claude?: boolean; codex?: boolean; opencode?: boolean; command?: string; run?: string }, main: AgentKind): string | undefined {
@@ -53,9 +55,7 @@ function refuseMove(r: Refusal, json: boolean): void {
   process.exitCode = 2;
 }
 
-/** `there`: how a machine is reached from this Mac's terminal, for the commands a move's list names. */
-export function robotCommands(connect: () => Promise<Client>, json: () => boolean, there: (machine: string) => There): Command {
-  const cmd = new Command('robot').alias('char').description('manage robots');
+export function robotActions(connect: () => Promise<Client>, json: () => boolean, there: (machine: string) => There | Promise<There>) {
   // what run and send print: delivered, queued or held, or the refusal of an agent waiting on an answer, exiting 2
   const deliver = async (send: () => Promise<{ delivery: SendDelivery }>): Promise<void> => {
     try {
@@ -69,8 +69,8 @@ export function robotCommands(connect: () => Promise<Client>, json: () => boolea
     }
   };
 
-  cmd.command('list').description("list every robot, or one island's").option('--island <id>').option('--started-by <id>', 'only the robots that robot started')
-    .action((o: { island?: string; startedBy?: string }) => withFleet(connect, async (_c, state) => {
+  return {
+    list: (o: { island?: string; startedBy?: string }) => withFleet(connect, async (_c, state) => {
     const island = o.island ? islandId(state, o.island) : undefined;
     const by = o.startedBy ? robotId(state, o.startedBy) : undefined;
     const robots = Object.values(state.robots).filter((ch) => (!island || ch.islandId === island) && (!by || ch.startedBy === by));
@@ -79,31 +79,9 @@ export function robotCommands(connect: () => Promise<Client>, json: () => boolea
       ctx: contextOf(ch), branch: ch.repo?.branch ?? '', cwd: ch.cwd,
       cell: `${ch.cell.x},${ch.cell.y}`,
     }))), ...robots.flatMap(resumeFailures)].join('\n'));
-  }));
+    }),
 
-  cmd.command('new').description('make a robot: a terminal on an island')
-    .requiredOption('--island <id>').requiredOption('--cwd <path>')
-    .option('--name <name>')
-    .addOption(new Option('--agent [name]', 'start claude, codex or opencode in its terminal; without a name, the main agent').conflicts(['claude', 'codex', 'opencode', 'command']))
-    .addOption(new Option('--claude', 'the same as --agent claude').conflicts(['codex', 'opencode', 'command']))
-    .addOption(new Option('--codex', 'the same as --agent codex').conflicts(['opencode', 'command']))
-    .addOption(new Option('--opencode', 'the same as --agent opencode').conflicts('command'))
-    .option('--command <cmd>').option('--cell <x,y>')
-    .option('--run <text>', 'type text and Enter once the agent has started; starts the main agent unless --agent or --command says otherwise; exits 2 when it could not be sent')
-    .option('--agent-profile <name>', 'a role from the fleet\'s agent-profiles folder, e.g. reviewer')
-    .option('--report', `with --run, ${REPORT_HELP}`)
-    .addHelpText('after', `
-Handing work to a new robot:
-  svall robot new --island <id> --cwd <path> --name "<name>" --run "<prompt>" --report
-  - In a git repo, a robot is told to start in a new worktree unless Settings turns that off; --cwd can name a worktree whose branch is the work and no other agent is in.
-  - The prompt is all it knows: goal, paths, links, what done looks like.
-  - Names: at most 24 characters, lower case: PR or ticket id, area, task, one or two words each: "#472 auth review", not "#472 deep review".
-  - New island: svall island create "<name>" --description "<one line>".
-  - --report: svalld types "[svall] <name> (<id>) …" into your prompt line when it is done, blocked or stops, so neither of you waits or polls. Closing it is the user's call.
-  - Check its work: svall robot read <id> --transcript, and its cwd and branch in svall status --json.
-  - Message it, or any robot: svall robot send <id> "<text>" [--report]; it answers the same way. Its final message in full: svall robot read <id> --last.
-  - Write ids out: a command holding $SVALL_ROBOT_ID asks the user for permission.`)
-    .action(async (o: { island: string; cwd: string; name?: string; agent?: string | true; claude?: boolean; codex?: boolean; opencode?: boolean; command?: string; cell?: string; run?: string; agentProfile?: string; report?: boolean }) => {
+    new: async (o: { island: string; cwd: string; name?: string; agent?: string | true; claude?: boolean; codex?: boolean; opencode?: boolean; command?: string; cell?: string; run?: string; agentProfile?: string; report?: boolean }) => {
       if (typeof o.agent === 'string' && !AgentKind.safeParse(o.agent).success) throw new Error(`unknown agent ${o.agent}; use claude, codex or opencode`);
       const by = callerRobot();
       if (o.report && !o.run) throw new Error('--report needs --run: it reports on that prompt');
@@ -132,16 +110,9 @@ Handing work to a new robot:
           process.exitCode = 2;
         }
       });
-    });
+    },
 
-  cmd.command('move <id>').description('move a robot to another island or cell, or to run on another machine; a refused move exits 2')
-    .option('--island <id>').option('--cell <x,y>', 'omit it and the daemon picks a free cell')
-    .addOption(new Option('--machine <name>', 'a machine under Machines, or local for this machine; prints what travels, then moves it').conflicts(['island', 'cell']))
-    .addOption(new Option('--interrupt-after <duration>', 'interrupt what still runs after this long, e.g. 30s or 0').conflicts('island'))
-    .addOption(new Option('--carry <file>', 'take a credential file such as .env along; repeatable').argParser((v: string, acc: string[] = []) => [...acc, v]).conflicts('island'))
-    .addOption(new Option('--own-worktree', 'on a main checkout, move into a new worktree of its own at HEAD; the checkout keeps its changes').conflicts(['island', 'carry']))
-    .addOption(new Option('--retry', 'run on the move the robot is in, from the step it stopped at').conflicts(['island', 'cell', 'machine', 'carry', 'interruptAfter', 'ownWorktree']))
-    .action(async (id: string, { island, cell, machine: to, interruptAfter, carry, ownWorktree, retry }: { island?: string; cell?: string; machine?: string; interruptAfter?: string; carry?: string[]; ownWorktree?: boolean; retry?: boolean }) => {
+    move: async (id: string, { island, cell, machine: to, interruptAfter, carry, ownWorktree, retry }: { island?: string; cell?: string; machine?: string; interruptAfter?: string; carry?: string[]; ownWorktree?: boolean; retry?: boolean }) => {
       if (!island && !to && !retry) throw new Error('name one of --island, --machine and --retry');
       if (retry) {
         await withFleet(connect, async (c, state) => {
@@ -186,36 +157,30 @@ Handing work to a new robot:
         const setup = rows.filter((r) => r.gap);
         if (setup.length && !json()) {
           const name = state.machines![machine].name;
-          process.stdout.write(`${robotSetupText(setup, robot.name, name, there(name))}\n`);
+          const { robotSetupText } = await import('./host.js');
+          process.stdout.write(`${robotSetupText(setup, robot.name, name, await there(name))}\n`);
         }
         printResult({ ok: true, sheet: checked.sheet, moveId, ...(setup.length > 0 && { setup }) }, json(), () => moveId);
       });
-    });
+    },
 
-  cmd.command('run <id> <text...>').description("type text into a robot's terminal, then Enter; prints delivered or queued, exits 2 when refused").option('--no-enter', 'leave the text in the prompt line, where runs after it queue until it is sent or cleared').option('--term <n>', 'terminal to type into: 1 (default) or 2')
-    .action((id: string, text: string[], o: { enter: boolean; term?: string }) => withFleet(connect, (c, state) =>
-      deliver(() => c.call('robot.run', { id: robotId(state, id), text: text.join(' '), enter: o.enter, term: termOf(o.term) }))));
+    run: (id: string, text: string[], o: { enter: boolean; term?: string }) => withFleet(connect, (c, state) =>
+      deliver(() => c.call('robot.run', { id: robotId(state, id), text: text.join(' '), enter: o.enter, term: termOf(o.term) }))),
 
-  cmd.command('send <id> <text...>').description('message a robot as this one, which can answer the same way; prints delivered, queued or held, exits 2 when refused')
-    .option('--report', REPORT_HELP)
-    .action((id: string, text: string[], o: { report?: boolean }) => {
+    send: (id: string, text: string[], o: { report?: boolean }) => {
       const from = callerRobot();
       if (!from) throw new Error('run this inside a robot; svall robot run types as the user');
       // the header names the robot, not the terminal, so an answer goes to its first
       if (process.env.SVALL_TERM === '2') throw new Error("send from the robot's first terminal, where an answer comes back");
       return withFleet(connect, (c, state) => deliver(() => c.call('robot.send', { id: robotId(state, id), from: robotId(state, from), text: text.join(' '), ...(o.report && { report: true }) })));
-    });
+    },
 
-  cmd.command('read <id>').description("print the end of a robot's screen, or of its transcript, or its agent's last answer").option('--transcript')
-    .addOption(new Option('--last', "the final message of the agent's newest turn, in full").conflicts('transcript'))
-    .option('--lines <n>', 'screen lines, or turns with --transcript', '50').option('--term <n>', 'terminal to read: 1 (default) or 2')
-    .action((id: string, o: { transcript?: boolean; last?: boolean; lines: string; term?: string }) => withFleet(connect, async (c, state) => {
+    read: (id: string, o: { transcript?: boolean; last?: boolean; lines: string; term?: string }) => withFleet(connect, async (c, state) => {
       const r = await c.call('robot.read', { id: robotId(state, id), source: o.last ? 'last' : o.transcript ? 'transcript' : 'screen', lines: int(o.lines, '--lines', { min: 1 }), term: termOf(o.term) });
       printResult(r, json(), () => r.text);
-    }));
+    }),
 
-  cmd.command('wait <id>').description('wait for a status; exits 0 on a match, 2 on timeout, 3 when the robot has no terminal (deleted or dormant)').requiredOption('--until <statuses>').option('--timeout <seconds>', '', '600').option('--term <n>', 'terminal to wait on: 1 (default) or 2')
-    .action(async (id: string, o: { until: string; timeout: string; term?: string }) => {
+    wait: async (id: string, o: { until: string; timeout: string; term?: string }) => {
       // the client's own timer takes 31 bits of milliseconds
       const wait = { until: o.until.split(',') as AgentStatus[], timeoutMs: int(o.timeout, '--timeout', { min: 0, max: 2_000_000 }) * 1000, term: termOf(o.term) };
       const r = await withFleet(connect, async (c, state) => {
@@ -230,12 +195,9 @@ Handing work to a new robot:
       printResult(r, json(), () => r.status);
       if (r.status === 'timeout') process.exitCode = 2;
       if (r.status === 'gone') process.exitCode = 3;
-    });
+    },
 
-  contextOptions(cmd.command('update <id>').description("change a robot's name, note, island, context, instructions or agent profile")
-    .option('--name <n>').option('--note <n>').option('--note-file <path>', 'read the note from a file, for text a shell would mangle')
-    .option('--island <id>').option('--agent-profile <name>', 'a role from the fleet\'s agent-profiles folder; \'\' clears it'))
-    .action(async (id: string, o: { name?: string; note?: string; noteFile?: string; island?: string; agentProfile?: string } & ContextFlags & { instructions?: string }) => {
+    update: async (id: string, o: { name?: string; note?: string; noteFile?: string; island?: string; agentProfile?: string } & ContextFlags & { instructions?: string }) => {
       if (o.note !== undefined && o.noteFile) throw new Error('use --note or --note-file, not both');
       await withFleet(connect, async (c, state) => {
         const current = state.robots[robotId(state, id)];
@@ -246,23 +208,20 @@ Handing work to a new robot:
         });
         printResult(ch, json(), () => `${ch.id} ${ch.name}`);
       });
-    });
+    },
 
-  cmd.command('show <id>').description('print the brief the agent gets').action((id: string) => withFleet(connect, async (c, state) => {
+    show: (id: string) => withFleet(connect, async (c, state) => {
     const ch = state.robots[robotId(state, id)];
     const r = await c.call('robot.show', { id: ch.id });
     printResult(r, json(), () => r.text);
-  }));
+    }),
 
-  cmd.command('seen <id>').description("mark a robot's last turn seen: done turns idle").action((id: string) => withFleet(connect, async (c, state) => {
+    seen: (id: string) => withFleet(connect, async (c, state) => {
     const ch = await c.call('robot.seen', { id: robotId(state, id) });
     printResult(ch, json(), () => `${ch.id} ${stateOf(ch)}`);
-  }));
+    }),
 
-  cmd.command('revive <id>').description("resume a dormant robot's session in a new terminal")
-    .option('--fresh', "start a new session instead, told what the one that could not resume held; that session's files stay")
-    .option('--term <n>', 'with --fresh, the terminal: 1 (default) or 2')
-    .action((id: string, o: { fresh?: boolean; term?: string }) => {
+    revive: (id: string, o: { fresh?: boolean; term?: string }) => {
       if (o.term !== undefined && !o.fresh) throw new Error('--term goes with --fresh');
       const term = termOf(o.term);
       return withFleet(connect, async (c, state) => {
@@ -271,12 +230,11 @@ Handing work to a new robot:
         const ch = o.fresh ? await c.call('robot.fresh', { id: target, ...(term && { term }) }) : await c.call('robot.revive', { id: target });
         printResult(ch, json(), () => `${ch.id} ${stateOf(ch)}${o.fresh && old ? `; ${keptSession(old)}` : ''}`);
       });
-    });
+    },
 
-  cmd.command('close <id>').description('delete a robot, its terminal and its docs').action((id: string) => withFleet(connect, async (c, state) => {
-    await c.call('robot.close', { id: robotId(state, id) });
-    printResult({}, json(), () => 'closed');
-  }));
-
-  return cmd;
+    close: (id: string) => withFleet(connect, async (c, state) => {
+      await c.call('robot.close', { id: robotId(state, id) });
+      printResult({}, json(), () => 'closed');
+    }),
+  };
 }

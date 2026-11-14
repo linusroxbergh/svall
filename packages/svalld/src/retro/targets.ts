@@ -5,7 +5,7 @@ import { frontmatter, type TargetClass } from '@svall/protocol';
 import { sha256Hex } from '../hash.js';
 import { realPath } from '../paths.js';
 import { plugins } from '../resources/parse.js';
-import { fleetHomes } from '../uninstall.js';
+import { fleetHomes } from '../fleet-homes.js';
 import { within } from '../workspace/paths.js';
 import { redact } from './redact.js';
 

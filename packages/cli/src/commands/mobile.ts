@@ -1,4 +1,3 @@
-import { Command } from 'commander';
 import QRCode from 'qrcode';
 import { SHIM } from '@svall/svalld/profile';
 import { isRelease } from '@svall/svalld/release';
@@ -6,9 +5,7 @@ import type { Client } from '../client.js';
 import { printResult } from '../format.js';
 import { withClient } from '../client.js';
 
-export function mobileCommand(connect: () => Promise<Client>, json: () => boolean): Command {
-  const cmd = new Command('mobile').description('serve the fleet to your phone over Tailscale');
-
+export function mobileActions(connect: () => Promise<Client>, json: () => boolean) {
   // the daemon answers an environment it cannot serve in with a reason rather than a failed call; its
   // base64 data url is for the app, so no command here carries it
   const set = async (enabled: boolean) => {
@@ -17,8 +14,8 @@ export function mobileCommand(connect: () => Promise<Client>, json: () => boolea
     return status;
   };
 
-  cmd.command('on', { isDefault: true }).description('have the daemon start tailscale serve, and print a QR code')
-    .action(async () => {
+  return {
+    on: async () => {
       const status = await set(true);
       // a caller reading json wants no terminal drawing either
       if (json()) { printResult(status, true); return; }
@@ -32,12 +29,10 @@ export function mobileCommand(connect: () => Promise<Client>, json: () => boolea
         ...(status.pageMissing ? [isRelease() ? 'this release carries no phone page' : 'the phone page is missing: pnpm --filter @svall/desktop-web build:mobile'] : []),
         'On the phone: open the link, then Share → Add to Home Screen.',
       ].join('\n'));
-    });
+    },
 
-  cmd.command('off').description('stop serving; the daemon stays up')
-    .action(async () => {
+    off: async () => {
       printResult(await set(false), json(), () => `tailscale serve stopped\nafter the next \`${SHIM} mobile on\`, each phone has to turn notifications on again (⚙ → Notify this phone)`);
-    });
-
-  return cmd;
+    },
+  };
 }

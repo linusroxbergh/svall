@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { ProtocolMismatch } from '@svall/svalld/fleets';
+import { ProtocolMismatch } from '@svall/svalld/handshake';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
 import { PART_BYTES, PROTOCOL_VERSION } from '@svall/protocol';
 import { machineId } from '@svall/svalld/machine';

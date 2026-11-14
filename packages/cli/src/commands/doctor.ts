@@ -4,7 +4,6 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { Command } from 'commander';
 import type { z } from 'zod';
 import { FleetConfig, NodeConfig, type AgentKind, type LimitsReport } from '@svall/protocol';
 import { claudeHooksCurrent, codexHooksCurrent, codexInstalled, hooksInstalled } from '@svall/svalld/agent-hooks';
@@ -463,9 +462,8 @@ function connectHook(path: string): Promise<void> {
   });
 }
 
-export function doctorCommand(target: () => Target, json: () => boolean, platform: NodeJS.Platform = process.platform): Command {
-  const rebind = "bind machine.json to this machine's hardware, after the hardware changed under it";
-  return new Command('doctor').description('check what the fleet needs and show the end of its log; changes nothing unless --rebind').option('--rebind', rebind).action(async (o: { rebind?: boolean }) => {
+export function doctorActions(target: () => Target, json: () => boolean, platform: NodeJS.Platform) {
+  return { doctor: async (o: { rebind?: boolean }) => {
     if (o.rebind) {
       const file = path.join(configDir(), 'machine.json');
       const r = rebindMachineFile({
@@ -515,5 +513,5 @@ export function doctorCommand(target: () => Target, json: () => boolean, platfor
     }) };
     printResult(report, json(), () => reportLines(report, useColor()).join('\n'));
     if (report.checks.some((c) => c.status === 'fail')) process.exitCode = 1;
-  });
+  } };
 }

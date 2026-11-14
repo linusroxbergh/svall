@@ -26,7 +26,7 @@ import { relocate } from '../placement/relocate.js';
 import { noLoginFix, tokenFor, workerIds, workerProfile } from '../placement/workers.js';
 import { expandHome, resolvePaths, type Paths } from '../paths.js';
 import { clean } from '../path-tools.js';
-import { fleetHomes } from '../uninstall.js';
+import { fleetHomes } from '../fleet-homes.js';
 import { withOwned } from '../worker/snapshot.js';
 
 const exec = promisify(execFile);

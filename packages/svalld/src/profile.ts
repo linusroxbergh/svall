@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { HELD_COMMANDS, isProfileName, RESERVED } from '@svall/protocol';
+import { HELD_COMMANDS, isProfileName, RESERVED } from '@svall/protocol/names';
 import { variant, type Variant } from './runtime.js';
 
 export { isProfileName };

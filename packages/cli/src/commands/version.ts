@@ -1,4 +1,3 @@
-import { Command } from 'commander';
 import { PROTOCOL_VERSION, STATE_SCHEMA_VERSION } from '@svall/protocol';
 import { readFleetConfig } from '@svall/svalld/config';
 import { machineId, machineIdFailure } from '@svall/svalld/machine';
@@ -32,10 +31,9 @@ function served(home: string): { role: 'home'; fleetId?: string } | { role: 'wor
   return { role: 'home', ...(fleetId && { fleetId }) };
 }
 
-export function versionCommand(json: () => boolean, home: () => string): Command {
-  return new Command('version')
-    .description('the release, the versions every machine of a fleet has to agree on, and the runtime running them')
-    .action(() => {
+export function versionActions(json: () => boolean, home: () => string) {
+  return {
+    version: () => {
       const me = thisMachine(json());
       const v = {
         release: releaseVersion(),
@@ -53,5 +51,6 @@ export function versionCommand(json: () => boolean, home: () => string): Command
         `state schema     ${v.stateSchema}`,
         `runtime          node ${v.runtime.node} ${v.runtime.platform}-${v.runtime.arch}`,
       ].join('\n'));
-    });
+    },
+  };
 }

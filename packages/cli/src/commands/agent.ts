@@ -1,4 +1,3 @@
-import { Command } from 'commander';
 import { AGENTS, findAgents, mainAgent } from '@svall/svalld/agents';
 import { configuredMainAgent, fleetMainAgent, saveMainAgent } from '@svall/svalld/config';
 import { resolvePaths, type Paths } from '@svall/svalld/paths';
@@ -25,11 +24,9 @@ async function fleetState(home: string): Promise<FleetState | undefined> {
   try { return await c.call('state.get', {}); } finally { c.close(); }
 }
 
-export function agentCommand(target: () => Target, json: () => boolean): Command {
-  return new Command('agent')
-    .description('show or set the main agent: what the scribe, mission control and svall robot new --run run by default')
-    .argument('[name]', 'claude, codex or opencode')
-    .action(async (name: string | undefined) => {
+export function agentActions(target: () => Target, json: () => boolean) {
+  return {
+    agent: async (name: string | undefined) => {
       const t = target();
       const paths = resolvePaths(t.home);
       const found = findAgents(process.env.PATH ?? '');
@@ -52,5 +49,6 @@ export function agentCommand(target: () => Target, json: () => boolean): Command
         },
       }, agent.data);
       printResult({ agent: agent.data }, json(), () => line);
-    });
+    },
+  };
 }

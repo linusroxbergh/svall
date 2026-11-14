@@ -6,7 +6,8 @@ import { unitDirOf } from '@svall/svalld/linux/setup';
 import { machineId } from '@svall/svalld/machine';
 import { bundleRuntime, releaseRuntime } from '@svall/svalld/runtime';
 import { runUninstall } from '@svall/svalld/uninstall';
-import { keptLine, uninstall, uninstallCommand, type UninstallDeps } from '../src/commands/uninstall.js';
+import { keptLine, uninstall, type UninstallDeps } from '../src/commands/uninstall.js';
+import { uninstallCommand } from '../src/definitions/uninstall.js';
 
 function fake(o: { answer?: string; isTTY?: boolean; data?: string[]; backups?: string[] } = {}) {
   const prompts: string[] = [];

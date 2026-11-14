@@ -334,7 +334,8 @@ describe('host doctor', () => {
     ssh.reply(['svall-space'], { stdout: DF });
     ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
     registered().save();
-    const { hostCommands, lastChecks } = await import('../src/commands/host.js');
+    const { hostCommands } = await import('../src/definitions/host.js');
+    const { lastChecks } = await import('../src/commands/host.js');
     const said: string[] = [];
     const out = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { said.push(String(chunk)); return true; });
     try {
@@ -367,7 +368,7 @@ describe('host doctor', () => {
     ssh.reply(['svall-space'], { stdout: DF });
     ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
     registered().save();
-    const { hostCommands } = await import('../src/commands/host.js');
+    const { hostCommands } = await import('../src/definitions/host.js');
     const said: string[] = [];
     const out = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { said.push(String(chunk)); return true; });
     try {
@@ -402,7 +403,8 @@ describe('host doctor', () => {
     registry.save();
     const check = { at: 1, failed: 0, warned: 0 };
     fs.writeFileSync(path.join(config, 'checks.json'), JSON.stringify({ [REMOTE]: check, [OTHER_MAC]: check }));
-    const { hostCommands, lastChecks } = await import('../src/commands/host.js');
+    const { hostCommands } = await import('../src/definitions/host.js');
+    const { lastChecks } = await import('../src/commands/host.js');
     const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     try {
       await hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => config).parseAsync(['remove', 'trift'], { from: 'user' }).catch(() => undefined);
@@ -417,7 +419,8 @@ describe('host doctor', () => {
     const registry = MachineRegistry.load(config);
     registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
     registry.save();
-    const { hostCommands, lastChecks } = await import('../src/commands/host.js');
+    const { hostCommands } = await import('../src/definitions/host.js');
+    const { lastChecks } = await import('../src/commands/host.js');
     const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     try {
       await hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => config).parseAsync(['doctor', 'trift'], { from: 'user' });
