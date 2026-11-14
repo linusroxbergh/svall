@@ -590,6 +590,7 @@ test('an agent older there is updated from the sheet, which says so and then che
   await act(async () => fireEvent.click(screen.getByTestId('move-action')));
   expect(call).toHaveBeenCalledWith('machines.updateAgents', { machine: VAULT, kinds: ['claude'] });
   expect(screen.getByTestId('move-fixing').textContent).toBe('Updating Claude Code on linus-vault…');
+  expect(screen.getByTestId('move-fixing').querySelector('.move-spin')).not.toBeNull();
   expect(store.getState().hostOpen).toBe(false);
 
   await act(async () => finish(new ApiError('internal', 'Claude Code did not update', { raw: 'claude update exited 1: no network' })));

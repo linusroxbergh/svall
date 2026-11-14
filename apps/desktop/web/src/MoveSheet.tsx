@@ -279,7 +279,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
             <div className="acts"><button className="btn pri" data-testid="move-go" onClick={go}>Move</button></div>
           </>
         )}
-        {!run && doing && <div className="modal-note" data-testid="move-fixing">{doing.doing}{step && `: ${stepLabel(step)}`}…</div>}
+        {!run && doing && <div className="modal-note" data-testid="move-fixing"><span className="move-spin" />{doing.doing}{step && `: ${stepLabel(step)}`}…</div>}
         {!run && !doing && refusal && (
           <>
             <span className="move-state" data-state="blocked" data-testid="move-blocked"><span className="move-mark"><Mark status="blocked" /></span>Not ready to move yet</span>

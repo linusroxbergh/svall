@@ -1,4 +1,4 @@
-import { AGENT_UPDATE, notNeeded, updatesHere, updatesIn, type AgentKind, type LimitsReport, type MachineId, type SetupRow } from '@svall/protocol';
+import { AGENT_LABEL, AGENT_UPDATE, notNeeded, updatesHere, updatesIn, type AgentKind, type LimitsReport, type MachineId, type SetupRow } from '@svall/protocol';
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { app, deps } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
@@ -202,9 +202,9 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
   // the run's own far id, as this Mac's registry may give its name to another machine
   const id = useApp((s) => run.args.id ?? s.machines?.find((m) => m.name === name)?.id);
   const home = useApp(homeOf);
-  // the tick asked for while svalld pushes it, and an agent update under way there
+  // the tick asked for while svalld pushes it, and the agent update under way, as which agents on which machine
   const [asked, setAsked] = useState<boolean>();
-  const [updating, setUpdating] = useState(false);
+  const [updating, setUpdating] = useState<string>();
   const [failed, setFailed] = useState<string>();
   const updates = row.run ? updatesIn(row.run) : undefined;
   const onMac = updatesHere(`${row.detail ?? ''}; ${row.action ?? ''}`);
@@ -248,12 +248,13 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
   };
   // the machine checked again once its agents and this Mac's are updated, unless a run started meanwhile holds the panel
   const update = (machine: MachineId, there?: AgentKind[], mac?: AgentKind[]) => {
-    setUpdating(true);
+    const agents = (kinds: AgentKind[]) => kinds.map((k) => AGENT_LABEL[k]).join(' and ');
     setFailed(undefined);
+    setUpdating(there ? `${agents(there)} on ${name}` : `${agents(mac!)} on this Mac`);
     (there ? app.api().call('machines.updateAgents', { machine, kinds: there }) : Promise.resolve({}))
-      .then(() => mac && app.api().call('machines.updateAgents', { kinds: mac }))
+      .then(() => { if (mac) { setUpdating(`${agents(mac)} on this Mac`); return app.api().call('machines.updateAgents', { kinds: mac }); } })
       .then(() => { if (!app.store.getState().host?.running) startHost('doctor', { name, ...farId(run.args) }); }, fail)
-      .finally(() => setUpdating(false));
+      .finally(() => setUpdating(undefined));
   };
   // a key's row is named by its key, and its box copies it; a program's box says the machine does not need it
   const key = !!row.tick && !notNeeded(row) && row.step !== PHONE;
@@ -302,9 +303,9 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
   const controls: Record<string, () => ReactNode> = {
     tick: () => (opens ? <span className="host-ctl">{open}{box}</span> : box),
     update: () => (
-      <button className="btn sm" data-testid={`host-update-${row.step}`} disabled={updating || !id}
+      <button className="btn sm" data-testid={`host-update-${row.step}`} disabled={!!updating || !id}
         data-tip={id && `Runs ${[updates && `${row.run} on ${name}`, onMac && `${onMac.map((k) => AGENT_UPDATE[k]).join(' && ')} on this Mac`].filter(Boolean).join(', then ')}, then checks again`}
-        onClick={() => update(id as MachineId, updates, onMac)}>Update</button>
+        onClick={() => update(id as MachineId, updates, onMac)}>{updating ? 'Updating…' : 'Update'}</button>
     ),
     upgrade: () => <button className="btn sm" data-testid="host-upgrade" data-tip={`Install ${release} release there`} onClick={() => startHost('upgrade', { name, ...farId(run.args) })}>Upgrade</button>,
     worker: () => (
@@ -328,10 +329,10 @@ function Row({ row, run, terminal: opener }: { row: HostStep; run: HostRun; term
   };
   return (
     <div className="host-step" data-testid={`host-step-${row.step}`} data-status={row.status}>
-      <span className="host-mark"><Mark status={isSetup(row) && row.status === 'warn' ? 'start' : row.status} /></span>
+      <span className="host-mark">{updating ? <span className="move-spin" /> : <Mark status={isSetup(row) && row.status === 'warn' ? 'start' : row.status} />}</span>
       <span className="host-name" data-tip={label}>{label}</span>
       <div className="host-said">
-        {updating ? <span id={sentence} data-testid={`host-updating-${row.step}`}>updating {[updates && `on ${name}`, onMac && 'on this Mac'].filter(Boolean).join(' and ')}…</span>
+        {updating ? <span id={sentence} role="status" data-testid={`host-updating-${row.step}`}>updating {updating}…</span>
           : asked !== undefined ? <span id={sentence} data-testid={`host-pushing-${row.step}`}>pushing to {name}…</span>
           : <span id={sentence}>{state}{leads && <>: <span className="host-leads">{leads}</span></>}</span>}
         {(action || fix.runs || more.length > 0) && (
