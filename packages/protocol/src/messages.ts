@@ -246,7 +246,9 @@ export const methods = {
   },
   'island.update': {
     // removed: the refs a person took off context, which the scribe leaves off until they are added again
-    params: z.object({ id: z.string(), name: z.string().optional(), description: z.string().optional(), context: z.array(ContextItem).optional(), removed: z.array(z.string()).optional(), instructions: Instructions.optional(), position: Cell.optional(), size: NewSize.optional(), collapsed: z.boolean().optional() }),
+    params: z.object({ id: z.string(), name: z.string().optional(), description: z.string().optional(), context: z.array(ContextItem).optional(), removed: z.array(z.string()).optional(), instructions: Instructions.optional(), position: Cell.optional(), size: NewSize.optional(), collapsed: z.boolean().optional(),
+      // '' clears it
+      folder: z.string().optional() }),
     result: Island,
   },
   'island.delete': { params: Id, result: z.object({}) },

@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HOME_ISLAND, byIslandOrder, homeSizeFor } from '@svall/protocol';
 import { Config } from '../src/config.js';
@@ -59,5 +60,35 @@ describe('island order', () => {
     expect(() => fleet.reorderIsland(a.id, HOME_ISLAND, true)).toThrow(/mission control/);
     expect(() => fleet.reorderIsland(HOME_ISLAND, a.id, false)).toThrow(/mission control/);
     expect(listed()).toEqual(['a', 'mission control']);
+  });
+});
+
+describe('an island\'s folder', () => {
+  function boot() {
+    const paths = resolvePaths(makeHome());
+    const store = Store.load(paths.state, () => {});
+    store.update((d) => {
+      d.islands[HOME_ISLAND] = { id: HOME_ISLAND, kind: 'home', name: 'mission control', description: '', instructions: '', context: [], position: { x: 0, y: 40 }, size: homeSizeFor(2), seed: 1 };
+    });
+    return new Fleet({ store, tmux: {} as Tmux, paths, config: Config.parse({}), log: silentLogger });
+  }
+
+  it('keeps a person\'s folder as its home spells it, until they clear it', () => {
+    const fleet = boot();
+    const { id } = fleet.createIsland({ name: 'a' });
+    expect(fleet.updateIsland(id, { folder: `${os.homedir()}/code/x/` })).toMatchObject({ folder: '~/code/x', folderSource: 'manual' });
+    const cleared = fleet.updateIsland(id, { folder: '' });
+    expect([cleared.folder, cleared.folderSource]).toEqual([undefined, undefined]);
+  });
+
+  it('refuses a folder that names no place on its own', () => {
+    const fleet = boot();
+    const { id } = fleet.createIsland({ name: 'a' });
+    expect(() => fleet.updateIsland(id, { folder: 'code/x' })).toThrow('folder must be an absolute path or start with ~');
+  });
+
+  it('gives mission control none, as it starts in its own folder', () => {
+    const fleet = boot();
+    expect(fleet.updateIsland(HOME_ISLAND, { folder: '~/x' }).folder).toBeUndefined();
   });
 });

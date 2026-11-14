@@ -137,6 +137,10 @@ export const Island = z.object({
   descriptionSource: z.literal('manual').optional(),
   // its place in the list, set by a sidebar drag or a rename; islands without one follow, by name
   order: z.number().int().optional(),
+  // where its new robots start, `~/` for the home of whichever machine starts one
+  folder: z.string().optional(),
+  // set by a person's edit; absent, the scribe may rewrite it
+  folderSource: z.literal('manual').optional(),
 });
 export type Island = z.infer<typeof Island>;
 
