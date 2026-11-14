@@ -84,7 +84,7 @@ describe('an island\'s folder', () => {
   it('refuses a folder that names no place on its own', () => {
     const fleet = boot();
     const { id } = fleet.createIsland({ name: 'a' });
-    expect(() => fleet.updateIsland(id, { folder: 'code/x' })).toThrow('folder must be an absolute path or start with ~');
+    for (const folder of ['code/x', '~/../x', '~/code/../..']) expect(() => fleet.updateIsland(id, { folder })).toThrow('folder must be an absolute path or start with ~');
   });
 
   it('gives mission control none, as it starts in its own folder', () => {

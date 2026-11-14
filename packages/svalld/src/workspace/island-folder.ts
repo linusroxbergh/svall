@@ -22,7 +22,7 @@ export const startOf = (c: Robot): string => (c.repo?.isWorktree ? c.repo.mainRo
 
 /** The folder a person typed for an island, as it is stored. */
 export function islandFolder(typed: string, state: FleetState, homedir = os.homedir()): string {
-  const v = typed.trim();
+  const v = clean(typed.trim());
   if (v !== '~' && !v.startsWith('~/') && !path.posix.isAbsolute(v)) throw new Invalid('folder must be an absolute path or start with ~');
   return homeRelative(v, homesOf(state, homedir));
 }

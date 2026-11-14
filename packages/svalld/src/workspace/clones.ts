@@ -39,7 +39,7 @@ export type StartFolder = { path: string; clone: boolean; remote?: string; from?
 export type Probe = (machine: MachineId, path: string) => Promise<string | undefined>;
 
 // the island's folder and its robots' folders: here when they are, else at the same place under this home, to clone from the
-// machine a robot of the island works on
+// machine that holds them, any machine for the island's folder
 async function islandRows(state: FleetState, island: Island, runsHere: (c: Robot) => boolean, homedir: string, beside?: string, probe?: Probe): Promise<StartFolder[]> {
   const crew = Object.values(state.robots).filter((c) => c.islandId === island.id).sort((a, b) => Number(b.id === beside) - Number(a.id === beside));
   const rows: StartFolder[] = [];
@@ -47,25 +47,31 @@ async function islandRows(state: FleetState, island: Island, runsHere: (c: Robot
   const add = (p: string, repo = false) => { if (!held(p) && listable(p)) rows.push({ path: p, clone: repo || holdsClone(p) }); };
   if (island.folder) add(expandHome(island.folder, homedir));
   for (const c of crew.filter(runsHere)) add(startOf(c), !!c.repo);
-  const asks: { from: MachineId; src: string; path: string }[] = [];
+  const homeOf = (m?: MachineId): string | undefined => (m && state.machines?.[m]?.home) || undefined;
+  const sources: { from: MachineId; src: string; repo?: boolean }[] = [];
   for (const c of crew.filter((c) => !runsHere(c))) {
-    const home = c.machine && state.machines?.[c.machine]?.home;
-    if (!c.machine || !home) continue;
-    for (const src of [...(island.folder ? [expandHome(island.folder, home)] : []), startOf(c)]) {
-      const at = relocate(src, { from: home, to: homedir });
-      add(at, !!c.repo && src === startOf(c));
-      if (!held(at) && !fs.lstatSync(at, { throwIfNoEntry: false }) && !asks.some((a) => a.path === at)) asks.push({ from: c.machine, src, path: at });
-    }
+    const home = homeOf(c.machine);
+    if (!home) continue;
+    if (island.folder) sources.push({ from: c.machine!, src: expandHome(island.folder, home) });
+    sources.push({ from: c.machine!, src: startOf(c), repo: !!c.repo });
+  }
+  for (const m of island.folder ? Object.keys(state.machines ?? {}) as MachineId[] : []) {
+    const home = homeOf(m);
+    if (home) sources.push({ from: m, src: expandHome(island.folder!, home) });
+  }
+  const asks: { from: MachineId; src: string; path: string }[] = [];
+  for (const { from, src, repo } of sources) {
+    const at = relocate(src, { from: homeOf(from)!, to: homedir });
+    add(at, repo);
+    if (!held(at) && !fs.lstatSync(at, { throwIfNoEntry: false }) && !asks.some((a) => a.path === at)) asks.push({ from, src, path: at });
   }
   const remotes = await Promise.all(asks.map((a) => probe?.(a.from, a.src)));
   asks.forEach((a, n) => { const remote = remotes[n]; if (remote) rows.push({ path: a.path, clone: true, remote: withoutToken(remote), from: a.from }); });
   return rows;
 }
 
-/** Where a new robot can start on this machine, the folders still there alone: given an island, its folder and its robots' first,
- *  with those only another machine holds as clones to make here; then where each robot here starts from, the clones the fleet's
- *  default folder holds, then the fleet's own two folders, which `defaults` names as this machine spells them. `start`: the
- *  island's first, mission control's own folder. */
+/** Where a new robot can start on this machine: an island's own folders first, `start` the first of them; then each robot's here,
+ *  the clones in the fleet's default folder, and the fleet's two folders, which `defaults` spells as this machine does. */
 export async function startFolders(state: FleetState, runsHere: (c: Robot) => boolean, o: { islandId?: string; beside?: string; probe?: Probe; homedir?: string } = {}): Promise<{ folders: StartFolder[]; defaults: { cwd: string; home: string }; start?: string }> {
   const homedir = o.homedir ?? os.homedir();
   const robots = Object.values(state.robots).filter(runsHere);

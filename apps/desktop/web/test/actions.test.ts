@@ -86,6 +86,18 @@ describe('the + beside an island with no robot folder beside it', () => {
     expect([s.namingRobot, s.selectedIslandId, s.toast]).toEqual([true, 'i_b', undefined]);
   });
 
+  it('on a far home asks for a folder once the home has none at the island\'s, though no robot of the island is anywhere', async () => {
+    const c = ctx();
+    const f = fleet();
+    f.islands.i_e.folder = '~/code/x';
+    c.store.getState().setFleet(f);
+    c.store.getState().setVia({ machine: MAC, home: HOME, online: true });
+    const refused = { call: (method: string, params: unknown) => { c.calls.push({ method, params }); return Promise.reject(new ApiError('not_a_folder', 'cwd ~/code/x is not a directory')); } } as unknown as Api;
+    await newRobotOn({ ...c, api: refused }, 'i_e');
+    expect(started(c).map((k) => (k.params as { cwd: string }).cwd)).toEqual(['~/code/x']);
+    expect(c.store.getState().namingRobot).toBe(true);
+  });
+
   it('on a Mac home starts in the fleet\'s default as ever, with no dialog', async () => {
     const c = ctx();
     const f = fleet();

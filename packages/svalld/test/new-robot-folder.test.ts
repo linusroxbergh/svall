@@ -74,6 +74,15 @@ describe('where a new robot on an island starts', () => {
     expect(probe.mock.calls).toEqual([[OTHER, '/Users/a/app']]);
   });
 
+  it('offers the island\'s folder from a machine none of its robots is on', async () => {
+    const root = makeHome();
+    const f = { ...state(root, []), islands: { i1: isl('i1', { folder: '~/app' }) }, machines: mac };
+    const probe = vi.fn(async () => 'git@github.com:a/app.git');
+    const r = await startFolders(f, () => true, { islandId: 'i1', probe, homedir: root });
+    expect(r.folders[0]).toEqual({ path: path.join(root, 'app'), clone: true, remote: 'git@github.com:a/app.git', from: OTHER });
+    expect(probe.mock.calls).toEqual([[OTHER, '/Users/a/app']]);
+  });
+
   it('offers no clone the other machine cannot name a remote for, and then starts nowhere in particular', async () => {
     const root = makeHome();
     const f = { ...state(root, [onMac('c1', '/Users/a/x')]), islands: { i1: isl('i1') }, machines: mac };

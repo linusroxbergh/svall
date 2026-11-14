@@ -25,13 +25,13 @@ is kept under `~` (`~/code/app`), so it names the same place on each machine: `/
 **New robot** asks for a folder, since the window's own mean nothing on studio. It lists the island's folder and its robots' folders first, then
 the folders on studio where its robots work, the clones in its default folder, dot folders aside, and the fleet's default and mission control folders;
 **Other folder…** takes any path there, and `~` is studio's. It stands on the island's folder when studio has it, else on the folder of a robot of the
-island working there. A folder of the island's on another machine is listed at the same place under studio's home, and when studio has nothing there
-and that machine holds it as a clone, as "will clone (first time)": **Create** clones it there from that clone's remote, with studio's own
-credentials, then starts the robot in it. studio checks
+island working there. The island's folder and the folders of its robots on other machines are listed at the same place under studio's home, and
+when studio has nothing there and another machine holds it as a clone, as "will clone (first time)": **Create** clones it there from that clone's
+remote, with studio's own credentials, then starts the robot in it. studio checks
 a typed path before the robot starts: "studio has no folder /home/linus/x", or "~/notes.txt is a file, not a folder". A link to a folder counts, as it does for
 `svall robot new --cwd`. The **+** beside an island starts in the island's folder on studio, else in the folder of a robot working on studio there;
-with neither it opens **New robot** for that island while a robot of the island works on another machine, and otherwise starts in the fleet's
-default folder. A Mac home has no such field: a new robot starts in the island's folder, else beside the robot or island you selected, else in
+with neither it opens **New robot** for that island while the island has a folder or a robot of it works on another machine, and otherwise
+starts in the fleet's default folder. A Mac home has no such field: a new robot starts in the island's folder, else beside the robot or island you selected, else in
 the fleet's default folder, the first this Mac has.
 
 Settings → Machines lists the fleet's machines, the home first, each with its role, its robots and a dot that says whether it answers. A worker that dials in is listed
