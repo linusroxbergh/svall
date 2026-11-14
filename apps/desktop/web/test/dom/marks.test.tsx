@@ -10,6 +10,7 @@ vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModu
 
 const { Sidebar } = await import('../../src/Sidebar.js');
 const { Token } = await import('../../src/map/Token.js');
+const { BoardCard } = await import('../../src/BoardCard.js');
 
 const pr = (n: number, prState: ContextItem['prState']): ContextItem =>
   ({ kind: 'pr', ref: `https://github.com/o/r/pull/${n}`, label: `#${n}`, source: 'auto', prState });
@@ -42,6 +43,16 @@ test('a card marks a PR in review and a monitor on its corner, and a click follo
   expect([...marks.children].map((m) => m.className)).toEqual(['mark review', 'mark monitor']);
   fireEvent.click(screen.getByTestId('token-review-c1'));
   expect(onLink).toHaveBeenCalledWith(open, 'c1', expect.anything());
+});
+
+test('a card whose turn left only shells running marks it on its corner, as the board card does', () => {
+  const c = chr('c1', 'i', { x: 0, y: 0 }, { agent: { ...agent(), status: 'done', background: true, shellsOnly: true } });
+  card(c, { status: 'done' });
+  const marks = screen.getByTestId('token-c1').querySelector('.corner .marks')!;
+  expect([...marks.children].map((m) => m.className)).toEqual(['mark shell']);
+  expect(screen.getByTestId('token-shell-c1').getAttribute('data-tip')).toMatch(/^Shell running\n/);
+  render(<BoardCard c={c} status="done" selected={false} arrived={false} />);
+  expect(screen.getByTestId('kc-shell-c1').getAttribute('data-kind')).toBe('shell');
 });
 
 test('a draft PR and no monitor leave the card without marks', () => {

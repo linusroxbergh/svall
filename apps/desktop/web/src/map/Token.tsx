@@ -1,8 +1,8 @@
 import type { Cell, Robot, ContextItem } from '@svall/protocol';
 import { memoByValue } from '../hooks.js';
-import { Bot, Eye, Pr } from '../icons.js';
-import { MachineLine, MONITORING, reviewText, subagentsText } from '../indicators.js';
-import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, subagentCount, type DisplayStatus } from '../selectors.js';
+import { Bot, Eye, Pr, Prompt } from '../icons.js';
+import { MachineLine, MONITORING, reviewText, SHELL_RUNNING, subagentsText } from '../indicators.js';
+import { contextPctOf, inReview, isMonitoring, isShellRunning, isUnread, mainPr, subagentCount, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { Figure } from './Figure.js';
 import { figureOf } from '../portraits.js';
@@ -54,6 +54,7 @@ export const Token = memoByValue(function Token({
   const cls = dragging ? 'tok drag' : 'tok';
   const review = inReview(c) ? mainPr(c) : undefined;
   const monitor = isMonitoring(c);
+  const shell = isShellRunning(c);
   const subs = subagentCount(c);
   const pct = contextPctOf(c);
   const figure = figureOf(c);
@@ -103,7 +104,7 @@ export const Token = memoByValue(function Token({
           </svg>
         </button>
       </div>
-      {(review || monitor || subs > 0) && (
+      {(review || monitor || shell || subs > 0) && (
         <span className="corner">
           <span className="marks">
             {review && (
@@ -123,6 +124,7 @@ export const Token = memoByValue(function Token({
               </button>
             )}
             {monitor && <span className="mark monitor" data-tip={MONITORING} data-testid={`token-monitor-${c.id}`}><Eye /></span>}
+            {shell && <span className="mark shell" data-tip={SHELL_RUNNING} data-testid={`token-shell-${c.id}`}><Prompt /></span>}
           </span>
           {subs > 0 && (
             <span className="marks left">

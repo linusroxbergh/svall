@@ -10,6 +10,8 @@ export const subagentsText = (n: number): string => `${n} subagent${n === 1 ? ''
 
 export const MONITORING = 'Monitoring\nThe agent watches something in the background and acts when it changes';
 
+export const SHELL_RUNNING = 'Shell running\nA server or watcher the agent started runs on after its turn';
+
 /** The machine a robot on a worker runs on, after its glyph: "Runs on NAME", or "on NAME" with the full words in its tip. */
 export function MachineLine({ name, short, className, testid }: { name: string; short?: boolean; className: string; testid: string }) {
   return (

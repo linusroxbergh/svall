@@ -19,8 +19,9 @@ export function needOf(f: FleetState, phones: PhoneSession[], via?: Via): Need {
       const a = term === 1 ? c.agent : c.second?.agent;
       if (!a) continue;
       need.since = Math.max(need.since, lastActive(a));
-      if (slotStatus(c, term) !== 'working') continue;
-      if (a.shellsOnly) need.shells++; else need.working++;
+      // a turn that left only shells reads done once the agent rests, and its shells run on while their window does
+      if (a.shellsOnly) need.shells += Number(Boolean((term === 1 ? c : c.second)?.tmux));
+      else if (slotStatus(c, term) === 'working') need.working++;
     }
     need.waiting += Number(wantsUser(c, f, via));
   }

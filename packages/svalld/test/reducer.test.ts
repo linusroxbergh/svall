@@ -94,9 +94,20 @@ describe('applyHook', () => {
     expect(applyHook(withAgent('working'), ev({ backgroundTasks: 2 }), 8).agent).not.toHaveProperty('shellsOnly');
     const shells = applyHook(withAgent('working'), ev({ backgroundTasks: 1, backgroundAgents: 0 }), 8);
     expect(shells.agent).toMatchObject({ status: 'working', background: true, shellsOnly: true });
-    expect(applyHook(shells, ev({ name: 'Notification', notificationType: 'idle_prompt' }), 9).agent).toMatchObject({ status: 'working', shellsOnly: true });
     expect(applyHook(shells, ev({ name: 'UserPromptSubmit' }), 9).agent).not.toHaveProperty('shellsOnly');
     expect(applyHook(shells, ev({ name: 'Notification', notificationType: 'idle_prompt', backgroundTasks: 0 }), 9).agent).not.toHaveProperty('shellsOnly');
+  });
+  it('finishes a turn that left only shells running once the agent rests at its prompt, which a shell ending starts again', () => {
+    const ev = (e: Partial<HookEvent>): HookEvent => ({ robotId: 'c_a', backend: 'claude', name: 'Stop', ...e });
+    const shells = applyHook(withAgent('working'), ev({ backgroundTasks: 1, backgroundAgents: 0 }), 8);
+    expect(shells.unread).toBe(false);
+    const done = applyHook(shells, ev({ name: 'Notification', notificationType: 'idle_prompt' }), 9);
+    expect(done.agent).toMatchObject({ status: 'done', background: true, shellsOnly: true });
+    expect(done.unread).toBe(true);
+    expect(markSeen(done).agent).toMatchObject({ status: 'idle', shellsOnly: true });
+    expect(applyHook(done, ev({ name: 'PreToolUse' }), 10).agent).toMatchObject({ status: 'working' });
+    const mixed = applyHook(withAgent('working'), ev({ backgroundTasks: 2, backgroundAgents: 1 }), 8);
+    expect(applyHook(mixed, ev({ name: 'Notification', notificationType: 'idle_prompt' }), 9).agent).toMatchObject({ status: 'working', background: true });
   });
   it("finishes a turn that leaves only the session's monitors running, and forgets a monitor once no Stop lists it", () => {
     const ev = (e: Partial<HookEvent>): HookEvent => ({ robotId: 'c_a', backend: 'claude', name: 'Stop', ...e });
