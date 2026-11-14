@@ -1,0 +1,5 @@
+- Each island has a folder its new robots start in, cloned onto a server home when only another machine has it.
+- A robot that leaves a dev server or watcher running reads done a minute after its turn, with a shell-running mark on its card.
+- Usage shows each login's plan limits under its email when machines use different Claude Code or Codex accounts.
+- The scribe names a robot after the area its work is on.
+- svall commands start about 15 ms faster.
