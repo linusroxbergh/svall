@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
 import type { Robot } from '@svall/protocol';
 import { memoByValue, stop } from './hooks.js';
-import { Eye, Hand, Pr } from './icons.js';
-import { MachineLine, MONITORING, reviewText } from './indicators.js';
+import { Eye, Hand, Pr, Shell } from './icons.js';
+import { MachineLine, MONITORING, reviewText, SHELL_RUNNING } from './indicators.js';
 import { figureOf, figureUrl } from './portraits.js';
-import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, statusName, type DisplayStatus } from './selectors.js';
+import { contextPctOf, inReview, isMonitoring, isShellRunning, isUnread, mainPr, statusName, type DisplayStatus } from './selectors.js';
 
 // the context ring's circumference, at the radius its SVG draws
 const RING = 2 * Math.PI * 5;
@@ -68,6 +68,7 @@ export const BoardCard = memoByValue(function BoardCard({ c, status, machine, is
         {island && <span className="kc-isl" data-tip={island} data-testid={`kc-island-${c.id}`}>{island}</span>}
         {pr && <span className="kc-mk" data-kind="review" data-tip={reviewText(pr)} data-testid={`kc-review-${c.id}`}><Pr size="xs" /></span>}
         {isMonitoring(c) && <span className="kc-mk" data-kind="monitor" data-tip={MONITORING} data-testid={`kc-monitor-${c.id}`}><Eye size="xs" /></span>}
+        {isShellRunning(c) && <span className="kc-mk" data-kind="shell" data-tip={SHELL_RUNNING} data-testid={`kc-shell-${c.id}`}><Shell size="xs" /></span>}
         {c.columnSource === 'manual' && <span className="kc-hand" data-tip={"Placed by hand\nThe scribe leaves it in this column"} data-testid={`kc-hand-${c.id}`}><Hand /></span>}
         {pct !== undefined && (
           <span className="kc-ring tnum">

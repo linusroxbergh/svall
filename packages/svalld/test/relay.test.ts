@@ -36,6 +36,15 @@ function setup(o: { notify?: Notify; here?: (c: Robot) => boolean } = {}) {
 }
 
 describe('relay', () => {
+  it("says a done robot's shell runs on, so the sender knows to look again", async () => {
+    const { said, stop, kid } = setup();
+    kid((c) => { c.agent = agent('working', asked); });
+    await tick();
+    kid((c) => { c.agent = agent('done', { ...asked, background: true, shellsOnly: true }); });
+    await waitFor(() => said.length === 1);
+    expect(said).toEqual([{ to: LEAD, text: `[svall] kid (${KID}) is done, a shell it started still running; full answer: svall robot read ${KID} --last` }]);
+    stop();
+  });
   it("tells the sender once per spell it waits on the user while its request runs, then that it is done, and owes nothing after", async () => {
     const { store, said, stop, kid } = setup();
     // a turn of the user's is not the request

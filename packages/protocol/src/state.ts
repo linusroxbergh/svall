@@ -75,9 +75,9 @@ export const Agent = z.object({
   prompt: z.string().optional(),
   // names the question a blocked agent is on, so an answer meant for an earlier one is refused
   promptId: z.string().optional(),
-  // the turn ended with background agents or shells still running; the agent works on until they report back
+  // the turn ended with background agents or shells still running, and one ending starts a new turn
   background: z.literal(true).optional(),
-  // the background work is shells alone, a server or a watcher that may never end
+  // the background work is shells alone, a server or a watcher that may never end, so the turn reads done once the agent rests
   shellsOnly: z.literal(true).optional(),
   // task ids of the monitors the session started (Claude Code's Monitor, OpenCode's background shells), which are listed as
   // background shells but watch on without a turn

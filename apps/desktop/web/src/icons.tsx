@@ -117,6 +117,8 @@ export const Eye = ({ size }: Props) => (
   </Svg>
 );
 
+export const Shell = ({ size }: Props) => <Svg grid={12} size={size}><path d="M2.5 3.5 5 6 2.5 8.5M6.5 8.5h3" /></Svg>;
+
 export const Hand = ({ size }: Props) => (
   <Svg grid={12} size={size}>
     <path d="M4.75 6.75v-3.9a.8.8 0 0 1 1.6 0v3.3M6.35 5.75v-3.7a.8.8 0 0 1 1.6 0v3.7M7.95 5.75v-2.9a.8.8 0 0 1 1.6 0v4.3c0 2.2-1.4 3.6-3.3 3.6-1.2 0-2-.6-2.6-1.6L2.55 7.55a.75.75 0 0 1 1.2-.9l1 1" />

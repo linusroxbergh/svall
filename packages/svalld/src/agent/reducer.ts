@@ -197,12 +197,12 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     case 'Notification':
       if (e.notificationType && BLOCKING.has(e.notificationType)) ask();
       // a minute after a turn ends, Claude Code says it sits at its prompt, background work or not. With background
-      // work out, the question is gone but the work goes on
+      // work out, the question is gone but the work goes on; shells alone may run for good, so their turn is done
       else if (e.notificationType === 'idle_prompt' && (agent.status === 'blocked' || agent.status === 'working')) {
         const { background, shellsOnly } = agent;
-        settle(agent, background ? 'working' : 'idle');
+        settle(agent, shellsOnly ? 'done' : background ? 'working' : 'idle');
         if (background) agent.background = true;
-        if (shellsOnly) agent.shellsOnly = true;
+        if (shellsOnly) { agent.shellsOnly = true; next.unread = true; }
       }
       break;
   }

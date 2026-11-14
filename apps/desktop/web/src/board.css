@@ -112,6 +112,7 @@
 .kc-mk svg { display: block; }
 .kc-mk[data-kind="review"] { background: var(--review); color: var(--ink-on-review); }
 .kc-mk[data-kind="monitor"] { background: var(--monitor); color: var(--ink-on-monitor); }
+.kc-mk[data-kind="shell"] { color: var(--ink-3); }
 .kc-hand { flex: none; display: grid; place-items: center; color: var(--ink-3); }
 .kc-hand svg { display: block; }
 .kc-ring { flex: none; display: inline-flex; align-items: center; gap: var(--sp-xs); color: var(--ink-3); font-size: var(--text-xs); }

@@ -142,6 +142,7 @@ export const mainPr = (c: Robot): ContextItem | undefined =>
   c.context.find((it) => it.kind === 'pr' && it.prState) ?? c.context.find((it) => it.kind === 'pr');
 export const inReview = (c: Robot): boolean => mainPr(c)?.prState === 'open';
 export const isMonitoring = (c: Robot): boolean => Boolean(c.agent?.monitors?.length || c.second?.agent?.monitors?.length);
+export const isShellRunning = (c: Robot): boolean => Boolean(c.agent?.shellsOnly || c.second?.agent?.shellsOnly);
 export const subagentCount = (c: Robot): number => (c.agent?.subagents?.length ?? 0) + (c.second?.agent?.subagents?.length ?? 0);
 
 // the island wears the status of its most pressing robot
