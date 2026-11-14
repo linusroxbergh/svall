@@ -28,12 +28,14 @@ column: one of the column names, the stage the work is at: To do before the firs
 
 With too little to go on, omit name and note.`;
 
-export const SYSTEM_ISLAND = `You describe one island on a map of a fleet of coding agents: a group of agents the user keeps together. You get its name, description and links, and each member's name, directory, branch, note and links. Reply with one JSON object and nothing else:
-{"description": "...", "links": [{"url": "...", "label": "..."}]}
+export const SYSTEM_ISLAND = `You describe one island on a map of a fleet of coding agents: a group of agents the user keeps together. You get its name, description, links and folder, the folders its members start from, and each member's name, directory, branch, note and links. Reply with one JSON object and nothing else:
+{"description": "...", "links": [{"url": "...", "label": "..."}], "folder": "..."}
 
 description: one to three sentences under ${DESCRIPTION_MAX} characters on what the island is for: the project or goal its members' work shares, the repositories it spans, and the threads of work within it. Not how it is going. Omit it when the description is hand-written or already says all of this.
 
-links: full URLs from the members' links, copied exactly, for the things the island as a whole is about: the repositories, projects, epics and docs its work shares. A PR or ticket only when it is what the island is about, not one member's own. Leave out links listed as manual. Keep the scribe links still worth having. Short labels: "svall", "auth epic", "design doc". [] when there are none.`;
+links: full URLs from the members' links, copied exactly, for the things the island as a whole is about: the repositories, projects, epics and docs its work shares. A PR or ticket only when it is what the island is about, not one member's own. Leave out links listed as manual. Keep the scribe links still worth having. Short labels: "svall", "auth epic", "design doc". [] when there are none.
+
+folder: where new members start, copied exactly from the folders its members start from: the repository most of its work shares. Omit it when the folder is set by hand or already right.`;
 
 const REASONS = ['generated', 'identifier'] as const;
 
@@ -49,6 +51,7 @@ export type RobotAnswer = z.infer<typeof RobotAnswer>;
 export const IslandAnswer = z.object({
   description: z.string().nullish(),
   links: z.array(z.object({ url: z.string(), label: z.string().default('') })).nullish(),
+  folder: z.string().nullish(),
 });
 export type IslandAnswer = z.infer<typeof IslandAnswer>;
 
@@ -122,13 +125,16 @@ export function robotPrompt(c: Robot, transcript: string, others: string[], prLi
   ].filter((l): l is string => typeof l === 'string').join('\n');
 }
 
-export function islandPrompt(i: Island, members: Robot[]): string {
+// starts: the folders its members start from, as the island's folder spells them
+export function islandPrompt(i: Island, members: Robot[], starts: string[]): string {
   const links = (items: ContextItem[], indent: string) => items.map((it) => `${indent}${linkLine(it)}`);
   return [
     `Island: ${i.name}`,
     `Description${i.descriptionSource === 'manual' ? ' (hand-written)' : ''}: ${i.description || '(none)'}`,
     i.context.length ? 'Links:' : 'Links: (none)',
     ...links(i.context, ''),
+    `Folder${i.folderSource === 'manual' ? ' (set by hand)' : ''}: ${i.folder || '(none)'}`,
+    `Folders its members start from: ${starts.join(', ') || '(none)'}`,
     'Members:',
     ...members.flatMap((c) => [
       `- ${c.name} | ${c.cwd}${c.repo ? ` | ${c.repo.branch}` : ''} | ${c.note.split('\n')[0] || '(no note)'}`,

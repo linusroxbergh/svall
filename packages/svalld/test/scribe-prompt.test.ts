@@ -188,8 +188,14 @@ describe('islandPrompt', () => {
   it('marks a hand-written description and lists the island\'s links and each member\'s', () => {
     const island = { id: 'i', name: 'auth', description: 'mine', descriptionSource: 'manual' as const, instructions: '', position: { x: 0, y: 0 }, size: { w: 8, h: 6 }, seed: 1,
       context: [{ kind: 'other' as const, ref: 'https://docs.example/plan', label: 'plan', source: 'manual' as const }] };
-    const p = islandPrompt(island, [robot({ name: 'auth tests', note: 'rewrite', context: [{ kind: 'pr', ref: 'https://gh/pull/5', label: '#5', source: 'auto' }] })]);
-    expect(p).toContain('Description (hand-written): mine\nLinks:\n- manual plan https://docs.example/plan\nMembers:');
+    const p = islandPrompt(island, [robot({ name: 'auth tests', note: 'rewrite', context: [{ kind: 'pr', ref: 'https://gh/pull/5', label: '#5', source: 'auto' }] })], []);
+    expect(p).toContain('Description (hand-written): mine\nLinks:\n- manual plan https://docs.example/plan\nFolder: (none)\n');
     expect(p).toContain('- auth tests | /repo | rewrite\n  - auto #5 https://gh/pull/5');
+  });
+
+  it('names the island\'s folder, marked when a person set it, and the folders its members start from', () => {
+    const island = { id: 'i', name: 'auth', description: '', instructions: '', position: { x: 0, y: 0 }, size: { w: 8, h: 6 }, seed: 1, context: [] };
+    expect(islandPrompt({ ...island, folder: '~/x', folderSource: 'manual' }, [robot({})], ['~/a', '~/b'])).toContain('Folder (set by hand): ~/x\nFolders its members start from: ~/a, ~/b\n');
+    expect(islandPrompt(island, [robot({})], [])).toContain('Folder: (none)\nFolders its members start from: (none)\n');
   });
 });
