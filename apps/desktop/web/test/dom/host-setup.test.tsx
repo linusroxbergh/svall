@@ -615,15 +615,38 @@ test('a check row whose fix is an agent update runs it there from the row and ch
   expect(screen.getByTestId('host-terminal-claude').textContent).toBe('Open terminal');
   await act(async () => { fireEvent.click(screen.getByTestId('host-update-versions')); });
   expect(call).toHaveBeenCalledWith('machines.updateAgents', { machine: MACHINE, kinds: ['claude', 'codex'] });
-  expect(screen.getByTestId('host-updating-versions').textContent).toBe('updating on trift…');
+  expect(screen.getByTestId('host-updating-versions').textContent).toBe('updating Claude Code and Codex on trift…');
+  // a spinner in the row's mark and the button's words say it runs
+  expect(screen.getByTestId('host-step-versions').querySelector('.host-mark .move-spin')).not.toBeNull();
+  expect(screen.getByTestId('host-update-versions').textContent).toBe('Updating…');
 
   await act(async () => finish(new Error('codex update exited 1: no network')));
   expect(screen.getByTestId('host-tick-failed-versions').textContent).toBe('codex updatedetailsexited 1: no network');
+  expect(screen.getByTestId('host-update-versions').textContent).toBe('Update');
   expect(sent.filter((m) => m.type === 'host.start')).toEqual([]);
 
   await act(async () => { fireEvent.click(screen.getByTestId('host-update-versions')); });
   await act(async () => finish());
   expect(sent.filter((m) => m.type === 'host.start')).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'trift' } }]);
+});
+
+test('an update there and then on this Mac says which one runs', async () => {
+  const finish: (() => void)[] = [];
+  call.mockImplementation((method: string) => (method === 'machines.updateAgents' ? new Promise((resolve) => { finish.push(() => resolve({})); }) : Promise.resolve({})));
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'versions', status: 'warn', run: 'opencode upgrade', detail: 'opencode 2.1.4 there, behind 2.2.0 on this Mac; on this Mac, run codex update' });
+    store.getState().hostDone('doctor', 1);
+  });
+  await act(async () => { fireEvent.click(screen.getByTestId('host-update-versions')); });
+  expect(screen.getByTestId('host-updating-versions').textContent).toBe('updating OpenCode on trift…');
+  await act(async () => finish[0]());
+  expect(screen.getByTestId('host-updating-versions').textContent).toBe('updating Codex on this Mac…');
+  await act(async () => finish[1]());
+  expect(screen.queryByTestId('host-updating-versions')).toBeNull();
 });
 
 test('a check row whose agent is behind on this Mac updates it here, after the ones there, from the same button', async () => {
@@ -1059,7 +1082,7 @@ test('an agent update keeps its row through the fine checks opening, and leaves 
   });
   await act(async () => { fireEvent.click(screen.getByTestId('host-update-versions')); });
   fireEvent.click(screen.getByTestId('host-fine'));
-  expect(screen.getByTestId('host-updating-versions').textContent).toBe('updating on trift…');
+  expect(screen.getByTestId('host-updating-versions').textContent).toBe('updating Claude Code on trift…');
 
   act(() => { store.getState().hostStarted('upgrade', { name: 'trift' }); });
   await act(async () => finish());
