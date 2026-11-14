@@ -66,4 +66,5 @@
 /* while more folders lie below, Other folder… casts a shadow up over the rows that scroll under it, their words left whole */
 .new-folder-list[data-more] .new-folder-other { box-shadow: 0 -6px 6px -4px var(--shade-2); }
 .new-folder-quiet { display: flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-md); color: var(--ink-3); font-size: var(--text-sm); }
+.new-folder-clone { color: var(--ink-3); font-family: var(--sans); white-space: nowrap; }
 .new-folder-list[data-empty] .new-folder-quiet { padding-inline: 0; }

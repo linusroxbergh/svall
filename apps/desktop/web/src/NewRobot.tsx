@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ROBOT_NOTE_MAX, type Result } from '@svall/protocol';
-import { newNamedRobot, newRobotFolder, placeRobot, showCreated } from './actions.js';
+import { newNamedRobot, newRobotAsk, newRobotFolder, placeRobot, showCreated } from './actions.js';
 import { app, deps } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
@@ -51,7 +51,7 @@ export function NewRobot() {
     setListed(undefined);
     // a refusal was of a folder on the machine the list came from
     setRefused(undefined);
-    app.api().call('workspace.clones', {}).then((r) => {
+    app.api().call('workspace.clones', newRobotAsk(app.store.getState())).then((r) => {
       if (left) return;
       setListed(r);
       const offered = offeredOf(r, via).map((f) => f.path);
@@ -59,7 +59,7 @@ export function NewRobot() {
       const start = newRobotFolder(s);
       // state holds the fleet's own folders as they were typed, `~` and all
       const wanted = start === s.fleet.home.cwd ? r.defaults.home : start === s.fleet.defaultCwd ? r.defaults.cwd : start;
-      if (!chosen.current) setCwd([wanted, r.defaults.cwd, offered[0]].find((p) => p !== undefined && offered.includes(p)) ?? '');
+      if (!chosen.current) setCwd([r.start, wanted, r.defaults.cwd, offered[0]].find((p) => p !== undefined && offered.includes(p)) ?? '');
     }, () => { if (!left) setListed(null); });
     return () => { left = true; };
   }, [open, startsAt]);
@@ -75,6 +75,8 @@ export function NewRobot() {
   const folder = cwd.trim();
   // a chosen folder a list read again no longer holds stays in the field
   const typing = other || (listed !== undefined && !folders.some((f) => f.path === folder));
+  // a folder only another machine holds, which the one the robot starts on clones first
+  const remote = typing ? undefined : folders.find((f) => f.path === folder)?.remote;
 
   const create = async () => {
     if (busy || (via && (!folder || refused))) return;
@@ -83,7 +85,7 @@ export function NewRobot() {
     const d = deps();
     const refs = links.split('\n').map((u) => u.trim()).filter(Boolean);
     try {
-      const id = await newNamedRobot(d, { name: name.trim(), note: note.trim(), refs, ...(via && { cwd: folder }) });
+      const id = await newNamedRobot(d, { name: name.trim(), note: note.trim(), refs, ...(via && { cwd: folder }), ...(remote && { remote }) });
       const column = d.store.getState().namingColumn;
       close();
       showCreated(d, id);
@@ -133,7 +135,7 @@ export function NewRobot() {
                 {listed && !folders.length && !folder && <span className="new-folder-quiet" data-testid="new-robot-none">{via.online ? `No clone or robot folder on ${where} yet.` : 'No clone listed here; type a path inside one.'}</span>}
                 {folders.map((f) => {
                   const picked = !typing && f.path === folder;
-                  return <button key={f.path} className="list-row sm mono" role="option" aria-selected={picked} tabIndex={picked ? 0 : -1} data-testid={`new-robot-pick-${f.path}`} data-tip={f.path} onClick={() => choose(f.path)}><bdi>{shortPath(f.path)}</bdi></button>;
+                  return <button key={f.path} className="list-row sm mono" role="option" aria-selected={picked} tabIndex={picked ? 0 : -1} data-testid={`new-robot-pick-${f.path}`} data-tip={f.path} onClick={() => choose(f.path)}><bdi>{shortPath(f.path)}</bdi>{f.remote && <span className="new-folder-clone"> will clone (first time)</span>}</button>;
                 })}
                 {folders.length > 0 && <button className="list-row sm new-folder-other" role="option" aria-selected={typing} tabIndex={typing ? 0 : -1} data-testid="new-robot-other" onClick={() => choose('', true)}>Other folder…</button>}
               </div>
@@ -159,7 +161,7 @@ export function NewRobot() {
         )}
         <div className="acts">
           <button className="btn pri" data-testid="new-robot-create" disabled={busy || (!!via && (!folder || !!refused))}
-            data-tip={via && !folder ? `Choose a folder on ${where}` : via && refused ? `Choose another folder on ${where}` : undefined} onClick={() => void create()}>Create</button>
+            data-tip={via && !folder ? `Choose a folder on ${where}` : via && refused ? `Choose another folder on ${where}` : undefined} onClick={() => void create()}>{busy && remote ? 'Cloning…' : 'Create'}</button>
           <button className="btn" onClick={close}>Cancel</button>
         </div>
       </div>

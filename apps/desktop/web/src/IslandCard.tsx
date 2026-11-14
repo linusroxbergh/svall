@@ -2,13 +2,14 @@ import type { Robot, ContextItem, Params } from '@svall/protocol';
 import { newRobotOn, saveIsland, saveIslandContext } from './actions.js';
 import { app, deps } from './boot.js';
 import { AddLink, ContextPills } from './ContextList.js';
-import { FollowLine, FollowTextarea } from './Field.js';
+import { AS_TYPED, FollowLine, FollowTextarea } from './Field.js';
 import { useApp, usePanelWidth } from './hooks.js';
 import { Plus } from './icons.js';
 import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
 import { Section } from './Section.js';
-import { robotsOf } from './selectors.js';
+import { shortPath } from './paths.js';
+import { islandCwd, robotsOf } from './selectors.js';
 
 function DeleteIsland({ id, testid, label }: { id: string; testid: string; label: string }) {
   return <button className="btn sm dan" data-testid={testid} onClick={() => app.store.getState().setDeletingIsland(id)}>{label}</button>;
@@ -24,6 +25,7 @@ const commonRoot = (robots: Robot[]): string | undefined => {
 export function IslandCard({ id }: { id: string }) {
   const i = useApp((s) => s.fleet.islands[id]);
   const fleet = useApp((s) => s.fleet);
+  const via = useApp((s) => s.via);
   const hover = useApp((s) => s.dropHover?.kind === 'island' && s.dropHover.id === id);
   const width = usePanelWidth('card');
   if (!i) return null;
@@ -43,6 +45,12 @@ export function IslandCard({ id }: { id: string }) {
           <FollowTextarea className="fld desc" rows={6} placeholder="What this island is for" key={`description-${id}`} value={i.description} data-testid="side-island-description"
             onSave={(v) => (v !== i.description ? save({ description: v }) : undefined)} />
         </Section>
+        {i.kind !== 'home' && (
+          <Section name="island.folder" title="Folder">
+            <FollowLine className="fld mono" aria-label="Island folder" key={`folder-${id}`} value={i.folder ?? ''} placeholder={shortPath(islandCwd(fleet, id, via))}
+              data-testid="side-island-folder" {...AS_TYPED} onSave={(v) => { const folder = v.trim(); return folder !== (i.folder ?? '') ? save({ folder }) : undefined; }} />
+          </Section>
+        )}
         <Section name="island.instructions" title="Instructions">
           <FollowTextarea className="fld desc" rows={3} placeholder="How agents on this island should work" key={`instructions-${id}`} value={i.instructions} data-testid="side-island-instructions"
             onSave={(v) => (v !== i.instructions ? save({ instructions: v }) : undefined)} />

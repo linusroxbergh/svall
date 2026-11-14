@@ -21,7 +21,7 @@ export function NewRobot({ islandId, onClose, onCreated }: { islandId: string; o
     if (busy) return;
     setBusy(true);
     try {
-      const c = await createRobot(phone.api(), { islandId, cwd, ...(name.trim() ? { name: name.trim() } : {}), ...startOf(fleet, islandId) }, fleet.defaultCwd);
+      const c = await createRobot(phone.api(), { islandId, cwd, ...(name.trim() ? { name: name.trim() } : {}), ...startOf(fleet, islandId) }, fleet.islands[islandId]?.kind === 'home' ? [] : [fleet.defaultCwd]);
       onCreated(c.id);
     } catch (e) {
       setError((e as Error).message);

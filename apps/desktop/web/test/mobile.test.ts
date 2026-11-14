@@ -161,6 +161,12 @@ describe('phone cwd choices', () => {
     expect(cwdChoices(f, 'i_e').map((c) => c.path)).toEqual(['/Users/me/a', '/Users/me/b', '~', '/mc']);
   });
 
+  it("offers the island's folder first", () => {
+    const f = fleet();
+    f.islands.i_b.folder = '~/code/x';
+    expect(cwdChoices(f, 'i_b').map((c) => c.path)).toEqual(['~/code/x', '/tmp', '~', '/mc']);
+  });
+
   it("on a worker, offers only the folders of the robots running there, the island's own first", () => {
     const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
     const f = fleet();

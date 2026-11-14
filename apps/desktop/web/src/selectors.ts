@@ -36,10 +36,21 @@ export const robotsOf = (f: FleetState, islandId: string): Robot[] => {
 // where a new robot starts when it takes another one's directory: the repo itself, never the worktree that one sits in
 export const startCwd = (c: Robot): string => (c.repo?.isWorktree ? c.repo.mainRoot : c.cwd);
 
-export const islandCwd = (f: FleetState, islandId: string, via?: Via): string => {
-  const first = robotsOf(f, islandId).find((c) => !via || startsBeside(c, via));
-  return f.islands[islandId]?.kind === 'home' ? f.home.cwd : first ? startCwd(first) : f.defaultCwd;
-};
+/**
+ * Where a new robot on the island starts, in the order tried: mission control's own folder; else the island's folder, the
+ * folder of `base` or another of its robots on the machine it starts on, then the fleet's default. Through a worker the
+ * default is left to New robot while a robot of the island elsewhere has a repo to offer, and away from its home so is the folder.
+ */
+export function startCwds(f: FleetState, islandId: string, via?: Via, base?: Robot): string[] {
+  if (f.islands[islandId]?.kind === 'home') return [f.home.cwd];
+  const crew = robotsOf(f, islandId);
+  const beside = [base, ...crew].find((c) => c?.islandId === islandId && (!via || startsBeside(c, via)));
+  const folder = via && !via.online ? undefined : f.islands[islandId]?.folder;
+  const fallback = !via || (via.online && !crew.some((c) => !startsBeside(c, via))) ? f.defaultCwd : undefined;
+  return [...new Set([folder, beside && startCwd(beside), fallback].filter((p): p is string => !!p))];
+}
+
+export const islandCwd = (f: FleetState, islandId: string, via?: Via): string => startCwds(f, islandId, via)[0] ?? f.defaultCwd;
 
 export const stripOrder = (f: FleetState): Robot[] => {
   let strip = strips.get(f);
