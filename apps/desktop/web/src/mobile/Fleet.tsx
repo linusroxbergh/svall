@@ -5,7 +5,7 @@ import { memoByValue, useApp } from '../hooks.js';
 import { Caret, Check, Gear, More, Plus } from '../icons.js';
 import { elsewhere, homeName, machineName } from '../placement.js';
 import { figureOf, figureUrl } from '../portraits.js';
-import { islandCwd, startOf, statusOf, wantsUser } from '../selectors.js';
+import { islandCwd, startCwds, startOf, statusOf, wantsUser } from '../selectors.js';
 import { phone } from './boot.js';
 import { CloseRobot } from './CloseRobot.js';
 import { movedTo, sections, statusLabel, subtitle, waiting } from './list.js';
@@ -105,7 +105,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
     setAdding(true);
     setFailed(undefined);
     try {
-      const c = await createRobot(phone.api(), { islandId, cwd: islandCwd(fleet, islandId), ...startOf(fleet, islandId) }, fleet.defaultCwd);
+      const c = await createRobot(phone.api(), { islandId, cwd: islandCwd(fleet, islandId), ...startOf(fleet, islandId) }, startCwds(fleet, islandId));
       onOpen(c.id);
     } catch (e) {
       setFailed({ islandId, message: (e as Error).message });

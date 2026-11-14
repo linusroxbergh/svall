@@ -8,6 +8,7 @@ import { Invalid } from '../errors.js';
 import type { Logger } from '../log.js';
 import { pool } from '../pool.js';
 import type { Store } from '../store.js';
+import { memberStarts } from '../workspace/island-folder.js';
 import { eligible, REST_MS, type Seen } from './eligible.js';
 import {
   RobotAnswer, DESCRIPTION_MAX, IslandAnswer, NOTE_MAX, SYSTEM_ROBOT, SYSTEM_ISLAND,
@@ -360,7 +361,8 @@ export class Scribe {
     if (!i || i.kind === 'home') return [];
     const members = Object.values(state.robots).filter((c) => c.islandId === id);
     if (!members.length) return [];
-    const a = parseAnswer(IslandAnswer, await this.ask(SYSTEM_ISLAND, islandPrompt(i, members)));
+    const starts = memberStarts(state, id);
+    const a = parseAnswer(IslandAnswer, await this.ask(SYSTEM_ISLAND, islandPrompt(i, members, starts)));
     this.answered();
     const description = acceptLine(a.description, DESCRIPTION_MAX);
     // an island's links come from its members' links, never from a transcript
@@ -374,6 +376,10 @@ export class Scribe {
       if (description && description !== cur.description && cur.description === i.description && cur.descriptionSource !== 'manual') {
         cur.description = description;
         lines.push(`island ${cur.name}  description: ${description}`);
+      }
+      if (a.folder && starts.includes(a.folder) && a.folder !== cur.folder && cur.folder === i.folder && cur.folderSource !== 'manual') {
+        cur.folder = a.folder;
+        lines.push(`island ${cur.name}  folder: ${a.folder}`);
       }
       if (a.links && scribeKey(cur.context) === scribeKey(i.context)) {
         const links = acceptLinks(a.links, refs, cur.context, cur.removedLinks);

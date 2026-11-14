@@ -1,12 +1,12 @@
-import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, keptSession, type Cell, type Column, type ContextItem, type HomeAction, type MachineId, type Params, type Result, type Size } from '@svall/protocol';
+import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, keptSession, type Cell, type Column, type ContextItem, type HomeAction, type MachineId, type Params, type Result, type Robot, type Size } from '@svall/protocol';
 import { ApiError, CONNECTION_LOST, type Api } from './api.js';
 import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { withoutSecond } from './panes.js';
 import { phoneProblem, phoneSaid } from './phoneText.js';
-import { myMachine, startsBeside } from './placement.js';
+import { myMachine } from './placement.js';
 import type { FieldRef } from './resources/model.js';
-import { robotsOf, islandCwd, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startCwd, startOf } from './selectors.js';
+import { robotsOf, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startCwds, startOf } from './selectors.js';
 import type { AppState, AppStore } from './store/index.js';
 
 export type Deps = { api: Api; store: AppStore; bridge: Bridge };
@@ -22,14 +22,14 @@ const refused = (e: Error): boolean => e instanceof ApiError && REFUSALS.has(e.c
 // making an island or robot puts the settings window away, so what was made is in sight
 const closeSettings = (d: ActionDeps): void => { if (d.store.getState().settingsOpen) d.store.getState().toggleSettings(false); };
 
-// a cwd taken from another robot can be gone (a removed worktree), so one the fleet refuses as not a
-// directory gives way once to the fleet's default; an agent's start command only runs where it was meant to
-export async function createRobot(api: Pick<Api, 'call'>, params: Params<'robot.create'>, fallback: string): Promise<Result<'robot.create'>> {
+// a folder can be gone (a removed worktree), so one the fleet refuses as not a directory gives way to the next of `fallbacks`
+export async function createRobot(api: Pick<Api, 'call'>, params: Params<'robot.create'>, fallbacks: string[]): Promise<Result<'robot.create'>> {
   try {
     return await api.call('robot.create', params);
   } catch (e) {
-    if (params.cwd === fallback || params.command || !/not a directory/.test((e as Error).message)) throw e;
-    return api.call('robot.create', { ...params, cwd: fallback });
+    const [next, ...rest] = fallbacks.filter((p) => p !== params.cwd);
+    if (next === undefined || !/not a directory/.test((e as Error).message)) throw e;
+    return createRobot(api, { ...params, cwd: next }, rest);
   }
 }
 
@@ -49,25 +49,22 @@ function warnUnfound(d: ActionDeps, command: string): boolean {
   return unfound;
 }
 
-// the new robot's id, or nothing when the fleet refused, the reason already on a toast, or when New Robot asks first:
-// a window off its home with no robot beside has no folder to go by, as the fleet's default may not be on that machine
+// the new robot's id, or nothing when the fleet refused, the reason already on a toast, or when New Robot asks first: a
+// window through a worker with no folder of the island's on the machine the robot starts on asks for one there
 export async function newRobotOn(d: ActionDeps, islandId: string, column?: string): Promise<string | undefined> {
   closeSettings(d);
-  const s = d.store.getState();
-  const { fleet: f, via } = s;
-  if (via && f.islands[islandId]?.kind !== 'home' && !robotsOf(f, islandId).some((c) => startsBeside(c, via))) {
-    s.selectIsland(islandId);
-    s.setNamingRobot(true, column);
-    return undefined;
-  }
-  const dir = islandCwd(f, islandId, via);
+  const { fleet: f, via } = d.store.getState();
+  const ask = () => { d.store.getState().selectIsland(islandId); d.store.getState().setNamingRobot(true, column); return undefined; };
+  const [dir, ...rest] = startCwds(f, islandId, via);
+  if (dir === undefined) return ask();
   const start = startOf(f, islandId);
   if (start.command) warnUnfound(d, start.command);
   try {
-    const c = await createRobot(d.api, { islandId, cwd: dir, ...start }, f.defaultCwd);
+    const c = await createRobot(d.api, { islandId, cwd: dir, ...start }, rest);
     showCreated(d, c.id);
     return c.id;
   } catch (e) {
+    if (via && f.islands[islandId]?.kind !== 'home' && /not a directory/.test((e as Error).message)) return ask();
     d.store.getState().showToast(e as Error);
     return undefined;
   }
@@ -223,13 +220,23 @@ export function newIsland(d: ActionDeps, cell?: Cell): void {
 const islandName = (cwd: string): string => (cwd === '~' ? 'island' : cwd.split('/').filter(Boolean).pop() ?? 'island');
 
 // the folder of the robot a new one stands beside, and the island it asks for, if any yet
-function besideOf(s: AppState): { islandId?: string; start: string } {
+function besideOf(s: AppState): { islandId?: string; base?: Robot; start: string } {
   const current = s.selectedId ?? s.card ?? selectedOf(s);
   const islandSel = s.selectedIslandId;
   const base = islandSel ? robotsOf(s.fleet, islandSel)[0] : current ? s.fleet.robots[current] : undefined;
-  if (!base) return { islandId: islandSel, start: s.fleet.defaultCwd };
-  const start = !s.via || startsBeside(base, s.via) ? startCwd(base) : islandCwd(s.fleet, base.islandId, s.via);
-  return { islandId: islandSel || base.islandId, start };
+  const islandId = islandSel || base?.islandId;
+  return { islandId, base, start: (islandId && startCwds(s.fleet, islandId, s.via, base)[0]) || s.fleet.defaultCwd };
+}
+
+// the selected island, else the current robot's island, else the first shown one, else the first hidden one
+const landingOf = (s: AppState): string | undefined =>
+  besideOf(s).islandId || mapIslandsSorted(s.fleet)[0]?.id || islandsSorted(s.fleet).find((i) => i.kind !== 'home')?.id;
+
+/** What New robot asks the machine a robot would start on: the island it lands on and the robot of that island it starts beside. */
+export function newRobotAsk(s: AppState): Params<'workspace.clones'> {
+  const { base } = besideOf(s);
+  const islandId = landingOf(s);
+  return { ...(islandId && { islandId }), ...(base && base.islandId === islandId && { beside: base.id }) };
 }
 
 /** The folder New Robot's field starts on: where the new robot would stand, mission control's own there. */
@@ -242,23 +249,25 @@ export function newRobotFolder(s: AppState): string {
 // which comes back with the robot, else a fresh island, named for `folder` when the caller chose one; `made` says it is fresh
 export async function newRobotTarget(d: ActionDeps, folder?: string): Promise<{ islandId: string; cwd: string; made?: true }> {
   const s = d.store.getState();
-  const { islandId: asked, start } = besideOf(s);
-  const found = asked || mapIslandsSorted(s.fleet)[0]?.id || islandsSorted(s.fleet).find((i) => i.kind !== 'home')?.id;
+  const { base, start } = besideOf(s);
+  const found = landingOf(s);
   const islandId = found || (await d.api.call('island.create', { name: islandName(folder ?? start) })).id;
-  const cwd = s.fleet.islands[islandId]?.kind === 'home' ? s.fleet.home.cwd : start;
+  const cwd = (found && startCwds(s.fleet, found, s.via, base)[0]) || start;
   return { islandId, cwd, ...(!found && { made: true as const }) };
 }
 
 // the caller reports a refusal, so the dialog can stay open on one; a folder it names is the one meant, with nothing to give way
 // to, and an island made for it goes if the folder is refused. Any other refusal keeps it, as the next try may need it
-export async function newNamedRobot(d: ActionDeps, p: { name: string; note: string; refs: string[]; cwd?: string }): Promise<string> {
+// remote: what the machine the robot starts on clones into `cwd` first
+export async function newNamedRobot(d: ActionDeps, p: { name: string; note: string; refs: string[]; cwd?: string; remote?: string }): Promise<string> {
   closeSettings(d);
   const { islandId, cwd, made } = await newRobotTarget(d, p.cwd);
   const f = d.store.getState().fleet;
   const start = startOf(f, islandId);
   if (start.command) warnUnfound(d, start.command);
-  const params = { islandId, cwd: p.cwd ?? cwd, ...(p.name ? { name: p.name } : {}), ...start };
-  const c = await (p.cwd === undefined ? createRobot(d.api, params, f.defaultCwd) : d.api.call('robot.create', params).catch(async (e: unknown) => {
+  const params = { islandId, cwd: p.cwd ?? cwd, ...(p.name ? { name: p.name } : {}), ...start, ...(p.remote && { remote: p.remote }) };
+  const fallbacks = startCwds(f, islandId, d.store.getState().via, besideOf(d.store.getState()).base);
+  const c = await (p.cwd === undefined ? createRobot(d.api, params, fallbacks) : d.api.call('robot.create', params).catch(async (e: unknown) => {
     if (made && (e as { code?: string }).code === 'not_a_folder') await d.api.call('island.delete', { id: islandId }).catch(() => {});
     throw e;
   }));

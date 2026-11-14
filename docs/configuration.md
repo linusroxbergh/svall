@@ -9,7 +9,7 @@ belongs to this machine alone:
 | --- | --- | --- |
 | `name` | `fleet.json` | What the window title and `svall <name>` call the fleet: lowercase letters, digits and dashes, starting with a letter, not an `svall` command, and not `dev` or `dev-…`. Absent, the directory names it. Set from Settings. |
 | `port`, `host` | `node.json` | Where the daemon listens: `127.0.0.1`, on `47800` for the private fleet and any free port for the others. Absent, a free port stands in while another program holds `47800`; a port set here that is taken keeps the daemon from starting. Any address off loopback sends the API token in plain text. |
-| `defaultCwd` | `fleet.json` | Where a new robot starts when no robot beside it gives it a directory (default `~`). Set by the setup screen's projects folder or `svall setup --projects`. |
+| `defaultCwd` | `fleet.json` | Where a new robot starts when neither its island's folder nor a robot of the island gives it a directory (default `~`). Set by the setup screen's projects folder or `svall setup --projects`. |
 | `shell` | `node.json` | The shell a terminal runs, if not your login shell. |
 | `linear` | `fleet.json` | `{ "workspace": "acme", "teamKeys": ["ENG"] }` links a branch named after a Linear issue to that issue. |
 | `mainAgent` | `fleet.json` | `claude`, `codex` or `opencode`: what the scribe, mission control's crew and `svall robot new --run` run by default. Absent, the private fleet's, else `claude` when it is installed or no CLI is, else the first CLI found. Set from the app or with `svall agent <name>`. |

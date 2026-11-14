@@ -154,6 +154,18 @@ test('a draft in one island\'s instructions never shows or saves on the next one
   expect(updates()).not.toContainEqual(['island.update', { id: 'i_b', instructions: 'merge without asking' }]);
 });
 
+test('an island\'s folder is saved as typed, and mission control has none', () => {
+  store.getState().selectIsland('i_a');
+  const { unmount } = render(<IslandSide />);
+  type(field('side-island-folder'), ' ~/code/x ');
+  fireEvent.blur(field('side-island-folder'));
+  expect(updates()).toEqual([['island.update', { id: 'i_a', folder: '~/code/x' }]]);
+  unmount();
+  act(() => store.getState().selectIsland('home'));
+  render(<IslandSide />);
+  expect(screen.queryByTestId('side-island-folder')).toBeNull();
+});
+
 // the page moves the selection, as a link opened beside a robot does, and the removed field hears no blur
 test('a draft whose card the page takes away is saved to the island it was typed for', () => {
   store.getState().selectIsland('i_a');

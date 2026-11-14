@@ -46,7 +46,6 @@ describe('the + beside an island with no robot folder beside it', () => {
 
   it.each([
     ['following a far home, with only a robot on this Mac there', { machine: MAC, home: HOME, online: true as const }, 'i_b', MAC],
-    ['on a far home, on an island with no robot', { machine: MAC, home: HOME, online: true as const }, 'i_e', undefined],
     ['standing in for its home, with only the home\'s robot there', { machine: MAC, home: HOME }, 'i_a', undefined],
     ['on a Mac its home dials, with only the home\'s robot there', { machine: MAC, home: HOME, online: true as const, served: true as const }, 'i_a', undefined],
   ])('%s, asks for the folder and starts nothing', async (_, via, island, machine) => {
@@ -60,6 +59,55 @@ describe('the + beside an island with no robot folder beside it', () => {
     expect(started(c)).toEqual([]);
     const s = c.store.getState();
     expect([s.namingRobot, s.selectedIslandId, s.namingColumn]).toEqual([true, island, 'k_review']);
+  });
+
+  it('on a far home starts an island with no robot anywhere in the fleet\'s default, the home\'s own', async () => {
+    const c = ctx();
+    const f = fleet();
+    f.defaultCwd = '/home/ada/projects';
+    c.store.getState().setFleet(f);
+    c.store.getState().setVia({ machine: MAC, home: HOME, online: true });
+    await newRobotOn(c, 'i_e');
+    expect(started(c).map((k) => k.params)).toEqual([expect.objectContaining({ islandId: 'i_e', cwd: '/home/ada/projects' })]);
+    expect(c.store.getState().namingRobot).toBe(false);
+  });
+
+  it('on a far home tries the island\'s folder, and asks for one once the home has none there for a robot of the island elsewhere', async () => {
+    const c = ctx();
+    const f = fleet();
+    f.islands.i_b.folder = '~/code/x';
+    for (const id of ['c0', 'c1']) f.robots[id] = { ...f.robots[id], cwd: '/Users/ada/code/x', machine: MAC };
+    c.store.getState().setFleet(f);
+    c.store.getState().setVia({ machine: MAC, home: HOME, online: true });
+    const refused = { call: (method: string, params: unknown) => { c.calls.push({ method, params }); return Promise.reject(new ApiError('not_a_folder', 'cwd ~/code/x is not a directory')); } } as unknown as Api;
+    expect(await newRobotOn({ ...c, api: refused }, 'i_b', 'k_review')).toBeUndefined();
+    expect(started(c).map((k) => (k.params as { cwd: string }).cwd)).toEqual(['~/code/x']);
+    const s = c.store.getState();
+    expect([s.namingRobot, s.selectedIslandId, s.toast]).toEqual([true, 'i_b', undefined]);
+  });
+
+  it('on a far home says why the home refused the island\'s folder for anything but a missing folder, rather than ask', async () => {
+    const c = ctx();
+    const f = fleet();
+    f.islands.i_e.folder = '~/code/x';
+    c.store.getState().setFleet(f);
+    c.store.getState().setVia({ machine: MAC, home: HOME, online: true });
+    const full = { call: () => Promise.reject(new ApiError('invalid', 'island i_e is full')) } as unknown as Api;
+    await newRobotOn({ ...c, api: full }, 'i_e');
+    const s = c.store.getState();
+    expect([s.namingRobot, s.toast?.text]).toEqual([false, 'island i_e is full']);
+  });
+
+  it('on a far home asks for a folder once the home has none at the island\'s, though no robot of the island is anywhere', async () => {
+    const c = ctx();
+    const f = fleet();
+    f.islands.i_e.folder = '~/code/x';
+    c.store.getState().setFleet(f);
+    c.store.getState().setVia({ machine: MAC, home: HOME, online: true });
+    const refused = { call: (method: string, params: unknown) => { c.calls.push({ method, params }); return Promise.reject(new ApiError('not_a_folder', 'cwd ~/code/x is not a directory')); } } as unknown as Api;
+    await newRobotOn({ ...c, api: refused }, 'i_e');
+    expect(started(c).map((k) => (k.params as { cwd: string }).cwd)).toEqual(['~/code/x']);
+    expect(c.store.getState().namingRobot).toBe(true);
   });
 
   it('on a Mac home starts in the fleet\'s default as ever, with no dialog', async () => {
@@ -125,10 +173,24 @@ describe('newRobotTarget', () => {
     expect(await newRobotTarget(c)).toEqual({ islandId: 'i_b', cwd: '/repo' });
   });
 
+  it('starts in the island\'s folder before the folder of the robot it is beside', async () => {
+    const c = ctx();
+    c.store.getState().setView('board');
+    c.store.getState().applyPatch([{ op: 'add', path: '/islands/i_b/folder', value: '~/x' }]);
+    c.store.getState().select('c1');
+    expect(await newRobotTarget(c)).toEqual({ islandId: 'i_b', cwd: '~/x' });
+  });
+
   it('falls back to the first robot with nothing selected', async () => {
     const c = ctx();
     c.store.getState().setView('board');
     expect(await newRobotTarget(c)).toEqual({ islandId: 'i_a', cwd: '/tmp' });
+  });
+
+  it('with no robot to go by starts in the folder of the island it lands on', async () => {
+    const c = ctx();
+    c.store.getState().setFleet({ ...fleet(), robots: {}, islands: { i_x: isl('i_x', 'x', 0, { folder: '~/code/x' }) } });
+    expect(await newRobotTarget(c)).toEqual({ islandId: 'i_x', cwd: '~/code/x' });
   });
 
   it('prefers the island selected on the map, in the fleet default cwd when it has no crew', async () => {
@@ -391,6 +453,20 @@ describe('a crew member whose directory is gone', () => {
     await newRobotOn({ api: goneDir(calls), store: s }, 'i_b');
     expect(calls.map((c) => c.params)).toEqual([{ islandId: 'i_b', cwd: '/tmp' }, { islandId: 'i_b', cwd: DEFAULT_CWD }]);
     expect(s.getState().toast).toBeUndefined();
+  });
+
+  it('starts in the island\'s folder, then its robot\'s, then the fleet default, each refused in turn, an agent too', async () => {
+    for (const agent of [false, true]) {
+      const calls: Call[] = [];
+      const s = store();
+      const f = fleet();
+      f.islands.i_b.folder = '~/x';
+      if (agent) Object.assign(f, { newRobotStart: 'agent', mainAgent: 'claude' });
+      s.getState().setFleet(f);
+      await newRobotOn({ api: goneDir(calls), store: s }, 'i_b');
+      expect(calls.map((c) => c.params.cwd)).toEqual(['~/x', '/tmp', DEFAULT_CWD]);
+      expect(s.getState().toast).toBeUndefined();
+    }
   });
 
   it('leaves a named robot beside it to start in the fleet default', async () => {

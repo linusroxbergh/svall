@@ -2,7 +2,7 @@ import { useState, type JSX } from 'react';
 import { createRobot } from '../actions.js';
 import { useApp } from '../hooks.js';
 import { machineName } from '../placement.js';
-import { islandCwd, startOf } from '../selectors.js';
+import { islandCwd, startCwds, startOf } from '../selectors.js';
 import { phone } from './boot.js';
 import { cwdChoices } from './choices.js';
 import { Sheet } from './Sheet.js';
@@ -21,7 +21,7 @@ export function NewRobot({ islandId, onClose, onCreated }: { islandId: string; o
     if (busy) return;
     setBusy(true);
     try {
-      const c = await createRobot(phone.api(), { islandId, cwd, ...(name.trim() ? { name: name.trim() } : {}), ...startOf(fleet, islandId) }, fleet.defaultCwd);
+      const c = await createRobot(phone.api(), { islandId, cwd, ...(name.trim() ? { name: name.trim() } : {}), ...startOf(fleet, islandId) }, fleet.islands[islandId]?.kind === 'home' ? [] : startCwds(fleet, islandId));
       onCreated(c.id);
     } catch (e) {
       setError((e as Error).message);

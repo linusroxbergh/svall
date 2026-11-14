@@ -205,6 +205,36 @@ describe('Scribe, automatically', () => {
     expect(briefReply('UserPromptSubmit', renderBrief(s.islands.i1, s.robots.a), s.robots.a.agent!.brief)).toEqual({});
   });
 
+  it('gives an island the folder its members start from, and none they do not', async () => {
+    const settled = async (folder: string) => {
+      const w = world(({ system }) => (system.includes('island') ? JSON.stringify({ folder }) : JSON.stringify({ note: 'n' })));
+      w.island('i1');
+      w.robot('a');
+      w.scribe.tick();
+      await settle();
+      w.advance(SETTLE_MS);
+      w.scribe.tick();
+      await settle();
+      return w;
+    };
+    const w = await settled('/repo');
+    expect(w.store.state.islands.i1.folder).toBe('/repo');
+    expect(w.calls.at(-1)!.prompt).toContain('Folders its members start from: /repo');
+    expect((await settled('/elsewhere')).store.state.islands.i1.folder).toBeUndefined();
+  });
+
+  it('keeps the folder a person set', async () => {
+    const w = world(({ system }) => (system.includes('island') ? JSON.stringify({ description: 'd', folder: '/repo' }) : JSON.stringify({ note: 'n' })));
+    w.island('i1', { folder: '~/mine', folderSource: 'manual' });
+    w.robot('a');
+    w.scribe.tick();
+    await settle();
+    w.advance(SETTLE_MS);
+    w.scribe.tick();
+    await settle();
+    expect(w.store.state.islands.i1).toMatchObject({ description: 'd', folder: '~/mine' });
+  });
+
   it('keeps its change out of a session that has been given no brief yet', async () => {
     const w = world(answer({ note: 'scribe note' }));
     w.island('i1');

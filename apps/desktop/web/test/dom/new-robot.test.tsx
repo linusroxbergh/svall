@@ -18,13 +18,13 @@ const far: Via = { machine: MAC, home: STUDIO, name: 'studio', online: true };
 const apart: Via = { machine: MAC, home: STUDIO, name: 'studio' };
 
 const DEFAULTS = { cwd: '/home/linus', home: '/home/linus/.svall/home' };
-type Folders = { path: string; clone: boolean }[];
+type Folders = { path: string; clone: boolean; remote?: string; from?: MachineId }[];
 const FOLDERS: Folders = [{ path: '/home/linus/app', clone: true }, { path: '/home/linus/notes', clone: false }];
 
 // a daemon that answers the list, and refuses or takes the start as `create` says
-function answers(machine: MachineId, folders: Folders, create: (p: { cwd: string }) => Promise<unknown> = () => Promise.resolve({ id: 'c_new' })) {
+function answers(machine: MachineId, folders: Folders, create: (p: { cwd: string }) => Promise<unknown> = () => Promise.resolve({ id: 'c_new' }), start?: string) {
   call.mockImplementation(((m: string, p: { cwd: string }) => {
-    if (m === 'workspace.clones') return Promise.resolve({ machine, folders, defaults: DEFAULTS });
+    if (m === 'workspace.clones') return Promise.resolve({ machine, folders, defaults: DEFAULTS, ...(start && { start }) });
     return m === 'robot.create' ? create(p) : Promise.resolve({});
   }) as never);
 }
@@ -68,9 +68,10 @@ test('on a Mac home a folder gone gives way to the fleet\'s default, as ever', a
   expect(store.getState().namingRobot).toBe(false);
 });
 
-test('the + beside an island with no robot there opens the dialog, and the robot starts on that island, in its column', async () => {
+test('the + beside an island whose robot works on this Mac opens the dialog, and the robot starts on that island, in its column', async () => {
   answers(STUDIO, FOLDERS);
-  act(() => { store.getState().select('c0'); store.getState().setVia(far); store.getState().setFleet({ ...store.getState().fleet, robots: {} }); });
+  const f = store.getState().fleet;
+  act(() => { store.getState().select('c0'); store.getState().setVia(far); store.getState().setFleet({ ...f, robots: { c3: { ...f.robots.c0, id: 'c3', islandId: 'i_e', machine: MAC, cwd: '/Users/ada/x' } } }); });
   await act(async () => { await newRobotOn(deps(), 'i_e', 'k_review'); render(<NewRobot />); });
   expect(creates()).toEqual([]);
   expect(screen.getByTestId('new-robot-where').textContent).toBe('folder on studio');
@@ -92,6 +93,27 @@ test('on a far home it lists the home\'s folders and starts in the one chosen, n
   await create();
   expect(creates()).toHaveLength(1);
   expect(creates()[0]).toEqual({ islandId: 'i_b', cwd: '/home/linus/notes' });
+  expect(store.getState().namingRobot).toBe(false);
+});
+
+test('on a far home it asks for the island\'s folders, beside the robot it starts by, and stands on the one the home names', async () => {
+  answers(STUDIO, FOLDERS, undefined, '/home/linus/notes');
+  await open(far);
+  expect(call.mock.calls.filter(([m]) => m === 'workspace.clones').map(([, p]) => p)).toEqual([{ islandId: 'i_b', beside: 'c0' }]);
+  expect(picked()).toBe('/home/linus/notes');
+});
+
+test('a folder only another machine holds says it will be cloned, and the robot starts once the home has cloned it', async () => {
+  const x = { path: '/home/linus/x', clone: true, remote: 'git@github.com:a/x.git', from: MAC };
+  let cloned: (v: unknown) => void = () => {};
+  answers(STUDIO, [x, ...FOLDERS], () => new Promise((r) => { cloned = r; }), x.path);
+  await open(far);
+  expect(shown()).toEqual(['~/x will clone (first time)', '~/app', '~/notes']);
+  expect(picked()).toBe(x.path);
+  await create();
+  expect(creates()).toEqual([{ islandId: 'i_b', cwd: x.path, remote: x.remote }]);
+  expect(screen.getByTestId('new-robot-create').textContent).toBe('Cloning…');
+  await act(async () => { cloned({ id: 'c_new' }); });
   expect(store.getState().namingRobot).toBe(false);
 });
 

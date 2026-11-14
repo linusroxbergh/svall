@@ -94,6 +94,8 @@ export type PhoneFallback = z.infer<typeof PhoneFallback>;
 
 // how long the daemon waits for a fresh agent to attach before it answers robot.create with a run
 export const RUN_TIMEOUT_MS = 30_000;
+/** How long robot.create may clone a remote into its folder: svalld's clone git gives up then. */
+export const CLONE_TIMEOUT_MS = 600_000;
 
 // how long enabling the phone link may take, since a checkout with no phone bundle builds one first
 const MOBILE_SET_TIMEOUT_MS = 3 * 60_000;
@@ -132,7 +134,7 @@ const FREEZE_MS = 60_000;
 // how long the daemon may hold a call before it answers, which a client adds to its own timeout
 export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'robot.wait') return (params as { timeoutMs?: number }).timeoutMs ?? WAIT_DEFAULT_MS;
-  if (method === 'robot.create' && (params as { run?: string }).run) return RUN_TIMEOUT_MS;
+  if (method === 'robot.create') return ((params as { run?: string }).run ? RUN_TIMEOUT_MS : 0) + ((params as { remote?: string }).remote ? CLONE_TIMEOUT_MS : 0);
   if (method === 'scribe.sweep') return SWEEP_TIMEOUT_MS;
   // a far command, its forward and a greeting through it, each with a timeout of its own
   if (method === 'home.connection' || method === 'fleet.homeCheck' || method === 'fleet.homeMove') return HOME_CONNECTION_MS;
@@ -246,7 +248,9 @@ export const methods = {
   },
   'island.update': {
     // removed: the refs a person took off context, which the scribe leaves off until they are added again
-    params: z.object({ id: z.string(), name: z.string().optional(), description: z.string().optional(), context: z.array(ContextItem).optional(), removed: z.array(z.string()).optional(), instructions: Instructions.optional(), position: Cell.optional(), size: NewSize.optional(), collapsed: z.boolean().optional() }),
+    params: z.object({ id: z.string(), name: z.string().optional(), description: z.string().optional(), context: z.array(ContextItem).optional(), removed: z.array(z.string()).optional(), instructions: Instructions.optional(), position: Cell.optional(), size: NewSize.optional(), collapsed: z.boolean().optional(),
+      // '' clears it
+      folder: z.string().optional() }),
     result: Island,
   },
   'island.delete': { params: Id, result: z.object({}) },
@@ -261,6 +265,8 @@ export const methods = {
       run: RunText.optional(), agentProfile: z.string().optional(),
       // the robot starting it; report, that robot is owed a report on the run
       startedBy: z.string().optional(), report: z.boolean().optional(),
+      // what to clone into cwd when nothing is there, as workspace.clones names it
+      remote: z.string().regex(/^[^-]/).optional(),
     }),
     result: Robot.extend({ runSent: z.boolean().optional() }),
   },
@@ -439,7 +445,15 @@ export const methods = {
   // the root fs.read and fs.write reach fleet.json through, in the editor of a window on a far home; a worker holds no fleet's config
   'fleet.config': { params: z.object({}), result: z.object({ rootId: z.string(), path: z.string() }) },
   // the folders a new robot can start in on the machine that answers: where its robots work and the clones it holds. `clone`: a worker away from its home starts only in one. `defaults`: the fleet's default and mission control folders there, as state holds them with `~`
-  'workspace.clones': { params: z.object({}), result: z.object({ machine: MachineId, folders: z.array(z.object({ path: z.string(), clone: z.boolean() })), defaults: z.object({ cwd: z.string(), home: z.string() }) }) },
+  // islandId puts that island's folders first, beside's before its other robots'; start: the one a new robot there starts in;
+  // remote: a folder another machine holds as a clone of it, which robot.create makes here
+  'workspace.clones': {
+    params: z.object({ islandId: z.string().optional(), beside: z.string().optional() }),
+    result: z.object({
+      machine: MachineId, folders: z.array(z.object({ path: z.string(), clone: z.boolean(), remote: z.string().optional(), from: MachineId.optional() })),
+      defaults: z.object({ cwd: z.string(), home: z.string() }), start: z.string().optional(),
+    }),
+  },
   // how a window reaches the fleet's home over this daemon's ssh master: a home answers `connected` and no route. `retry`: a
   // person asks again after `auth`, `version` or a mismatch, which nothing retries by itself. Loopback only, as it hands over the home's token
   'home.connection': {
@@ -581,4 +595,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 47;
+export const PROTOCOL_VERSION = 48;

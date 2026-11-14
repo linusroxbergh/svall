@@ -7,15 +7,21 @@ import { arrangeFleet, defaultPosition, freePosition, placementOk, randomSeed, r
 import type { Logger } from './log.js';
 import type { Paths } from './paths.js';
 import type { Store } from './store.js';
+import { islandFolder } from './workspace/island-folder.js';
 
 type Deps = { store: Store; log: Logger; paths: Paths };
 export type NewIsland = { name: string; position?: Cell; size?: Size; seed?: number; description?: string; instructions?: string; context?: ContextItem[] };
-export type IslandPatch = { name?: string; description?: string; instructions?: string; context?: ContextItem[]; removed?: string[]; position?: Cell; size?: Size; collapsed?: boolean };
+export type IslandPatch = { name?: string; description?: string; instructions?: string; context?: ContextItem[]; removed?: string[]; position?: Cell; size?: Size; collapsed?: boolean; folder?: string };
 
 // text a person writes stays theirs until they clear it; cleared, the scribe may write it again
 function setDescription(i: Island, description: string): void {
   i.description = description;
   if (description) i.descriptionSource = 'manual'; else delete i.descriptionSource;
+}
+
+function setFolder(i: Island, folder: string): void {
+  if (folder) Object.assign(i, { folder, folderSource: 'manual' });
+  else { delete i.folder; delete i.folderSource; }
 }
 
 export function createIsland({ store }: Deps, p: NewIsland): Island {
@@ -57,6 +63,7 @@ export function updateIsland({ store, log }: Pick<Deps, 'store' | 'log'>, id: st
   const members = Object.values(store.state.robots).filter((c) => c.islandId === id);
   if (p.size && landCells(next.size).length < members.length) throw new Invalid(`island ${current.name} would have fewer cells than robots`);
   const context = p.context && settleItems(p.context, current.context);
+  const folder = p.folder ? islandFolder(p.folder, store.state) : p.folder;
   store.update((d) => {
     const i = d.islands[id];
     // an island without a number sorts by name, so numbering the list first keeps a renamed island in its place
@@ -66,6 +73,7 @@ export function updateIsland({ store, log }: Pick<Deps, 'store' | 'log'>, id: st
     if (p.name !== undefined) i.name = p.name;
     if (p.description !== undefined) setDescription(i, p.description);
     if (p.instructions !== undefined) i.instructions = p.instructions;
+    if (folder !== undefined) setFolder(i, folder);
     if (context) setContext(i, context, p.removed);
     if (p.position) i.position = p.position;
     if (p.size) {
