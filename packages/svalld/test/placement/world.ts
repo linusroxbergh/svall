@@ -207,7 +207,7 @@ export function world(o: {
   const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger, undefined, W);
   const screens = new ScreenTails({ fleet: workerFleet, store: workerStore, tmux: workerTmux, connection, runsHere: (c) => c.machine === W });
   screens.start();
-  const workerUsage = usageOf(workerStore, workerRouter, o.usage?.workerClaude ?? o.usage?.claude);
+  const workerUsage = usageOf(workerStore, workerRouter, o.usage?.workerClaude);
   const workerClaude = { dir: path.join(workerPaths.home, 'claude'), json: path.join(workerPaths.home, 'claude.json') };
   const workerRoots = rootHere((c) => workerRouter.runsHere(c));
   const workerWorkspace = new Workspace(

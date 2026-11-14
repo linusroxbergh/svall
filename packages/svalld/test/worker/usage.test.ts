@@ -75,6 +75,10 @@ describe('usage across machines', () => {
     // a newer reading of another login's window is that login's, not a newer one of this
     expect(mergeUsage({ available: true, windows: [codex('d@x.io', 5, 1_000)] }, [{ available: true, windows: [codex('r@x.io', 40, 3_000)] }]).windows)
       .toEqual([codex('d@x.io', 5, 1_000), codex('r@x.io', 40, 3_000)]);
+    // a window whose login is unknown is no known login's, on whichever machine it was read
+    const unknown = { key: 'week', label: 'Week', pct: 50 };
+    expect(mergeUsage({ available: true, windows: [unknown] }, [{ available: true, windows: [week('r@x.io', 33)] }]).windows).toEqual([unknown, week('r@x.io', 33)]);
+    expect(mergeUsage({ available: true, windows: [week('r@x.io', 33)] }, [{ available: true, windows: [unknown] }]).windows).toEqual([week('r@x.io', 33), unknown]);
   });
 
   it('the home\'s usage.get shows a worker\'s Claude login beside its own when they differ', async () => {
