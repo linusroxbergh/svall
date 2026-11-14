@@ -103,8 +103,8 @@ export async function cloneHere(remote: string, to: string, git: GitRunner = clo
     try {
       await must(git, ['clone', '-q', '--', remote, dest], path.dirname(dest), dest);
     } catch (e) {
-      // git keeps a clone whose checkout failed, which would pass for a finished one
-      fs.rmSync(dest, { recursive: true, force: true });
+      // git keeps a clone whose checkout failed, which would pass for a finished one; a folder made before it began is not its
+      if (!/already exists/.test((e as Error).message)) fs.rmSync(dest, { recursive: true, force: true });
       throw new Invalid((e as Error).message);
     }
   })();

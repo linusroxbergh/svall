@@ -14,7 +14,7 @@ import { cloneGit, resolveRepo, type GitRunner } from '../src/links/git.js';
 import { workspaceRoot } from '../src/resources/scan.js';
 import { Store } from '../src/store.js';
 import type { Tmux } from '../src/tmux/tmux.js';
-import { isFolder, startFolders } from '../src/workspace/clones.js';
+import { cloneHere, isFolder, startFolders } from '../src/workspace/clones.js';
 import { fleetConfigFile } from '../src/workspace/fleet-config.js';
 import { Workspace } from '../src/workspace/workspace.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -326,6 +326,17 @@ describe('a folder New robot clones before the robot starts', () => {
     expect(both.map((r) => r.status === 'rejected' && (r.reason as { code: string }).code)).toEqual(['invalid', 'invalid']);
     expect(fs.existsSync(cwd)).toBe(false);
     expect(window).not.toHaveBeenCalled();
+  });
+
+  it('leaves a folder that appeared before git began, which is not the clone\'s to take away', async () => {
+    const dest = path.join(makeHome(), 'app');
+    const theirs: GitRunner = async () => {
+      fs.mkdirSync(dest);
+      fs.writeFileSync(path.join(dest, 'mine'), '');
+      return { code: 128, stdout: '', stderr: `fatal: destination path '${dest}' already exists and is not an empty directory.` };
+    };
+    await expect(cloneHere('https://example.com/x.git', dest, theirs)).rejects.toMatchObject({ code: 'invalid' });
+    expect(fs.existsSync(path.join(dest, 'mine'))).toBe(true);
   });
 
   it('clones nothing into a folder already there', async () => {
