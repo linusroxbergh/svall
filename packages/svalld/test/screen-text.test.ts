@@ -23,6 +23,15 @@ describe('screenText', () => {
       .toBe(`long https://github.com/o/r/pull/12/files#diff- (${url})\n0123456789abcdef`);
   });
 
+  it('leaves out the placeholder or suggestion an agent draws faint on its prompt line, and keeps its past prompts', () => {
+    expect(screenText('\x1b[39m❯ \x1b[2mmerge it\x1b[0m')).toBe('❯ ');
+    expect(screenText('\x1b[38;5;246m❯ \x1b[7m\x1b[39mP\x1b[0;2mress up to edit queued messages\x1b[0m')).toBe('❯ ');
+    expect(screenText('\x1b[39m❯ half typed draft\x1b[7m \x1b[0m')).toBe('❯ half typed draft');
+    expect(screenText('\x1b[38;5;246m\x1b[48;5;237m❯ \x1b[38;5;231mmerge it\x1b[39m')).toBe('❯ merge it');
+    expect(screenText('\x1b[1m›\x1b[0m\x1b[48;2;30;30;30m \x1b[2mAsk Codex to do anything\x1b[0m\x1b[48;2;30;30;30m   ')).toBe('›');
+    expect(screenText('\x1b[1;2m› \x1b[0m\x1b[48;2;40;40;40mmerge it')).toBe('› merge it');
+  });
+
   it('ends a link an OSC ends with BEL as well, and passes other OSCs over', () => {
     expect(screenText('\x1b]8;;https://x.test/b\x07B\x1b]8;;\x07 \x1b]0;title\x07end')).toBe('B (https://x.test/b) end');
   });
