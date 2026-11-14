@@ -1,7 +1,7 @@
 import { Command, Option } from 'commander';
 import type { Target } from '../target.js';
 import { lazy } from './lazy.js';
-import { hostLimits } from './limits.js';
+import { connectFlags, hostLimits } from './limits.js';
 
 export function hostCommands(json: () => boolean, target: () => Target, dir?: () => string): Command {
   const run = lazy(() => import('../commands/host.js').then((m) => m.hostActions(json, target, dir)));
@@ -9,15 +9,13 @@ export function hostCommands(json: () => boolean, target: () => Target, dir?: ()
     // the app's Stop is a SIGTERM, which would otherwise leave this command's master running
     .hook('preAction', run('preAction'));
 
-  host.command('add')
+  connectFlags(host.command('add')
     .description('provision a remote Svall host and add it to the registry')
     .argument('<name>', 'what to call the machine here')
     .requiredOption('--ssh <destination>', 'the ssh destination to reach it at')
     .option('--release <archive>', 'install this companion archive instead of the one this release publishes')
     .option('--allow-unsigned', 'install a --release archive that carries no signature')
-    .option('--as-home', 'leave it a fleet\'s home, for svall fleet join to follow, not a worker of this fleet')
-    .addOption(new Option('--limits <cores,memory>', 'what the fleet may use of the machine, such as 11,93G, set without asking'))
-    .addOption(new Option('--no-limits', 'leave the fleet all of the machine, without asking'))
+    .option('--as-home', 'leave it a fleet\'s home, for svall fleet join to follow, not a worker of this fleet'))
     .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
     .action(run('add'));
 
