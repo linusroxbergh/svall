@@ -18,7 +18,7 @@ export const SYSTEM_ROBOT = `You describe one coding agent's work for a map of a
 name: omit it unless the name should change. Any name that is not a placeholder is the user's and keeps its words.
 - generated: the current name is marked as a generated placeholder. Replace it whenever you can write a note.
 - identifier: the work has a PR or ticket a name that is not a placeholder lacks. Put it in front of the current name, which stays as it is: "robin review" becomes "#542 robin review".
-A name is at most 4 words and ${NAME_MAX} characters, count them; lower case except the identifier, identifier first (#542, ENG-1907), then what the agent is doing and what on, in one or two words each: "#542 review auth tests", "ENG-1907 fix login", "deploy web". An identifier and a verb alone say too little: not "#542 review".
+A name is at most 4 words and ${NAME_MAX} characters, count them; lower case except the identifier, identifier first (#542, ENG-1907), then what the agent is doing and on which feature or area, in one or two words each: "#542 review auth tests", "ENG-1907 fix login", "deploy web". An identifier and a verb alone say too little, and the repository or a skill or command the agent runs names no area: "#723 onboarding review", not "#723 review" or "#723 work review". Omit name until the transcript shows the area.
 
 note: one line under ${NOTE_MAX} characters on the session's overall goal, the feature or fix the work is for, never the step it is on: "rewrite of the auth test helpers", not "finishing task 2, task 3 next". Omit it when the note is hand-written or the current note still names the goal.
 
