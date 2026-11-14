@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds the demo map, and copies the app's fonts and art, into site/, then deploys the landing page as the svall-site
-# Worker. Only the files named here are sent, so the Caddyfile, compose file and tunnel token beside them stay out.
+# Worker. Only the files named here are sent, so the Wrangler configs beside them stay out.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

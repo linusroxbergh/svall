@@ -16,8 +16,6 @@ site/robots/
 site/icon.svg
 site/icon-180.png
 site/lighthouse.svg
-# the tunnel's token
-site/deploy/
 apps/desktop/web/test-results/
 apps/desktop/web/playwright-report/
 apps/desktop/mac/.build/
