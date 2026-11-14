@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { emptyState, type FleetState, type MachineId, type Robot } from '@svall/protocol';
+import { emptyState, type FleetState, type Island, type MachineId, type Robot } from '@svall/protocol';
 import { dispatch, type Ctx } from '../src/api/methods.js';
 import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
@@ -31,20 +31,77 @@ const state = (root: string, robots: Robot[]): FleetState => ({
 
 afterEach(() => { vi.unstubAllEnvs(); cleanHomes(); });
 
+const isl = (id: string, o: Partial<Island> = {}): Island => ({ id, name: id, description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1, ...o });
+const mac = { [OTHER]: { name: 'mac', reachable: true, since: 0, home: '/Users/a' } };
+const onMac = (id: string, mainRoot: string): Robot => robot(id, {
+  islandId: 'i1', machine: OTHER, cwd: `${mainRoot}/.claude/worktrees/${id}`, repo: { root: `${mainRoot}/.claude/worktrees/${id}`, mainRoot, branch: id, isWorktree: true },
+});
+
+describe('where a new robot on an island starts', () => {
+  it('puts the island\'s folder first and starts there', async () => {
+    const root = makeHome();
+    const app = clone(root, 'app');
+    const f = { ...state(root, [robot('c1', { islandId: 'i1', cwd: folder(root, 'plain') })]), islands: { i1: isl('i1', { folder: '~/app' }) } };
+    const r = await startFolders(f, () => true, { islandId: 'i1', homedir: root });
+    expect(r.folders.slice(0, 2)).toEqual([{ path: app, clone: true }, { path: path.join(root, 'plain'), clone: false }]);
+    expect(r.start).toBe(app);
+  });
+
+  it('else starts beside the robot asked for, of the island\'s own', async () => {
+    const root = makeHome();
+    const f = { ...state(root, [robot('c1', { islandId: 'i1', cwd: folder(root, 'one') }), robot('c2', { islandId: 'i1', cwd: folder(root, 'two') })]), islands: { i1: isl('i1', { folder: '~/gone' }) } };
+    expect((await startFolders(f, () => true, { islandId: 'i1', beside: 'c2', homedir: root })).start).toBe(path.join(root, 'two'));
+  });
+
+  it('offers the repo a robot of the island works in elsewhere, at its place here, to clone when it is missing', async () => {
+    const root = makeHome();
+    const f = { ...state(root, [onMac('c1', '/Users/a/x')]), islands: { i1: isl('i1') }, machines: mac };
+    const probe = vi.fn(async () => 'https://tok@github.com/a/x.git');
+    const r = await startFolders(f, (c) => c.machine === undefined, { islandId: 'i1', probe, homedir: root });
+    expect(r.folders[0]).toEqual({ path: path.join(root, 'x'), clone: true, remote: 'https://github.com/a/x.git', from: OTHER });
+    expect(r.start).toBe(path.join(root, 'x'));
+    expect(probe).toHaveBeenCalledWith(OTHER, '/Users/a/x');
+  });
+
+  it('offers the island\'s folder from the machine that holds it after what is here, and asks nothing of a place already here', async () => {
+    const root = makeHome();
+    const here = clone(root, 'x');
+    const f = { ...state(root, [onMac('c1', '/Users/a/x')]), islands: { i1: isl('i1', { folder: '~/app' }) }, machines: mac };
+    const probe = vi.fn(async (_m: MachineId, p: string) => (p === '/Users/a/app' ? 'git@github.com:a/app.git' : undefined));
+    const r = await startFolders(f, (c) => c.machine === undefined, { islandId: 'i1', probe, homedir: root });
+    expect(r.folders.slice(0, 2)).toEqual([{ path: here, clone: true }, { path: path.join(root, 'app'), clone: true, remote: 'git@github.com:a/app.git', from: OTHER }]);
+    expect(probe.mock.calls).toEqual([[OTHER, '/Users/a/app']]);
+  });
+
+  it('offers no clone the other machine cannot name a remote for, and then starts nowhere in particular', async () => {
+    const root = makeHome();
+    const f = { ...state(root, [onMac('c1', '/Users/a/x')]), islands: { i1: isl('i1') }, machines: mac };
+    const r = await startFolders(f, (c) => c.machine === undefined, { islandId: 'i1', probe: async () => undefined, homedir: root });
+    expect(r.folders.filter((x) => x.remote)).toEqual([]);
+    expect(r.start).toBeUndefined();
+  });
+
+  it('starts mission control in its own folder', async () => {
+    const root = makeHome();
+    const f = { ...state(root, []), islands: { home: isl('home', { kind: 'home' }) } };
+    expect((await startFolders(f, () => true, { islandId: 'home', homedir: root })).start).toBe(f.home.cwd);
+  });
+});
+
 describe('where a new robot can start', () => {
-  it('lists where each robot here starts from, the clones the default folder holds, then the fleet\'s two folders', () => {
+  it('lists where each robot here starts from, the clones the default folder holds, then the fleet\'s two folders', async () => {
     const root = makeHome();
     const plain = folder(root, 'plain');
     const main = clone(root, 'app');
     const tree = folder(root, 'app-trees/one');
     const f = state(root, [robot('c1', { cwd: plain }), robot('c2', { cwd: tree, repo: { mainRoot: main, isWorktree: true } as Robot['repo'] })]);
     const held = clone(f.defaultCwd, 'held');
-    expect(startFolders(f, () => true).folders).toEqual([
+    expect((await startFolders(f, () => true)).folders).toEqual([
       { path: main, clone: true }, { path: plain, clone: false }, { path: held, clone: true }, { path: f.defaultCwd, clone: false }, { path: f.home.cwd, clone: false },
     ]);
   });
 
-  it('leaves out a robot elsewhere, a folder gone, and what in the default folder is no clone', () => {
+  it('leaves out a robot elsewhere, a folder gone, and what in the default folder is no clone', async () => {
     const root = makeHome();
     const far = folder(root, 'far');
     const f = state(root, [robot('c1', { cwd: far, machine: OTHER }), robot('c2', { cwd: path.join(root, 'gone') }), robot('c3', { cwd: path.join(far, 'x.txt', 'under') })]);
@@ -53,10 +110,10 @@ describe('where a new robot can start', () => {
     fs.writeFileSync(path.join(f.defaultCwd, 'a-file'), '');
     fs.symlinkSync(clone(root, 'out'), path.join(f.defaultCwd, 'link-out'));
     fs.symlinkSync(path.join(root, 'nowhere'), path.join(f.defaultCwd, 'dangling'));
-    expect(startFolders(f, (c) => c.machine === undefined).folders.map((x) => x.path)).toEqual([f.defaultCwd, f.home.cwd]);
+    expect((await startFolders(f, (c) => c.machine === undefined)).folders.map((x) => x.path)).toEqual([f.defaultCwd, f.home.cwd]);
   });
 
-  it('says a folder is a clone by the robot in it or by its .git, and a file named .git counts, as a worktree\'s is', () => {
+  it('says a folder is a clone by the robot in it or by its .git, and a file named .git counts, as a worktree\'s is', async () => {
     const root = makeHome();
     const inRepo = folder(root, 'known');
     const below = folder(root, 'repo/pkg');
@@ -67,13 +124,13 @@ describe('where a new robot can start', () => {
       robot('c2', { cwd: below, repo: { mainRoot: path.dirname(below) } as Robot['repo'] }),
       robot('c3', { cwd: linked }),
     ]);
-    expect(startFolders(f, () => true).folders.filter((x) => x.clone).map((x) => x.path)).toEqual([inRepo, linked, below]);
+    expect((await startFolders(f, () => true)).folders.filter((x) => x.clone).map((x) => x.path)).toEqual([inRepo, linked, below]);
   });
 
-  it('names the fleet\'s two folders as this machine spells them, from what a new fleet\'s state holds', () => {
+  it('names the fleet\'s two folders as this machine spells them, from what a new fleet\'s state holds', async () => {
     const f = emptyState();
     expect([f.defaultCwd, f.home.cwd.slice(0, 2)]).toEqual(['~', '~/']);
-    const { folders, defaults } = startFolders(f, () => true);
+    const { folders, defaults } = await startFolders(f, () => true);
     expect(defaults).toEqual({ cwd: os.homedir(), home: path.join(os.homedir(), f.home.cwd.slice(2)) });
     expect(folders.map((x) => x.path)).toContain(os.homedir());
   });
@@ -83,16 +140,16 @@ describe('where a new robot can start', () => {
     const f = state(root, []);
     const hidden = clone(f.defaultCwd, '.nvm');
     const shown = clone(f.defaultCwd, 'app');
-    expect(startFolders(f, () => true).folders.map((x) => x.path)).toEqual([shown, f.defaultCwd, f.home.cwd]);
+    expect((await startFolders(f, () => true)).folders.map((x) => x.path)).toEqual([shown, f.defaultCwd, f.home.cwd]);
     expect(isFolder(hidden)).toBe(true);
   });
 
-  it('leaves out a folder it cannot read, and the rest stand', () => {
+  it('leaves out a folder it cannot read, and the rest stand', async () => {
     const root = makeHome();
     fs.symlinkSync(path.join(root, 'b'), path.join(root, 'a'));
     fs.symlinkSync(path.join(root, 'a'), path.join(root, 'b'));
     const f = state(root, [robot('c1', { cwd: path.join(root, 'a') })]);
-    expect(startFolders(f, () => true).folders.map((x) => x.path)).toEqual([f.defaultCwd, f.home.cwd]);
+    expect((await startFolders(f, () => true)).folders.map((x) => x.path)).toEqual([f.defaultCwd, f.home.cwd]);
   });
 });
 
@@ -109,6 +166,19 @@ describe('workspace.clones', () => {
     expect(res.result.machine).toBe(ME);
     expect(res.result.folders[0].path).toBe(c);
     expect(res.result.folders.filter((f) => f.path.endsWith('/away'))).toEqual([]);
+  });
+
+  it('asks the machine an island\'s repo is on for its remote, on the home alone', async () => {
+    const root = makeHome();
+    const name = `x-${crypto.randomUUID()}`;
+    const f = { ...state(root, [onMac('c1', `/Users/a/${name}`)]), islands: { i1: isl('i1') }, machines: mac };
+    const call = vi.fn(async () => ({ state: 'clone', remote: 'git@github.com:a/x.git', refs: [] }));
+    const base = { viewer: { kind: 'app' }, store: { state: f }, fleetHome: () => ({ machine: ME, name: 'studio', mine: true, me: ME }), router: { runsHere: (r: Robot) => r.machine === undefined } };
+    const clones = async (o: object) => ((await dispatch({ id: 1, method: 'workspace.clones', params: { islandId: 'i1' } }, { ...base, ...o } as unknown as Ctx)) as { result: { folders: { remote?: string }[]; start?: string } }).result;
+    expect((await clones({ links: { call } })).folders[0]).toEqual({ path: path.join(os.homedir(), name), clone: true, remote: 'git@github.com:a/x.git', from: OTHER });
+    expect(call).toHaveBeenCalledWith(OTHER, 'repo.probe', { path: `/Users/a/${name}` }, { timeoutMs: 5_000 });
+    const away = await clones({});
+    expect([away.folders.filter((x) => x.remote), away.start]).toEqual([[], undefined]);
   });
 
   it('is not open to a phone, whose list is its own', async () => {

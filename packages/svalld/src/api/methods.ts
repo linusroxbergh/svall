@@ -19,6 +19,7 @@ import { errorFrame } from '../errors.js';
 import type { ClaudePaths } from '../paths.js';
 import { mergeSources } from '../resources/merge.js';
 import { listsDeletable, rootHere, rootIdOf, scanResources } from '../resources/scan.js';
+import type { RepoProbe } from '../placement/checks.js';
 import type { RemoteWatches } from '../placement/far-viewers.js';
 import type { Mirror } from '../placement/mirror.js';
 import type { SetupCopy, WorkerSetup } from '../placement/mirror-copy.js';
@@ -34,7 +35,7 @@ import { mergeUsage } from '../usage/merge.js';
 import type { FetchUsage } from '../usage/usage.js';
 import type { WorkerMutations } from '../worker/mutations.js';
 import type { Drops } from '../drops.js';
-import { startFolders } from '../workspace/clones.js';
+import { startFolders, type Probe } from '../workspace/clones.js';
 import type { fleetConfigFile } from '../workspace/fleet-config.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
@@ -55,6 +56,9 @@ export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () =
   workersOwed?: () => WorkersOwed['workers']; rejoinsAgain?: () => void; freeze?: HomeFreeze; homeChecks?: (to: MachineId) => Promise<Result<'fleet.homeCheck'>>; homeWaits?: () => Result<'fleet.homeMove'> };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
+
+// how long New robot waits on a machine to name an island repo's remote
+const PROBE_MS = 5_000;
 
 // what starts launchd agents and names fleets stays with the Mac, and so does what its window shows
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'machines.limits', 'machines.setLimits', 'machines.copySetupFrom', 'machines.holdsSetup', 'home.setup', 'home.setupConsent', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop', 'fleet.home', 'home.connection', 'home.fallback', 'fleet.config', 'workspace.clones', 'fleet.freeze', 'fleet.thaw', 'fleet.homeCheck', 'fleet.homeMove'] satisfies MethodName[]);
@@ -316,9 +320,12 @@ const handlers: Handlers = {
     if (!fleetConfig) throw new ApiError('not_on_worker', 'the fleet\'s config is on its home');
     return { rootId: fleetConfig.rootId, path: FLEET_CONFIG };
   },
-  'workspace.clones': (_p, { store, router, fleetHome }) => {
+  // the home asks the machine an island's repo is on for its remote, so that a clone of it can be offered here
+  'workspace.clones': async (p, { store, router, fleetHome, links }) => {
     if (!fleetHome) throw new ApiError('not_found', 'this daemon names no home');
-    return { machine: fleetHome().me, ...startFolders(store.state, (c) => router?.runsHere(c) ?? c.machine === undefined) };
+    const probe: Probe | undefined = links && ((m, path) => links.call<RepoProbe>(m, 'repo.probe', { path }, { timeoutMs: PROBE_MS })
+      .then((r) => (r.state === 'clone' ? r.remote : undefined), () => undefined));
+    return { machine: fleetHome().me, ...await startFolders(store.state, (c) => router?.runsHere(c) ?? c.machine === undefined, { islandId: p.islandId, beside: p.beside, probe }) };
   },
   // each worker reads its own robots' usage, where their transcripts are
   'usage.get': async (_p, { usage, links }) => {
