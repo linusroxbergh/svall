@@ -1,6 +1,7 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { build, type Metafile } from 'esbuild';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const root = path.resolve(import.meta.dirname, '../../..');
 const cli = 'packages/cli/src';
@@ -28,7 +29,19 @@ describe('what a svall call loads', () => {
     expect((await eager('main.ts')).filter((f) => f.startsWith(`${cli}/commands/`) || f === `${cli}/client.ts` || SCHEMAS.test(f))).toEqual([]);
   });
 
-  it('reaches the daemon for status and robot without the method schemas', async () => {
-    expect((await eager('client.ts', 'commands/status.ts', 'commands/robot.ts')).filter((f) => SCHEMAS.test(f))).toEqual([]);
+  // eager() sees no import() a definition runs as it is made
+  it('imports no command\'s code once every command is defined', async () => {
+    const loaded: string[] = [];
+    for (const f of fs.readdirSync(path.join(root, cli, 'commands'))) {
+      vi.doMock(`../src/commands/${f.replace(/\.ts$/, '.js')}`, async (actual: () => Promise<object>) => { loaded.push(f); return await actual(); });
+    }
+    (await import('../src/program.js')).buildProgram();
+    await vi.dynamicImportSettled();
+    expect(loaded).toEqual([]);
+  });
+
+  it('reaches the daemon for every command that only talks to one without the method schemas', async () => {
+    const daemon = ['status', 'island', 'robot', 'scribe', 'browser', 'app', 'mobile'].map((c) => `commands/${c}.ts`);
+    expect((await eager('client.ts', ...daemon)).filter((f) => SCHEMAS.test(f))).toEqual([]);
   });
 });
