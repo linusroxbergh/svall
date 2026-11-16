@@ -81,4 +81,4 @@ export type HelloResult = z.infer<typeof HelloResult>;
 export const HelloReply = z.object({ id: z.literal(0), result: HelloResult });
 export type HelloReply = z.infer<typeof HelloReply>;
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 49;
+export const PROTOCOL_VERSION = 50;

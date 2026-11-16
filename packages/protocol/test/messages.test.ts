@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
-  BrowserTab, CLONE_TIMEOUT_MS, DROP_PART, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MachineRecord, MobileStatus, PART_BYTES,
+  BrowserTab, CLONE_TIMEOUT_MS, DROP_PART, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, LoadSnapshot, MAX_SIDE, MAX_URL, MachineRecord, MobileStatus, PART_BYTES,
   PROTOCOL_VERSION, ROBOT_NOTE_MAX, RUN_TEXT_MAX, RUN_TIMEOUT_MS, Refusal, Request, RequestPart, Robot, TerminalSlot, WorkerFile, emptyState, methods, robotMessage, serverWait, type Event,
 } from '../src/index.js';
 
@@ -181,8 +181,14 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 49', () => {
-    expect(PROTOCOL_VERSION).toBe(49);
+  it('is 50', () => {
+    expect(PROTOCOL_VERSION).toBe(50);
+  });
+
+  it('was 49 with load.get answering the one machine\'s reading, not each machine\'s', () => {
+    const one = { at: 0, cores: 8, total: { cpu: 0, mem: 0, procs: 0 }, app: { cpu: 0, mem: 0, procs: 0 }, robots: {} };
+    expect(methods['load.get'].result.safeParse(one).success).toBe(false);
+    expect(methods['load.get'].result.parse({ machines: [{ machine: UUID_A, load: one }, { machine: UUID_B }] }).machines).toHaveLength(2);
   });
 
   it('was 48 with one login line for all of usage.get, not the login each window was read under', () => {
@@ -334,14 +340,14 @@ describe('protocol version', () => {
   it('was 25 with the pairing link beside the phone address and the machine\'s cores in the load reading', () => {
     expect(MobileStatus.parse({ serving: true, url: 'https://m/', pair: 'https://m/#p', port: 443, logins: [], phones: [] }).pair).toBe('https://m/#p');
     const u = { cpu: 1, mem: 2, procs: 3 };
-    expect(methods['load.get'].result.safeParse({ at: 1, total: u, app: u, robots: {} }).success).toBe(false);
-    expect(methods['load.get'].result.parse({ at: 1, cores: 8, total: u, app: u, robots: {} }).cores).toBe(8);
+    expect(LoadSnapshot.safeParse({ at: 1, total: u, app: u, robots: {} }).success).toBe(false);
+    expect(LoadSnapshot.parse({ at: 1, cores: 8, total: u, app: u, robots: {} }).cores).toBe(8);
   });
 
   it('was 22 with the load reading', () => {
     expect(methods['load.get'].params.safeParse({}).success).toBe(true);
     const u = { cpu: 1, mem: 2, procs: 3 };
-    expect(methods['load.get'].result.safeParse({ at: 1, cores: 8, total: u, app: u, robots: { c_a: { ...u, shellOnly: true, sleepable: false } } }).success).toBe(true);
+    expect(LoadSnapshot.safeParse({ at: 1, cores: 8, total: u, app: u, robots: { c_a: { ...u, shellOnly: true, sleepable: false } } }).success).toBe(true);
   });
 
   it('was 21 with robot portraits', () => {

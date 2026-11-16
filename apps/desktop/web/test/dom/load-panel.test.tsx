@@ -1,15 +1,22 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import type { LoadRobot, LoadSnapshot } from '@svall/protocol';
+import type { LoadRobot, LoadSnapshot, MachineId, Result } from '@svall/protocol';
 import { useApp } from '../../src/hooks.js';
 import { call, freshStore, store } from './harness.js';
 
 const MB = 2 ** 20;
 const use = (cpu: number, mem = 100 * MB, procs = 3) => ({ cpu, mem, procs });
 const robot = (cpu: number, extra: Partial<LoadRobot> = {}): LoadRobot => ({ ...use(cpu), shellOnly: false, sleepable: true, ...extra });
+const ME = '11111111-1111-4111-8111-111111111111' as MachineId;
+const GPU = '22222222-2222-4222-8222-222222222222' as MachineId;
+const VAULT = '33333333-3333-4333-8333-333333333333' as MachineId;
+const OLD = '44444444-4444-4444-8444-444444444444' as MachineId;
 let snap: LoadSnapshot;
-const answer = (method: string) => Promise.resolve(method === 'load.get' ? snap : {});
+// this Mac's reading alone, unless a test gives the fleet's
+let fleetLoad: Result<'load.get'> | undefined;
+const reading = (): Result<'load.get'> => fleetLoad ?? { machines: [{ machine: ME, load: snap }] };
+const answer = (method: string) => Promise.resolve(method === 'load.get' ? reading() : {});
 const calls = () => call.mock.calls as [string, Record<string, unknown>][];
 const reads = () => calls().filter(([m]) => m === 'load.get').length;
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
@@ -21,6 +28,7 @@ const { useLoad } = await import('../../src/load.js');
 beforeEach(() => {
   call.mockImplementation(answer);
   freshStore();
+  fleetLoad = undefined;
   snap = { at: 0, cores: 8, total: use(61, 900 * MB, 14), app: use(30, 500 * MB, 5), robots: { c0: robot(5), c1: robot(20), c2: robot(1, { shellOnly: true }) } };
 });
 
@@ -102,7 +110,7 @@ test('Delete asks as the side card\'s does, and the name opens the robot and put
 test('a read waits on the one before it, however slow its reply', async () => {
   vi.useFakeTimers();
   let reply!: () => void;
-  call.mockImplementation((method: string) => new Promise((resolve) => { reply = () => resolve(method === 'load.get' ? snap : {}); }));
+  call.mockImplementation((method: string) => new Promise((resolve) => { reply = () => resolve(method === 'load.get' ? reading() : {}); }));
   render(<LoadPanel />);
   await act(() => vi.advanceTimersByTimeAsync(9000));
   expect(reads()).toBe(1);
@@ -112,7 +120,7 @@ test('a read waits on the one before it, however slow its reply', async () => {
 
 test('a reading from before a pause is never shown once reading starts again', async () => {
   function Probe() {
-    const at = useLoad(useApp((s) => s.active)).load?.at;
+    const at = useLoad(useApp((s) => s.active)).load?.machines[0].load?.at;
     return <i data-testid="probe">{at ?? 'none'}</i>;
   }
   snap.at = 7;
@@ -141,4 +149,32 @@ test('a daemon that cannot read the load says so, and a read that fails later ke
   await act(() => vi.advanceTimersByTimeAsync(4000));
   expect(screen.getByTestId('load-error').textContent).toBe('ps: not found');
   expect(screen.getByTestId('load-app')).toBeTruthy();
+});
+
+test('each machine has a column of its own, named, with the robots it runs, and one that gave no reading says why', async () => {
+  const f = store.getState().fleet;
+  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, machine: ME });
+  store.getState().setFleet({ ...f, machines: { [GPU]: { name: 'gpu-box', reachable: true, since: 0 }, [VAULT]: { name: 'vault', reachable: false, since: 0 }, [OLD]: { name: 'old', reachable: false, since: 0, mismatch: true } } });
+  fleetLoad = { machines: [
+    { machine: ME, load: { ...snap, robots: { c0: robot(5) } } },
+    { machine: GPU, load: { ...snap, cores: 32, robots: { c1: robot(20) } } },
+    { machine: VAULT },
+    { machine: OLD },
+  ] };
+  render(<LoadPanel />);
+  const col = async (id: MachineId) => within(await screen.findByTestId(`load-machine-${id}`));
+  expect((await col(ME)).getByText('This Mac')).toBeTruthy();
+  expect((await col(ME)).getByTestId('load-row-c0')).toBeTruthy();
+  expect((await col(ME)).queryByTestId('load-row-c1')).toBeNull();
+  expect((await col(GPU)).getByText('gpu-box')).toBeTruthy();
+  expect((await col(GPU)).getByTestId('load-row-c1')).toBeTruthy();
+  expect((await col(GPU)).getByTestId('load-total-cpu').textContent).toBe('0.61 of 32 cores');
+  expect((await col(VAULT)).getByText('vault')).toBeTruthy();
+  expect((await col(VAULT)).getByText('Out of reach')).toBeTruthy();
+  expect((await col(OLD)).getByText('Runs a different build; upgrade it under Machines')).toBeTruthy();
+});
+
+test('a lone machine goes unnamed', async () => {
+  await shown();
+  expect(screen.queryByText('This Mac')).toBeNull();
 });

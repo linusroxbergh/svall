@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { onTestFinished, vi } from 'vitest';
-import type { LoadSnapshot, MobileStatus, SystemInfo, UsageSnapshot } from '@svall/protocol';
+import type { LoadMachine, MachineId, MobileStatus, SystemInfo, UsageSnapshot } from '@svall/protocol';
 import type { Fleet } from '../src/fleet.js';
 import type { Fleets } from '../src/fleets.js';
 import type { Daemon, startDaemon } from '../src/main.js';
@@ -103,8 +103,8 @@ export const stubUsage = (): Promise<UsageSnapshot> =>
   Promise.resolve({ available: false, windows: [] });
 
 // and a load reading, which tests not about load take
-export const stubLoad = (): Promise<LoadSnapshot> =>
-  Promise.resolve({ at: 0, cores: 8, total: { cpu: 0, mem: 0, procs: 0 }, app: { cpu: 0, mem: 0, procs: 0 }, robots: {} });
+export const stubLoad = (): Promise<LoadMachine> =>
+  Promise.resolve({ machine: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId, load: { at: 0, cores: 8, total: { cpu: 0, mem: 0, procs: 0 }, app: { cpu: 0, mem: 0, procs: 0 }, robots: {} } });
 
 // and a phone link it can report; tests that are not about serving take this one
 const OFF: MobileStatus = { serving: false, url: '', port: 443, logins: [], phones: [], error: 'no tailscale in tests' };
