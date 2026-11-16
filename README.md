@@ -328,7 +328,7 @@ and `input` are ignored.
 
 ## Phone
 
-    svall mobile          # print the QR; the fleet serves over Tailscale from the start
+    svall mobile          # on, as it is from the start, and print the QR
     svall mobile off      # stays off through restarts and updates (also a switch in settings)
 
 - Open the link on your phone, then choose Share → Add to Home Screen. You get
@@ -340,7 +340,10 @@ and `input` are ignored.
 - `⚙` → *Notify this phone* sends a push when an agent is blocked or done. Tap
   a blocked one to approve or deny it.
 - The page and its pushes work while Svall is open on that fleet, since its
-  daemon serves them.
+  daemon serves them. While the Mac is off, each
+  [worker](docs/remote-machines/README.md) serves its own robots, and holds
+  the Mac's push keys and the phone's devices for that;
+  `svall host consent <machine> phone off` stops it.
 - The tailnet needs MagicDNS and HTTPS certificates turned on in Tailscale's
   admin console. The certificate puts the Mac's tailnet name in a public log.
 - Only your own tailnet login gets in, on a phone that opened the QR code's
@@ -432,7 +435,7 @@ send:
 - For each robot in a repository, the daemon runs `gh pr view` to find its
   branch's PR.
 - The daemon serves the fleet to your tailnet with `tailscale serve` until `svall mobile off`. The
-  key the proxy reaches the daemon by is on that command's line, where other
+  key the proxy reaches the daemon by is on `tailscale serve`'s command line, where other
   users on the Mac can read it in `ps` while it runs, and in the serve config.
   It opens nothing by itself: a phone also has to hold the pass from the QR
   code, which stays in a cookie on the phone.

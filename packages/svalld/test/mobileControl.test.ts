@@ -235,6 +235,21 @@ describe('mobileControl', () => {
     expect((await control_.set(false)).serving).toBe(false);
   });
 
+  it('lets two fleets that turn on together, keeping no port, pick theirs one at a time', async () => {
+    const OTHER = '/tmp/svall-other';
+    const mine = deps();
+    const theirs = { ...deps({ files: { [path.join(OTHER, 'port')]: '47813\n', [path.join(OTHER, 'mobile-key')]: 'ghijkl\n', [mobileDist()]: 'built' } }), run: mine.run };
+    let held = Promise.resolve();
+    const lock = () => { const was = held; let free!: () => void; held = new Promise((r) => { free = r; }); return was.then(() => free); };
+    const saved: Record<string, number[]> = { [HOME]: [], [OTHER]: [] };
+    const fleet = (d: MobileDeps, home: string, other: string) => mobileControl(d, {
+      home, profile: 'work', logins: () => ['me@example.com'], phones: new Phones(), rotateKey: () => {}, pass: 'p4ss',
+      kept: () => saved[other], savePort: (p) => saved[home].push(p) > 0, lock,
+    });
+    const [a, b] = await Promise.all([fleet(mine, HOME, OTHER).set(true), fleet(theirs, OTHER, HOME).set(true)]);
+    expect([a.serving, a.port, b.serving, b.port, saved]).toEqual([true, 8443, true, 8444, { [HOME]: [8443], [OTHER]: [8444] }]);
+  });
+
   it('gives a named fleet that keeps no port the first free one, past other fleets\' kept ports, and keeps it there', async () => {
     const theirs = 'http://127.0.0.1:47900/theirs';
     const site = 'http://127.0.0.1:5199';
@@ -571,22 +586,22 @@ describe('serveByDefault', () => {
   };
 
   // at login tailscale may still be starting
-  it('looks again while tailscale does not answer, then turns the link on once', async () => {
+  it('looks again while tailscale does not answer, saying so once, then turns the link on once', async () => {
     vi.useFakeTimers();
     const l = link([{ error: 'tailscale is Starting' }, { error: 'tailscale is Starting' }, {}]);
     serveByDefault(l.mobile, () => true, 1000, l.hear);
     await vi.advanceTimersByTimeAsync(10_000);
-    expect([l.seen.length, l.sets, l.done.map((s) => s.serving)]).toEqual([3, [true], [true]]);
+    expect([l.seen.length, l.sets, l.done.map((s) => [s.serving, s.error])]).toEqual([3, [true], [[false, 'tailscale is Starting'], [true, undefined]]]);
   });
 
-  it('leaves a link that serves as it is, and says why one did not come on', async () => {
+  it('leaves a link that serves as it is, saying so, and says why one did not come on', async () => {
     const served = link([{ serving: true }]);
     serveByDefault(served.mobile, () => true, 1000, served.hear);
-    await vi.waitFor(() => expect(served.seen).toHaveLength(1));
+    await vi.waitFor(() => expect(served.done).toHaveLength(1));
     const refused = link([{}], { serving: false, error: 'Tailscale on this Mac does not let Svall share this fleet' });
     serveByDefault(refused.mobile, () => true, 1000, refused.hear);
     await vi.waitFor(() => expect(refused.done).toHaveLength(1));
-    expect([served.sets, served.done, refused.done[0].error]).toEqual([[], [], 'Tailscale on this Mac does not let Svall share this fleet']);
+    expect([served.sets, served.done[0].serving, refused.done[0].error]).toEqual([[], true, 'Tailscale on this Mac does not let Svall share this fleet']);
   });
 
   it('turns nothing on once it is not wanted, or once stopped', async () => {

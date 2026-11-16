@@ -50,11 +50,17 @@ export const hostLock = (dir: string, name: string): Promise<(() => void) | unde
 
 /** Holds this user's agent files for a mirror's apply or a move's trust seed, waiting while another fleet's daemon holds
  *  them, as every fleet's mirror writes the same files. Rejects once `signal` aborts before it holds them. */
-export async function lockAgentFiles(homedir: string, signal?: AbortSignal): Promise<() => void> {
-  const name = `svall-mirror-${sha256Hex(fs.realpathSync(homedir))}`;
+export const lockAgentFiles = (homedir: string, signal?: AbortSignal): Promise<() => void> =>
+  waitLock(path.join(homedir, '.svall-mirror.lock'), `svall-mirror-${sha256Hex(fs.realpathSync(homedir))}`, signal);
+
+/** Held while a fleet picks and serves its phone link's port, so two of this user's fleets cannot take the same one. */
+export const lockPhonePorts = (homedir: string): Promise<() => void> =>
+  waitLock(path.join(homedir, '.svall-phone.lock'), `svall-phone-${sha256Hex(fs.realpathSync(homedir))}`);
+
+async function waitLock(file: string, name: string, signal?: AbortSignal): Promise<() => void> {
   for (;;) {
     signal?.throwIfAborted();
-    const unlock = await tryLock(path.join(homedir, '.svall-mirror.lock'), name);
+    const unlock = await tryLock(file, name);
     if (unlock && signal?.aborted) unlock();
     else if (unlock) return unlock;
     await new Promise((r) => setTimeout(r, 100));

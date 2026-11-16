@@ -338,9 +338,10 @@ const handlers: Handlers = {
   'mobile.get': (_p, { mobile }) => mobile.get(),
   // an off revokes every device, even one tailscale refused, since the key has turned over: one that asks again has to reach the page first
   'mobile.set': async (p, { mobile, push, phone }) => {
+    // an off is recorded first, which an on the daemon's start queued and the sync the devices' clearing starts both find
+    if (!p.enabled) void phone?.macSet(false);
     const status = await mobile.set(p.enabled);
-    // recorded before the devices go, so the sync their clearing starts finds the off
-    void phone?.macSet(p.enabled);
+    if (p.enabled) void phone?.macSet(true);
     if (!p.enabled) push.clear();
     return status;
   },

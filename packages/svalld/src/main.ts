@@ -25,7 +25,7 @@ import { startHookReceiver } from './hooks/receiver.js';
 import { HomeApi } from './link/home-api.js';
 import { HomeDial } from './link/dialout.js';
 import { HomeLinks, socketTransport, sshTransport, UnknownEvent } from './link/home.js';
-import { daemonLock } from './kernel-lock.js';
+import { daemonLock, lockPhonePorts } from './kernel-lock.js';
 import { HomeConnection } from './link/worker.js';
 import { readLimits, setLimits, watchMemoryHits } from './linux/limits.js';
 import { lingerState, realRun } from './linux/service.js';
@@ -33,7 +33,7 @@ import { unitDirOf } from './linux/setup.js';
 import { hooklessGit } from './links/git.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
 import { configDir, homeWord, homeWordOnWorker, listsWorker, machineId, machineIdentity, machineIdFailure, ownName, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
-import { mobileControl, phoneKey, realDeps, serveByDefault, watchServed } from './mobile.js';
+import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { claudePaths, fleetRefused, resolvePaths } from './paths.js';
 import { Phones } from './phones.js';
@@ -415,7 +415,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   const phones = new Phones();
   const phoneLink = (logins: () => string[]) => mobileControl(realDeps(), {
     home: paths.home, profile, logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate, pass,
-    kept: () => keptPorts(homes().filter((h) => h !== paths.home)),
+    kept: () => keptPorts(homes().filter((h) => h !== paths.home)), lock: () => lockPhonePorts(os.homedir()),
     savePort: (httpsPort) => {
       try { saveConfig(paths, { mobile: { httpsPort } }, log.info); return true; } catch (e) { log.error(`phone port ${httpsPort} not saved: ${(e as Error).message}`); return false; }
     },
@@ -569,16 +569,10 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     // gone last: whoever waits for it to go may read state.json next
     teardown.unshift(() => fs.rmSync(paths.port, { force: true }));
     // pushes go out only over a link seen served: it is looked at once the port it proxies to is known,
-    // and again while a device waits and tailscale has not answered. A home turns it on itself, but never over its
-    // switch's off or a home move's
-    const fallbacks = opts.phoneOn && !off.has('mobile') ? phone : undefined;
-    const onByDefault = () => !!fallbacks && !fallbacks.macOff() && !freeze?.active;
-    if (fallbacks && onByDefault()) {
-      teardown.push(serveByDefault(mobile, onByDefault, LOOK_AGAIN_MS, (s) => {
-        if (s.serving) void fallbacks.syncAll();
-        else log.error(`the phone link did not come on: ${[s.error ?? 'tailscale does not show it served', s.raw].filter(Boolean).join(': ')}`);
-      }));
-    } else if (!off.has('mobile')) teardown.push(watchServed(mobile, () => push.list().length > 0, LOOK_AGAIN_MS));
+    // and again while a device waits and tailscale has not answered; a home turns it on itself
+    const onByDefault = opts.phoneOn && !off.has('mobile') ? phone?.serveMac(() => freeze?.active ?? false, LOOK_AGAIN_MS) : undefined;
+    if (onByDefault) teardown.push(onByDefault);
+    else if (!off.has('mobile')) teardown.push(watchServed(mobile, () => push.list().length > 0, LOOK_AGAIN_MS));
     if (workerPhone) teardown.push(workerPhone.watch(LOOK_AGAIN_MS));
     if (connection) {
       await connection.start();

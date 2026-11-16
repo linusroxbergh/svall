@@ -209,15 +209,22 @@ export function watchServed(mobile: Pick<Mobile, 'get'>, wanted: () => boolean, 
   return () => { stopped = true; clearTimeout(timer); };
 }
 
-/** Turns the link on while `wanted` holds, looking again every `ms` while tailscale does not answer; `done` hears how the on went. */
-export function serveByDefault(mobile: Pick<Mobile, 'get' | 'set'>, wanted: () => boolean, ms: number, done: (s: MobileStatus) => void): () => void {
+/** Turns the link on while `wanted` holds, looking again every `ms` while tailscale does not answer. `said` hears the
+ *  first look that fails, and how it ended: served already, or the on's answer. */
+export function serveByDefault(mobile: Pick<Mobile, 'get' | 'set'>, wanted: () => boolean, ms: number, said: (s: MobileStatus) => void): () => void {
   let timer: NodeJS.Timeout | undefined;
   let stopped = false;
+  let failed = false;
   const look = async (): Promise<void> => {
     const seen = await mobile.get();
-    if (stopped || seen.serving || !wanted()) return;
-    if (seen.error) { timer = setTimeout(() => void look(), ms); return; }
-    done(await mobile.set(true));
+    if (stopped || !wanted()) return;
+    if (seen.error) {
+      if (!failed) said(seen);
+      failed = true;
+      timer = setTimeout(() => void look(), ms);
+      return;
+    }
+    said(seen.serving ? seen : await mobile.set(true));
   };
   void look();
   return () => { stopped = true; clearTimeout(timer); };
@@ -229,6 +236,8 @@ export function mobileControl(d: MobileDeps, opts: {
   home: string; profile: string; logins: () => string[]; phones: Phones; httpsPort?: number; rotateKey: () => void; pass: string;
   // the ports other fleets keep, and where this fleet keeps the one it serves on, saying whether that worked
   kept: () => number[]; savePort: (port: number) => boolean;
+  // held while an on picks and serves its port, so another fleet starting with it cannot take the same one
+  lock?: () => Promise<() => void>;
 }): Mobile & Served & { logins: () => string[] } {
   let saved = opts.httpsPort;
   let port = servePort(opts.profile, saved);
@@ -314,9 +323,10 @@ export function mobileControl(d: MobileDeps, opts: {
   let served: string | undefined;
   const settle = async (enable?: boolean): Promise<MobileStatus> => {
     let s: MobileStatus;
+    const unlock = enable === true ? await opts.lock?.() : undefined;
     try { s = await read(enable); } catch (e) {
       s = { serving: false, url: '', port, logins: logins(), phones: opts.phones.list(), ...problem(e, enable) };
-    }
+    } finally { unlock?.(); }
     if (enable !== undefined || !s.error) served = s.serving ? s.url : undefined;
     return s;
   };
