@@ -209,6 +209,20 @@ export function watchServed(mobile: Pick<Mobile, 'get'>, wanted: () => boolean, 
   return () => { stopped = true; clearTimeout(timer); };
 }
 
+/** Turns the link on while `wanted` holds, looking again every `ms` while tailscale does not answer; `done` hears how the on went. */
+export function serveByDefault(mobile: Pick<Mobile, 'get' | 'set'>, wanted: () => boolean, ms: number, done: (s: MobileStatus) => void): () => void {
+  let timer: NodeJS.Timeout | undefined;
+  let stopped = false;
+  const look = async (): Promise<void> => {
+    const seen = await mobile.get();
+    if (stopped || seen.serving || !wanted()) return;
+    if (seen.error) { timer = setTimeout(() => void look(), ms); return; }
+    done(await mobile.set(true));
+  };
+  void look();
+  return () => { stopped = true; clearTimeout(timer); };
+}
+
 /** The phone link as a panel drives it: every environment failure comes back as `error`, not a rejection, since the
  *  panel that shows the switch is where the reason belongs. */
 export function mobileControl(d: MobileDeps, opts: {

@@ -10,11 +10,13 @@ import type { PushStore } from '../push/store.js';
 import type { Vapid } from '../push/vapid.js';
 import type { Store } from '../store.js';
 import { PhoneAnswer, type PhoneSet } from '../worker/phone.js';
-import { fieldKey, readConsent } from './mirror-consent.js';
+import { fieldKey, readConsent, replaceConsent } from './mirror-consent.js';
 
-/** The consent item that lets a worker serve the phone, which carries this Mac's push keys and devices there. */
+/** The consent item that lets a worker serve the phone, which carries this Mac's push keys and devices there. It is on
+ *  until unticked, so what is kept is the off. */
 export const PHONE_ITEM = 'phone';
 const PHONE_FIELD = 'on';
+const PHONE_OFF = 'off';
 
 const Entry = z.object({ url: z.string(), pass: z.string() });
 // `off`: this Mac's own phone link was last turned off, which turns every worker's off
@@ -64,7 +66,17 @@ export class PhoneFallbacks {
   }
 
   consented(machine: MachineId): boolean {
-    return readConsent(this.o.consent, machine).has(fieldKey(PHONE_ITEM, PHONE_FIELD));
+    return !readConsent(this.o.consent, machine).has(fieldKey(PHONE_ITEM, PHONE_OFF));
+  }
+
+  /** Ticks or unticks `machine`'s phone link. */
+  consent(machine: MachineId, on: boolean): void {
+    replaceConsent(this.o.consent, machine, PHONE_ITEM, on ? [] : [PHONE_OFF]);
+  }
+
+  /** Whether this Mac's own link was last turned off by its switch. */
+  macOff(): boolean {
+    return this.held.off === true;
   }
 
   /** Records this Mac's own link turned on or off, and tells each worker. */

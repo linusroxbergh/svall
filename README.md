@@ -328,8 +328,8 @@ and `input` are ignored.
 
 ## Phone
 
-    svall mobile          # serve over Tailscale and print a QR (also a switch in settings)
-    svall mobile off
+    svall mobile          # print the QR; the fleet serves over Tailscale from the start
+    svall mobile off      # stays off through restarts and updates (also a switch in settings)
 
 - Open the link on your phone, then choose Share → Add to Home Screen. You get
   every island and robot as a list, starred ones first, and a
@@ -431,7 +431,7 @@ send:
   reads with `gh`, to the main agent's provider.
 - For each robot in a repository, the daemon runs `gh pr view` to find its
   branch's PR.
-- `svall mobile` serves the fleet to your tailnet with `tailscale serve`. The
+- The daemon serves the fleet to your tailnet with `tailscale serve` until `svall mobile off`. The
   key the proxy reaches the daemon by is on that command's line, where other
   users on the Mac can read it in `ps` while it runs, and in the serve config.
   It opens nothing by itself: a phone also has to hold the pass from the QR

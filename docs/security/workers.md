@@ -45,9 +45,9 @@ carries and under which licences, and which risks are accepted. Tests are named 
     `w/` folder, 0700, inside its 0700 fleet home.
   - A terminal the Machines panel opens for `codex login` or an MCP server's login forwards `127.0.0.1:1455`, or
     3118 or the server's own callback port, to the machine while it is open.
-  - The phone link is the only thing served past loopback: `tailscale serve`, and only when the user turns it on. A
-    worker serves its own only while its **phone** consent is ticked and the Mac's phone link is on. A move never
-    turns either on.
+  - The phone link is the only thing served past loopback: `tailscale serve`, which a home turns on as it starts
+    unless its switch last turned it off. A worker serves its own only while its **phone** consent is ticked, as it
+    is until unticked, and the Mac's phone link is on.
 
 ## Threat model
 

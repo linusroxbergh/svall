@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import QRCode from 'qrcode';
 import type { MobileStatus } from '@svall/protocol';
-import { ensureBundle, fleetTarget, freePort, mobileControl, phoneKey, phoneUrl, resolveTailscale, restartLine, serve, servePort, servesOther, servesTarget, tailnetSelf, unserve, watchServed, type MobileDeps } from '../src/mobile.js';
+import { ensureBundle, fleetTarget, freePort, mobileControl, phoneKey, phoneUrl, resolveTailscale, restartLine, serve, serveByDefault, servePort, servesOther, servesTarget, tailnetSelf, unserve, watchServed, type MobileDeps } from '../src/mobile.js';
 import { Phones } from '../src/phones.js';
 import { profileLabel } from '../src/profile.js';
 import { WorkerPhone } from '../src/worker/phone.js';
@@ -552,6 +552,55 @@ describe('watchServed', () => {
     stop();
     await vi.advanceTimersByTimeAsync(10_000);
     expect(stopped.seen).toHaveLength(2);
+  });
+});
+
+describe('serveByDefault', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  const link = (looks: Partial<MobileStatus>[], on: Partial<MobileStatus> = {}) => {
+    const seen: number[] = [];
+    const sets: boolean[] = [];
+    const done: MobileStatus[] = [];
+    const answer = (o: Partial<MobileStatus>): MobileStatus => ({ serving: false, url: 'https://mac/', port: 443, logins: [], phones: [], ...o });
+    const mobile = {
+      get: () => { seen.push(Date.now()); return Promise.resolve(answer(looks[seen.length - 1] ?? {})); },
+      set: (enabled: boolean) => { sets.push(enabled); return Promise.resolve(answer({ serving: true, ...on })); },
+    };
+    return { seen, sets, done, mobile, hear: (s: MobileStatus) => { done.push(s); } };
+  };
+
+  // at login tailscale may still be starting
+  it('looks again while tailscale does not answer, then turns the link on once', async () => {
+    vi.useFakeTimers();
+    const l = link([{ error: 'tailscale is Starting' }, { error: 'tailscale is Starting' }, {}]);
+    serveByDefault(l.mobile, () => true, 1000, l.hear);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect([l.seen.length, l.sets, l.done.map((s) => s.serving)]).toEqual([3, [true], [true]]);
+  });
+
+  it('leaves a link that serves as it is, and says why one did not come on', async () => {
+    const served = link([{ serving: true }]);
+    serveByDefault(served.mobile, () => true, 1000, served.hear);
+    await vi.waitFor(() => expect(served.seen).toHaveLength(1));
+    const refused = link([{}], { serving: false, error: 'Tailscale on this Mac does not let Svall share this fleet' });
+    serveByDefault(refused.mobile, () => true, 1000, refused.hear);
+    await vi.waitFor(() => expect(refused.done).toHaveLength(1));
+    expect([served.sets, served.done, refused.done[0].error]).toEqual([[], [], 'Tailscale on this Mac does not let Svall share this fleet']);
+  });
+
+  it('turns nothing on once it is not wanted, or once stopped', async () => {
+    vi.useFakeTimers();
+    let wanted = true;
+    const off = link([{ error: 'tailscale is Starting' }, {}]);
+    serveByDefault(off.mobile, () => wanted, 1000, off.hear);
+    await vi.advanceTimersByTimeAsync(0);
+    wanted = false;
+    await vi.advanceTimersByTimeAsync(10_000);
+    const stopped = link([{ error: 'tailscale is Starting' }, {}]);
+    serveByDefault(stopped.mobile, () => true, 1000, stopped.hear)();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect([off.seen.length, off.sets, stopped.seen.length, stopped.sets]).toEqual([2, [], 1, []]);
   });
 });
 

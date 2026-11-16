@@ -119,9 +119,9 @@ each machine's daemon and unit logs.
     forward it makes, with each machine's role, and no log there holds local's token.
 16. **The home moves to remote.** Local's ssh in from remote is blocked first, so what links them after can only be
     local's dial. A fleet past what a move carries is refused at the check, with nothing moved. Mission control's robot
-    goes first with the move engine, then `svall fleet home set remote`: both
+    goes first with the move engine, with the phone local serves with no one asking, then `svall fleet home set remote`: both
     machines keep their tmux windows, one daemon answers as the home and the other as its worker, the phone serves from
-    remote under the same pass and logins and local's link is off, a push subscription and the pass came along, local
+    remote under the same pass and logins and local's link serves at most as remote's fallback, a push subscription and the pass came along, local
     keeps its old state and docs, and nothing staged stays on either machine. The check names a path of `fleet.json` that
     remote says it lacks and passes, and not one it has; that path goes in as `~/…`, a repo's notes take the name its path
     has on remote, and `svall --host remote status` on local lists every robot. The agent setup follows the home: what a
@@ -220,7 +220,7 @@ the run never reached fails it. The kills come from a `home-fault` file in the f
   adopt with the move's key and a second stage then answer `not-adopted`.
 - **Afterwards**: exactly one daemon answers as the home and the other names it; every window on either machine stands;
   no marker, owed outcome or staged folder stays; every journal of a move ends `done` or `aborted`, or holds `released` alone
-  on an old home the move let go; the home holds the fleet's `push.json` and pass; and the home's phone link alone serves.
+  on an old home the move let go; the home holds the fleet's `push.json` and pass; and the home's phone link serves, the other machine's at most as its fallback.
 
 A move needs the daemons it moves between, so a failed check does not stop a step: a run that seems to hang there is
 often a failed drive waiting to settle, and `run.log` says which. `--points` narrows the matrix while working on one.

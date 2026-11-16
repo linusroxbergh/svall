@@ -33,7 +33,7 @@ import { unitDirOf } from './linux/setup.js';
 import { hooklessGit } from './links/git.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
 import { configDir, homeWord, homeWordOnWorker, listsWorker, machineId, machineIdentity, machineIdFailure, ownName, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
-import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
+import { mobileControl, phoneKey, realDeps, serveByDefault, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { claudePaths, fleetRefused, resolvePaths } from './paths.js';
 import { Phones } from './phones.js';
@@ -106,8 +106,9 @@ async function lockHome(home: string): Promise<() => void> {
   return unlock;
 }
 
-/** `hardware`, for the reader of this machine's hardware id; `worker`, to run as a worker of the home worker.json names. */
-type Options = { home: string; port?: number; host?: string; log?: Logger; hardware?: HardwareReader; worker?: true | (() => true | undefined); frozen?: HomeMoving };
+/** `hardware`, for the reader of this machine's hardware id; `worker`, to run as a worker of the home worker.json names;
+ *  `phoneOn`, for a home to turn its phone link on unless its switch last turned it off. */
+type Options = { home: string; port?: number; host?: string; log?: Logger; hardware?: HardwareReader; worker?: true | (() => true | undefined); frozen?: HomeMoving; phoneOn?: true };
 
 export class OtherBuildHome extends Error {}
 
@@ -568,8 +569,16 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     // gone last: whoever waits for it to go may read state.json next
     teardown.unshift(() => fs.rmSync(paths.port, { force: true }));
     // pushes go out only over a link seen served: it is looked at once the port it proxies to is known,
-    // and again while a device waits and tailscale has not answered
-    if (!off.has('mobile')) teardown.push(watchServed(mobile, () => push.list().length > 0, LOOK_AGAIN_MS));
+    // and again while a device waits and tailscale has not answered. A home turns it on itself, but never over its
+    // switch's off or a home move's
+    const fallbacks = opts.phoneOn && !off.has('mobile') ? phone : undefined;
+    const onByDefault = () => !!fallbacks && !fallbacks.macOff() && !freeze?.active;
+    if (fallbacks && onByDefault()) {
+      teardown.push(serveByDefault(mobile, onByDefault, LOOK_AGAIN_MS, (s) => {
+        if (s.serving) void fallbacks.syncAll();
+        else log.error(`the phone link did not come on: ${[s.error ?? 'tailscale does not show it served', s.raw].filter(Boolean).join(': ')}`);
+      }));
+    } else if (!off.has('mobile')) teardown.push(watchServed(mobile, () => push.list().length > 0, LOOK_AGAIN_MS));
     if (workerPhone) teardown.push(workerPhone.watch(LOOK_AGAIN_MS));
     if (connection) {
       await connection.start();

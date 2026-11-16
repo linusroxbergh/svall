@@ -208,11 +208,12 @@ const handlers: Handlers = {
     const mirror = mirrorOf(ctx);
     const name = ctx.store.state.machines?.[p.machine]?.name;
     if (name === undefined) throw new ApiError('not_found', `no machine ${p.machine}`);
-    mirror.consent(p.machine, p.item, p.fields, p.on);
     if (p.item === PHONE_ITEM && ctx.phone) {
+      ctx.phone.consent(p.machine, p.on);
       await ctx.phone.sync(p.machine);
       return setupOf(ctx, p.machine, 0);
     }
+    mirror.consent(p.machine, p.item, p.fields, p.on);
     const link = ctx.links?.for(p.machine);
     if (link?.connected()) {
       await mirror.push(link).catch((e: Error) => { throw new ApiError('not_mirrored', `Saved; ${name} has not taken it yet`, { raw: inFull(e) }); });
