@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import { z, type ZodTypeAny } from 'zod';
-import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type AppShow, type Limits, LimitsReport, type LoadSnapshot, type MachineId, type MachineRecord, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type AppShow, type Limits, LimitsReport, type LoadMachine, type MachineId, type MachineRecord, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import type { HomeFreeze } from '../fleet/home-freeze.js';
@@ -41,7 +41,7 @@ import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 import { classification } from './classify.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; drops?: Drops; fleetFlag?: (machine: MachineId) => string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal;
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadMachine>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; drops?: Drops; fleetFlag?: (machine: MachineId) => string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal;
   // the home's: each worker's phone link
   phone?: PhoneFallbacks;
   // on Linux: what this fleet may use of this machine
@@ -333,7 +333,15 @@ const handlers: Handlers = {
     const [home, workers] = await Promise.all([usage(), askWorkers(links, 'usage.get')]);
     return mergeUsage(home, workers.map((w) => w.answer));
   },
-  'load.get': (_p, { load }) => load(),
+  // each worker reads its own robots' load, and one that gives none still has its column
+  'load.get': async (_p, { load, links, store }) => {
+    if (!links) return { machines: [await load()] };
+    const [here, far] = await Promise.all([load(), askWorkers(links, 'load.get')]);
+    const read = new Map(far.map((w) => [w.machine, w.answer.machines.find((m) => m.machine === w.machine)?.load]));
+    const workers = new Set([...Object.keys(store.state.machines ?? {}) as MachineId[], ...read.keys()]);
+    workers.delete(here.machine);
+    return { machines: [here, ...[...workers].map((machine) => { const load = read.get(machine); return { machine, ...(load && { load }) }; })] };
+  },
   'mobile.get': (_p, { mobile }) => mobile.get(),
   // an off revokes every device, even one tailscale refused, since the key has turned over: one that asks again has to reach the page first
   'mobile.set': async (p, { mobile, push, phone }) => {

@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
-import type { Robot, LoadRobot, LoadUsage } from '@svall/protocol';
+import type { Robot, LoadRobot, LoadSnapshot, LoadUsage, MachineId } from '@svall/protocol';
 import { sleepRobot } from './actions.js';
 import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
 import { Close, Moon } from './icons.js';
 import { useLoad } from './load.js';
 import { coresText, memText } from './loadText.js';
+import { destinationName, myMachine } from './placement.js';
 import { slotStatus } from './selectors.js';
 
 // the figure large, its unit small
@@ -44,13 +45,9 @@ function RobotRow({ c, use, of }: { c: Robot; use: LoadRobot; of: number }) {
   );
 }
 
-/** Every robot and Svall itself by what they cost the machine, each robot with its Sleep and Delete. */
-export function LoadPanel() {
-  const { load, error } = useLoad(true);
+/** One machine's robots and Svall itself by what they cost it, each robot with its Sleep and Delete. */
+function MachineLoad({ load }: { load: LoadSnapshot }) {
   const robots = useApp((s) => s.fleet.robots);
-  const note = error ? <div className="use-note" data-testid="load-error">{error}</div> : null;
-  if (!load) return note;
-
   const of = load.total.cpu;
   // a robot running only its shell costs nothing worth a row
   const rows = Object.entries(load.robots).flatMap(([id, use]) => {
@@ -62,7 +59,6 @@ export function LoadPanel() {
 
   return (
     <>
-      {note}
       <div className="load-tot">
         <Total label="CPU" text={`${coresText(load.total.cpu)} of ${load.cores} cores`} testid="load-total-cpu" />
         <Total label="RAM" text={memText(load.total.mem)} />
@@ -72,6 +68,33 @@ export function LoadPanel() {
       <div className="load-grp" data-testid="load-robots">Robots <em>{rows.length}</em></div>
       {rows.map((r) => r.row)}
       <Row testid="load-app" name={<span className="load-nm">Svall itself</span>} use={load.app} of={of} appRow />
+    </>
+  );
+}
+
+/** Each machine of the fleet in a column of its own, named once there is more than one. */
+export function LoadPanel() {
+  const { load, error } = useLoad(true);
+  const machines = useApp((s) => s.fleet.machines);
+  const via = useApp((s) => s.via);
+  const me = useApp((s) => myMachine(s));
+  const note = error ? <div className="use-note" data-testid="load-error">{error}</div> : null;
+  if (!load) return note;
+
+  const named = load.machines.length > 1;
+  const name = (id: MachineId) => (id === me ? 'This Mac' : destinationName({ machines }, id, via));
+  return (
+    <>
+      {note}
+      <div className="load-machines">
+        {load.machines.map((m) => (
+          <section key={m.machine} className="load-mach" data-testid={`load-machine-${m.machine}`}>
+            {named && <div className="load-mach-nm">{name(m.machine)}</div>}
+            {m.load ? <MachineLoad load={m.load} />
+              : <div className="use-note">{machines?.[m.machine]?.reachable === false ? 'Out of reach' : 'No reading'}</div>}
+          </section>
+        ))}
+      </div>
     </>
   );
 }

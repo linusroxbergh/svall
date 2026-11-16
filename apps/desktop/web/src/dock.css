@@ -23,13 +23,14 @@
 .use[data-collapsed="true"] .use-tab-label { display: none; }
 .use-panel { flex: none; box-sizing: border-box; width: 330px; max-height: calc(100vh - 24px); overflow: auto; margin: 0 0 var(--sp-md) var(--sp-lg);
   padding: var(--sp-2xl) var(--sp-3xl); pointer-events: auto; }
-.use-panel[data-load] { width: 390px; }
+.use-panel[data-load] { width: max-content; max-width: calc(100vw - var(--sb-w) - 2 * var(--sp-lg)); }
 .use-panel-title { display: flex; align-items: center; gap: var(--sp-lg); margin-bottom: var(--sp-xl); font-size: var(--text-lg); font-weight: var(--w-semibold); color: var(--ink); }
 .use-panel-title > span { flex: 1; min-width: 0; }
 @media (max-width: 620px) {
   .use { flex-direction: column-reverse; align-items: flex-start; }
   .use-panel { width: min(330px, calc(100vw - 16px)); margin: 0 0 var(--sp-md) var(--sp-md); }
-  .use-panel[data-load] { width: min(390px, calc(100vw - 16px)); }
+  .use-panel[data-load] { width: min(390px, calc(100vw - 16px)); max-width: none; }
+  .load-machines { flex-wrap: wrap; }
 }
 /* the login the windows belong to, pulled up under the title */
 .use-account { margin: calc(-1 * var(--sp-lg)) 0 var(--sp-xl); font-size: var(--text-sm); color: var(--ink-3); overflow-wrap: anywhere; }
@@ -92,6 +93,12 @@ button.load-nm:hover { background: none; color: var(--sand); }
 .load-bar i { display: block; height: 100%; border-radius: var(--r-pill); background: var(--sand); }
 .load-row[data-app] { margin-top: var(--sp-md); padding-top: var(--sp-md); border-top: 1px solid var(--line-soft); border-radius: 0 0 var(--r-sm) var(--r-sm); }
 .load-row[data-app] .load-bar i { background: var(--ink-cool); }
+/* a column per machine, scrolled across when the window is too narrow; the padding keeps the rows' bleed clear of the scroll's clip */
+.load-machines { display: flex; gap: var(--sp-2xl) var(--sp-3xl); overflow-x: auto; margin: 0 calc(-1 * var(--sp-md)); padding: 0 var(--sp-md); }
+.load-mach { flex: none; width: 340px; }
+.load-mach-nm { margin-bottom: var(--sp-lg); font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink); }
+/* the panel takes its width from the columns alone, however long an error */
+.use-panel[data-load] > .use-note { contain: inline-size; }
 
 /* the feedback form under a panel title */
 .fb { display: flex; flex-direction: column; gap: var(--sp-lg); }

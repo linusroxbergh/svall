@@ -494,6 +494,9 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     scope: (p) => fleet.loadScope(p),
     sleepable: (id, p) => fleet.sleepable(id, p),
   });
+  const loadHere = async () => ({ machine: me, load: await load.get() });
+  // the home's load panel shows a worker's robots as the worker reads them
+  if (connection) calls['load.get'] = async () => ({ machines: [await loadHere()] });
 
   // run in reverse on stop, and on a failed start for whatever had already started
   const teardown: (() => unknown)[] = [() => load.stop(), () => fleet.stop(), store.subscribe(() => workspace.retarget()), () => workspace.close(), () => memoryHits?.stop()];
@@ -539,7 +542,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));
     const port = opts.port ?? config.port;
     const listen = (at: number) => startApi({
-      host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: off.has('mobile') ? mobile : phoneWithReason(mobile, paths), log,
+      host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: loadHere, mobileControl: off.has('mobile') ? mobile : phoneWithReason(mobile, paths), log,
       origins: () => [...config.mobile.origins, ...workerPhone?.origins() ?? []], logins: workerPhone ? () => workerPhone.logins() : mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, systemInfo: info,
       // diagnostics read the last minute's agent probe
       diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }),

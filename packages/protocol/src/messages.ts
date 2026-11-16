@@ -61,6 +61,9 @@ export type LoadRobot = z.infer<typeof LoadRobot>;
 // cores is the machine's logical cores
 export const LoadSnapshot = z.object({ at: z.number(), cores: z.number(), total: LoadUsage, app: LoadUsage, codex: LoadUsage.optional(), robots: z.record(z.string(), LoadRobot) });
 export type LoadSnapshot = z.infer<typeof LoadSnapshot>;
+// a machine's reading; a worker that gave none has none
+export const LoadMachine = z.object({ machine: MachineId, load: LoadSnapshot.optional() });
+export type LoadMachine = z.infer<typeof LoadMachine>;
 
 // a phone socket the proxy vouched for, one row per login, timed from the earliest socket that login holds
 export const PhoneSession = z.object({ login: z.string(), since: z.number() });
@@ -410,7 +413,7 @@ export const methods = {
     result: z.object({ rows: z.array(SetupRow), backup: z.string().optional(), replaced: z.array(z.string()).optional(), pushFailed: z.string().optional() }),
   },
   'usage.get': { params: z.object({}), result: UsageSnapshot },
-  'load.get': { params: z.object({}), result: LoadSnapshot },
+  'load.get': { params: z.object({}), result: z.object({ machines: z.array(LoadMachine) }) },
   'mobile.get': { params: z.object({}), result: MobileStatus },
   'mobile.set': { params: z.object({ enabled: z.boolean() }), result: MobileStatus },
   // the home's answer only: each worker whose phone link serves; a worker refuses it
