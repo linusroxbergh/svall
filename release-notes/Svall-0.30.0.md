@@ -1,0 +1,3 @@
+- The Load panel shows each machine side by side.
+- The phone link is on by default.
+- Robots that other robots start run Opus or Codex's newest Terra unless you name a model.
