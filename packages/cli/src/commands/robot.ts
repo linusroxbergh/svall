@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { homeWord } from '@svall/svalld/machine';
+import { codexPaths } from '@svall/svalld/codex/install';
 import { expandHome } from '@svall/svalld/paths';
 import type { AgentStatus, Blocker, MoveSheet, SendDelivery } from '@svall/protocol';
 import { Refusal, WORKTREE_ACTION, convertLine, moveSummary } from '@svall/protocol/placement';
@@ -18,6 +19,21 @@ import { robotId, islandId, machineId, NoMatch } from './resolve.js';
 import { withFleet } from '../client.js';
 
 const MODEL_ONLY = /^(claude|codex|opencode) (--model|-m) [\w.:/-]+$/;
+
+// Codex's newest Terra, first in the model list Codex refreshes as models ship; Codex has no alias that follows it
+function newestTerra(): string | undefined {
+  try {
+    const { models } = JSON.parse(fs.readFileSync(path.join(codexPaths().dir, 'models_cache.json'), 'utf8')) as { models: { slug: string; visibility?: string; priority?: number }[] };
+    return models.filter((m) => /^[\w.-]*terra[\w.-]*$/.test(m.slug) && m.visibility === 'list').sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0))[0]?.slug;
+  } catch { return undefined; }
+}
+
+// what a robot's robot starts unless --command names a model: the priciest models are the user's to ask for
+function robotStart(agent: string): string | undefined {
+  if (agent === 'claude') return 'claude --model opus';
+  const terra = agent === 'codex' ? newestTerra() : undefined;
+  return terra && `codex -m ${terra}`;
+}
 
 // the robot this CLI runs in; a session an older svalld started carries SVALL_CHAR_ID
 const callerRobot = (): string | undefined => process.env.SVALL_ROBOT_ID ?? process.env.SVALL_CHAR_ID;
@@ -92,7 +108,7 @@ export function robotActions(connect: () => Promise<Client>, json: () => boolean
       await withFleet(connect, async (c, state) => {
         // with svallPermissions on, an agent's svall calls skip the permission prompt, so a command it starts may only pick a model
         if (o.command && state.svallPermissions && by && !MODEL_ONLY.test(o.command.trim())) {
-          throw new Error('in a robot, --command only picks an agent\'s model ("claude --model opus") while robots run svall without asking; run it outside Svall, or turn that off in Settings');
+          throw new Error('in a robot, --command only picks an agent\'s model ("claude --model sonnet") while robots run svall without asking; run it outside Svall, or turn that off in Settings');
         }
         const agent = agentFor(o, state.mainAgent ?? 'claude');
         if (o.report && !Object.hasOwn(state.robots, by!)) throw new Error(`robot ${by} is no longer in the fleet, so --report has nobody to report to`);
@@ -101,7 +117,7 @@ export function robotActions(connect: () => Promise<Client>, json: () => boolean
         const taken = name !== undefined && Object.values(state.robots).find((ch) => ch.name.toLowerCase() === name);
         if (taken) throw new Error(`robot "${taken.name}" already exists (${taken.id}); pick another name`);
         const ch = await c.call('robot.create', {
-          islandId: islandId(state, o.island), cwd: path.resolve(expandHome(o.cwd)), name: o.name, command: agent ?? o.command, cell, run: o.run, agentProfile: o.agentProfile,
+          islandId: islandId(state, o.island), cwd: path.resolve(expandHome(o.cwd)), name: o.name, command: agent ? (by && robotStart(agent)) || agent : o.command, cell, run: o.run, agentProfile: o.agentProfile,
           ...(by && Object.hasOwn(state.robots, by) && { startedBy: by }), ...(o.report && { report: true }),
         });
         printResult(ch, json(), () => ch.id);

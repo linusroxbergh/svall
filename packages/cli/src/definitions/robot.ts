@@ -30,6 +30,7 @@ Handing work to a new robot:
   svall robot new --island <id> --cwd <path> --name "<name>" --run "<prompt>" --report
   - In a git repo, a robot is told to start in a new worktree unless Settings turns that off; --cwd can name a worktree whose branch is the work and no other agent is in.
   - The prompt is all it knows: goal, paths, links, what done looks like.
+  - From a robot, Claude starts on opus and Codex on its newest Terra; --command "<agent> --model <name>" only for a model the user names.
   - Names: at most 24 characters, lower case: PR or ticket id, area, task, one or two words each: "#472 auth review", not "#472 deep review".
   - New island: svall island create "<name>" --description "<one line>".
   - --report: svalld types "[svall] <name> (<id>) …" into your prompt line when it is done, blocked or stops, so neither of you waits or polls. Closing it is the user's call.
