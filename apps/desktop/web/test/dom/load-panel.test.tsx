@@ -11,6 +11,7 @@ const robot = (cpu: number, extra: Partial<LoadRobot> = {}): LoadRobot => ({ ...
 const ME = '11111111-1111-4111-8111-111111111111' as MachineId;
 const GPU = '22222222-2222-4222-8222-222222222222' as MachineId;
 const VAULT = '33333333-3333-4333-8333-333333333333' as MachineId;
+const OLD = '44444444-4444-4444-8444-444444444444' as MachineId;
 let snap: LoadSnapshot;
 // this Mac's reading alone, unless a test gives the fleet's
 let fleetLoad: Result<'load.get'> | undefined;
@@ -153,11 +154,12 @@ test('a daemon that cannot read the load says so, and a read that fails later ke
 test('each machine has a column of its own, named, with the robots it runs, and one that gave no reading says why', async () => {
   const f = store.getState().fleet;
   store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, machine: ME });
-  store.getState().setFleet({ ...f, machines: { [GPU]: { name: 'gpu-box', reachable: true, since: 0 }, [VAULT]: { name: 'vault', reachable: false, since: 0 } } });
+  store.getState().setFleet({ ...f, machines: { [GPU]: { name: 'gpu-box', reachable: true, since: 0 }, [VAULT]: { name: 'vault', reachable: false, since: 0 }, [OLD]: { name: 'old', reachable: false, since: 0, mismatch: true } } });
   fleetLoad = { machines: [
     { machine: ME, load: { ...snap, robots: { c0: robot(5) } } },
     { machine: GPU, load: { ...snap, cores: 32, robots: { c1: robot(20) } } },
     { machine: VAULT },
+    { machine: OLD },
   ] };
   render(<LoadPanel />);
   const col = async (id: MachineId) => within(await screen.findByTestId(`load-machine-${id}`));
@@ -169,6 +171,7 @@ test('each machine has a column of its own, named, with the robots it runs, and 
   expect((await col(GPU)).getByTestId('load-total-cpu').textContent).toBe('0.61 of 32 cores');
   expect((await col(VAULT)).getByText('vault')).toBeTruthy();
   expect((await col(VAULT)).getByText('Out of reach')).toBeTruthy();
+  expect((await col(OLD)).getByText('Runs a different build; upgrade it under Machines')).toBeTruthy();
 });
 
 test('a lone machine goes unnamed', async () => {

@@ -23,7 +23,8 @@
 .use[data-collapsed="true"] .use-tab-label { display: none; }
 .use-panel { flex: none; box-sizing: border-box; width: 330px; max-height: calc(100vh - 24px); overflow: auto; margin: 0 0 var(--sp-md) var(--sp-lg);
   padding: var(--sp-2xl) var(--sp-3xl); pointer-events: auto; }
-.use-panel[data-load] { width: max-content; max-width: calc(100vw - var(--sb-w) - 2 * var(--sp-lg)); }
+/* the room beside the sidebar, or beside the rail while it is collapsed */
+.use-panel[data-load] { --room: calc(100vw - var(--sb-w, var(--cell)) - 2 * var(--sp-lg)); width: max-content; min-width: min(390px, var(--room)); max-width: var(--room); }
 .use-panel-title { display: flex; align-items: center; gap: var(--sp-lg); margin-bottom: var(--sp-xl); font-size: var(--text-lg); font-weight: var(--w-semibold); color: var(--ink); }
 .use-panel-title > span { flex: 1; min-width: 0; }
 @media (max-width: 620px) {
@@ -95,7 +96,7 @@ button.load-nm:hover { background: none; color: var(--sand); }
 .load-row[data-app] .load-bar i { background: var(--ink-cool); }
 /* a column per machine, scrolled across when the window is too narrow; the padding keeps the rows' bleed clear of the scroll's clip */
 .load-machines { display: flex; gap: var(--sp-2xl) var(--sp-3xl); overflow-x: auto; margin: 0 calc(-1 * var(--sp-md)); padding: 0 var(--sp-md); }
-.load-mach { flex: none; width: 340px; }
+.load-mach { flex: none; width: 340px; max-width: 100%; }
 .load-mach-nm { margin-bottom: var(--sp-lg); font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink); }
 /* the panel takes its width from the columns alone, however long an error */
 .use-panel[data-load] > .use-note { contain: inline-size; }

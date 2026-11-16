@@ -83,6 +83,10 @@ export function LoadPanel() {
 
   const named = load.machines.length > 1;
   const name = (id: MachineId) => (id === me ? 'This Mac' : destinationName({ machines }, id, via));
+  const unread = (id: MachineId) => {
+    const m = machines?.[id];
+    return m?.mismatch ? 'Runs a different build; upgrade it under Machines' : m?.reachable === false ? 'Out of reach' : 'No reading';
+  };
   return (
     <>
       {note}
@@ -91,7 +95,7 @@ export function LoadPanel() {
           <section key={m.machine} className="load-mach" data-testid={`load-machine-${m.machine}`}>
             {named && <div className="load-mach-nm">{name(m.machine)}</div>}
             {m.load ? <MachineLoad load={m.load} />
-              : <div className="use-note">{machines?.[m.machine]?.reachable === false ? 'Out of reach' : 'No reading'}</div>}
+              : <div className="use-note">{unread(m.machine)}</div>}
           </section>
         ))}
       </div>
