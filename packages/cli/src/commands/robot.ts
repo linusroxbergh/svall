@@ -108,7 +108,7 @@ export function robotActions(connect: () => Promise<Client>, json: () => boolean
       await withFleet(connect, async (c, state) => {
         // with svallPermissions on, an agent's svall calls skip the permission prompt, so a command it starts may only pick a model
         if (o.command && state.svallPermissions && by && !MODEL_ONLY.test(o.command.trim())) {
-          throw new Error('in a robot, --command only picks an agent\'s model ("claude --model opus") while robots run svall without asking; run it outside Svall, or turn that off in Settings');
+          throw new Error('in a robot, --command only picks an agent\'s model ("claude --model sonnet") while robots run svall without asking; run it outside Svall, or turn that off in Settings');
         }
         const agent = agentFor(o, state.mainAgent ?? 'claude');
         if (o.report && !Object.hasOwn(state.robots, by!)) throw new Error(`robot ${by} is no longer in the fleet, so --report has nobody to report to`);
