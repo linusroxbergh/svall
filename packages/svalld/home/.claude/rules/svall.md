@@ -50,7 +50,7 @@ control buttons; each finishes its task and stays `done` until closed.
 | tidy the map | `svall island arrange` |
 | start an agent on an island (the main agent; `--agent claude`, `codex` or `opencode` picks one) | `svall robot new --island review --cwd ~/repo --run "review PR 472" --report` |
 | start one in a role (a file in the fleet's agent-profiles folder) | `svall robot new --island review --cwd ~/repo --agent-profile reviewer --run "review PR 472" --report` |
-| start a Claude one on another model | `svall robot new --island review --cwd ~/repo --command "claude --model opus" --run "review PR 472" --report` |
+| start a Claude one on a model the user names (otherwise Claude runs opus, Codex its newest Terra) | `svall robot new --island review --cwd ~/repo --command "claude --model sonnet" --run "review PR 472" --report` |
 
 `svall robot wait` exits 0 on a matched state, 2 on timeout and 3 when the
 robot has no terminal (deleted or dormant), so a loop can branch on the exit code.

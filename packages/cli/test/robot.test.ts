@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type { Command } from 'commander';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, WORKTREE_ACTION, type MoveSheet, type Refusal, type Robot, type SetupRow } from '@svall/protocol';
@@ -166,6 +169,37 @@ describe('robot new --report', () => {
     vi.stubEnv('SVALL_ROBOT_ID', '');
     vi.stubEnv('SVALL_CHAR_ID', '');
     await expect(create('--run', 'go', '--report')).rejects.toThrow('--report needs a robot to report to; run it inside one');
+  });
+});
+
+describe("robot new's model", () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+  const command = async (...flags: string[]) => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const created: { command?: string }[] = [];
+    const client = { call: async (m: string, p: { command?: string }) => (m === 'state.get' ? { islands: { i_1: { id: 'i_1', name: 'home' } }, robots: {} } : (created.push(p), { ...base, id: 'c_new', runSent: true })), close() {} };
+    await robotCommands(async () => client as unknown as Client, () => false, THERE).parseAsync(['new', '--island', 'i_1', '--cwd', '/tmp', ...flags], { from: 'user' });
+    return created[0].command;
+  };
+
+  it("starts a robot's Claude on opus and Codex on its newest Terra unless --command names a model, and the CLI's own outside a robot", async () => {
+    const codex = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-'));
+    fs.writeFileSync(path.join(codex, 'models_cache.json'), JSON.stringify({ models: [
+      { slug: 'gpt-6-astra', visibility: 'list', priority: 1 }, { slug: 'gpt-5.6-terra', visibility: 'list', priority: 8 },
+      { slug: 'gpt-7-terra', visibility: 'hide', priority: 0 }, { slug: 'gpt-6.1-terra', visibility: 'list', priority: 3 },
+    ] }));
+    vi.stubEnv('CODEX_HOME', codex);
+    vi.stubEnv('SVALL_ROBOT_ID', 'c_lead');
+    expect(await command('--run', 'go')).toBe('claude --model opus');
+    expect(await command('--codex')).toBe('codex -m gpt-6.1-terra');
+    expect(await command('--opencode')).toBe('opencode');
+    expect(await command('--command', 'claude --model fable')).toBe('claude --model fable');
+    // with no model list, Codex's own default
+    fs.rmSync(codex, { recursive: true, force: true });
+    expect(await command('--codex')).toBe('codex');
+    vi.stubEnv('SVALL_ROBOT_ID', '');
+    vi.stubEnv('SVALL_CHAR_ID', '');
+    expect(await command('--claude')).toBe('claude');
   });
 });
 
