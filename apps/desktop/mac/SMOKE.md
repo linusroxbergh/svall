@@ -90,6 +90,7 @@ Move every robot back with **Move to this Mac**, then remove the machine with **
 studio`). To delete the test fleet, stop its daemon and remove its home and agent:
 
 ```sh
+svall-dev -p smoke mobile off
 launchctl bootout gui/$(id -u)/io.github.linusroxbergh.svall.dev.svalld.smoke
 tmux -S ~/.svall-dev-smoke/tmux.sock kill-server
 rm -rf ~/.svall-dev-smoke ~/Library/LaunchAgents/io.github.linusroxbergh.svall.dev.svalld.smoke.plist

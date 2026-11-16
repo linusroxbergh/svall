@@ -169,7 +169,7 @@ interrupted at once as it moves. Untick it and the move does not start while tha
 `svall fleet home set` refuses one at work unless `--interrupt-after` says when to interrupt it, 0 at once. The move pauses the home, copies the fleet, has the other machine take over, has the old home join it as a worker, and reconnects the
 window. While the home is paused no write is taken, on the phone either, and robots go on working. Afterwards open the phone
 once from its new QR code: it stays paired and pushes keep arriving. The new home turns its phone link on within seconds of
-taking the fleet, if the old one served; if Tailscale refuses it there, the move stands, and Settings → Phone says why:
+taking the fleet, as a home does whenever it starts; if Tailscale refuses it there, the move stands, and Settings → Phone says why:
 "Tailscale on studio does not let Svall share this fleet", with `sudo tailscale set --operator=$USER` to run there once, or
 "The phone link could not start on studio", with what Tailscale said behind it.
 

@@ -37,11 +37,20 @@ type Refusal = Pick<MobileStatus, 'error' | 'fix' | 'run' | 'raw'>;
  * look at it fails while `lookFails` holds, which leaves it as it was.
  */
 function phones(w: ReturnType<typeof world>) {
-  const mac = { status: status() };
+  const mac = { status: status(), sets: [] as boolean[] };
   const push = new PushStore(path.join(w.home.paths.home, 'push.json'), () => {});
+  // the Mac's own switch, one call at a time as its link takes them, which turns it over as tailscale then shows it
+  let queue = Promise.resolve();
+  const inTurn = <T>(f: () => T): Promise<T> => { const next = queue.then(f); queue = next.then(() => {}); return next; };
+  const mobile = {
+    get: () => inTurn(() => mac.status),
+    set: (on: boolean) => inTurn(() => { mac.sets.push(on); return (mac.status = status({ serving: on })); }),
+    logins: () => ['me@example.com'],
+  };
+  const logged: string[] = [];
   const fallbacks = new PhoneFallbacks({
     me: H, file: w.home.paths.phoneFallbacks, consent: w.home.paths.mirrorConsent, store: w.home.store, links: w.home.links,
-    mobile: { get: async () => mac.status, logins: () => ['me@example.com'] }, vapid: VAPID, push, log: silentLogger,
+    mobile, vapid: VAPID, push, log: { ...silentLogger, error: (m) => { logged.push(m); } },
   });
   // `refuse` as a function words its reason as the worker's own link does, while it answers
   const far = { serving: false, sets: [] as boolean[], refuse: undefined as Refusal | (() => Refusal) | undefined, lookFails: false };
@@ -63,31 +72,29 @@ function phones(w: ReturnType<typeof world>) {
     consent: (m: typeof W, item: string, fields: string[], on: boolean) => setConsent(w.home.paths.mirrorConsent, m, item, fields, on),
     report: async (): Promise<SetupRow[]> => [], unreadFile: () => undefined,
   };
-  // the Mac's own switch, which turns its link over as tailscale then shows it
-  const mobile = { get: async () => mac.status, set: async (on: boolean) => (mac.status = status({ serving: on })) };
   const ctx = { ...w.home.ctx, phone: fallbacks, mirror, mobile, push } as unknown as Ctx;
   const tick = (on: boolean) => dispatch({ id: 1, method: 'machines.consent', params: { machine: W, item: 'phone', fields: ['on'], on } }, ctx);
   const setup = () => dispatch({ id: 1, method: 'machines.setup', params: { machine: W } }, ctx);
-  return { mac, push, fallbacks, far, workerPhone, ctx, tick, setup };
+  return { mac, push, fallbacks, far, workerPhone, ctx, tick, setup, logged };
 }
 
 const MOVE = 'mv_0123456789';
 const listed = { home: H, fallbacks: [{ machine: W, name: 'w1', url: FAR, pass: 'far-pass' }] };
 
 describe('a worker serving the phone', () => {
-  it('serves once ticked, with the home\'s logins, origin, push keys and devices, and the home lists its link and pass to the phone alone', async () => {
+  it('serves with no tick, with the home\'s logins, origin, push keys and devices, and the home lists its link and pass to the phone alone', async () => {
     const w = world({});
     const p = phones(w);
     p.push.upsert(SUB);
     await w.link();
     expect(p.fallbacks.row(W)).toMatchObject({
-      key: 'phone', status: 'skip', detail: 'off', action: 'On, w1 serves its robots to the phone while this Mac is off', tick: { item: 'phone', fields: ['on'], on: false },
+      key: 'phone', status: 'skip', detail: "on, waiting for this Mac's phone link", tick: { item: 'phone', fields: ['on'], on: true },
     });
     expect(p.fallbacks.row(W).gap).toBeUndefined();
 
-    const rows = await p.tick(true);
-    expect(rows).toMatchObject({ result: { rows: [{ key: 'phone', status: 'ok', detail: `on · ${FAR}`, tick: { on: true } }] } });
-    expect(readConsent(w.home.paths.mirrorConsent, W)).toEqual(new Set(['phone#on']));
+    await p.fallbacks.sync(W);
+    expect(await p.setup()).toMatchObject({ result: { rows: [{ key: 'phone', status: 'ok', detail: `on · ${FAR}`, tick: { on: true } }] } });
+    expect(readConsent(w.home.paths.mirrorConsent, W)).toEqual(new Set());
     expect(JSON.parse(fs.readFileSync(w.worker.paths.phone, 'utf8'))).toEqual({
       on: true, logins: ['me@example.com'], origin: 'https://mac.tailnet.ts.net:8443', vapid: VAPID, subscriptions: [SUB],
     });
@@ -128,13 +135,16 @@ describe('a worker serving the phone', () => {
       expect([p.workerPhone.on, p.fallbacks.fallbacks()]).toEqual([true, listed]);
     }
 
+    expect(p.fallbacks.macOff()).toBe(false);
     await dispatch({ id: 1, method: 'mobile.set', params: { enabled: false } }, p.ctx);
     await until(() => expect([p.workerPhone.on, p.far.sets, p.fallbacks.fallbacks().fallbacks, p.fallbacks.serves(W)]).toEqual([false, [true, false], [], false]));
+    expect(p.fallbacks.macOff()).toBe(true);
     expect(fs.existsSync(w.worker.paths.phone)).toBe(false);
     expect(p.fallbacks.row(W)).toMatchObject({ status: 'skip', detail: "on, waiting for this Mac's phone link" });
 
     await dispatch({ id: 1, method: 'mobile.set', params: { enabled: true } }, p.ctx);
     await until(() => expect(p.fallbacks.fallbacks()).toEqual(listed));
+    expect(p.fallbacks.macOff()).toBe(false);
 
     // an untick is heard while this Mac's own link cannot be looked at
     p.mac.status = status({ serving: false, url: '', error: 'tailscale is Starting' });
@@ -156,12 +166,36 @@ describe('a worker serving the phone', () => {
     expect([p.fallbacks.fallbacks(), p.fallbacks.serves(W)]).toEqual([listed, true]);
   });
 
+  it('keeps an untick, which a tick takes back, a tick from before reading as none', async () => {
+    const w = world({});
+    const p = phones(w);
+    await w.link();
+    setConsent(w.home.paths.mirrorConsent, W, 'phone', ['on'], true);
+    expect(p.fallbacks.consented(W)).toBe(true);
+    await p.tick(false);
+    expect([readConsent(w.home.paths.mirrorConsent, W), p.fallbacks.consented(W)]).toEqual([new Set(['phone#off']), false]);
+    expect(p.fallbacks.row(W)).toMatchObject({ status: 'skip', detail: 'off', tick: { on: false } });
+    await p.tick(true);
+    expect([readConsent(w.home.paths.mirrorConsent, W), p.fallbacks.consented(W)]).toEqual([new Set(), true]);
+    clearConsent(w.home.paths.mirrorConsent, W);
+    expect(p.fallbacks.consented(W)).toBe(true);
+  });
+
+  it('serves no worker while the consent file cannot be read, which may hold an untick', async () => {
+    const w = world({});
+    const p = phones(w);
+    await w.link();
+    fs.writeFileSync(w.home.paths.mirrorConsent, '{"w1": [');
+    await p.fallbacks.sync(W);
+    expect([p.fallbacks.consented(W), p.workerPhone.on, p.fallbacks.fallbacks().fallbacks]).toEqual([false, false, []]);
+  });
+
   it('lists and leaves the pushes to only a worker still ticked, before the next sync', async () => {
     const w = world({});
     const p = phones(w);
     await w.link();
     await p.tick(true);
-    clearConsent(w.home.paths.mirrorConsent, W);
+    p.fallbacks.consent(W, false);
     expect([p.fallbacks.fallbacks().fallbacks, p.fallbacks.serves(W), p.fallbacks.pushesFor({ machine: W })]).toEqual([[], false, true]);
   });
 
@@ -214,7 +248,6 @@ describe('a worker serving the phone', () => {
     const w = world({});
     const p = phones(w);
     await w.link();
-    setConsent(w.home.paths.mirrorConsent, W, 'phone', ['on'], true);
     w.worker.handlers['phone.set'] = () => Promise.reject(new Error('disk full'));
     await p.fallbacks.sync(W);
     w.worker.handlers['phone.set'] = (raw) => p.workerPhone.set(raw);
@@ -222,15 +255,51 @@ describe('a worker serving the phone', () => {
     expect(p.fallbacks.fallbacks()).toEqual(listed);
   });
 
-  it('waits for a worker that is not linked, which takes the tick once it links', async () => {
+  it('waits for a worker that is not linked, which serves once it links', async () => {
     const w = world({});
     const p = phones(w);
-    setConsent(w.home.paths.mirrorConsent, W, 'phone', ['on'], true);
     await p.fallbacks.sync(W);
     expect(p.fallbacks.row(W)).toMatchObject({ status: 'skip', tick: { on: true } });
     await w.link();
     await p.fallbacks.sync(W);
     expect(p.fallbacks.fallbacks()).toEqual(listed);
+  });
+});
+
+describe("this Mac's own link as its daemon starts", () => {
+  it('turns on once tailscale answers, says once why it waits, and tells each worker', async () => {
+    const w = world({});
+    const p = phones(w);
+    await w.link();
+    p.mac.status = status({ serving: false, url: '', error: 'Tailscale on this Mac is signed out' });
+    const stop = p.fallbacks.serveMac(() => false, 5)!;
+    await until(() => expect(p.logged).toEqual(['the phone link did not come on: Tailscale on this Mac is signed out']));
+    p.mac.status = status({ serving: false });
+    await until(() => expect([p.mac.sets, p.workerPhone.on, p.fallbacks.fallbacks()]).toEqual([[true], true, listed]));
+    stop();
+    expect(p.logged).toHaveLength(1);
+  });
+
+  it('tells each worker of a link that already serves, and turns nothing over', async () => {
+    const w = world({});
+    const p = phones(w);
+    await w.link();
+    p.fallbacks.serveMac(() => false, 5);
+    await until(() => expect(p.fallbacks.fallbacks()).toEqual(listed));
+    expect(p.mac.sets).toEqual([]);
+  });
+
+  it('leaves the link as it is while a move holds it, or once its switch turned it off, an off made during its first look included', async () => {
+    const w = world({});
+    const p = phones(w);
+    await w.link();
+    p.mac.status = status({ serving: false });
+    expect(p.fallbacks.serveMac(() => true, 5)).toBeUndefined();
+    p.fallbacks.serveMac(() => false, 5);
+    await dispatch({ id: 1, method: 'mobile.set', params: { enabled: false } }, p.ctx);
+    await new Promise((r) => setTimeout(r, 50));
+    expect([p.mac.sets, p.mac.status.serving, p.fallbacks.macOff()]).toEqual([[false], false, true]);
+    expect(p.fallbacks.serveMac(() => false, 5)).toBeUndefined();
   });
 });
 
@@ -263,6 +332,7 @@ describe('the setup rows a window asks of a far home over its socket', () => {
       });
       ws.on('error', reject);
     });
+    p.fallbacks.consent(W, false);
     try {
       expect(await said({ home: 'studio' }))
         .toEqual(['On, w1 serves its robots to the phone while studio is off', "A path under studio's home folder is looked for under w1's", 'not on w1 · db runs it']);

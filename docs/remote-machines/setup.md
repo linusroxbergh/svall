@@ -341,11 +341,10 @@ set <name>`: see [Changing home](home.md#changing-home).
 
 ## The phone while the home is off
 
-A worker can serve the phone itself while the home is off. Tick **Phone while this Mac is off** (on a far home, its name
-in place of this Mac) under Machines →
-**Check** → Your agent setup, or run `svall host consent studio phone on`. Ticking copies the home's push keys and the
-phone's devices to the machine, which is why it stays off until ticked. While the home's own phone link is on, the
-worker then serves the phone with `tailscale serve` on a free https port (443 stays with whatever already serves
+A worker serves the phone itself while the home is off. **Phone while this Mac is off** (on a far home, its name
+in place of this Mac) under Machines → **Check** → Your agent setup is ticked until you untick it, or run
+`svall host consent studio phone off`; ticked, it copies the home's push keys and the phone's devices to the machine.
+While the home's own phone link is on, the worker serves the phone with `tailscale serve` on a free https port (443 stays with whatever already serves
 there), and the row reads "on" with the address. Unticking, or turning the home's phone link off, stops it. A row
 "on, not serving" says why behind it; where Tailscale there does not let Svall share the fleet, run
 `sudo tailscale set --operator=$USER` on the machine and **Check** again. The phone learns the

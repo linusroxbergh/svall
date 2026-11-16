@@ -21,17 +21,26 @@ export const fieldKey = (item: string, field: string): string => `${item}#${fiel
 
 const Consent = z.record(z.string(), z.array(z.string()));
 
-function readAll(file: string): Record<string, string[]> {
+// undefined for a file that is there but cannot be read
+function readKnown(file: string): Record<string, string[]> | undefined {
   try {
     const p = Consent.safeParse(JSON.parse(fs.readFileSync(file, 'utf8')));
-    return p.success ? p.data : {};
-  } catch {
-    return {};
+    return p.success ? p.data : undefined;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'ENOENT' ? {} : undefined;
   }
 }
 
+const readAll = (file: string): Record<string, string[]> => readKnown(file) ?? {};
+
 /** The field keys ticked for `machine`; none for a file that is missing or cannot be read. */
 export const readConsent = (file: string, machine: MachineId): Set<string> => new Set(readAll(file)[machine] ?? []);
+
+/** The field keys ticked for `machine`, none for a missing file, and undefined for one that is there but cannot be read. */
+export const readKnownConsent = (file: string, machine: MachineId): Set<string> | undefined => {
+  const all = readKnown(file);
+  return all && new Set(all[machine] ?? []);
+};
 
 function writeAll(file: string, all: Record<string, string[]>): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });

@@ -208,11 +208,12 @@ const handlers: Handlers = {
     const mirror = mirrorOf(ctx);
     const name = ctx.store.state.machines?.[p.machine]?.name;
     if (name === undefined) throw new ApiError('not_found', `no machine ${p.machine}`);
-    mirror.consent(p.machine, p.item, p.fields, p.on);
     if (p.item === PHONE_ITEM && ctx.phone) {
+      ctx.phone.consent(p.machine, p.on);
       await ctx.phone.sync(p.machine);
       return setupOf(ctx, p.machine, 0);
     }
+    mirror.consent(p.machine, p.item, p.fields, p.on);
     const link = ctx.links?.for(p.machine);
     if (link?.connected()) {
       await mirror.push(link).catch((e: Error) => { throw new ApiError('not_mirrored', `Saved; ${name} has not taken it yet`, { raw: inFull(e) }); });
@@ -345,9 +346,10 @@ const handlers: Handlers = {
   'mobile.get': (_p, { mobile }) => mobile.get(),
   // an off revokes every device, even one tailscale refused, since the key has turned over: one that asks again has to reach the page first
   'mobile.set': async (p, { mobile, push, phone }) => {
+    // an off is recorded first, which an on the daemon's start queued and the sync the devices' clearing starts both find
+    if (!p.enabled) void phone?.macSet(false);
     const status = await mobile.set(p.enabled);
-    // recorded before the devices go, so the sync their clearing starts finds the off
-    void phone?.macSet(p.enabled);
+    if (p.enabled) void phone?.macSet(true);
     if (!p.enabled) push.clear();
     return status;
   },

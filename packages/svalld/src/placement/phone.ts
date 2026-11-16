@@ -5,16 +5,18 @@ import { readJsonOrQuarantine } from '../jsonfile.js';
 import type { WorkerLink } from '../link/home.js';
 import type { Logger } from '../log.js';
 import { homeWord, machineWord } from '../machine.js';
-import type { Mobile } from '../mobile.js';
+import { serveByDefault, type Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { Vapid } from '../push/vapid.js';
 import type { Store } from '../store.js';
 import { PhoneAnswer, type PhoneSet } from '../worker/phone.js';
-import { fieldKey, readConsent } from './mirror-consent.js';
+import { fieldKey, readKnownConsent, replaceConsent } from './mirror-consent.js';
 
-/** The consent item that lets a worker serve the phone, which carries this Mac's push keys and devices there. */
+/** The consent item that lets a worker serve the phone, which carries this Mac's push keys and devices there. It is on
+ *  until unticked, so what is kept is the off. */
 export const PHONE_ITEM = 'phone';
 const PHONE_FIELD = 'on';
+const PHONE_OFF = 'off';
 
 const Entry = z.object({ url: z.string(), pass: z.string() });
 // `off`: this Mac's own phone link was last turned off, which turns every worker's off
@@ -34,7 +36,7 @@ export class PhoneFallbacks {
 
   constructor(private o: {
     me: MachineId; file: string; consent: string; store: Store; links: { for(machine: MachineId): Pick<WorkerLink, 'call' | 'connected'> | undefined };
-    mobile: Pick<Mobile, 'get'> & { logins(): string[] }; vapid: Vapid; push: Pick<PushStore, 'list' | 'watch'>; contact?: string; log: Logger;
+    mobile: Pick<Mobile, 'get' | 'set'> & { logins(): string[] }; vapid: Vapid; push: Pick<PushStore, 'list' | 'watch'>; contact?: string; log: Logger;
   }) {
     this.held = readJsonOrQuarantine(o.file, o.log.error, (raw) => Held.parse(raw)) ?? { workers: {} };
   }
@@ -63,8 +65,30 @@ export class PhoneFallbacks {
     };
   }
 
+  // a file that cannot be read may hold an untick, so it serves no worker
   consented(machine: MachineId): boolean {
-    return readConsent(this.o.consent, machine).has(fieldKey(PHONE_ITEM, PHONE_FIELD));
+    return readKnownConsent(this.o.consent, machine)?.has(fieldKey(PHONE_ITEM, PHONE_OFF)) === false;
+  }
+
+  /** Ticks or unticks `machine`'s phone link. */
+  consent(machine: MachineId, on: boolean): void {
+    replaceConsent(this.o.consent, machine, PHONE_ITEM, on ? [] : [PHONE_OFF]);
+  }
+
+  /** Whether this Mac's own link was last turned off by its switch. */
+  macOff(): boolean {
+    return this.held.off === true;
+  }
+
+  /** Turns this Mac's own link on as its daemon starts, unless its switch last turned it off or `frozen` holds, and tells
+   *  each worker once it serves; undefined when it is left as it is. */
+  serveMac(frozen: () => boolean, ms: number): (() => void) | undefined {
+    const wanted = () => !this.macOff() && !frozen();
+    if (!wanted()) return undefined;
+    return serveByDefault(this.o.mobile, wanted, ms, (s) => {
+      if (s.serving) void this.syncAll();
+      else this.o.log.error(`the phone link did not come on: ${[s.error ?? 'tailscale does not show it served', s.raw].filter(Boolean).join(': ')}`);
+    });
   }
 
   /** Records this Mac's own link turned on or off, and tells each worker. */

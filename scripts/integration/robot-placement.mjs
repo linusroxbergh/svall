@@ -251,6 +251,8 @@ function turnOn(id, text) {
 
 /** One call to a machine's daemon through machine.mjs: its answer, or `{ error, code }`. */
 const call = (machine, method, params = {}) => JSON.parse(sh(machine, `/opt/it/node/bin/node /opt/it/machine.mjs call ${method} '${JSON.stringify(params)}'`).stdout);
+// a worker serves the phone only as its home's fallback, and holds the home's phone.json while it does
+const fallbackOn = (machine) => sh(machine, 'test -f ~/.svall/phone.json', { ok: false }).code === 0;
 
 // ---------------------------------------------------------------------------------------------- assertions
 
@@ -1326,6 +1328,7 @@ function homeMoves(ids, fx) {
   // mission control's robot, which goes first with the move engine, and the phone, which travels as what it was
   const crew = JSON.parse(sh(L, 'svall --json robot new --island home --cwd ~/.svall/home --name crew --claude').stdout).id;
   sh(L, `svall robot wait ${crew} --until idle --timeout 60`);
+  check('the phone serves on local with no one asking', call(L, 'mobile.get').serving === true, 'it is off');
   const phone = call(L, 'mobile.set', { enabled: true });
   check('the phone serves on local', phone.serving === true, () => brief(phone));
   call(L, 'push.subscribe', { endpoint: 'https://push.example/phone', keys: { p256dh: 'p256dh', auth: 'auth' }, statuses: ['done'] });
@@ -1357,7 +1360,7 @@ function homeMoves(ids, fx) {
   // the new home's daemon turns it on once it has seen the commit
   for (let i = 0; i < 40 && !served?.serving; i++) { if (i) sh(R, 'sleep 0.5'); served = call(R, 'mobile.get'); }
   check('remote serves the phone, under the same pass', served.serving === true && served.logins.includes('svall@integration'), () => brief({ serving: served.serving, logins: served.logins }));
-  check('one origin at a time: local no longer serves', call(L, 'home.fallback', { on: false }) !== undefined && sh(L, 'test -f ~/.tailscale-double.json', { ok: false }).code !== 0, 'local still serves');
+  check('one origin at a time: local serves at most as a fallback', call(L, 'home.fallback', { on: false }) !== undefined && (sh(L, 'test -f ~/.tailscale-double.json', { ok: false }).code !== 0 || fallbackOn(L)), 'local still serves as the home');
   check('what was staged is gone from local, keys and all', sh(L, 'ls -d ~/.svall/adopt-* 2>/dev/null', { ok: false }).stdout === '', 'an adopt folder stays');
   for (const id of robots) check(`${id} in the fleet on remote`, far.robots[id] !== undefined, () => id);
   const hosted = JSON.parse(sh(L, 'svall --host remote --json status', { ok: false }).stdout || '{}');
@@ -1557,8 +1560,9 @@ function afterMove(label, ids, before, want) {
   check(`${label}: the home holds the push keys`, sh(on, 'cat ~/.svall/push.json', { ok: false }).stdout === ctx.push && sh(on, 'cat ~/.svall/mobile-pass').stdout === ctx.pass, 'they differ');
   const served = (m) => sh(m, 'test -f ~/.tailscale-double.json', { ok: false }).code === 0;
   const off = on === L ? R : L;
-  for (let i = 0; i < 40 && !(served(on) && !served(off)); i++) sh(L, 'sleep 0.5');
-  check(`${label}: one origin serves the phone, the home`, served(on) && !served(off), () => `home ${served(on)}, the other ${served(off)}`);
+  const alone = () => served(on) && (!served(off) || fallbackOn(off));
+  for (let i = 0; i < 40 && !alone(); i++) sh(L, 'sleep 0.5');
+  check(`${label}: the home serves the phone, the other at most as its fallback`, alone(), () => `home ${served(on)}, the other ${served(off)}, as a fallback ${fallbackOn(off)}`);
   const held = robotsHeld(on);
   check(`${label}: every robot where it ran, with its note`, sameRobots(held, before.robots), () => `${brief(held)} vs ${brief(before.robots)}`);
   // a frozen home answers `mine` too, so only a write says it takes them

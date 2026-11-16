@@ -25,7 +25,7 @@ import { startHookReceiver } from './hooks/receiver.js';
 import { HomeApi } from './link/home-api.js';
 import { HomeDial } from './link/dialout.js';
 import { HomeLinks, socketTransport, sshTransport, UnknownEvent } from './link/home.js';
-import { daemonLock } from './kernel-lock.js';
+import { daemonLock, lockPhonePorts } from './kernel-lock.js';
 import { HomeConnection } from './link/worker.js';
 import { readLimits, setLimits, watchMemoryHits } from './linux/limits.js';
 import { lingerState, realRun } from './linux/service.js';
@@ -106,8 +106,9 @@ async function lockHome(home: string): Promise<() => void> {
   return unlock;
 }
 
-/** `hardware`, for the reader of this machine's hardware id; `worker`, to run as a worker of the home worker.json names. */
-type Options = { home: string; port?: number; host?: string; log?: Logger; hardware?: HardwareReader; worker?: true | (() => true | undefined); frozen?: HomeMoving };
+/** `hardware`, for the reader of this machine's hardware id; `worker`, to run as a worker of the home worker.json names;
+ *  `phoneOn`, for a home to turn its phone link on unless its switch last turned it off. */
+type Options = { home: string; port?: number; host?: string; log?: Logger; hardware?: HardwareReader; worker?: true | (() => true | undefined); frozen?: HomeMoving; phoneOn?: true };
 
 export class OtherBuildHome extends Error {}
 
@@ -414,7 +415,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   const phones = new Phones();
   const phoneLink = (logins: () => string[]) => mobileControl(realDeps(), {
     home: paths.home, profile, logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate, pass,
-    kept: () => keptPorts(homes().filter((h) => h !== paths.home)),
+    kept: () => keptPorts(homes().filter((h) => h !== paths.home)), lock: () => lockPhonePorts(os.homedir()),
     savePort: (httpsPort) => {
       try { saveConfig(paths, { mobile: { httpsPort } }, log.info); return true; } catch (e) { log.error(`phone port ${httpsPort} not saved: ${(e as Error).message}`); return false; }
     },
@@ -571,8 +572,10 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     // gone last: whoever waits for it to go may read state.json next
     teardown.unshift(() => fs.rmSync(paths.port, { force: true }));
     // pushes go out only over a link seen served: it is looked at once the port it proxies to is known,
-    // and again while a device waits and tailscale has not answered
-    if (!off.has('mobile')) teardown.push(watchServed(mobile, () => push.list().length > 0, LOOK_AGAIN_MS));
+    // and again while a device waits and tailscale has not answered; a home turns it on itself
+    const onByDefault = opts.phoneOn && !off.has('mobile') ? phone?.serveMac(() => freeze?.active ?? false, LOOK_AGAIN_MS) : undefined;
+    if (onByDefault) teardown.push(onByDefault);
+    else if (!off.has('mobile')) teardown.push(watchServed(mobile, () => push.list().length > 0, LOOK_AGAIN_MS));
     if (workerPhone) teardown.push(workerPhone.watch(LOOK_AGAIN_MS));
     if (connection) {
       await connection.start();

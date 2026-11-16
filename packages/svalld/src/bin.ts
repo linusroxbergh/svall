@@ -40,7 +40,7 @@ async function start(): Promise<Daemon> {
   for (;;) {
     const before = stamp();
     try {
-      return await startDaemon({ home, log, worker: asWorker });
+      return await startDaemon({ home, log, worker: asWorker, phoneOn: true });
     } catch (e) {
       // no file here can fix that; the other build's setup restarts the agent onto its own program
       if (e instanceof OtherBuildHome) {
