@@ -103,6 +103,7 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'push.subscribe': 'mutation',
   'push.unsubscribe': 'mutation',
   'push.get': 'read',
+  'mobile.viewing': 'read',
   'browser.open': 'mutation',
   'browser.close': 'mutation',
   'browser.activate': 'mutation',

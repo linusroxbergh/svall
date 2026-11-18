@@ -521,7 +521,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     if (!off.has('push')) {
       held.push({ start: () => startPusher({
         store, push, send: webPushSender(vapid), log, logins: mobile.logins, served: mobile.served, contact: () => config.mobile.pushContact,
-        ...(phone && { owns: (c: Robot) => phone.pushesFor(c) }),
+        viewing: (login, id) => phones.viewing(login, id), ...(phone && { owns: (c: Robot) => phone.pushesFor(c) }),
       }) });
     }
     teardown.push(() => { for (const h of held) { h.stop?.(); h.stop = undefined; } });
@@ -529,7 +529,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       const send: Send = (sub, payload, subject) => { const v = workerPhone.vapid(); return v ? webPushSender(v)(sub, payload, subject) : Promise.resolve(); };
       teardown.push(startPusher({
         store, push: workerPhone, send, log, logins: () => workerPhone.logins(), served: () => workerPhone.served(), contact: () => workerPhone.contact(),
-        owns: (c) => router.runsHere(c), machine: me,
+        owns: (c) => router.runsHere(c), machine: me, viewing: (login, id) => phones.viewing(login, id),
       }));
     }
     // a daemon that starts under a marker holds still from the first

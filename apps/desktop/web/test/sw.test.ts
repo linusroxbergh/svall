@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-type Payload = { id: string; name: string; status: string; term?: 2; prompt?: string; promptId?: string; machine?: string };
+type Payload = { id: string; name: string; status: string; term?: 2; prompt?: string; promptId?: string; machine?: string; badge?: number };
 type Shown = { title: string; options: { tag: string; actions: { action: string }[] } };
 
 // the worker is a static file the page registers, so it runs here against a stand-in for its global;
@@ -12,7 +12,9 @@ function load(reply: { status: number; body: unknown } = { status: 200, body: { 
   const shown: Shown[] = [];
   const posts: { url: string; body: unknown }[] = [];
   const opened: string[] = [];
+  const badges: number[] = [];
   const self = {
+    navigator: { setAppBadge: (n: number) => { badges.push(n); return Promise.resolve(); } },
     addEventListener: (name: string, fn: (e: unknown) => void) => { listeners[name] = fn; },
     skipWaiting: () => {},
     clients: { claim: () => {}, matchAll: () => Promise.resolve([]), openWindow: (url: string) => { opened.push(url); return Promise.resolve(null); } },
@@ -28,7 +30,7 @@ function load(reply: { status: number; body: unknown } = { status: 200, body: { 
     listeners.notificationclick({ action, notification: { data, close: () => {} }, waitUntil: (p: unknown) => { done = p; } });
     await done;
   };
-  return { push: (p: Payload) => listeners.push({ data: { json: () => p }, waitUntil: () => {} }), click, shown, posts, opened };
+  return { push: (p: Payload) => listeners.push({ data: { json: () => p }, waitUntil: () => {} }), click, shown, posts, opened, badges };
 }
 
 describe('service worker notifications', () => {
@@ -46,6 +48,14 @@ describe('service worker notifications', () => {
     const { push, shown } = load();
     push({ ...blocked(), machine: '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' });
     expect(shown[0].options.actions).toEqual([]);
+  });
+
+  it('sets the Home Screen icon to the count the push carries, beside the notification', () => {
+    const { push, shown, badges } = load();
+    push({ ...blocked(), badge: 3 });
+    push(blocked());
+    expect(badges).toEqual([3]);
+    expect(shown).toHaveLength(2);
   });
 
   it('posts Approve and Deny as the answer for the robot the notification named', async () => {

@@ -1,24 +1,26 @@
 import webpush from 'web-push';
-import { isNews, isPushStatus, sessionsOf, type MachineId, type PushStatus, type Robot } from '@svall/protocol';
+import { isNews, isPushStatus, needingUser, sessionsOf, type MachineId, type PushStatus, type Robot } from '@svall/protocol';
 import type { Logger } from '../log.js';
 import type { Store } from '../store.js';
 import type { PushStore, Subscription } from './store.js';
 import type { Vapid } from './vapid.js';
 
 // term 2 marks the robot's second session, which the phone cannot answer, so its notification carries no buttons.
-// promptId goes back with the answer, so a late one does not answer a newer question; machine names the worker that sent it
-export type PushPayload = { id: string; name: string; status: PushStatus; term?: 2; prompt?: string; promptId?: string; machine?: MachineId };
+// promptId goes back with the answer, so a late one does not answer a newer question; machine names the worker that sent it;
+// badge is the count the Home Screen icon shows
+export type PushPayload = { id: string; name: string; status: PushStatus; term?: 2; prompt?: string; promptId?: string; machine?: MachineId; badge: number };
 // subject is who the push service may contact about the sender
 export type Send = (sub: Subscription, payload: PushPayload, subject: string) => Promise<void>;
 
 /**
  * Tells every device of an accepted login when an agent of a robot it `owns` turns blocked or done, while the phone link is
  * served; a robot it would not have owned as it was before, as one that arrived by a move, tells nothing of the state it
- * came in. `machine`, on a worker, goes in each push. The returned function stops it.
+ * came in. `machine`, on a worker, goes in each push. A login with a page in view on the robot is told nothing of its main
+ * terminal. The returned function stops it.
  */
 export function startPusher(o: {
   store: Store; push: Pick<PushStore, 'list' | 'remove'>; send: Send; log: Logger; logins: () => string[]; served: () => string | undefined; contact?: () => string | undefined;
-  owns?: (c: Robot) => boolean; machine?: MachineId;
+  owns?: (c: Robot) => boolean; machine?: MachineId; viewing?: (login: string, robotId: string) => boolean;
 }): () => void {
   const owns = (c: Robot): boolean => o.owns?.(c) ?? true;
   // ownership is judged now, of the robot as it is and as it was, so ownership that turns with no change to the store moves nothing
@@ -38,10 +40,11 @@ export function startPusher(o: {
       if (status === 'done' && !s.unread) continue;
       const payload: PushPayload = {
         id: robotId, name: c.name, status, ...(term ? { term } : {}), ...(agent?.prompt ? { prompt: agent.prompt } : {}), ...(agent?.promptId ? { promptId: agent.promptId } : {}),
-        ...(o.machine && { machine: o.machine }),
+        ...(o.machine && { machine: o.machine }), badge: needingUser(f),
       };
       for (const sub of o.push.list()) {
-        if (!sub.statuses.includes(status) || !o.logins().includes(sub.login)) continue;
+        // a phone's robot view shows the main terminal only
+        if (!sub.statuses.includes(status) || !o.logins().includes(sub.login) || (!term && o.viewing?.(sub.login, robotId))) continue;
         o.send(sub, payload, o.contact?.() ?? url).catch((e: Error & { statusCode?: number }) => {
           // the push service says the device is gone for good
           if (e.statusCode === 404 || e.statusCode === 410) { o.push.remove(sub.endpoint); return; }
