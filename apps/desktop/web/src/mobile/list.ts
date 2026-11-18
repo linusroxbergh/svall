@@ -1,6 +1,6 @@
-import type { Robot, FleetState, Island } from '@svall/protocol';
+import { shownAgent, type Robot, type FleetState, type Island } from '@svall/protocol';
 import type { Via } from '../placement.js';
-import { robotsByPriority, islandsSorted, wantsUser, type DisplayStatus } from '../selectors.js';
+import { robotsByPriority, islandsSorted, slotStatus, wantsUser, type DisplayStatus } from '../selectors.js';
 
 export type Section = { island: Island; robots: Robot[] };
 
@@ -21,7 +21,16 @@ export function sections(f: FleetState, via?: Via): Section[] {
 
 export const waiting = (f: FleetState, via?: Via): number => Object.values(f.robots).filter((c) => wantsUser(c, f, via)).length;
 
-export const subtitle = (c: Robot): string => c.note.trim().replace(/\s*\n+\s*/g, ' · ');
+/** A robot's second line: what the blocked terminal's agent asks while it is blocked, else its note, on one line. */
+export const subtitle = (c: Robot, blocked = false): string =>
+  ((blocked && (slotStatus(c, 1) === 'blocked' ? shownAgent(c) : c.second?.agent)?.prompt) || c.note).trim().replace(/\s*\n+\s*/g, ' · ');
+
+/** The robot after `id` in the list's order that wants the user, coming round from the top. */
+export function nextWaiting(f: FleetState, id: string, via?: Via): Robot | undefined {
+  const order = sections(f, via).flatMap((s) => s.robots);
+  const at = order.findIndex((c) => c.id === id);
+  return [...order.slice(at + 1), ...order.slice(0, Math.max(at, 0))].find((c) => wantsUser(c, f, via));
+}
 
 const LABEL: Record<DisplayStatus, string> = {
   working: 'working', idle: 'idle', blocked: 'needs you', done: 'done', shell: 'shell', moving: 'moving', unknown: 'unknown',

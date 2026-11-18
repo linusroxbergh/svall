@@ -22,7 +22,7 @@ const Row = memoByValue(function Row({ c, revealed, onOpen, onReveal, onClose }:
   const asks = useApp((s) => wantsUser(c, s.fleet, s.via));
   // a worker closes and marks read only its own robots
   const here = useApp((s) => !elsewhere(c, s.via));
-  const sub = subtitle(c);
+  const sub = subtitle(c, status === 'blocked');
   const [drag, setDrag] = useState<number>();
   const touch = useRef<{ x: number; y: number; from: number; swiping: boolean }>(undefined);
   // the click that ends a swipe must not open the robot

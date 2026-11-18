@@ -22,24 +22,30 @@ const resize = vi.fn();
 vi.mock('../../src/mobile/term.js', () => ({
   linkTerminal: () => ({ input: (d: string) => input(d), resize: () => resize(), open: () => open(), close: () => {} }),
 }));
-// the last terminal the view made, on the alternate screen of an app tracking the mouse, and what was painted on it
-let xterm: { element: HTMLElement; textarea: HTMLTextAreaElement; typed(d: string): void; painted: string[] };
+// the last terminal the view made, on the alternate screen of an app tracking the mouse, what was painted on it, and
+// the rows of its buffer a long press reads
+let xterm: { element: HTMLElement; textarea: HTMLTextAreaElement; options: Record<string, unknown>; typed(d: string): void; painted: string[] };
+let rows: { text: string; isWrapped: boolean }[] = [];
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     cols = 80;
     rows = 24;
-    options: Record<string, unknown> = {};
-    buffer = { active: { type: 'alternate' } };
+    options: Record<string, unknown>;
+    buffer = { active: { type: 'alternate', viewportY: 0, get length() { return rows.length; }, getLine: (i: number) => rows[i] && { ...rows[i], translateToString: () => rows[i].text } } };
     modes = { mouseTrackingMode: 'any' };
     element = document.createElement('div');
     textarea!: HTMLTextAreaElement;
     typed: (d: string) => void = () => {};
     painted: string[] = [];
-    constructor() { xterm = this; }
+    constructor(options: Record<string, unknown>) { this.options = { ...options }; xterm = this; }
     reset(): void { this.painted = []; }
     write(d: string): void { this.painted.push(d); }
     loadAddon(): void {}
-    open(host: HTMLElement): void { host.append(this.element); this.textarea = this.element.appendChild(document.createElement('textarea')); }
+    open(host: HTMLElement): void {
+      host.append(this.element);
+      this.element.innerHTML = '<div class="xterm-screen"><div class="xterm-rows"></div></div>';
+      this.textarea = this.element.appendChild(document.createElement('textarea'));
+    }
     onData(h: (d: string) => void): void { this.typed = h; }
     scrollLines(): void {}
     scrollToBottom(): void {}
@@ -47,6 +53,9 @@ vi.mock('@xterm/xterm', () => ({
   },
 }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit(): void {} } }));
+// what the terminal does with a URL tapped on it
+let openLink: (e: MouseEvent, uri: string) => void;
+vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class { constructor(h: typeof openLink) { openLink = h; } } }));
 
 const { RobotView } = await import('../../src/mobile/RobotView.js');
 const { App } = await import('../../src/mobile/App.js');
@@ -66,26 +75,27 @@ beforeEach(() => {
   input.mockClear();
   resize.mockClear();
   sessionStorage.clear();
+  rows = [];
   store = createAppStore();
   setAppStore(store);
 });
 
 test('a blocked robot shows what it is waiting on', () => {
   store.getState().setFleet(blockedFleet());
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   expect(screen.getByRole('status').textContent).toContain('Run rm -rf?');
 });
 
 test('approve answers the daemon for that robot', () => {
   store.getState().setFleet(blockedFleet());
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'approve' }));
   expect(call).toHaveBeenCalledWith('robot.answer', { id: 'c2', answer: 'approve', promptId: 'q1' });
 });
 
 test('deny answers the daemon for that robot', () => {
   store.getState().setFleet(blockedFleet());
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'deny' }));
   expect(call).toHaveBeenCalledWith('robot.answer', { id: 'c2', answer: 'deny', promptId: 'q1' });
 });
@@ -94,7 +104,7 @@ test('a question dialog offers select and cancel, since Enter picks the highligh
   const f = blockedFleet('Claude needs your permission');
   f.robots.c2.agent!.askedTool = 'AskUserQuestion';
   store.getState().setFleet(f);
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'select' }));
   expect(call).toHaveBeenCalledWith('robot.answer', { id: 'c2', answer: 'approve', promptId: 'q1' });
   expect(screen.getByRole('button', { name: 'cancel' })).toBeTruthy();
@@ -102,7 +112,7 @@ test('a question dialog offers select and cancel, since Enter picks the highligh
 
 test('an answer in flight refuses a second tap', () => {
   store.getState().setFleet(blockedFleet());
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'approve' }));
   fireEvent.click(screen.getByRole('button', { name: 'deny' }));
   expect(call).toHaveBeenCalledTimes(1);
@@ -111,7 +121,7 @@ test('an answer in flight refuses a second tap', () => {
 test('a new question takes its own answer, even while one for the last is in flight', () => {
   call.mockImplementationOnce(() => new Promise(() => {}));
   store.getState().setFleet(blockedFleet());
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'approve' }));
   act(() => { store.getState().setFleet(blockedFleet('Run it again?', 'q2')); });
   fireEvent.click(screen.getByRole('button', { name: 'approve' }));
@@ -120,26 +130,26 @@ test('a new question takes its own answer, even while one for the last is in fli
 
 test('a robot that is not blocked is asked nothing', () => {
   store.getState().setFleet(fleet());
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   expect(screen.queryByRole('status')).toBeNull();
 });
 
 test('the header names the robot and its island', () => {
   store.getState().setFleet(fleet());
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   expect(screen.getByText('alpha')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'fleet' })).toBeTruthy();
 });
 
 test('a robot that left the fleet reads as gone', () => {
   store.getState().setFleet(fleet());
-  render(<RobotView id="c9" onBack={() => {}} />);
+  render(<RobotView id="c9" onBack={() => {}} onNext={() => {}} />);
   expect(screen.getAllByText('gone').length).toBeGreaterThan(0);
 });
 
 test('a prompt is sent to the robot and the field cleared', () => {
   store.getState().setFleet(fleet());
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   const field = screen.getByPlaceholderText('prompt…');
   fireEvent.change(field, { target: { value: 'go on' } });
   fireEvent.click(screen.getByRole('button', { name: 'send' }));
@@ -150,7 +160,7 @@ test('a prompt is sent to the robot and the field cleared', () => {
 test('a prompt the fleet does not take comes back to the field, with the reason', async () => {
   store.getState().setFleet(fleet());
   call.mockImplementationOnce(() => Promise.reject(new Error('svalld offline')));
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   const field = screen.getByPlaceholderText('prompt…') as HTMLTextAreaElement;
   fireEvent.change(field, { target: { value: 'please fix the failing test' } });
   fireEvent.click(screen.getByRole('button', { name: 'send' }));
@@ -164,7 +174,7 @@ test('opening a dormant robot wakes it before its terminal attaches', async () =
   f.robots.c2 = chr('c2', 'i_a', { x: 1, y: 1 }, { tmux: undefined });
   store.getState().setFleet(f);
   store.getState().setStatus('online');
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   await act(async () => {});
   expect(call).toHaveBeenCalledWith('robot.revive', { id: 'c2' });
   expect(open).toHaveBeenCalled();
@@ -176,7 +186,7 @@ test('a wake the fleet refuses says why beside the revive button', async () => {
   store.getState().setFleet(f);
   store.getState().setStatus('online');
   call.mockImplementationOnce(() => Promise.reject(new Error('its directory is gone')));
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   await act(async () => {});
   expect(open).not.toHaveBeenCalled();
   expect(screen.getByText('its directory is gone')).toBeTruthy();
@@ -186,7 +196,7 @@ test('a wake the fleet refuses says why beside the revive button', async () => {
 test('a terminal that closes while open offers the revive button', async () => {
   store.getState().setFleet(fleet());
   store.getState().setStatus('online');
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   await act(async () => {});
   const f = fleet();
   delete f.robots.c2.tmux;
@@ -197,27 +207,27 @@ test('a terminal that closes while open offers the revive button', async () => {
 test('the header says the phone has lost svalld rather than what the robot is doing', () => {
   store.getState().setFleet(fleet());
   store.getState().setStatus('offline');
-  const { container } = render(<RobotView id="c2" onBack={() => {}} />);
+  const { container } = render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   expect(container.querySelector('.conn')?.textContent).toBe('offline');
 });
 
 // the page reloads itself once svalld speaks a newer protocol
 test('a prompt not yet sent is still in the field after the page reloads', () => {
   store.getState().setFleet(fleet());
-  const { unmount } = render(<RobotView id="c2" onBack={() => {}} />);
+  const { unmount } = render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   fireEvent.change(screen.getByPlaceholderText('prompt…'), { target: { value: 'half a prompt' } });
   unmount();
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   expect((screen.getByPlaceholderText('prompt…') as HTMLTextAreaElement).value).toBe('half a prompt');
 });
 
 test('a prompt sent is not brought back by a reload', () => {
   store.getState().setFleet(fleet());
-  const { unmount } = render(<RobotView id="c2" onBack={() => {}} />);
+  const { unmount } = render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   fireEvent.change(screen.getByPlaceholderText('prompt…'), { target: { value: 'go on' } });
   fireEvent.click(screen.getByRole('button', { name: 'send' }));
   unmount();
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   expect((screen.getByPlaceholderText('prompt…') as HTMLTextAreaElement).value).toBe('');
 });
 
@@ -225,7 +235,7 @@ test('the reason a prompt was not sent goes once svalld is back', async () => {
   store.getState().setFleet(fleet());
   store.getState().setStatus('offline');
   call.mockImplementationOnce(() => Promise.reject(new Error('svalld offline')));
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   fireEvent.change(screen.getByPlaceholderText('prompt…'), { target: { value: 'go on' } });
   fireEvent.click(screen.getByRole('button', { name: 'send' }));
   await act(async () => {});
@@ -236,7 +246,7 @@ test('the reason a prompt was not sent goes once svalld is back', async () => {
 
 test('the context button opens the robot\'s card', () => {
   store.getState().setFleet(fleet());
-  render(<RobotView id="c0" onBack={() => {}} />);
+  render(<RobotView id="c0" onBack={() => {}} onNext={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'context' }));
   expect(screen.getByRole('dialog', { name: 'c0' })).toBeTruthy();
 });
@@ -258,7 +268,7 @@ test('a note being typed is saved when the back gesture takes the view away', ()
 test('the header words a blocked robot as the list does', () => {
   store.getState().setFleet(blockedFleet());
   store.getState().setStatus('online');
-  const { container } = render(<RobotView id="c2" onBack={() => {}} />);
+  const { container } = render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   expect(container.querySelector('.conn')?.textContent).toBe('needs you');
 });
 
@@ -269,7 +279,7 @@ test('the header says unknown for a robot on a worker out of reach', () => {
   f.robots.c2.machine = vault;
   store.getState().setFleet(f);
   store.getState().setStatus('online');
-  const { container } = render(<RobotView id="c2" onBack={() => {}} />);
+  const { container } = render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   expect(container.querySelector('.conn')?.textContent).toBe('unknown');
   expect(container.querySelector('.conn')?.getAttribute('data-status')).toBe('unknown');
 });
@@ -284,7 +294,7 @@ const onVault = (reachable: boolean, mismatch?: true) => {
 
 test('the phone shows "<machine> is not reachable" over a placed robot\'s terminal while the home has lost it', () => {
   store.getState().setFleet(onVault(false));
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   expect(screen.getByRole('status').textContent).toBe('linus-vault is not reachable');
   act(() => store.getState().setFleet(onVault(true)));
   expect(screen.queryByTestId('phone-unreachable')).toBeNull();
@@ -294,7 +304,7 @@ test('a phone opening a placed robot while its worker is away shows the last scr
   store.getState().setFleet(onVault(false));
   store.getState().setStatus('online');
   call.mockResolvedValueOnce({ text: '$ make test\r\nok', at: 1 });
-  const { container } = render(<RobotView id="c2" onBack={() => {}} />);
+  const { container } = render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   await act(async () => {});
   expect(call).toHaveBeenCalledWith('term.lastScreen', { id: 'c2' });
   expect(xterm.painted).toEqual(['$ make test\r\nok']);
@@ -308,7 +318,7 @@ test('a phone opening a placed robot while its worker is away shows the last scr
 test('a robot that lands on another machine while open streams again once its window is up there', async () => {
   store.getState().setFleet(fleet());
   store.getState().setStatus('online');
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   await act(async () => {});
   expect(open).toHaveBeenCalledTimes(1);
   // the move rests it here and lands it on linus-vault, dormant until it starts there
@@ -326,7 +336,7 @@ test('a robot that lands on another machine while open streams again once its wi
 
 test('the key row and the terminal\'s size go nowhere while its worker is away, and go again once it is back', () => {
   store.getState().setFleet(onVault(false));
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   const esc = screen.getByRole('button', { name: 'esc' }) as HTMLButtonElement;
   const more = screen.getByRole('button', { name: 'More keys' }) as HTMLButtonElement;
   expect(esc.disabled).toBe(true);
@@ -348,7 +358,7 @@ test('the key row and the terminal\'s size go nowhere while its worker is away, 
 
 test('a tap on the terminal raises no keyboard; the keyboard button types into it until it lets go', () => {
   store.getState().setFleet(fleet());
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   expect(xterm.textarea.getAttribute('inputmode')).toBe('none');
   fireEvent.change(screen.getByRole('textbox', { name: 'Prompt' }), { target: { value: 'half a prompt' } });
   expect(screen.queryByRole('button', { name: 'Type into the terminal' })).toBeNull();
@@ -378,7 +388,7 @@ test('a tap on the terminal raises no keyboard; the keyboard button types into i
 
 test('typing into the terminal ends when its worker goes out of reach', () => {
   store.getState().setFleet(onVault(true));
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'Type into the terminal' }));
   act(() => store.getState().setFleet(onVault(false)));
   expect(xterm.textarea.getAttribute('inputmode')).toBe('none');
@@ -389,7 +399,7 @@ test('a prompt the fleet refuses while typing into the terminal is fitted to its
   store.getState().setFleet(fleet());
   let refuse!: (e: Error) => void;
   call.mockImplementationOnce(() => new Promise((_, reject) => { refuse = reject; }));
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   fireEvent.change(screen.getByRole('textbox', { name: 'Prompt' }), { target: { value: 'a\nb\nc' } });
   fireEvent.click(screen.getByRole('button', { name: 'send' }));
   fireEvent.click(screen.getByRole('button', { name: 'Type into the terminal' }));
@@ -402,7 +412,7 @@ test('a prompt the fleet refuses while typing into the terminal is fitted to its
 
 test('the phone names the upgrade over a placed robot\'s terminal while its worker runs another build', () => {
   store.getState().setFleet(onVault(false, true));
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   expect(screen.getByTestId('phone-unreachable').textContent).toBe('linus-vault runs a different build; upgrade it under Machines');
 });
 
@@ -432,7 +442,7 @@ test('a portrait resolves from the root on a page opened at a robot', () => {
 
 test('a drag over an app on the alternate screen wheels it, and a tap reaches it as nothing', async () => {
   store.getState().setFleet(fleet());
-  const { container } = render(<RobotView id="c2" onBack={() => {}} />);
+  const { container } = render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   const wheels: number[] = [];
   xterm.element.addEventListener('wheel', (e) => { wheels.push(e.deltaY); });
   const touch = (type: string, clientY: number) => {
@@ -456,7 +466,7 @@ test('a drag over an app on the alternate screen wheels it, and a tap reaches it
 test('a terminal that comes back under a new window shows it, not the closed message', async () => {
   store.getState().setFleet(fleet());
   store.getState().setStatus('online');
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   await act(async () => {});
   const f = fleet();
   f.robots.c2.tmux = { windowId: '@2', paneId: '%2' };
@@ -477,7 +487,7 @@ const throughVault = () => {
 
 test('through a worker, a robot of the home says the home is asleep, asks nothing, and opens no terminal', async () => {
   throughVault();
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   await act(async () => {});
   expect(screen.getByTestId('phone-unreachable').textContent).toBe('mac is asleep');
   expect(screen.queryByRole('button', { name: 'approve' })).toBeNull();
@@ -486,7 +496,7 @@ test('through a worker, a robot of the home says the home is asleep, asks nothin
 
 test('through a worker, a robot of the home is sent no prompt and marked seen nowhere', async () => {
   throughVault();
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   await act(async () => {});
   fireEvent.change(screen.getByPlaceholderText('prompt…'), { target: { value: 'hello' } });
   expect((screen.getByRole('button', { name: 'send' }) as HTMLButtonElement).disabled).toBe(true);
@@ -500,7 +510,7 @@ test('a robot running on the worker answers and streams there, whatever the stal
   throughVault();
   const f = store.getState().fleet;
   store.getState().setFleet({ ...f, robots: { ...f.robots, c2: { ...f.robots.c2, machine: vault } } });
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   await act(async () => {});
   expect(screen.queryByTestId('phone-unreachable')).toBeNull();
   expect(screen.getByRole('button', { name: 'approve' })).toBeTruthy();
@@ -511,8 +521,85 @@ test('a terminal open through a worker opens again once the Mac has the fleet ba
   throughVault();
   const f = store.getState().fleet;
   store.getState().setFleet({ ...f, robots: { ...f.robots, c2: { ...f.robots.c2, machine: vault } } });
-  render(<RobotView id="c2" onBack={() => {}} />);
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   await act(async () => {});
   await act(async () => { store.getState().setVia(undefined); store.getState().setFleet(onVault(true)); });
   expect(open).toHaveBeenCalledTimes(2);
+});
+
+test('a URL tapped on the terminal opens in a new tab with no hold on the page', () => {
+  store.getState().setFleet(fleet());
+  render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
+  const opened = vi.spyOn(window, 'open').mockReturnValue(null);
+  openLink(new MouseEvent('mouseup'), 'https://svall.dev/a');
+  expect(opened).toHaveBeenCalledWith('https://svall.dev/a', '_blank', 'noopener,noreferrer');
+  opened.mockRestore();
+});
+
+test('the long-press text links its URLs, a wrapped one on each of its rows, but not under the finger that pressed', () => {
+  rows = [{ text: 'PR https://github.com/o/r', isWrapped: false }, { text: '/pull/7 is up', isWrapped: true }];
+  store.getState().setFleet(fleet());
+  vi.useFakeTimers();
+  try {
+    const { container } = render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
+    const press = new Event('touchstart');
+    Object.defineProperty(press, 'touches', { value: [{ clientX: 5, clientY: 5 }] });
+    container.querySelector('.screen')!.dispatchEvent(press);
+    act(() => { vi.advanceTimersByTime(400); });
+  } finally {
+    vi.useRealTimers();
+  }
+  const text = screen.getByTestId('phone-select');
+  const links = [...text.querySelectorAll('a')];
+  expect(text.textContent).toBe('PR https://github.com/o/r\n/pull/7 is up');
+  expect(links.map((a) => [a.textContent, a.getAttribute('href'), a.target, a.rel])).toEqual([
+    ['https://github.com/o/r', 'https://github.com/o/r/pull/7', '_blank', 'noreferrer'],
+    ['/pull/7', 'https://github.com/o/r/pull/7', '_blank', 'noreferrer'],
+  ]);
+  const prevented: boolean[] = [];
+  const record = (e: Event) => { prevented.push(e.defaultPrevented); e.preventDefault(); };
+  document.addEventListener('click', record);
+  try {
+    // the lift of the long press lands on the text it laid over
+    fireEvent.click(links[0]);
+    fireEvent.touchStart(text);
+    fireEvent.click(links[1]);
+  } finally {
+    document.removeEventListener('click', record);
+  }
+  expect(prevented).toEqual([true, false]);
+});
+
+test("the terminal's 16 colours are tokens.css's", () => {
+  const css = fs.readFileSync(path.join(__dirname, '../../src/tokens.css'), 'utf8');
+  const tokens = Object.fromEntries([...css.matchAll(/(--ansi-[a-z-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2]]));
+  const root = document.documentElement.style;
+  for (const [k, v] of Object.entries(tokens)) root.setProperty(k, v);
+  try {
+    store.getState().setFleet(fleet());
+    render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
+    const t = (name: string) => tokens[`--ansi-${name}`];
+    expect(Object.keys(tokens)).toHaveLength(16);
+    expect(xterm.options.theme).toMatchObject({
+      black: t('black'), red: t('red'), green: t('green'), yellow: t('yellow'),
+      blue: t('blue'), magenta: t('magenta'), cyan: t('cyan'), white: t('white'),
+      brightBlack: t('bright-black'), brightRed: t('bright-red'), brightGreen: t('bright-green'), brightYellow: t('bright-yellow'),
+      brightBlue: t('bright-blue'), brightMagenta: t('bright-magenta'), brightCyan: t('bright-cyan'), brightWhite: t('bright-white'),
+    });
+  } finally {
+    for (const k of Object.keys(tokens)) root.removeProperty(k);
+  }
+});
+
+test('next opens the robot after this one that waits on the user in its place, and is not offered where none does', () => {
+  history.replaceState({ pushed: true }, '', '/robot/c0');
+  store.getState().setFleet(blockedFleet());
+  render(<App />);
+  const depth = history.length;
+  fireEvent.click(screen.getByRole('button', { name: 'Next waiting: c2' }));
+  expect(location.pathname).toBe('/robot/c2');
+  expect(history.length).toBe(depth);
+  expect(history.state).toEqual({ pushed: true });
+  expect(screen.getByRole('status').textContent).toContain('Run rm -rf?');
+  expect(screen.queryByRole('button', { name: /^Next waiting/ })).toBeNull();
 });

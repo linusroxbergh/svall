@@ -33,7 +33,10 @@ export function App(): JSX.Element {
     setRoute({ view: 'fleet' });
   };
 
-  if (openId && !gone) return <RobotView id={openId} onBack={back} />;
+  // the next robot takes this one's place, so back still leads to the list
+  const swap = (id: string) => { history.replaceState(history.state, '', routePath({ view: 'robot', id })); setRoute({ view: 'robot', id }); };
+
+  if (openId && !gone) return <RobotView key={openId} id={openId} onBack={back} onNext={swap} />;
   const open = (id: string) => go({ view: 'robot', id });
   return <><Fleet onOpen={open} /><MissionBar onOpen={open} /></>;
 }
