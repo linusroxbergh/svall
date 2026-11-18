@@ -381,7 +381,7 @@ test('each socket hears the robot on screen while the page is in view, none once
   expect(viewing(second)).toEqual([{ robot: 'c0' }, {}]);
 });
 
-test('the Home Screen icon counts the robots that need the user, once a fleet has come', async () => {
+test('the Home Screen icon counts the robots that need the user, once a fleet has come and again as the page comes back', async () => {
   const setAppBadge = vi.fn(() => Promise.resolve());
   vi.stubGlobal('navigator', { setAppBadge });
   const socket = await boot();
@@ -395,6 +395,10 @@ test('the Home Screen icon counts the robots that need the user, once a fleet ha
   socket.receive({ event: 'state.patch', data: { ops: [{ op: 'replace', path: '/robots/c0/unread', value: false }] } });
   socket.receive({ event: 'state.patch', data: { ops: [{ op: 'replace', path: '/robots/c0/note', value: 'x' }] } });
   expect(setAppBadge.mock.calls).toEqual([[2], [1]]);
+  // a push may have set the icon while the page was away
+  setAppBadge.mockClear();
+  backInView();
+  expect(setAppBadge).toHaveBeenLastCalledWith(1);
 });
 
 test('the page takes its height from the part of the screen the keyboard leaves', async () => {

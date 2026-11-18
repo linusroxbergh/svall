@@ -448,7 +448,7 @@ export const methods = {
   'push.subscribe': { params: z.object({ endpoint: z.string().url(), keys: PushKeys, statuses: z.array(PushStatus) }), result: z.object({}) },
   'push.unsubscribe': { params: z.object({ endpoint: z.string() }), result: z.object({}) },
   'push.get': { params: z.object({ endpoint: z.string() }), result: z.object({ statuses: z.array(PushStatus).optional() }) },
-  // the robot a phone page shows while in view, or none; its daemon pushes nothing of that robot to that login meanwhile
+  // the robot a phone page shows while in view, or none; its daemon pushes nothing of that robot's main terminal to that login meanwhile
   'mobile.viewing': { params: z.object({ robot: z.string().optional() }), result: z.object({}) },
   // tab is the id the page or the shell already gave the view; absent, svalld mints one
   'browser.open': { params: z.object({ id: z.string(), url: Url, tab: z.string().min(1).optional() }), result: BrowserTab },

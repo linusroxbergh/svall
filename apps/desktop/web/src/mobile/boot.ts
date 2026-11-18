@@ -116,7 +116,7 @@ function createPhone(): PhoneContext {
   const stopWorkers = () => { for (const w of workers) w.api.stop(); workers = []; };
 
   // the robot whose view is open, and what the sockets were last told: it while the page is in view, else none. A daemon
-  // pushes nothing of that robot to this login meanwhile, and a socket that opens starts at none
+  // pushes nothing of that robot's main terminal to this login meanwhile, and a socket that opens starts at none
   let viewed: string | undefined;
   let shown: string | undefined;
   const tell = (api: Api) => { if (shown) api.call('mobile.viewing', { robot: shown }).catch(() => {}); };
@@ -128,14 +128,18 @@ function createPhone(): PhoneContext {
   };
   document.addEventListener('visibilitychange', show);
 
-  // the Home Screen icon counts the robots that need the user, as the list does, once a fleet has come
+  // the Home Screen icon counts the robots that need the user, as the list does, once a fleet has come; a push may have
+  // set it while the page was out of view, so coming back writes it again
   let badge: number | undefined;
-  store.subscribe((st) => {
+  const count = () => {
+    const st = store.getState();
     const n = st.loaded ? waiting(st.fleet, st.via) : undefined;
     if (n === undefined || n === badge) return;
     badge = n;
     void navigator.setAppBadge?.(n).catch(() => {});
-  });
+  };
+  store.subscribe(count);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { badge = undefined; count(); } });
 
   mac.api.onStatus = (s) => {
     mac.status = s;

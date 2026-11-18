@@ -15,8 +15,8 @@ export type Send = (sub: Subscription, payload: PushPayload, subject: string) =>
 /**
  * Tells every device of an accepted login when an agent of a robot it `owns` turns blocked or done, while the phone link is
  * served; a robot it would not have owned as it was before, as one that arrived by a move, tells nothing of the state it
- * came in. `machine`, on a worker, goes in each push. A login with a page in view on the robot is told nothing of it. The
- * returned function stops it.
+ * came in. `machine`, on a worker, goes in each push. A login with a page in view on the robot is told nothing of its main
+ * terminal. The returned function stops it.
  */
 export function startPusher(o: {
   store: Store; push: Pick<PushStore, 'list' | 'remove'>; send: Send; log: Logger; logins: () => string[]; served: () => string | undefined; contact?: () => string | undefined;
@@ -43,7 +43,8 @@ export function startPusher(o: {
         ...(o.machine && { machine: o.machine }), badge: needingUser(f),
       };
       for (const sub of o.push.list()) {
-        if (!sub.statuses.includes(status) || !o.logins().includes(sub.login) || o.viewing?.(sub.login, robotId)) continue;
+        // a phone's robot view shows the main terminal only
+        if (!sub.statuses.includes(status) || !o.logins().includes(sub.login) || (!term && o.viewing?.(sub.login, robotId))) continue;
         o.send(sub, payload, o.contact?.() ?? url).catch((e: Error & { statusCode?: number }) => {
           // the push service says the device is gone for good
           if (e.statusCode === 404 || e.statusCode === 410) { o.push.remove(sub.endpoint); return; }

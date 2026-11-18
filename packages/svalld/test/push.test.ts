@@ -283,6 +283,22 @@ describe('pusher', () => {
     expect(sent).toEqual(['https://push.example/other', 'https://push.example/a', 'https://push.example/other']);
   });
 
+  it('tells a login whose page has the robot in view of its second terminal, which that view does not show', async () => {
+    const { store, push } = setup({ off: true });
+    const phones = new Phones();
+    phones.add('me').view('c');
+    const sent: PushPayload[] = [];
+    const stop = startPusher({
+      store, push, log: silentLogger, logins: () => ['me'], served: () => SERVED, viewing: (login, id) => phones.viewing(login, id),
+      send: (_, p) => { sent.push(p); return Promise.resolve(); },
+    });
+    store.update((d) => { d.robots.c.second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('blocked', 'Write?') }; });
+    store.update((d) => { d.robots.c.agent = agent('blocked', 'Bash?'); });
+    await tick();
+    stop();
+    expect(sent).toMatchObject([{ id: 'c', term: 2, prompt: 'Write?' }]);
+  });
+
   it('says nothing once stopped', async () => {
     const { store, sent, stop } = setup();
     stop();
