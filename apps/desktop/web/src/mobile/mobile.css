@@ -23,7 +23,7 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 
 .top {
   display: flex; align-items: center; gap: var(--sp-lg);
-  padding: max(env(safe-area-inset-top), var(--sp-lg)) var(--sp-xl) var(--sp-lg);
+  padding: max(env(safe-area-inset-top), var(--sp-lg)) calc(var(--sp-xl) + var(--safe-r)) var(--sp-lg) calc(var(--sp-xl) + var(--safe-l));
   background: var(--surface-0);
   border-bottom: 1px solid var(--line);
   position: sticky; top: 0; z-index: 2;
@@ -96,16 +96,24 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .robot { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--surface-0); }
 .back { padding: var(--sp-xs) var(--sp-sm) var(--sp-xs) 0; color: var(--ink-2); }
 .ahead { flex: none; padding: var(--sp-xs) 0 var(--sp-xs) var(--sp-sm); color: var(--ink-2); }
+.next { flex: none; display: flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-sm); color: var(--ink-2); }
 .title { display: flex; flex-direction: column; min-width: 0; font-weight: var(--w-medium); }
 .title small { font-size: var(--text-sm); color: var(--ink-3); }
+/* one line each, so the header keeps its height as the next control comes and goes */
+.title > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .stage { position: relative; flex: 1; min-height: 0; display: flex; }
-.screen { flex: 1; min-height: 0; padding: var(--sp-xs) var(--sp-2xs) 0 var(--sp-sm); touch-action: none; }
+/* content-box, as the fit addon sizes the terminal to this box; the fit keeps a scrollbar's width free on the right */
+.screen {
+  flex: 1; min-height: 0; box-sizing: content-box; touch-action: none;
+  padding: var(--sp-xs) calc(var(--sp-2xs) + var(--safe-r)) 0 calc(var(--sp-xl) + var(--safe-l));
+}
 .screen .xterm-viewport { overscroll-behavior: contain; }
 .frozen {
   position: absolute; margin: 0; overflow: hidden auto; overscroll-behavior: contain; white-space: pre;
   color: var(--ink); background: var(--surface-0); -webkit-user-select: text; user-select: text;
 }
+.frozen a { color: var(--sel); }
 .frozen-done {
   position: absolute; right: var(--sp-lg); bottom: var(--sp-lg); padding: var(--sp-md) var(--sp-xl); border-radius: var(--r-md);
   background: var(--sand); color: var(--ink-sand); font-weight: var(--w-semibold);
@@ -130,7 +138,8 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 /* under the terminal, on its ground: the ask, the keys and the composer */
 .dock {
   display: flex; flex-direction: column; gap: var(--sp-md);
-  padding: var(--sp-sm) var(--sp-lg) calc(var(--sp-md) + var(--safe-b)); background: var(--surface-0);
+  padding: var(--sp-sm) calc(var(--sp-lg) + var(--safe-r)) calc(var(--sp-md) + var(--safe-b)) calc(var(--sp-lg) + var(--safe-l));
+  background: var(--surface-0);
 }
 .dock > .sheet-error { padding: 0 var(--sp-md); }
 
@@ -186,7 +195,7 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .sheet-back { position: fixed; inset: 0 0 auto; height: var(--vvh, 100dvh); z-index: 5; display: flex; align-items: flex-end; background: var(--shade-3); }
 .sheet {
   width: 100%; max-height: 85%; overflow-y: auto;
-  padding: var(--sp-xl) var(--sp-2xl) calc(var(--sp-2xl) + var(--safe-b));
+  padding: var(--sp-xl) calc(var(--sp-2xl) + var(--safe-r)) calc(var(--sp-2xl) + var(--safe-b)) calc(var(--sp-2xl) + var(--safe-l));
   background: var(--surface-2); border-radius: var(--r-lg) var(--r-lg) 0 0; border-top: 1px solid var(--line);
 }
 .sheet header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-lg); }

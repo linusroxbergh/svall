@@ -120,6 +120,7 @@
   --edge-lip-w: 11px;   /* a side panel's edge tab, kept under the panel's --sp-xl inset */
   --col-fade: 56px;     /* the fade under a board column while more robots lie below */
   --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px);
 
   /* theme.ts card.easeMs matches --dur, and fitEaseMs --dur-slow */
   --dur-fast: .12s; --dur: .16s; --dur-slow: .2s;
@@ -171,4 +172,10 @@
 
   /* code */
   --syntax-string: #9BBA86; --syntax-op: #BAD1A2;
+
+  /* the phone terminal's 16 colours on --surface-0; xterm parses them itself, so each is a plain hex */
+  --ansi-black: #2E3B4A; --ansi-red: #E0796B; --ansi-green: #93B477; --ansi-yellow: #E0BB55;
+  --ansi-blue: #7FA2E8; --ansi-magenta: #C996DC; --ansi-cyan: #6CC4D9; --ansi-white: #CCC5B1;
+  --ansi-bright-black: #7A8B9B; --ansi-bright-red: #FF9A8C; --ansi-bright-green: #B5D19A; --ansi-bright-yellow: #FFE28C;
+  --ansi-bright-blue: #A9C1F5; --ansi-bright-magenta: #E2BCEE; --ansi-bright-cyan: #9EDDEA; --ansi-bright-white: #F4EEDF;
 }

@@ -1,4 +1,5 @@
 import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal as Xterm } from '@xterm/xterm';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type JSX, type ReactNode } from 'react';
 import { shownAgent } from '@svall/protocol';
@@ -11,9 +12,10 @@ import { readDraft, writeDraft } from './draft.js';
 import { KEY_ROW, keepFocus } from './keys.js';
 import { KeysSheet } from './KeysSheet.js';
 import { RobotMenu } from './RobotMenu.js';
-import { statusLabel } from './list.js';
+import { nextWaiting, statusLabel } from './list.js';
 import { dragToScroll, holdScroll, onHold, scrollTerm, withoutClicks } from './scroll.js';
 import { linkTerminal, type TerminalLink } from './term.js';
+import { linkText, type Piece } from './urls.js';
 
 // smaller type means more columns; Claude Code's TUI only lays out narrow when the window itself is
 // the keys the row draws as icons, with the names they read as
@@ -28,13 +30,17 @@ const SIZE_KEY = 'svall.mobile.fontSize';
 const FONT = '"JetBrains Mono", ui-monospace, monospace';
 
 // the terminal's text as it stood at a long press, laid over its cells so the phone's own selection and Copy take it
-type Frozen = { text: string; scroll: number; style: CSSProperties };
+type Frozen = { text: Piece[]; scroll: number; style: CSSProperties };
 
 const tokenOf = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const ANSI = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
 // xterm parses its own colours, so the selection's alpha rides as a hex byte on the token: 40 is the editor's 25%
 const theme = () => ({
   background: tokenOf('--surface-0'), foreground: tokenOf('--ink'), cursor: tokenOf('--sand'),
   selectionBackground: `${tokenOf('--sel')}40`,
+  ...Object.fromEntries(ANSI.flatMap((c) => [
+    [c, tokenOf(`--ansi-${c}`)], [`bright${c[0].toUpperCase()}${c.slice(1)}`, tokenOf(`--ansi-bright-${c}`)],
+  ])),
 });
 
 // a browser with site data switched off throws rather than returning nothing
@@ -45,10 +51,11 @@ const readSize = (): number => {
   } catch { return 11; }
 };
 
-export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.Element {
+export function RobotView({ id, onBack, onNext }: { id: string; onBack(): void; onNext(id: string): void }): JSX.Element {
   const robot = useApp((s) => s.fleet.robots[id]);
   const robotStatus = useApp((s) => (s.fleet.robots[id] ? statusOf(s.fleet.robots[id], s.fleet, s.via) : undefined));
   const island = useApp((s) => s.fleet.islands[s.fleet.robots[id]?.islandId ?? '']);
+  const next = useApp((s) => nextWaiting(s.fleet, id, s.via));
   // what stands over the terminal while the machine it runs on is out of reach; the terminal holds the last screen it showed
   const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && awayLine(s.fleet, r, s.via); });
   const via = useApp((s) => s.via);
@@ -77,6 +84,8 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   const [sendError, setSendError] = useState<string>();
   const [frozen, setFrozen] = useState<Frozen>();
   const frozenText = useRef<HTMLPreElement>(null);
+  // the finger whose long press laid the text over lifts onto it, and must not open a link there
+  const touchedFrozen = useRef(false);
   // keys typed straight into the terminal rather than the composer
   const [raw, setRaw] = useState(false);
 
@@ -84,6 +93,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     const term = new Xterm({ fontSize: sizeRef.current, fontFamily: FONT, theme: theme(), cursorBlink: true, scrollback: 4000 });
     const fit = new FitAddon();
     term.loadAddon(fit);
+    term.loadAddon(new WebLinksAddon((_, uri) => window.open(uri, '_blank', 'noopener')));
     term.open(host.current!);
     xterm.current = term;
     // a tap on the terminal raises no keyboard: text goes through the composer, or here once raw typing is on
@@ -109,8 +119,12 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
       const origin = stage.getBoundingClientRect();
       const top = at.top - origin.top;
       const line = at.height / term.rows;
+      touchedFrozen.current = false;
       setFrozen({
-        text: Array.from({ length: b.length }, (_, i) => b.getLine(i)?.translateToString(true) ?? '').join('\n'),
+        // a row that wraps on keeps its trailing blanks, so a URL is not joined across them
+        text: linkText(Array.from({ length: b.length }, (_, i) => ({
+          text: b.getLine(i)?.translateToString(!b.getLine(i + 1)?.isWrapped) ?? '', wrapped: !!b.getLine(i)?.isWrapped,
+        }))),
         scroll: b.viewportY * line,
         style: {
           top, left: at.left - origin.left, width: at.width, height: at.height, maxHeight: `calc(100% - ${top}px)`,
@@ -260,20 +274,24 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
       <header className="top">
         <button className="back" onClick={onBack}><Caret dir="left" /> fleet</button>
         <span className="title">
-          {robot?.name ?? 'gone'}
+          <span>{robot?.name ?? 'gone'}</span>
           {island && <small>{island.name}</small>}
         </span>
         {/* without svalld the robot's status is stale, so the header says so instead */}
         <span className="conn" data-status={!online ? status : robotStatus ?? 'gone'}>
           {!online ? status : robotStatus ? statusLabel(robotStatus) : 'gone'}
         </span>
+        {next && <button type="button" className="next" aria-label={`Next waiting: ${next.name}`} onClick={() => onNext(next.id)}><i className="pip" />next</button>}
         <button type="button" className="ahead" aria-haspopup="dialog" onClick={() => setMenu(true)}>context <Caret dir="right" /></button>
       </header>
       <div className="stage">
         <div className="screen" ref={host} />
         {frozen && (
           <>
-            <pre className="frozen" ref={frozenText} style={frozen.style} data-testid="phone-select">{frozen.text}</pre>
+            <pre className="frozen" ref={frozenText} style={frozen.style} data-testid="phone-select"
+              onTouchStart={() => { touchedFrozen.current = true; }} onClick={(e) => { if (!touchedFrozen.current) e.preventDefault(); }}>
+              {frozen.text.map((p, i) => (typeof p === 'string' ? p : <a key={i} href={p.href} target="_blank" rel="noopener">{p.text}</a>))}
+            </pre>
             <button type="button" className="frozen-done" onClick={() => setFrozen(undefined)}>done</button>
           </>
         )}

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Event, MachineId, PushStatus } from '@svall/protocol';
 import type { Api } from '../src/api.js';
-import { sections, subtitle, waiting } from '../src/mobile/list.js';
+import { nextWaiting, sections, subtitle, waiting } from '../src/mobile/list.js';
+import { linkText } from '../src/mobile/urls.js';
 import { encode, linkTerminal, type Screen } from '../src/mobile/term.js';
 import { parseRoute, routePath } from '../src/mobile/route.js';
 import { NO_PAGE, phonesHere } from '../src/phoneText.js';
@@ -133,6 +134,63 @@ describe('phone fleet list', () => {
       repo: { root: '/r', mainRoot: '/r', branch: 'main', isWorktree: false },
     });
     expect(subtitle(noteless)).toBe('');
+  });
+
+  it('puts what a blocked robot asks in place of its note, and the note back once it asks nothing', () => {
+    const asking = chr('c', 'i_b', { x: 0, y: 0 }, {
+      note: 'fix the login', agent: { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'blocked', prompt: 'Allow Bash:\nrm -rf dist?', lastActivityAt: 0 },
+    });
+    expect(subtitle(asking, true)).toBe('Allow Bash: · rm -rf dist?');
+    expect(subtitle({ ...asking, agent: { ...asking.agent!, prompt: undefined } }, true)).toBe('fix the login');
+    expect(subtitle(asking)).toBe('fix the login');
+  });
+
+  it('finds the next robot waiting on the user in the list\'s order, coming round from the top, and none when only this one waits', () => {
+    const f = fleet();
+    const agent = (status: 'blocked' | 'done') => ({ kind: 'claude' as const, sessionId: 's', transcriptPath: '/t', status, lastActivityAt: 0 });
+    f.islands.i_z = isl('i_z', 'zulu', 24);
+    f.robots.c3 = chr('c3', 'i_z', { x: 1, y: 1 }, { agent: agent('blocked') });
+    f.robots.c4 = chr('c4', 'i_z', { x: 2, y: 1 }, { agent: agent('done'), unread: true });
+    // done and read waits on nobody
+    f.robots.c5 = chr('c5', 'i_a', { x: 2, y: 1 }, { agent: agent('done') });
+    f.robots.c6 = chr('c6', 'i_b', { x: 2, y: 2 }, { agent: agent('blocked') });
+    // island by island, as the list draws them
+    expect(sections(f).flatMap((s) => s.robots.map((c) => c.id))).toEqual(['c6', 'c0', 'c1', 'c3', 'c4', 'c5', 'c2']);
+    expect(nextWaiting(f, 'c6')?.id).toBe('c3');
+    expect(nextWaiting(f, 'c3')?.id).toBe('c4');
+    expect(nextWaiting(f, 'c4')?.id).toBe('c6');
+    expect(nextWaiting(f, 'c1')?.id).toBe('c3');
+    const alone = fleet();
+    alone.robots.c3 = chr('c3', 'i_a', { x: 2, y: 1 }, { agent: agent('blocked') });
+    expect(nextWaiting(alone, 'c3')).toBeUndefined();
+  });
+});
+
+describe('links in the long-press text', () => {
+  it('links each URL, leaving its closing punctuation out, and merges the plain text between', () => {
+    expect(linkText([
+      { text: 'see https://svall.dev/a?b=1.', wrapped: false },
+      { text: '(http://x.io) done', wrapped: false },
+    ])).toEqual([
+      'see ', { href: 'https://svall.dev/a?b=1', text: 'https://svall.dev/a?b=1' }, '.\n(',
+      { href: 'http://x.io', text: 'http://x.io' }, ') done',
+    ]);
+  });
+
+  it('links each row a wrapped URL crosses to the whole URL, keeping the rows apart', () => {
+    expect(linkText([
+      { text: 'PR https://github.com/o/r', wrapped: false },
+      { text: '/pull/7 is up', wrapped: true },
+      { text: 'https://github.com/o/r', wrapped: false },
+    ])).toEqual([
+      'PR ', { href: 'https://github.com/o/r/pull/7', text: 'https://github.com/o/r' }, '\n',
+      { href: 'https://github.com/o/r/pull/7', text: '/pull/7' }, ' is up\n',
+      { href: 'https://github.com/o/r', text: 'https://github.com/o/r' },
+    ]);
+  });
+
+  it('keeps an empty row as a line of its own', () => {
+    expect(linkText([{ text: 'a', wrapped: false }, { text: '', wrapped: false }, { text: 'b', wrapped: false }])).toEqual(['a\n\nb']);
   });
 });
 

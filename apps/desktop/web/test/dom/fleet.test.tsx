@@ -66,6 +66,20 @@ test('a robot on a worker out of reach reads unknown, and its last question asks
   expect(row.querySelector('.pip')).toBeNull();
 });
 
+test('a robot that needs the user says what it asks in place of its note, and one out of reach keeps its note', () => {
+  const f = fleet();
+  const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+  f.machines = { [vault]: { name: 'linus-vault', reachable: false, since: 0 } };
+  const asks = { kind: 'claude', sessionId: 's', status: 'blocked', prompt: 'Allow Bash: rm -rf dist?', lastActivityAt: 0 } as const;
+  f.robots.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { note: 'fix the login', agent: asks });
+  f.robots.c2 = chr('c2', 'i_a', { x: 1, y: 1 }, { note: 'auth', machine: vault, agent: asks });
+  store.getState().setFleet(f);
+  const { container } = render(<Fleet onOpen={() => {}} />);
+  const sub = (id: string) => [...container.querySelectorAll('.row')].find((r) => r.querySelector('.row-name')?.textContent === id)!.querySelector('.row-sub')?.textContent;
+  expect(sub('c0')).toBe('Allow Bash: rm -rf dist?');
+  expect(sub('c2')).toBe('auth');
+});
+
 test('no Starred section while nothing is starred', () => {
   store.getState().setFleet(fleet());
   render(<Fleet onOpen={() => {}} />);
