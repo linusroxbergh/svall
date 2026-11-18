@@ -148,6 +148,21 @@ describe('applyHook', () => {
     const next = applyHook(applyHook(answered, ev('Notification', { notificationType: 'permission_prompt' }), 5), ev('PostToolUse', { toolName: 'Agent' }), 6);
     expect(next.agent?.status).toBe('working');
   });
+  it('keeps what the main thread asks to use with the tool it asks about, until that tool runs or the turn moves on', () => {
+    const ev = (name: HookEvent['name'], o: Partial<HookEvent> = {}): HookEvent => ({ robotId: 'c_a', backend: 'claude', name, ...o });
+    const asked = applyHook(applyHook(withAgent('working'), ev('PermissionRequest', { toolName: 'Bash', askedFor: 'npm test' }), 1),
+      ev('Notification', { notificationType: 'permission_prompt', message: 'Claude needs your permission to use Bash' }), 2);
+    expect(asked.agent).toMatchObject({ status: 'blocked', prompt: 'Claude needs your permission to use Bash', askedTool: 'Bash', askedFor: 'npm test' });
+    expect(applyHook(asked, ev('PostToolUse', { toolName: 'Read' }), 3).agent).toMatchObject({ status: 'blocked', askedFor: 'npm test' });
+    for (const e of [ev('PostToolUse', { toolName: 'Bash' }), ev('PostToolUseFailure', { toolName: 'Bash' }), ev('UserPromptSubmit'), ev('Stop'), ev('Interrupt')]) {
+      expect(applyHook(asked, e, 3).agent).not.toHaveProperty('askedFor');
+    }
+    // the next request says its own, or nothing
+    expect(applyHook(asked, ev('PermissionRequest', { toolName: 'Write', askedFor: '/r/a.ts' }), 3).agent?.askedFor).toBe('/r/a.ts');
+    expect(applyHook(asked, ev('PermissionRequest', { toolName: 'AskUserQuestion' }), 3).agent).not.toHaveProperty('askedFor');
+    // a subagent's request leaves the main thread's alone
+    expect(applyHook(asked, ev('PermissionRequest', { agentId: 'a1', toolName: 'Edit', askedFor: '/r/b.ts' }), 3).agent?.askedFor).toBe('npm test');
+  });
   it('gives each blocking question an id of its own, and drops it once the agent moves on', () => {
     const ask = (c: Robot) => applyHook(c, { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt' }, 1);
     const one = ask(withAgent('working'));
@@ -428,6 +443,12 @@ describe('applyHook for codex', () => {
     expect(applyHook(started(), ev({ name: 'PreToolUse', transcriptPath: '/r.jsonl' }), 200).agent?.transcriptPath).toBe('/r.jsonl');
     expect(applyHook(started(), ev({ name: 'PreToolUse', sessionId: 's9', transcriptPath: '/x.jsonl' }), 200).agent?.transcriptPath).toBeUndefined();
   });
+  it('says what a permission request asks to use until the tool runs, and nothing for its own question', () => {
+    const blocked = applyHook(started(), ev({ name: 'PermissionRequest', toolName: 'Bash', message: 'remove the build folder', askedFor: 'rm -rf build' }), 200);
+    expect(blocked.agent).toMatchObject({ status: 'blocked', prompt: 'remove the build folder', askedTool: 'Bash', askedFor: 'rm -rf build' });
+    expect(applyHook(blocked, ev({ name: 'PostToolUse', toolName: 'Bash' }), 300).agent).not.toHaveProperty('askedFor');
+    expect(applyHook(blocked, ev({ name: 'PreToolUse', toolName: 'request_user_input', message: 'Ship it?' }), 300).agent).not.toHaveProperty('askedFor');
+  });
   it('blocks on a permission request, clears on the next tool call, and is done only at the stop', () => {
     const blocked = applyHook(started(), ev({ name: 'PermissionRequest', message: 'remove the build folder' }), 200);
     expect(blocked.agent).toMatchObject({ status: 'blocked', prompt: 'remove the build folder' });
@@ -473,6 +494,7 @@ describe('applyHook for opencode', () => {
     // the permission is named, not the tool whose run follows the answer
     const named = applyHook(at('working'), ev({ name: 'PermissionRequest', toolName: 'external_directory' }), 5);
     expect(named.agent).not.toHaveProperty('askedTool');
+    expect(applyHook(at('working'), ev({ name: 'PermissionRequest', toolName: 'bash', askedFor: 'bash' }), 5).agent).not.toHaveProperty('askedFor');
     expect(applyHook(named, ev({ name: 'PostToolUse', toolName: 'read' }), 6).agent?.status).toBe('working');
     expect(applyHook(at('working'), ev({ name: 'Interrupt' }), 6).agent?.status).toBe('idle');
   });

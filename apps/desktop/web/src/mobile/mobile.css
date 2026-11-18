@@ -283,6 +283,10 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 }
 .ask p { flex: 1; min-width: 0; margin: 0; font-size: var(--text-md); color: var(--ink); }
 .ask .sheet-error { flex-basis: 100%; }
+.ask code {
+  flex-basis: 100%; min-width: 0; padding: var(--sp-xs) var(--sp-md); border-radius: var(--r-sm); background: var(--fill-1);
+  font: var(--text-sm)/var(--lh) var(--mono); color: var(--ink-2); overflow-wrap: anywhere;
+}
 .ask span { display: flex; gap: var(--sp-xs); }
 .ask button { min-height: 36px; padding: 0 var(--sp-xl); border-radius: var(--r-pill); background: var(--fill-2); }
 .ask button:first-child { background: var(--sand); color: var(--ink-sand); font-weight: var(--w-semibold); }

@@ -134,6 +134,17 @@ describe('pusher', () => {
     ]);
   });
 
+  it('says what a blocked agent asks to use, unless its prompt already says it', async () => {
+    const { store, sent } = setup();
+    store.update((d) => { d.robots.c.agent = { ...agent('blocked', 'Claude needs your permission to use Bash')!, promptId: 'q1', askedFor: 'npm test' }; });
+    store.update((d) => { d.robots.c.agent = { ...agent('blocked', 'rm -rf build')!, promptId: 'q2', askedFor: 'rm -rf build' }; });
+    await tick();
+    expect(sent.map((s) => s.payload)).toEqual([
+      { id: 'c', name: 'otter', status: 'blocked', prompt: 'Claude needs your permission to use Bash', promptId: 'q1', askedFor: 'npm test' },
+      { id: 'c', name: 'otter', status: 'blocked', prompt: 'rm -rf build', promptId: 'q2' },
+    ]);
+  });
+
   it('tells a device about the second terminal turning blocked, under the robot and marked as its own session', async () => {
     const { store, sent } = setup();
     store.update((d) => { d.robots.c.second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('blocked', 'Write?') }; });

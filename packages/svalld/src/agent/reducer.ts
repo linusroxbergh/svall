@@ -9,6 +9,8 @@ const BLOCKING = new Set(['permission_prompt', 'worker_permission_prompt', 'elic
 const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure']);
 const TOOL_ACTIVITY_MS = 10_000;
 
+const unask = (agent: Agent): void => { delete agent.askedTool; delete agent.askedFor; };
+
 export function settle(agent: Agent, status: Agent['status']): void {
   agent.status = status;
   delete agent.prompt;
@@ -141,11 +143,11 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     if (over) delete agent.asking;
     else if (agent.status === 'blocked' && e.name !== 'Notification' && !asksOwn) {
       if (stop) agent.background = true;
-      if ((e.name === 'PostToolUse' || e.name === 'PostToolUseFailure') && e.toolName === agent.askedTool) delete agent.askedTool;
+      if ((e.name === 'PostToolUse' || e.name === 'PostToolUseFailure') && e.toolName === agent.askedTool) unask(agent);
       return next;
     }
   }
-  if (e.name === 'UserPromptSubmit' || e.name === 'Stop' || e.name === 'StopFailure' || e.name === 'Interrupt') delete agent.askedTool;
+  if (e.name === 'UserPromptSubmit' || e.name === 'Stop' || e.name === 'StopFailure' || e.name === 'Interrupt') unask(agent);
   switch (e.name) {
     case 'UserPromptSubmit':
     case 'PreToolUse':
@@ -153,6 +155,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       if (e.name === 'PreToolUse' && e.backend === 'codex' && e.toolName === 'request_user_input') {
         ask();
         agent.askedTool = e.toolName;
+        delete agent.askedFor;
       } else {
         settle(agent, 'working');
       }
@@ -164,7 +167,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     case 'PostToolUseFailure': {
       const other = Boolean(agent.askedTool && e.toolName && e.toolName !== agent.askedTool);
       if (other && agent.status === 'blocked') break;
-      if (!other) delete agent.askedTool;
+      if (!other) unask(agent);
       settle(agent, 'working');
       next.unread = false;
       break;
@@ -192,7 +195,11 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     case 'PermissionRequest':
       if (e.backend !== 'claude') ask();
       // OpenCode names the permission, not the tool whose run answers
-      if (e.backend !== 'opencode') { if (e.toolName) agent.askedTool = e.toolName; else delete agent.askedTool; }
+      if (e.backend !== 'opencode') {
+        unask(agent);
+        if (e.toolName) agent.askedTool = e.toolName;
+        if (e.askedFor) agent.askedFor = e.askedFor;
+      }
       break;
     case 'Notification':
       if (e.notificationType && BLOCKING.has(e.notificationType)) ask();

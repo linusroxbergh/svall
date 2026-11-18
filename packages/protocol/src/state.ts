@@ -88,6 +88,8 @@ export const Agent = z.object({
   subagents: z.array(z.string()).optional(),
   // the tool the main thread last asked permission for, whose run alone answers the question
   askedTool: z.string().optional(),
+  // that request in a line: Bash's command, the file Edit, MultiEdit or Write changes, the URL WebFetch reads, or the tool's name
+  askedFor: z.string().optional(),
   // the newest prompt Claude Code accepted, from its UserPromptSubmit hook; the transcript lands after it, so the last
   // command reads this until then
   lastPrompt: z.object({ id: z.string(), text: z.string(), at: z.number() }).optional(),

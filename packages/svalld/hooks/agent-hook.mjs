@@ -28,8 +28,8 @@ safety.unref();
 
 const WAITS = new Set(['SessionStart', 'UserPromptSubmit']);
 
-// only what the daemon reads: a whole payload carries tool_input, which can run past the receiver's line limit
-const KEEP = ['hook_event_name', 'agent_id', 'session_id', 'transcript_path', 'notification_type', 'message', 'background_tasks', 'cwd', 'model', 'prompt', 'prompt_id', 'turn_id', 'tool_name', 'task_id'];
+// only what the daemon reads: a whole tool_input can run past the receiver's line limit, so asks keeps a little of it
+const KEEP = ['hook_event_name', 'agent_id', 'session_id', 'transcript_path', 'notification_type', 'message', 'background_tasks', 'cwd', 'model', 'prompt', 'prompt_id', 'turn_id', 'tool_name', 'task_id', 'tool_input'];
 // a pasted prompt runs to megabytes; only its head is ever shown, and the whole line must stay under the limit
 const clip = (k, v) => (k === 'prompt' && typeof v === 'string' ? v.slice(0, 4000) : v);
 const fields = (h) => Object.fromEntries(KEEP.filter((k) => h[k] !== undefined).map((k) => [k, clip(k, h[k])]));
@@ -47,6 +47,16 @@ const failed = (h) => {
   if (h.hook_event_name !== 'StopFailure' || h.message) return h;
   const text = h.last_assistant_message || h.error;
   return typeof text === 'string' && text ? { ...h, message: text.slice(0, 500) } : h;
+};
+// a permission request keeps of its input only the command, file or URL it asks to use, clipped; any other event none of it
+const ASKS = ['command', 'file_path', 'url'];
+const asks = (h) => {
+  const { tool_input: input, ...rest } = h;
+  const kept = h.hook_event_name !== 'PermissionRequest' ? [] : ASKS.flatMap((k) => {
+    const v = Array.isArray(input?.[k]) ? input[k].join(' ') : input?.[k];
+    return typeof v === 'string' && v ? [[k, v.slice(0, 500)]] : [];
+  });
+  return kept.length ? { ...rest, tool_input: Object.fromEntries(kept) } : rest;
 };
 // a Monitor's task is listed at Stop as a shell like any other, so the id it started is what tells them apart
 const monitored = (h) => (h.hook_event_name === 'PostToolUse' && h.tool_name === 'Monitor' && typeof h.tool_response?.taskId === 'string'
@@ -77,7 +87,7 @@ function send(hook, tries) {
     else { safety.refresh(); setTimeout(() => send(hook, tries + 1), RETRY_MS); }
   });
   sock.on('connect', () => {
-    sock.write(JSON.stringify({ robotId, term, backend, pid, hook: fields(monitored(failed(asked(hook)))) }) + '\n');
+    sock.write(JSON.stringify({ robotId, term, backend, pid, hook: fields(asks(monitored(failed(asked(hook))))) }) + '\n');
     // the exit waits for the write to drain, or a large payload is truncated mid-line and dropped
     if (!WAITS.has(hook.hook_event_name)) { sock.end(done); return; }
     let buf = '';

@@ -42,6 +42,8 @@ export type HookEvent = {
   // the subagent the event came from, or the one any agent says started or stopped
   agentId?: string;
   toolName?: string;
+  // a permission request in a line, as Agent.askedFor holds it
+  askedFor?: string;
   cwd?: string;
   // 2 when the event comes from the robot's second terminal
   term?: 2;
@@ -135,6 +137,17 @@ export function normalizeStatus(raw: unknown): StatusEvent | undefined {
   return ev;
 }
 
+// the input field that says what a tool asks to use; any other tool is named. A question asks to use nothing
+const ASKED_BY = new Map([['Bash', 'command'], ['Edit', 'file_path'], ['MultiEdit', 'file_path'], ['Write', 'file_path'], ['WebFetch', 'url']]);
+const MAX_ASKED = 200;
+const askedFor = (tool: string, input: unknown): string | undefined => {
+  if (tool === 'AskUserQuestion') return undefined;
+  const field = ASKED_BY.get(tool);
+  const given = field && input && typeof input === 'object' ? str((input as Record<string, unknown>)[field]) : undefined;
+  const line = given?.replace(/\s+/g, ' ').trim() || tool;
+  return line.length > MAX_ASKED ? `${line.slice(0, MAX_ASKED - 1)}…` : line;
+};
+
 // the events kept from a subagent, named by it: those that ask, and answer, its own question. A Codex subagent shares
 // its parent's session and dialog
 const FROM_SUBAGENT: Record<AgentKind, Set<unknown>> = {
@@ -179,6 +192,8 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   if (model) ev.model = model.slice(0, 100);
   const toolName = str(h.tool_name);
   if (toolName) ev.toolName = toolName.slice(0, 200);
+  const asked = ev.name === 'PermissionRequest' && ev.toolName ? askedFor(ev.toolName, h.tool_input) : undefined;
+  if (asked) ev.askedFor = asked;
   if (tasks !== undefined) ev.backgroundTasks = tasks;
   if (agents !== undefined) ev.backgroundAgents = agents;
   const agentIds = taskIds(h.background_tasks, AGENT_TASKS);
