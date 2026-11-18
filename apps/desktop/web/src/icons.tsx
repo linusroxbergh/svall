@@ -61,8 +61,19 @@ export const Reset = ({ size }: Props) => (
   <Svg grid={12} size={size}><path d="M2.25 6.3A3.75 3.75 0 1 0 6 2.55a3.75 3.75 0 0 0-2.87 1.34M2.96 1.9l.17 1.99 1.99-.17" /></Svg>
 );
 
-// a hooked arrow: back to where a walk started, or the Return key
+// a hooked arrow: back to where a walk started
 export const Return = ({ size }: Props) => <Svg grid={12} size={size}><path d="M4.5 2 2 4.5 4.5 7M2 4.5h5.25a2.75 2.75 0 0 1 0 5.5H6" /></Svg>;
+
+// a terminal's Return, Tab and Shift-Tab keys
+export const Enter = ({ size }: Props) => <Svg grid={12} size={size}><path d="M9.5 2.5v3.5a1.5 1.5 0 0 1-1.5 1.5H2.5M4.75 5.25 2.5 7.5l2.25 2.25" /></Svg>;
+
+export const Tab = ({ size }: Props) => <Svg grid={12} size={size}><path d="M1.5 6h7M6.25 3.75 8.5 6 6.25 8.25M10.5 3v6" /></Svg>;
+
+export const ShiftTab = ({ size }: Props) => <Svg grid={12} size={size}><path d="M10.5 6h-7M5.75 3.75 3.5 6l2.25 2.25M1.5 3v6" /></Svg>;
+
+export const Keyboard = ({ size }: Props) => (
+  <Svg grid={12} size={size}><rect x="1.25" y="3" width="9.5" height="6.5" rx="1.25" /><path d="M3.5 5h.01M5.25 5h.01M7 5h.01M8.75 5h.01M4 7.5h4" /></Svg>
+);
 
 export const Arrow = ({ dir, size }: Props & { dir: 'up' | 'down' }) => (
   <Svg grid={12} size={size}><path d={dir === 'up' ? 'M6 9.5v-7M2.75 5.75 6 2.5l3.25 3.25' : 'M6 2.5v7M2.75 6.25 6 9.5l3.25-3.25'} /></Svg>

@@ -334,8 +334,9 @@ and `input` are ignored.
 - Open the link on your phone, then choose Share → Add to Home Screen. You get
   every island and robot as a list, starred ones first, and a
   robot's terminal full screen with Esc, Tab, Shift-Tab, Ctrl-C, arrows and
-  Return above the keyboard; `⋯` lists the agent's other keys and slash
-  commands. A prompt typed under the list starts a mission control robot on
+  Return above a prompt field; `⋯` lists the agent's other keys and slash
+  commands, and the empty field's keyboard button types straight into the
+  terminal. A prompt typed under the list starts a mission control robot on
   it, as Cmd+G does on the Mac, and the island's `…` has its buttons.
 - `⚙` → *Notify this phone* sends a push when an agent is blocked or done. Tap
   a blocked one to approve or deny it.
