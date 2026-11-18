@@ -160,8 +160,13 @@ describe('applyHook', () => {
     // the next request says its own, or nothing
     expect(applyHook(asked, ev('PermissionRequest', { toolName: 'Write', askedFor: '/r/a.ts' }), 3).agent?.askedFor).toBe('/r/a.ts');
     expect(applyHook(asked, ev('PermissionRequest', { toolName: 'AskUserQuestion' }), 3).agent).not.toHaveProperty('askedFor');
-    // a subagent's request leaves the main thread's alone
-    expect(applyHook(asked, ev('PermissionRequest', { agentId: 'a1', toolName: 'Edit', askedFor: '/r/b.ts' }), 3).agent?.askedFor).toBe('npm test');
+    // a subagent's request leaves the main thread's alone, but the notification that follows may be the subagent's
+    const sub = applyHook(asked, ev('PermissionRequest', { agentId: 'a1', toolName: 'Edit', askedFor: '/r/b.ts' }), 3);
+    expect(sub.agent?.askedFor).toBe('npm test');
+    expect(applyHook(sub, ev('Notification', { notificationType: 'permission_prompt', message: 'Claude needs your permission to use Edit' }), 4).agent)
+      .toMatchObject({ status: 'blocked', prompt: 'Claude needs your permission to use Edit', askedTool: 'Bash' });
+    expect(applyHook(sub, ev('Notification', { notificationType: 'permission_prompt' }), 4).agent).not.toHaveProperty('askedFor');
+    expect(applyHook(asked, ev('Notification', { notificationType: 'worker_permission_prompt' }), 4).agent).not.toHaveProperty('askedFor');
   });
   it('gives each blocking question an id of its own, and drops it once the agent moves on', () => {
     const ask = (c: Robot) => applyHook(c, { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt' }, 1);
@@ -448,6 +453,10 @@ describe('applyHook for codex', () => {
     expect(blocked.agent).toMatchObject({ status: 'blocked', prompt: 'remove the build folder', askedTool: 'Bash', askedFor: 'rm -rf build' });
     expect(applyHook(blocked, ev({ name: 'PostToolUse', toolName: 'Bash' }), 300).agent).not.toHaveProperty('askedFor');
     expect(applyHook(blocked, ev({ name: 'PreToolUse', toolName: 'request_user_input', message: 'Ship it?' }), 300).agent).not.toHaveProperty('askedFor');
+    // a subagent's request is put in its own words, and says what it asks to use or nothing
+    const sub = (askedFor?: string) => applyHook(blocked, ev({ name: 'PermissionRequest', agentId: 'a1', toolName: 'Bash', message: 'push it', ...(askedFor && { askedFor }) }), 300).agent;
+    expect(sub('git push -f')).toMatchObject({ status: 'blocked', prompt: 'push it', askedTool: 'Bash', askedFor: 'git push -f' });
+    expect(sub()).not.toHaveProperty('askedFor');
   });
   it('blocks on a permission request, clears on the next tool call, and is done only at the stop', () => {
     const blocked = applyHook(started(), ev({ name: 'PermissionRequest', message: 'remove the build folder' }), 200);

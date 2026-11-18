@@ -102,6 +102,15 @@ describe('normalizeHook', () => {
     expect(asks('AskUserQuestion', { questions: [] })).toBeUndefined();
     expect(asks('Bash', { command: 'ls' }, 'PreToolUse')).toBeUndefined();
     expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'PermissionRequest', tool_input: { command: 'ls' } } })?.askedFor).toBeUndefined();
+    expect(asks('Bash', { command: 'curl -H "Authorization: Bearer ghp_0123456789abcdefABCD" https://api.github.com' })).toBe('curl -H "Authorization: Bearer [redacted]" https://api.github.com');
+  });
+  it('leaves out what a codex request asks to use when its prompt is already that, however it is spaced', () => {
+    const asks = (backend: string, message: string, command: string) =>
+      normalizeHook({ robotId: 'c_1', backend, hook: { hook_event_name: 'PermissionRequest', tool_name: 'Bash', message, tool_input: { command } } })?.askedFor;
+    for (const command of ['ls', 'cd app &&\n  npm test\n', 'x'.repeat(500)]) expect(asks('codex', command, command)).toBeUndefined();
+    expect(asks('codex', 'remove the build folder', 'rm -rf build')).toBe('rm -rf build');
+    // Claude Code's prompt comes with its notification, so the request's own message is never shown
+    expect(asks('claude', 'ls', 'ls')).toBe('ls');
   });
   it('names no subagent on a main-thread event', () => {
     expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'PermissionRequest' } })?.agentId).toBeUndefined();

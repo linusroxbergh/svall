@@ -3,6 +3,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { AgentKind, isSessionId } from '@svall/protocol';
 import type { Logger } from '../log.js';
+import { redact } from '../retro/redact.js';
 
 // StopFailure ends a turn an API error cut short; PermissionRequest and Subagent* only say which subagent asked, started or
 // is gone. A tool that has run, or failed, was answered if it asked, the first word that a picked choice gives
@@ -140,12 +141,16 @@ export function normalizeStatus(raw: unknown): StatusEvent | undefined {
 // the input field that says what a tool asks to use; any other tool is named. A question asks to use nothing
 const ASKED_BY = new Map([['Bash', 'command'], ['Edit', 'file_path'], ['MultiEdit', 'file_path'], ['Write', 'file_path'], ['WebFetch', 'url']]);
 const MAX_ASKED = 200;
+// redacted, as a phone's lock screen shows it
+const oneLine = (s: string): string => {
+  const line = redact(s).replace(/\s+/g, ' ').trim();
+  return line.length > MAX_ASKED ? `${line.slice(0, MAX_ASKED - 1)}…` : line;
+};
 const askedFor = (tool: string, input: unknown): string | undefined => {
   if (tool === 'AskUserQuestion') return undefined;
   const field = ASKED_BY.get(tool);
   const given = field && input && typeof input === 'object' ? str((input as Record<string, unknown>)[field]) : undefined;
-  const line = given?.replace(/\s+/g, ' ').trim() || tool;
-  return line.length > MAX_ASKED ? `${line.slice(0, MAX_ASKED - 1)}…` : line;
+  return (given && oneLine(given)) || oneLine(tool);
 };
 
 // the events kept from a subagent, named by it: those that ask, and answer, its own question. A Codex subagent shares
@@ -193,7 +198,8 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   const toolName = str(h.tool_name);
   if (toolName) ev.toolName = toolName.slice(0, 200);
   const asked = ev.name === 'PermissionRequest' && ev.toolName ? askedFor(ev.toolName, h.tool_input) : undefined;
-  if (asked) ev.askedFor = asked;
+  // Codex's request is its prompt, which is the command when it gives no description
+  if (asked && !(kind.data !== 'claude' && ev.message && oneLine(ev.message) === asked)) ev.askedFor = asked;
   if (tasks !== undefined) ev.backgroundTasks = tasks;
   if (agents !== undefined) ev.backgroundAgents = agents;
   const agentIds = taskIds(h.background_tasks, AGENT_TASKS);
