@@ -32,14 +32,14 @@ vi.mock('@xterm/xterm', () => ({
     buffer = { active: { type: 'alternate' } };
     modes = { mouseTrackingMode: 'any' };
     element = document.createElement('div');
-    textarea = this.element.appendChild(document.createElement('textarea'));
+    textarea!: HTMLTextAreaElement;
     typed: (d: string) => void = () => {};
     painted: string[] = [];
     constructor() { xterm = this; }
     reset(): void { this.painted = []; }
     write(d: string): void { this.painted.push(d); }
     loadAddon(): void {}
-    open(host: HTMLElement): void { host.append(this.element); }
+    open(host: HTMLElement): void { host.append(this.element); this.textarea = this.element.appendChild(document.createElement('textarea')); }
     onData(h: (d: string) => void): void { this.typed = h; }
     scrollLines(): void {}
     scrollToBottom(): void {}
@@ -338,8 +338,9 @@ test('the key row and the terminal\'s size go nowhere while its worker is away, 
   fireEvent.click(more);
   fireEvent.click(screen.getByRole('button', { name: 'Larger text' }));
   expect(resize).toHaveBeenCalledTimes(1);
-  // a shell's sheet has the terminal keys alone; one sends and the sheet goes
+  // a shell's sheet has the terminal keys alone; one sends, keeping the keyboard up, and the sheet goes
   expect(screen.queryByText('Claude Code')).toBeNull();
+  expect(fireEvent.mouseDown(screen.getByRole('button', { name: /clear the screen/ }))).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: /clear the screen/ }));
   expect(input).toHaveBeenCalledWith('\x0c');
   expect(screen.queryByRole('dialog', { name: 'Keys' })).toBeNull();
@@ -354,17 +355,49 @@ test('a tap on the terminal raises no keyboard; the keyboard button types into i
   fireEvent.change(screen.getByRole('textbox', { name: 'Prompt' }), { target: { value: '' } });
   expect(screen.queryByRole('button', { name: 'send' })).toBeNull();
 
+  // a tap on the terminal focused its textarea; the keyboard button focuses it again inside its own tap
+  xterm.textarea.focus();
+  const focused = vi.fn();
+  xterm.textarea.addEventListener('focus', focused);
   fireEvent.click(screen.getByRole('button', { name: 'Type into the terminal' }));
+  expect(focused).toHaveBeenCalledTimes(1);
   expect(xterm.textarea.getAttribute('inputmode')).toBe('text');
   expect(document.activeElement).toBe(xterm.textarea);
   expect(screen.getByText('typing into the terminal')).toBeTruthy();
   expect(screen.queryByRole('textbox', { name: 'Prompt' })).toBeNull();
   // a key pressed keeps the focus, so the keyboard stays up
   expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'esc' }))).toBe(false);
+  expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'More keys' }))).toBe(false);
 
-  fireEvent.click(screen.getByRole('button', { name: 'done' }));
+  const done = screen.getByRole('button', { name: 'Done typing into the terminal' });
+  expect(fireEvent.mouseDown(done)).toBe(false);
+  fireEvent.click(done);
   expect(xterm.textarea.getAttribute('inputmode')).toBe('none');
   expect(screen.getByRole('textbox', { name: 'Prompt' })).toBeTruthy();
+});
+
+test('typing into the terminal ends when its worker goes out of reach', () => {
+  store.getState().setFleet(onVault(true));
+  render(<RobotView id="c2" onBack={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Type into the terminal' }));
+  act(() => store.getState().setFleet(onVault(false)));
+  expect(xterm.textarea.getAttribute('inputmode')).toBe('none');
+  expect(screen.getByRole('textbox', { name: 'Prompt' })).toBeTruthy();
+});
+
+test('a prompt the fleet refuses while typing into the terminal is fitted to its field when the field is back', async () => {
+  store.getState().setFleet(fleet());
+  let refuse!: (e: Error) => void;
+  call.mockImplementationOnce(() => new Promise((_, reject) => { refuse = reject; }));
+  render(<RobotView id="c2" onBack={() => {}} />);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Prompt' }), { target: { value: 'a\nb\nc' } });
+  fireEvent.click(screen.getByRole('button', { name: 'send' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Type into the terminal' }));
+  await act(async () => refuse(new Error('svalld offline')));
+  fireEvent.click(screen.getByRole('button', { name: 'Done typing into the terminal' }));
+  const field = screen.getByRole('textbox', { name: 'Prompt' }) as HTMLTextAreaElement;
+  expect(field.value).toBe('a\nb\nc');
+  expect(field.style.height).not.toBe('');
 });
 
 test('the phone names the upgrade over a placed robot\'s terminal while its worker runs another build', () => {

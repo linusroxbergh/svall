@@ -4,6 +4,9 @@ import { AGENT_LABEL } from '@svall/protocol';
 export type Key = { label: string; seq: string; hint?: string };
 export type KeyGroup = { title: string; keys: Key[] };
 
+/** A key's mousedown: the tap leaves the focus, and so the keyboard, with whichever field has it. */
+export const keepFocus = (e: { preventDefault(): void }): void => e.preventDefault();
+
 /** The row under the terminal: what an agent's TUI asks for most, in the order a thumb reaches them. */
 export const KEY_ROW: Key[] = [
   { label: 'esc', seq: '\x1b' }, { label: 'tab', seq: '\t' }, { label: '⇧tab', seq: '\x1b[Z' }, { label: '^C', seq: '\x03' },

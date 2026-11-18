@@ -8,7 +8,7 @@ import { awayLine, elsewhere } from '../placement.js';
 import { statusOf } from '../selectors.js';
 import { phone } from './boot.js';
 import { readDraft, writeDraft } from './draft.js';
-import { KEY_ROW } from './keys.js';
+import { KEY_ROW, keepFocus } from './keys.js';
 import { KeysSheet } from './KeysSheet.js';
 import { RobotMenu } from './RobotMenu.js';
 import { statusLabel } from './list.js';
@@ -22,9 +22,6 @@ const FACE: Record<string, [ReactNode, string]> = {
   '↑': [<Arrow dir="up" size="md" />, 'Up'], '↓': [<Arrow dir="down" size="md" />, 'Down'],
   '⌫': [<Backspace size="md" />, 'Backspace'], '↩': [<Enter size="md" />, 'Return'],
 };
-
-// a key tapped keeps the keyboard up for whichever field has it
-const keepFocus = (e: { preventDefault(): void }) => e.preventDefault();
 
 const SIZES = [9, 10, 11, 13];
 const SIZE_KEY = 'svall.mobile.fontSize';
@@ -135,6 +132,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     observer.observe(host.current!);
     return () => {
       input?.removeEventListener('blur', endRaw);
+      setRaw(false);
       stopScroll();
       stopHold();
       observer.disconnect();
@@ -157,6 +155,8 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   // Safari drops the socket on lock and discards backgrounded tabs; every return repaints the pane. A worker out of
   // reach shows the last screen the home saw of the pane, and the terminal opens once it is back
   const away = !!unreachable;
+  // a worker out of reach takes no keys, so typing into its terminal ends
+  useEffect(() => { if (away) xterm.current?.textarea?.blur(); }, [away]);
   // the machine the terminal was last opened on
   const openedOn = useRef(robot?.machine);
   useEffect(() => {
@@ -217,11 +217,13 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
 
   const key = (seq: string) => { setFrozen(undefined); xterm.current?.scrollToBottom(); link.current?.input(seq); };
 
-  // iOS raises the keyboard only for a focus made inside the tap
+  // iOS raises the keyboard only for a focus made inside the tap, and a tap on the terminal may have focused the
+  // textarea already, so it is blurred first
   const typeRaw = () => {
     const input = xterm.current?.textarea;
     if (!input) return;
     setFrozen(undefined);
+    input.blur();
     input.setAttribute('inputmode', 'text');
     setRaw(true);
     input.focus();
@@ -303,17 +305,17 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
         )}
         <div className="keys">
           {KEY_ROW.map((k) => (
-            <button key={k.label} type="button" className={FACE[k.label] ? 'glyph' : undefined} aria-label={FACE[k.label]?.[1]} disabled={away}
+            <button key={k.label} type="button" aria-label={FACE[k.label]?.[1]} disabled={away}
               onMouseDown={keepFocus} onClick={() => key(k.seq)}>{FACE[k.label]?.[0] ?? k.label}</button>
           ))}
-          <button type="button" className="more" aria-label="More keys" aria-haspopup="dialog" disabled={away} onClick={() => setKeys(true)}><More size="lg" /></button>
+          <button type="button" className="more" aria-label="More keys" aria-haspopup="dialog" disabled={away} onMouseDown={keepFocus} onClick={() => setKeys(true)}><More size="lg" /></button>
         </div>
         {sendError && <p className="sheet-error">{sendError}</p>}
         <form className="pill" data-raw={raw || undefined} onSubmit={(e) => { e.preventDefault(); send(); }}>
           {raw ? (
             <>
               <p>typing into the terminal</p>
-              <button type="button" className="done" onMouseDown={keepFocus} onClick={() => xterm.current?.textarea?.blur()}>done</button>
+              <button type="button" className="done" aria-label="Done typing into the terminal" onMouseDown={keepFocus} onClick={() => xterm.current?.textarea?.blur()}>done</button>
             </>
           ) : (
             <>
