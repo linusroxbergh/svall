@@ -532,7 +532,7 @@ test('a URL tapped on the terminal opens in a new tab with no hold on the page',
   render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   const opened = vi.spyOn(window, 'open').mockReturnValue(null);
   openLink(new MouseEvent('mouseup'), 'https://svall.dev/a');
-  expect(opened).toHaveBeenCalledWith('https://svall.dev/a', '_blank', 'noopener');
+  expect(opened).toHaveBeenCalledWith('https://svall.dev/a', '_blank', 'noopener,noreferrer');
   opened.mockRestore();
 });
 
@@ -553,8 +553,8 @@ test('the long-press text links its URLs, a wrapped one on each of its rows, but
   const links = [...text.querySelectorAll('a')];
   expect(text.textContent).toBe('PR https://github.com/o/r\n/pull/7 is up');
   expect(links.map((a) => [a.textContent, a.getAttribute('href'), a.target, a.rel])).toEqual([
-    ['https://github.com/o/r', 'https://github.com/o/r/pull/7', '_blank', 'noopener'],
-    ['/pull/7', 'https://github.com/o/r/pull/7', '_blank', 'noopener'],
+    ['https://github.com/o/r', 'https://github.com/o/r/pull/7', '_blank', 'noreferrer'],
+    ['/pull/7', 'https://github.com/o/r/pull/7', '_blank', 'noreferrer'],
   ]);
   const prevented: boolean[] = [];
   const record = (e: Event) => { prevented.push(e.defaultPrevented); e.preventDefault(); };

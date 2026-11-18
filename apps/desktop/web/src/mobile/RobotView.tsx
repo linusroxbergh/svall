@@ -93,7 +93,7 @@ export function RobotView({ id, onBack, onNext }: { id: string; onBack(): void; 
     const term = new Xterm({ fontSize: sizeRef.current, fontFamily: FONT, theme: theme(), cursorBlink: true, scrollback: 4000 });
     const fit = new FitAddon();
     term.loadAddon(fit);
-    term.loadAddon(new WebLinksAddon((_, uri) => window.open(uri, '_blank', 'noopener')));
+    term.loadAddon(new WebLinksAddon((_, uri) => window.open(uri, '_blank', 'noopener,noreferrer')));
     term.open(host.current!);
     xterm.current = term;
     // a tap on the terminal raises no keyboard: text goes through the composer, or here once raw typing is on
@@ -290,7 +290,7 @@ export function RobotView({ id, onBack, onNext }: { id: string; onBack(): void; 
           <>
             <pre className="frozen" ref={frozenText} style={frozen.style} data-testid="phone-select"
               onTouchStart={() => { touchedFrozen.current = true; }} onClick={(e) => { if (!touchedFrozen.current) e.preventDefault(); }}>
-              {frozen.text.map((p, i) => (typeof p === 'string' ? p : <a key={i} href={p.href} target="_blank" rel="noopener">{p.text}</a>))}
+              {frozen.text.map((p, i) => (typeof p === 'string' ? p : <a key={i} href={p.href} target="_blank" rel="noreferrer">{p.text}</a>))}
             </pre>
             <button type="button" className="frozen-done" onClick={() => setFrozen(undefined)}>done</button>
           </>

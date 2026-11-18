@@ -143,6 +143,9 @@ describe('phone fleet list', () => {
     expect(subtitle(asking, true)).toBe('Allow Bash: · rm -rf dist?');
     expect(subtitle({ ...asking, agent: { ...asking.agent!, prompt: undefined } }, true)).toBe('fix the login');
     expect(subtitle(asking)).toBe('fix the login');
+    const stale = { ...asking.agent!, status: 'done' as const, prompt: 'API Error: overloaded' };
+    const second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, agent: { ...asking.agent!, prompt: 'Allow Edit?' }, unread: false };
+    expect(subtitle({ ...asking, agent: stale, second }, true)).toBe('Allow Edit?');
   });
 
   it('finds the next robot waiting on the user in the list\'s order, coming round from the top, and none when only this one waits', () => {
@@ -163,6 +166,13 @@ describe('phone fleet list', () => {
     const alone = fleet();
     alone.robots.c3 = chr('c3', 'i_a', { x: 2, y: 1 }, { agent: agent('blocked') });
     expect(nextWaiting(alone, 'c3')).toBeUndefined();
+    // unread in one terminal while the other works still counts as waiting, as in the list's count
+    const both = fleet();
+    both.robots.c3 = alone.robots.c3;
+    both.robots.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { agent: agent('done'), unread: true,
+      second: { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, agent: { ...agent('done'), status: 'working' }, unread: false } });
+    expect(waiting(both)).toBe(2);
+    expect(nextWaiting(both, 'c3')?.id).toBe('c0');
   });
 });
 
