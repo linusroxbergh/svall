@@ -57,6 +57,6 @@ export const owedTo = (f: Pick<FleetState, 'robots'>, c: Robot): Robot | undefin
 /** The agent a robot's main terminal shows: one whose robot messages wait on the user asks the user, unless its agent asks first. */
 export const shownAgent = (c: Robot): Agent | undefined => {
   if (!c.relayed?.held || !c.agent || c.agent.status === 'blocked') return c.agent;
-  const { askedTool: _, ...agent } = c.agent;
+  const { askedTool: _, askedFor: __, ...agent } = c.agent;
   return { ...agent, status: 'blocked', prompt: `${c.relayed.n} robot messages since your last prompt; let robots carry on?`, promptId: c.relayed.held };
 };

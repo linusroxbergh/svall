@@ -456,8 +456,8 @@ send:
   configuration with only the keys you tick, over ssh to the Linux machine you
   added.
 - Push notifications go through your phone's push service: Apple's, Google's
-  or Mozilla's. The robot's name and prompt, and how many robots need you, are
-  encrypted for your phone;
+  or Mozilla's. The robot's name and prompt, the command, file or URL a blocked
+  agent asks to use, and how many robots need you, are encrypted for your phone;
   the service sees when a push is sent, and the page's address unless
   `mobile.pushContact` names another contact.
 

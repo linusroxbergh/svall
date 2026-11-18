@@ -43,7 +43,7 @@ self.addEventListener('fetch', (e) => {
 // a notification replaces only the one before it from the same session, so two terminals do not hide each other
 const tagOf = (p) => (p.term ? `${p.id}-${p.term}` : p.id);
 
-// the daemon sends { id, name, status, term?, prompt?, promptId? }; iOS shows no action buttons, the page has its own
+// the daemon sends { id, name, status, term?, prompt?, askedFor?, promptId? }; iOS shows no action buttons, the page has its own
 self.addEventListener('push', (e) => {
   let p = {};
   try { p = e.data ? e.data.json() : {}; } catch { /* not ours */ }
@@ -52,7 +52,7 @@ self.addEventListener('push', (e) => {
   const blocked = p.status === 'blocked';
   const name = p.name || 'Agent';
   e.waitUntil(self.registration.showNotification(blocked ? `${name} needs you` : `${name} is done`, {
-    body: p.prompt || '',
+    body: [p.prompt, p.askedFor].filter(Boolean).join('\n'),
     tag: tagOf(p),
     renotify: true,
     data: p,

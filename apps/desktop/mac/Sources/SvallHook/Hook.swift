@@ -2,13 +2,14 @@ import Darwin
 
 // MARK: agent-hook.mjs
 
-let KEEP = ["hook_event_name", "agent_id", "session_id", "transcript_path", "notification_type", "message", "background_tasks", "cwd", "model", "prompt", "prompt_id", "turn_id", "tool_name", "task_id"]
+let KEEP = ["hook_event_name", "agent_id", "session_id", "transcript_path", "notification_type", "message", "background_tasks", "cwd", "model", "prompt", "prompt_id", "turn_id", "tool_name", "task_id", "tool_input"]
+let ASKS = ["command", "file_path", "url"]
 let WAITS = [text("SessionStart"), text("UserPromptSubmit")]
 let ONCE = [text("PreToolUse"), text("PostToolUse"), text("PostToolUseFailure")]
 let RETRIES = 8
 // all hookLine reads of a payload; the rest, a tool's response above all, is only read through
 let READ = Keep.only(Dictionary(uniqueKeysWithValues: (KEEP + ["last_assistant_message", "error"]).map { ($0, Keep.all) }).merging([
-    "tool_input": .only(["description": .all, "command": .all, "questions": .all]),
+    "tool_input": .only(["description": .all, "command": .all, "questions": .all, "file_path": .all, "url": .all]),
     "tool_response": .only(["taskId": .all]),
 ]) { $1 })
 
@@ -47,9 +48,16 @@ func hookLine(_ h: JSON, robotId: Text, term: Bool, backend: String, pid: Double
     if event == text("PostToolUse") && h["tool_name"]?.string == text("Monitor"), case .string? = h["tool_response"]?["taskId"] {
         taskId = h["tool_response"]?["taskId"]
     }
+    // a permission request keeps of its input only the command, file or URL it asks to use, clipped; any other event none of it
+    var asks: [(key: Text, value: JSON)] = []
+    for k in ASKS where event == text("PermissionRequest") {
+        var v = h["tool_input"]?[k]
+        if case .array(let items)? = v { v = .string(join(items, " ")) }
+        if let s = v?.string, !s.isEmpty { asks.append((text(k), .string(Array(s.prefix(500))))) }
+    }
     var hook: [(key: Text, value: JSON)] = []
     for k in KEEP {
-        guard var v = k == "message" ? message : k == "task_id" ? taskId : h[k] else { continue }
+        guard var v = k == "message" ? message : k == "task_id" ? taskId : k == "tool_input" ? (asks.isEmpty ? nil : .object(asks)) : h[k] else { continue }
         if k == "prompt", case .string(let s) = v { v = .string(Array(s.prefix(4000))) }
         hook.append((text(k), v))
     }

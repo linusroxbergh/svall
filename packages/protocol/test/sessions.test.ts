@@ -47,7 +47,9 @@ describe('sessions', () => {
     expect(shownAgent(robot('a', { agent: agent('idle'), relayed: { n: 3 } }))).toEqual(agent('idle'));
     // the agent's own question comes first, and the held one takes no dialog of the agent's with it
     expect(shownAgent(robot('a', { agent: agent('blocked', { promptId: 'q1' }), relayed: { n: 200, held: 'h1' } }))).toEqual(agent('blocked', { promptId: 'q1' }));
-    expect(shownAgent(robot('a', { agent: agent('idle', { askedTool: 'AskUserQuestion' }), relayed: { n: 200, held: 'h1' } }))?.askedTool).toBeUndefined();
+    const held = shownAgent(robot('a', { agent: agent('idle', { askedTool: 'Bash', askedFor: 'npm test' }), relayed: { n: 200, held: 'h1' } }));
+    expect(held).not.toHaveProperty('askedTool');
+    expect(held).not.toHaveProperty('askedFor');
   });
 
   it('counts the held question going as news only when the agent behind it asks', () => {

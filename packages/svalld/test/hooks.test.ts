@@ -85,6 +85,33 @@ describe('normalizeHook', () => {
     expect(sub({ hook_event_name: 'UserPromptSubmit', prompt: 'p', prompt_id: 'p1' })).toBeUndefined();
     expect(sub({ hook_event_name: 'PreToolUse', agent_id: 'x'.repeat(300) })).toBeUndefined();
   });
+  it('says in a line what a permission request asks to use: a command, a file or a URL, or else the tool', () => {
+    const asks = (tool_name: string, tool_input?: unknown, hook_event_name = 'PermissionRequest') =>
+      normalizeHook({ robotId: 'c_1', hook: { hook_event_name, tool_name, tool_input } })?.askedFor;
+    expect(asks('Bash', { command: 'npm test', description: 'run the tests' })).toBe('npm test');
+    expect(asks('Bash', { command: "cat > a <<'EOF'\n  one\n\ttwo\nEOF\n" })).toBe("cat > a <<'EOF' one two EOF");
+    for (const tool of ['Edit', 'MultiEdit', 'Write']) expect(asks(tool, { file_path: '/r/a.ts', content: 'x' })).toBe('/r/a.ts');
+    expect(asks('WebFetch', { url: 'https://svall.dev', prompt: 'read it' })).toBe('https://svall.dev');
+    expect(asks('mcp__github__merge', { command: 'not this' })).toBe('mcp__github__merge');
+    expect(asks('Bash', { command: ' ' })).toBe('Bash');
+    expect(asks('Bash', 'str')).toBe('Bash');
+    expect(asks('constructor', {})).toBe('constructor');
+    const long = asks('Bash', { command: 'x'.repeat(500) });
+    expect(long).toHaveLength(200);
+    expect(long?.endsWith('x…')).toBe(true);
+    expect(asks('AskUserQuestion', { questions: [] })).toBeUndefined();
+    expect(asks('Bash', { command: 'ls' }, 'PreToolUse')).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'PermissionRequest', tool_input: { command: 'ls' } } })?.askedFor).toBeUndefined();
+    expect(asks('Bash', { command: 'curl -H "Authorization: Bearer ghp_0123456789abcdefABCD" https://api.github.com' })).toBe('curl -H "Authorization: Bearer [redacted]" https://api.github.com');
+  });
+  it('leaves out what a codex request asks to use when its prompt is already that, however it is spaced', () => {
+    const asks = (backend: string, message: string, command: string) =>
+      normalizeHook({ robotId: 'c_1', backend, hook: { hook_event_name: 'PermissionRequest', tool_name: 'Bash', message, tool_input: { command } } })?.askedFor;
+    for (const command of ['ls', 'cd app &&\n  npm test\n', 'x'.repeat(500)]) expect(asks('codex', command, command)).toBeUndefined();
+    expect(asks('codex', 'remove the build folder', 'rm -rf build')).toBe('rm -rf build');
+    // Claude Code's prompt comes with its notification, so the request's own message is never shown
+    expect(asks('claude', 'ls', 'ls')).toBe('ls');
+  });
   it('names no subagent on a main-thread event', () => {
     expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'PermissionRequest' } })?.agentId).toBeUndefined();
     expect(normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'PreToolUse' } })?.agentId).toBeUndefined();
@@ -487,8 +514,27 @@ describe.each(runners)('$name', (run) => {
       }));
     });
     await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { robotId: 'c_9', backend: 'codex', name: 'PermissionRequest', sessionId: SID, message: 'remove the build folder', toolName: 'Bash' } });
+    expect(events[0]).toEqual({ hook: { robotId: 'c_9', backend: 'codex', name: 'PermissionRequest', sessionId: SID, message: 'remove the build folder', toolName: 'Bash', askedFor: 'rm -rf build' } });
     await r.close();
+  });
+
+  it('hands on the file a permission request asks to write, and none of the rest of its input', async () => {
+    const home = makeHome();
+    const lines: unknown[] = [];
+    const server = net.createServer((c) => {
+      let buf = '';
+      c.setEncoding('utf8');
+      c.on('data', (d) => { buf += d; });
+      c.on('end', () => lines.push(JSON.parse(buf)));
+    });
+    await new Promise<void>((r) => server.listen(path.join(home, 'hooks.sock'), r));
+    await new Promise<void>((resolve, reject) => {
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      p.stdin!.end(JSON.stringify({ hook_event_name: 'PermissionRequest', session_id: SID, tool_name: 'Write', tool_input: { file_path: '/r/a.ts', content: 'x'.repeat(64 * 1024) } }));
+    });
+    await waitFor(() => lines.length === 1);
+    expect(lines[0]).toEqual({ robotId: 'c_9', backend: 'claude', hook: { hook_event_name: 'PermissionRequest', session_id: SID, message: 'Write', tool_name: 'Write', tool_input: { file_path: '/r/a.ts' } } });
+    server.close();
   });
 
   it("says what codex's own question asks, which its tool's input holds", async () => {
@@ -768,6 +814,10 @@ describe('the compiled helper', () => {
       JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'request_user_input', tool_input: { questions: [] } }),
       JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'request_user_input', message: 'kept', tool_input: { questions: 'abc' } }),
       JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { questions: [{ question: 'not asked' }] } }),
+      JSON.stringify({ hook_event_name: 'PermissionRequest', tool_name: 'Edit', tool_input: { url: 'u', old_string: 'a', file_path: 'f'.repeat(499) + '😀', command: '' } }),
+      JSON.stringify({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: [], file_path: 5, url: ['a', null, ['b', 1]] } }),
+      JSON.stringify({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: ['command'] }),
+      JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'ls', file_path: '/a' } }),
       JSON.stringify({ hook_event_name: 'StopFailure', last_assistant_message: '', error: 'z'.repeat(600) }),
       JSON.stringify({ hook_event_name: 'StopFailure', last_assistant_message: 7, error: 'overloaded' }),
       ' \t\n{ "hook_event_name" : "Stop" , "cwd" : [ 1 , 2 ] }\r\n ', '', 'not json', '{"a":01}', '﻿{}', '[]', '"x"', '5',

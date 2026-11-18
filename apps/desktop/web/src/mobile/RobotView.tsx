@@ -318,6 +318,7 @@ export function RobotView({ id, onBack, onNext }: { id: string; onBack(): void; 
               <button type="button" disabled={answering} onClick={() => void answer('approve')}>{question ? 'select' : 'approve'}</button>
               <button type="button" disabled={answering} onClick={() => void answer('deny')}>{question ? 'cancel' : 'deny'}</button>
             </span>
+            {shown?.askedFor && shown.askedFor !== shown.prompt && <code>{shown.askedFor}</code>}
             {answerError && <p className="sheet-error">{answerError}</p>}
           </div>
         )}

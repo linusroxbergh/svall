@@ -87,6 +87,18 @@ test('a blocked robot shows what it is waiting on', () => {
   expect(screen.getByRole('status').textContent).toContain('Run rm -rf?');
 });
 
+test('a blocked robot shows under its prompt what it asks to use, unless the prompt already says it', () => {
+  const f = blockedFleet('Claude needs your permission to use Bash');
+  f.robots.c2.agent!.askedFor = 'npm test';
+  store.getState().setFleet(f);
+  const { container } = render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
+  expect(container.querySelector('.ask code')?.textContent).toBe('npm test');
+  const same = blockedFleet('rm -rf build');
+  same.robots.c2.agent!.askedFor = 'rm -rf build';
+  act(() => { store.getState().setFleet(same); });
+  expect(container.querySelector('.ask code')).toBeNull();
+});
+
 test('approve answers the daemon for that robot', () => {
   store.getState().setFleet(blockedFleet());
   render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);

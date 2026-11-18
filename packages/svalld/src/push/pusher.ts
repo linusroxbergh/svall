@@ -8,7 +8,7 @@ import type { Vapid } from './vapid.js';
 // term 2 marks the robot's second session, which the phone cannot answer, so its notification carries no buttons.
 // promptId goes back with the answer, so a late one does not answer a newer question; machine names the worker that sent it;
 // badge is the count the Home Screen icon shows
-export type PushPayload = { id: string; name: string; status: PushStatus; term?: 2; prompt?: string; promptId?: string; machine?: MachineId; badge: number };
+export type PushPayload = { id: string; name: string; status: PushStatus; term?: 2; prompt?: string; askedFor?: string; promptId?: string; machine?: MachineId; badge: number };
 // subject is who the push service may contact about the sender
 export type Send = (sub: Subscription, payload: PushPayload, subject: string) => Promise<void>;
 
@@ -40,6 +40,7 @@ export function startPusher(o: {
       if (status === 'done' && !s.unread) continue;
       const payload: PushPayload = {
         id: robotId, name: c.name, status, ...(term ? { term } : {}), ...(agent?.prompt ? { prompt: agent.prompt } : {}), ...(agent?.promptId ? { promptId: agent.promptId } : {}),
+        ...(agent?.askedFor && agent.askedFor !== agent.prompt ? { askedFor: agent.askedFor } : {}),
         ...(o.machine && { machine: o.machine }), badge: needingUser(f),
       };
       for (const sub of o.push.list()) {
