@@ -91,7 +91,7 @@ test('a blocked robot shows under its prompt what it asks to use, unless the pro
   const f = blockedFleet('Claude needs your permission to use Bash');
   f.robots.c2.agent!.askedFor = 'npm test';
   store.getState().setFleet(f);
-  const { container } = render(<RobotView id="c2" onBack={() => {}} />);
+  const { container } = render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   expect(container.querySelector('.ask code')?.textContent).toBe('npm test');
   const same = blockedFleet('rm -rf build');
   same.robots.c2.agent!.askedFor = 'rm -rf build';

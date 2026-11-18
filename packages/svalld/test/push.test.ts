@@ -140,8 +140,8 @@ describe('pusher', () => {
     store.update((d) => { d.robots.c.agent = { ...agent('blocked', 'rm -rf build')!, promptId: 'q2', askedFor: 'rm -rf build' }; });
     await tick();
     expect(sent.map((s) => s.payload)).toEqual([
-      { id: 'c', name: 'otter', status: 'blocked', prompt: 'Claude needs your permission to use Bash', promptId: 'q1', askedFor: 'npm test' },
-      { id: 'c', name: 'otter', status: 'blocked', prompt: 'rm -rf build', promptId: 'q2' },
+      { id: 'c', name: 'otter', status: 'blocked', prompt: 'Claude needs your permission to use Bash', promptId: 'q1', askedFor: 'npm test', badge: 1 },
+      { id: 'c', name: 'otter', status: 'blocked', prompt: 'rm -rf build', promptId: 'q2', badge: 1 },
     ]);
   });
 
