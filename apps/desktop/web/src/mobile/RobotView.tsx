@@ -3,7 +3,7 @@ import { Terminal as Xterm } from '@xterm/xterm';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type JSX, type ReactNode } from 'react';
 import { shownAgent } from '@svall/protocol';
 import { useApp, useFitHeight } from '../hooks.js';
-import { Arrow, Backspace, Caret, More, Return } from '../icons.js';
+import { Arrow, Backspace, Caret, Enter, Keyboard, More, ShiftTab, Tab } from '../icons.js';
 import { awayLine, elsewhere } from '../placement.js';
 import { statusOf } from '../selectors.js';
 import { phone } from './boot.js';
@@ -18,9 +18,13 @@ import { linkTerminal, type TerminalLink } from './term.js';
 // smaller type means more columns; Claude Code's TUI only lays out narrow when the window itself is
 // the keys the row draws as icons, with the names they read as
 const FACE: Record<string, [ReactNode, string]> = {
+  'tab': [<Tab size="md" />, 'Tab'], '⇧tab': [<ShiftTab size="md" />, 'Shift-Tab'],
   '↑': [<Arrow dir="up" size="md" />, 'Up'], '↓': [<Arrow dir="down" size="md" />, 'Down'],
-  '⌫': [<Backspace size="md" />, 'Backspace'], '↩': [<Return size="md" />, 'Return'],
+  '⌫': [<Backspace size="md" />, 'Backspace'], '↩': [<Enter size="md" />, 'Return'],
 };
+
+// a key tapped keeps the keyboard up for whichever field has it
+const keepFocus = (e: { preventDefault(): void }) => e.preventDefault();
 
 const SIZES = [9, 10, 11, 13];
 const SIZE_KEY = 'svall.mobile.fontSize';
@@ -76,6 +80,8 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   const [sendError, setSendError] = useState<string>();
   const [frozen, setFrozen] = useState<Frozen>();
   const frozenText = useRef<HTMLPreElement>(null);
+  // keys typed straight into the terminal rather than the composer
+  const [raw, setRaw] = useState(false);
 
   useEffect(() => {
     const term = new Xterm({ fontSize: sizeRef.current, fontFamily: FONT, theme: theme(), cursorBlink: true, scrollback: 4000 });
@@ -83,6 +89,11 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     term.loadAddon(fit);
     term.open(host.current!);
     xterm.current = term;
+    // a tap on the terminal raises no keyboard: text goes through the composer, or here once raw typing is on
+    const input = term.textarea;
+    input?.setAttribute('inputmode', 'none');
+    const endRaw = () => { input?.setAttribute('inputmode', 'none'); setRaw(false); };
+    input?.addEventListener('blur', endRaw);
     refit.current = () => { try { fit.fit(); } catch { /* laid out with no size yet */ } };
     const l = linkTerminal({ api: phone.api, subscribe: phone.onTermEvent }, id, {
       get cols() { return term.cols; },
@@ -123,6 +134,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     const observer = new ResizeObserver(resize);
     observer.observe(host.current!);
     return () => {
+      input?.removeEventListener('blur', endRaw);
       stopScroll();
       stopHold();
       observer.disconnect();
@@ -194,7 +206,8 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
 
   useLayoutEffect(() => { if (frozen && frozenText.current) frozenText.current.scrollTop = frozen.scroll; }, [frozen]);
 
-  useFitHeight(field, prompt);
+  // the field leaves while raw typing is on, and fits its draft again when it is back
+  useFitHeight(field, raw ? '' : prompt);
 
   const size = (step: 1 | -1) => {
     const next = SIZES[Math.min(SIZES.length - 1, Math.max(0, SIZES.indexOf(fontSize) + step))];
@@ -203,6 +216,16 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   };
 
   const key = (seq: string) => { setFrozen(undefined); xterm.current?.scrollToBottom(); link.current?.input(seq); };
+
+  // iOS raises the keyboard only for a focus made inside the tap
+  const typeRaw = () => {
+    const input = xterm.current?.textarea;
+    if (!input) return;
+    setFrozen(undefined);
+    input.setAttribute('inputmode', 'text');
+    setRaw(true);
+    input.focus();
+  };
 
   const answer = async (a: 'approve' | 'deny') => {
     if (answering) return;
@@ -267,36 +290,51 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
           </div>
         )}
       </div>
-      {blocked && robot && !elsewhere(robot, via) && (
-        <div className="ask" role="status">
-          <p>{shown?.prompt ?? `${robot.name} is waiting on you`}</p>
-          <span>
-            <button type="button" disabled={answering} onClick={() => void answer('approve')}>{question ? 'select' : 'approve'}</button>
-            <button type="button" disabled={answering} onClick={() => void answer('deny')}>{question ? 'cancel' : 'deny'}</button>
-          </span>
-          {answerError && <p className="sheet-error">{answerError}</p>}
+      <div className="dock">
+        {blocked && robot && !elsewhere(robot, via) && (
+          <div className="ask" role="status">
+            <p>{shown?.prompt ?? `${robot.name} is waiting on you`}</p>
+            <span>
+              <button type="button" disabled={answering} onClick={() => void answer('approve')}>{question ? 'select' : 'approve'}</button>
+              <button type="button" disabled={answering} onClick={() => void answer('deny')}>{question ? 'cancel' : 'deny'}</button>
+            </span>
+            {answerError && <p className="sheet-error">{answerError}</p>}
+          </div>
+        )}
+        <div className="keys">
+          {KEY_ROW.map((k) => (
+            <button key={k.label} type="button" className={FACE[k.label] ? 'glyph' : undefined} aria-label={FACE[k.label]?.[1]} disabled={away}
+              onMouseDown={keepFocus} onClick={() => key(k.seq)}>{FACE[k.label]?.[0] ?? k.label}</button>
+          ))}
+          <button type="button" className="more" aria-label="More keys" aria-haspopup="dialog" disabled={away} onClick={() => setKeys(true)}><More size="lg" /></button>
         </div>
-      )}
-      <div className="keys">
-        {KEY_ROW.map((k) => (
-          <button key={k.label} type="button" className={FACE[k.label] ? 'glyph' : undefined} aria-label={FACE[k.label]?.[1]} disabled={away} onClick={() => key(k.seq)}>{FACE[k.label]?.[0] ?? k.label}</button>
-        ))}
-        <button type="button" className="more" aria-label="More keys" aria-haspopup="dialog" disabled={away} onClick={() => setKeys(true)}><More size="lg" /></button>
-      </div>
-      <form className="composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
         {sendError && <p className="sheet-error">{sendError}</p>}
-        <textarea
-          ref={field}
-          value={prompt}
-          rows={2}
-          placeholder="prompt…"
-          enterKeyHint="enter"
-          autoCapitalize="off"
-          autoCorrect="off"
-          onChange={(e) => setPrompt(e.target.value)}
-        />
-        <button type="submit" disabled={!prompt.trim() || !here}>send</button>
-      </form>
+        <form className="pill" data-raw={raw || undefined} onSubmit={(e) => { e.preventDefault(); send(); }}>
+          {raw ? (
+            <>
+              <p>typing into the terminal</p>
+              <button type="button" className="done" onMouseDown={keepFocus} onClick={() => xterm.current?.textarea?.blur()}>done</button>
+            </>
+          ) : (
+            <>
+              <textarea
+                ref={field}
+                value={prompt}
+                rows={1}
+                placeholder="prompt…"
+                aria-label="Prompt"
+                enterKeyHint="enter"
+                autoCapitalize="off"
+                autoCorrect="off"
+                onChange={(e) => setPrompt(e.target.value)}
+              />
+              {prompt.trim()
+                ? <button type="submit" className="send" aria-label="send" disabled={!here}><Arrow dir="up" size="md" /></button>
+                : <button type="button" aria-label="Type into the terminal" disabled={away} onClick={typeRaw}><Keyboard size="md" /></button>}
+            </>
+          )}
+        </form>
+      </div>
       {menu && <RobotMenu id={id} onClose={() => setMenu(false)} onClosed={onBack} />}
       {keys && <KeysSheet kind={robot?.agent?.kind} fontSize={fontSize} onKey={key} onSize={size} onClose={() => setKeys(false)} />}
     </div>

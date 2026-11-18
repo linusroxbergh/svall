@@ -127,21 +127,43 @@ button { font: inherit; color: inherit; background: none; border: 0; }
   border: 1px solid var(--line); background: var(--fill-1); color: var(--ink);
 }
 
-.keys {
-  display: flex; gap: var(--sp-sm); padding: var(--sp-md) var(--sp-lg);
-  border-top: 1px solid var(--line); background: var(--surface-2);
+/* under the terminal, on its ground: the ask, the keys and the composer */
+.dock {
+  display: flex; flex-direction: column; gap: var(--sp-md);
+  padding: var(--sp-sm) var(--sp-lg) calc(var(--sp-md) + var(--safe-b)); background: var(--surface-0);
 }
+.dock > .sheet-error { padding: 0 var(--sp-md); }
+
+.keys { display: flex; padding: var(--sp-2xs); border-radius: var(--r-pill); background: var(--surface-2); }
 .keys button {
-  flex: 1; min-height: 40px; padding: 0; border-radius: var(--r-md);
-  font: var(--w-medium) var(--text-md)/1 var(--mono); color: var(--ink-2);
-  background: var(--fill-1); border: 1px solid var(--line);
+  flex: 1; min-width: 0; height: 40px; padding: 0; border-radius: var(--r-pill);
+  display: grid; place-items: center;
+  font: var(--w-medium) var(--text-md)/1 var(--mono); color: var(--ink);
 }
-.keys .glyph { font-size: var(--text-xl); color: var(--ink); }
-/* the arrows and return stand apart from the word keys, and the sheet's button from them all */
-.keys .glyph:first-of-type, .keys .more { margin-left: var(--sp-sm); }
-.keys .more { flex: 0 0 40px; font-size: var(--text-2xl); color: var(--ink-3); }
+.keys .more { color: var(--ink-3); }
 .keys button:active { background: var(--fill-3); color: var(--ink); }
 .keys button:disabled { opacity: var(--disabled); }
+
+/* the composer: one line that grows, a pill while it is one, its button inside */
+.pill {
+  display: flex; align-items: flex-end; gap: var(--sp-xs); padding: var(--sp-xs);
+  border-radius: calc(2 * var(--r-lg)); background: var(--surface-2); border: 1px solid var(--line);
+}
+.pill:focus-within { border-color: var(--line-strong); }
+.pill textarea {
+  flex: 1; min-width: 0; max-height: 144px; margin: 0; padding: var(--sp-sm) var(--sp-sm) var(--sp-sm) var(--sp-xl);
+  font: inherit; font-size: var(--text-input); line-height: 24px; color: var(--ink);
+  background: none; border: 0; border-radius: 0; outline: none; resize: none;
+}
+.pill textarea::placeholder { color: var(--ink-3); }
+.pill > button { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-2); }
+.pill > button:active { background: var(--fill-3); }
+.pill > button:disabled { opacity: var(--disabled); }
+.pill .send { background: var(--sand); color: var(--ink-sand); }
+.pill .send:active { background: var(--sand-hi); }
+.pill p { flex: 1; margin: 0; padding: var(--sp-sm) var(--sp-xl); line-height: 24px; color: var(--ink-2); }
+.pill .done { width: auto; padding: 0 var(--sp-xl); border-radius: var(--r-pill); background: var(--sand); color: var(--ink-sand); font-weight: var(--w-semibold); }
+.pill[data-raw] { border-color: color-mix(in srgb, var(--sand) 45%, transparent); }
 
 .composer {
   display: flex; flex-wrap: wrap; gap: var(--sp-md); align-items: flex-end;
@@ -246,9 +268,13 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .m-shortcuts { flex-direction: row; flex-wrap: wrap; gap: var(--sp-sm); }
 .m-shortcuts > button { flex: 1 1 auto; text-align: center; }
 
-.ask { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-lg); padding: var(--sp-lg) var(--sp-xl); background: var(--surface-2); border-top: 1px solid var(--blocked); }
-.ask p { flex: 1; min-width: 0; margin: 0; font-size: var(--text-md); color: var(--ink-2); }
+.ask {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-lg); padding: var(--sp-sm) var(--sp-sm) var(--sp-sm) var(--sp-xl);
+  border-radius: var(--r-lg); background: var(--surface-2); border: 1px solid color-mix(in srgb, var(--blocked) 55%, transparent);
+}
+.ask p { flex: 1; min-width: 0; margin: 0; font-size: var(--text-md); color: var(--ink); }
 .ask .sheet-error { flex-basis: 100%; }
-.ask span { display: flex; gap: var(--sp-sm); }
-.ask button { padding: var(--sp-md) var(--sp-xl); border-radius: var(--r-md); border: 1px solid var(--line); background: var(--fill-1); }
+.ask span { display: flex; gap: var(--sp-xs); }
+.ask button { min-height: 36px; padding: 0 var(--sp-xl); border-radius: var(--r-pill); background: var(--fill-2); }
 .ask button:first-child { background: var(--sand); color: var(--ink-sand); font-weight: var(--w-semibold); }
+.ask button:disabled { opacity: var(--disabled); }

@@ -23,7 +23,7 @@ vi.mock('../../src/mobile/term.js', () => ({
   linkTerminal: () => ({ input: (d: string) => input(d), resize: () => resize(), open: () => open(), close: () => {} }),
 }));
 // the last terminal the view made, on the alternate screen of an app tracking the mouse, and what was painted on it
-let xterm: { element: HTMLElement; typed(d: string): void; painted: string[] };
+let xterm: { element: HTMLElement; textarea: HTMLTextAreaElement; typed(d: string): void; painted: string[] };
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     cols = 80;
@@ -32,6 +32,7 @@ vi.mock('@xterm/xterm', () => ({
     buffer = { active: { type: 'alternate' } };
     modes = { mouseTrackingMode: 'any' };
     element = document.createElement('div');
+    textarea = this.element.appendChild(document.createElement('textarea'));
     typed: (d: string) => void = () => {};
     painted: string[] = [];
     constructor() { xterm = this; }
@@ -342,6 +343,28 @@ test('the key row and the terminal\'s size go nowhere while its worker is away, 
   fireEvent.click(screen.getByRole('button', { name: /clear the screen/ }));
   expect(input).toHaveBeenCalledWith('\x0c');
   expect(screen.queryByRole('dialog', { name: 'Keys' })).toBeNull();
+});
+
+test('a tap on the terminal raises no keyboard; the keyboard button types into it until it lets go', () => {
+  store.getState().setFleet(fleet());
+  render(<RobotView id="c2" onBack={() => {}} />);
+  expect(xterm.textarea.getAttribute('inputmode')).toBe('none');
+  fireEvent.change(screen.getByRole('textbox', { name: 'Prompt' }), { target: { value: 'half a prompt' } });
+  expect(screen.queryByRole('button', { name: 'Type into the terminal' })).toBeNull();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Prompt' }), { target: { value: '' } });
+  expect(screen.queryByRole('button', { name: 'send' })).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Type into the terminal' }));
+  expect(xterm.textarea.getAttribute('inputmode')).toBe('text');
+  expect(document.activeElement).toBe(xterm.textarea);
+  expect(screen.getByText('typing into the terminal')).toBeTruthy();
+  expect(screen.queryByRole('textbox', { name: 'Prompt' })).toBeNull();
+  // a key pressed keeps the focus, so the keyboard stays up
+  expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'esc' }))).toBe(false);
+
+  fireEvent.click(screen.getByRole('button', { name: 'done' }));
+  expect(xterm.textarea.getAttribute('inputmode')).toBe('none');
+  expect(screen.getByRole('textbox', { name: 'Prompt' })).toBeTruthy();
 });
 
 test('the phone names the upgrade over a placed robot\'s terminal while its worker runs another build', () => {
