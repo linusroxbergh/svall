@@ -23,6 +23,13 @@ export const sessionsOf = (f: FleetState): Map<string, Session> =>
     ...(c.second ? [[secondKey(c.id), { key: secondKey(c.id), robotId: c.id, term: 2, agent: c.second.agent, unread: c.second.unread }] as [string, Session]] : []),
   ]));
 
+// a question in a window that is gone waits on nobody
+const blockedIn = (slot: { tmux?: unknown } | undefined, agent: Agent | undefined): boolean => Boolean(slot?.tmux) && agent?.status === 'blocked';
+
+/** The robots that need the user, as the phone's list on the home counts them: unread, or asking in a live window while neither moving nor out of reach. */
+export const needingUser = (f: FleetState): number => Object.values(f.robots).filter((c) => c.unread || c.second?.unread
+  || (!c.moving && (c.machine === undefined || f.machines?.[c.machine]?.reachable !== false) && (blockedIn(c, shownAgent(c)) || blockedIn(c.second, c.second?.agent)))).length;
+
 /** Whether a session has something new to tell: another status, a new question while it stays blocked, or a finish now unread. */
 export const isNews = (was: Session | undefined, now: Session): boolean => {
   // the held question going says nothing new of the agent behind it, unless that agent asks

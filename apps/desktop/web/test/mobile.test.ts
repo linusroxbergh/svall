@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Event, MachineId, PushStatus } from '@svall/protocol';
+import { needingUser, type Event, type MachineId, type PushStatus, type Robot } from '@svall/protocol';
 import type { Api } from '../src/api.js';
 import { nextWaiting, sections, subtitle, waiting } from '../src/mobile/list.js';
 import { linkText } from '../src/mobile/urls.js';
@@ -125,6 +125,29 @@ describe('phone fleet list', () => {
     expect(groups[3].robots).toEqual([]);
     expect(groups[0].robots.map((c) => c.id)).toEqual(['c3']);
     expect(waiting(f)).toBe(1);
+  });
+
+  // a push carries the daemon's count for the Home Screen icon, and the open page sets its own: the two agree
+  it('counts the robots that need the user as the daemon counts them for the Home Screen icon', () => {
+    const agent = (status: 'working' | 'idle' | 'blocked' | 'done') => ({ kind: 'claude' as const, sessionId: 's', transcriptPath: '/t', status, lastActivityAt: 0 });
+    const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+    const term2 = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false };
+    const cases: [Partial<Robot>, number][] = [
+      [{ agent: agent('idle') }, 0],
+      [{ agent: agent('done'), unread: true }, 1],
+      [{ agent: agent('idle'), second: { ...term2, unread: true } }, 1],
+      [{ agent: agent('blocked') }, 1],
+      [{ agent: agent('blocked'), tmux: undefined }, 0],
+      [{ agent: agent('blocked'), moving: { id: 'mv_0123456789', to: vault, phase: 'bundle' } }, 0],
+      [{ agent: agent('blocked'), machine: vault }, 0],
+      [{ agent: agent('idle'), second: { ...term2, agent: agent('blocked') } }, 1],
+      [{ agent: agent('idle'), second: { ...term2, tmux: undefined, agent: agent('blocked') } }, 0],
+      [{ agent: agent('idle'), relayed: { n: 200, held: 'h1' } }, 1],
+    ];
+    for (const [extra, want] of cases) {
+      const f = { ...fleet(), robots: { c0: chr('c0', 'i_b', { x: 1, y: 1 }, extra) }, machines: { [vault]: { name: 'linus-vault', reachable: false, since: 0 } } };
+      expect([needingUser(f), waiting(f)]).toEqual([want, want]);
+    }
   });
 
   it("puts a robot's own note under its name, on one line, and nothing when there is none", () => {

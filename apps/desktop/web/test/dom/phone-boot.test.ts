@@ -361,6 +361,42 @@ test('a socket that closed on its own is left to the reconnect already on its wa
   expect(Socket.all).toHaveLength(2);
 });
 
+test('each socket hears the robot on screen while the page is in view, none once it is not, and again as it opens', async () => {
+  vi.useFakeTimers();
+  const { view } = await start();
+  const viewing = (s: Socket) => s.sent.filter((m) => m.method === 'mobile.viewing').map((m) => (m as { params?: unknown }).params);
+  const first = Socket.all.at(-1)!;
+  first.hello();
+  view('c0');
+  const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+  document.dispatchEvent(new Event('visibilitychange'));
+  hidden.mockRestore();
+  backInView();
+  expect(viewing(first)).toEqual([{ robot: 'c0' }, {}, { robot: 'c0' }]);
+  first.close();
+  await vi.advanceTimersByTimeAsync(500);
+  const second = Socket.all.at(-1)!;
+  second.hello();
+  view(undefined);
+  expect(viewing(second)).toEqual([{ robot: 'c0' }, {}]);
+});
+
+test('the Home Screen icon counts the robots that need the user, once a fleet has come', async () => {
+  const setAppBadge = vi.fn(() => Promise.resolve());
+  vi.stubGlobal('navigator', { setAppBadge });
+  const socket = await boot();
+  socket.hello();
+  const f = fleet();
+  f.robots.c0.unread = true;
+  f.robots.c1.agent = { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'blocked', lastActivityAt: 0 };
+  expect(setAppBadge).not.toHaveBeenCalled();
+  socket.answer('state.get', f);
+  await settled();
+  socket.receive({ event: 'state.patch', data: { ops: [{ op: 'replace', path: '/robots/c0/unread', value: false }] } });
+  socket.receive({ event: 'state.patch', data: { ops: [{ op: 'replace', path: '/robots/c0/note', value: 'x' }] } });
+  expect(setAppBadge.mock.calls).toEqual([[2], [1]]);
+});
+
 test('the page takes its height from the part of the screen the keyboard leaves', async () => {
   const vv = Object.assign(new EventTarget(), { height: 800, scale: 1 });
   vi.stubGlobal('visualViewport', vv);

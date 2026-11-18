@@ -1,6 +1,7 @@
 import { useEffect, useState, type JSX } from 'react';
 import { commitFocused } from '../Field.js';
 import { useApp } from '../hooks.js';
+import { phone } from './boot.js';
 import { RobotView } from './RobotView.js';
 import { Fleet } from './Fleet.js';
 import { MissionBar } from './MissionBar.js';
@@ -24,6 +25,9 @@ export function App(): JSX.Element {
     history.replaceState(null, '', '/');
     setRoute({ view: 'fleet' });
   }, [gone]);
+
+  const shown = gone ? undefined : openId;
+  useEffect(() => { phone.view(shown); }, [shown]);
 
   const go = (r: Route) => { history.pushState({ pushed: true }, '', routePath(r)); setRoute(r); };
   // a robot this session opened is popped; one opened cold from a notification has no entry behind it

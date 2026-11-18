@@ -253,7 +253,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     answered.add(ws);
     ws.on('pong', () => answered.add(ws));
     let unsub: (() => void) | undefined;
-    let left: (() => void) | undefined;
+    let phone: ReturnType<Phones['add']> | undefined;
     const aborter = new AbortController();
     // a phone's login answers to the fleet's list for as long as its socket lasts
     const revoked = (): boolean => {
@@ -265,10 +265,11 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       kind: login ? 'phone' : 'app', login, loopback,
       send: (ev: Event) => { if (!revoked() && ws.readyState === ws.OPEN) ws.send(JSON.stringify(ev)); },
       backlog: () => ws.bufferedAmount,
+      ...(login && { view: (robot: string | undefined) => phone?.view(robot) }),
     };
     const admit = () => {
       unsub = store.subscribe((ops) => viewer.send({ event: 'state.patch', data: { ops } }));
-      if (login) { left = phones.add(login); phoneSockets.add(ws); } else { desktops.add(viewer); if (page) pages.add(viewer); }
+      if (login) { phone = phones.add(login); phoneSockets.add(ws); } else { desktops.add(viewer); if (page) pages.add(viewer); }
       ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } } satisfies HelloReply));
     };
 
@@ -307,7 +308,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(res));
     });
 
-    ws.on('close', () => { clearTimeout(authTimer); aborter.abort(); unsub?.(); left?.(); opts.freeze?.left(viewer); desktops.delete(viewer); pages.delete(viewer); phoneSockets.delete(ws); terminals.closeAll(viewer); workspace.unwatchAll(viewer); remoteWatches?.unwatchAll(viewer); });
+    ws.on('close', () => { clearTimeout(authTimer); aborter.abort(); unsub?.(); phone?.leave(); opts.freeze?.left(viewer); desktops.delete(viewer); pages.delete(viewer); phoneSockets.delete(ws); terminals.closeAll(viewer); workspace.unwatchAll(viewer); remoteWatches?.unwatchAll(viewer); });
     ws.on('error', (e) => log.error(`ws: ${String(e)}`));
   }
 

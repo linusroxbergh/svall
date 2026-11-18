@@ -12,8 +12,9 @@ import { chr, fleet } from '../fixtures.js';
 
 const call = vi.fn(() => Promise.resolve({}));
 const fire = vi.fn();
+const view = vi.fn();
 vi.mock('../../src/mobile/boot.js', () => ({
-  phone: { api: () => ({ call, fire }), get store() { return store; }, onTermEvent: () => () => {} },
+  phone: { api: () => ({ call, fire }), get store() { return store; }, onTermEvent: () => () => {}, view: (id?: string) => view(id) },
 }));
 // xterm measures a real screen; the pane under test is the ask, not the terminal
 const open = vi.fn(() => Promise.resolve());
@@ -414,6 +415,16 @@ test('the phone names the upgrade over a placed robot\'s terminal while its work
   store.getState().setFleet(onVault(false, true));
   render(<RobotView id="c2" onBack={() => {}} onNext={() => {}} />);
   expect(screen.getByTestId('phone-unreachable').textContent).toBe('linus-vault runs a different build; upgrade it under Machines');
+});
+
+test('the open robot is the one the page names as on screen, and none once it is back on the list', () => {
+  history.replaceState(null, '', '/robot/c0');
+  store.getState().setFleet(fleet());
+  render(<App />);
+  expect(view).toHaveBeenLastCalledWith('c0');
+  history.replaceState(null, '', '/');
+  act(() => { dispatchEvent(new PopStateEvent('popstate')); });
+  expect(view).toHaveBeenLastCalledWith(undefined);
 });
 
 test('a robot closed while it is open takes its view back to the list', () => {

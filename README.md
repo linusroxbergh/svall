@@ -338,8 +338,10 @@ and `input` are ignored.
   commands, and the empty field's keyboard button types straight into the
   terminal. A prompt typed under the list starts a mission control robot on
   it, as Cmd+G does on the Mac, and the island's `…` has its buttons.
-- `⚙` → *Notify this phone* sends a push when an agent is blocked or done. Tap
-  a blocked one to approve or deny it.
+- `⚙` → *Notify this phone* sends a push when an agent is blocked or done,
+  unless that robot is open on your phone's screen. Tap a blocked one to
+  approve or deny it. From then on the Home Screen icon counts the robots that
+  need you.
 - The page and its pushes work while Svall is open on that fleet, since its
   daemon serves them. While the Mac is off, each
   [worker](docs/remote-machines/README.md) serves its own robots, and holds
@@ -454,7 +456,8 @@ send:
   configuration with only the keys you tick, over ssh to the Linux machine you
   added.
 - Push notifications go through your phone's push service: Apple's, Google's
-  or Mozilla's. The robot's name and prompt are encrypted for your phone;
+  or Mozilla's. The robot's name and prompt, and how many robots need you, are
+  encrypted for your phone;
   the service sees when a push is sent, and the page's address unless
   `mobile.pushContact` names another contact.
 

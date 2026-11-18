@@ -8,6 +8,7 @@ import webpush from 'web-push';
 import { startPusher, type PushPayload, type Send } from '../src/push/pusher.js';
 import { PushStore } from '../src/push/store.js';
 import { readOrCreateVapid } from '../src/push/vapid.js';
+import { Phones } from '../src/phones.js';
 import { Store } from '../src/store.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -98,7 +99,7 @@ describe('pusher', () => {
     };
     store.update((d) => {
       d.islands.i = { id: 'i', name: 'i', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-      d.robots.c = { id: 'c', islandId: 'i', cell: { x: 1, y: 1 }, name: 'otter', portrait: 'fox', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false, agent: agent('working') };
+      d.robots.c = { id: 'c', islandId: 'i', cell: { x: 1, y: 1 }, name: 'otter', portrait: 'fox', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false, agent: agent('working'), tmux: { windowId: '@1', paneId: '%1' } };
     });
     push.upsert({ endpoint: 'https://push.example/a', keys: { p256dh: 'p', auth: 'a' }, statuses: ['blocked'], login: 'me', addedAt: 1 });
     push.upsert({ endpoint: 'https://push.example/b', keys: { p256dh: 'p', auth: 'a' }, statuses: ['done'], login: 'me', addedAt: 1 });
@@ -115,8 +116,8 @@ describe('pusher', () => {
     store.update((d) => { d.robots.c.agent = agent('idle'); });
     await tick();
     expect(sent).toEqual([
-      { endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', prompt: 'Bash?' } },
-      { endpoint: 'https://push.example/b', payload: { id: 'c', name: 'otter', status: 'done' } },
+      { endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', prompt: 'Bash?', badge: 1 } },
+      { endpoint: 'https://push.example/b', payload: { id: 'c', name: 'otter', status: 'done', badge: 1 } },
     ]);
   });
 
@@ -127,9 +128,9 @@ describe('pusher', () => {
     store.update((d) => { d.robots.c.agent = agent('done', 'API Error: 529 Overloaded'); d.robots.c.unread = true; });
     await tick();
     expect(sent).toEqual([
-      { endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', prompt: 'Bash?', promptId: 'q1' } },
-      { endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', prompt: 'Write?', promptId: 'q2' } },
-      { endpoint: 'https://push.example/b', payload: { id: 'c', name: 'otter', status: 'done', prompt: 'API Error: 529 Overloaded' } },
+      { endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', prompt: 'Bash?', promptId: 'q1', badge: 1 } },
+      { endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', prompt: 'Write?', promptId: 'q2', badge: 1 } },
+      { endpoint: 'https://push.example/b', payload: { id: 'c', name: 'otter', status: 'done', prompt: 'API Error: 529 Overloaded', badge: 1 } },
     ]);
   });
 
@@ -137,7 +138,7 @@ describe('pusher', () => {
     const { store, sent } = setup();
     store.update((d) => { d.robots.c.second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('blocked', 'Write?') }; });
     await tick();
-    expect(sent).toEqual([{ endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', term: 2, prompt: 'Write?' } }]);
+    expect(sent).toEqual([{ endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', term: 2, prompt: 'Write?', badge: 1 } }]);
   });
 
   it('forgets a device the push service says is gone', async () => {
@@ -178,8 +179,8 @@ describe('pusher', () => {
     store.update((d) => { d.robots.c.agent = agent('idle'); d.robots.c.unread = false; d.robots.c.relayed = { n: 200, held: 'h1' }; });
     await tick();
     expect(sent).toEqual([
-      { endpoint: 'https://push.example/b', payload: { id: 'c', name: 'otter', status: 'done' } },
-      { endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', prompt: '200 robot messages since your last prompt; let robots carry on?', promptId: 'h1' } },
+      { endpoint: 'https://push.example/b', payload: { id: 'c', name: 'otter', status: 'done', badge: 1 } },
+      { endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', prompt: '200 robot messages since your last prompt; let robots carry on?', promptId: 'h1', badge: 1 } },
     ]);
   });
 
@@ -218,7 +219,7 @@ describe('pusher', () => {
     store.update((d) => { delete d.robots.c.machine; d.robots.c.agent = agent('blocked'); });
     await tick();
     stop();
-    expect(sent).toEqual([{ id: 'c', name: 'otter', status: 'done', machine: W }]);
+    expect(sent).toEqual([{ id: 'c', name: 'otter', status: 'done', machine: W, badge: 1 }]);
   });
 
   it('tells nothing of a robot that moves in with news in the same change', async () => {
@@ -248,7 +249,38 @@ describe('pusher', () => {
     store.update((d) => { d.robots.c.agent = agent('blocked', 'Bash?'); });
     await tick();
     stop();
-    expect(sent).toEqual([{ id: 'c', name: 'otter', status: 'blocked', prompt: 'Bash?' }]);
+    expect(sent).toEqual([{ id: 'c', name: 'otter', status: 'blocked', prompt: 'Bash?', badge: 1 }]);
+  });
+
+  it('counts on each push every robot that needs the user, for the Home Screen icon', async () => {
+    const { store, sent } = setup();
+    store.update((d) => {
+      d.robots.d = { ...d.robots.c, id: 'd', name: 'heron', unread: true, agent: agent('idle') };
+      d.robots.e = { ...d.robots.c, id: 'e', name: 'stoat', agent: agent('blocked'), tmux: undefined };
+    });
+    store.update((d) => { d.robots.c.agent = agent('blocked', 'Bash?'); });
+    await tick();
+    // c and the unread d; e asks in a window that is gone
+    expect(sent.at(-1)?.payload).toMatchObject({ id: 'c', badge: 2 });
+  });
+
+  it('tells no device of a login whose page has the robot in view, and tells it once the page is out of view', async () => {
+    const { store, push } = setup({ off: true });
+    push.upsert({ endpoint: 'https://push.example/other', keys: { p256dh: 'p', auth: 'a' }, statuses: ['blocked'], login: 'other', addedAt: 1 });
+    const phones = new Phones();
+    const page = phones.add('me');
+    const sent: string[] = [];
+    const stop = startPusher({
+      store, push, log: silentLogger, logins: () => ['me', 'other'], served: () => SERVED, viewing: (login, id) => phones.viewing(login, id),
+      send: (s) => { sent.push(s.endpoint); return Promise.resolve(); },
+    });
+    page.view('c');
+    store.update((d) => { d.robots.c.agent = { ...agent('blocked', 'Bash?')!, promptId: 'q1' }; });
+    page.view(undefined);
+    store.update((d) => { d.robots.c.agent = { ...agent('blocked', 'Write?')!, promptId: 'q2' }; });
+    await tick();
+    stop();
+    expect(sent).toEqual(['https://push.example/other', 'https://push.example/a', 'https://push.example/other']);
   });
 
   it('says nothing once stopped', async () => {

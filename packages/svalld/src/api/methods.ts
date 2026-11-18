@@ -407,6 +407,7 @@ const handlers: Handlers = {
   'push.subscribe': (p, { push, viewer }) => { push.upsert({ ...p, login: viewer.login ?? 'local', addedAt: Date.now() }); return {}; },
   'push.unsubscribe': (p, { push }) => { push.remove(p.endpoint); return {}; },
   'push.get': (p, { push }) => ({ statuses: push.get(p.endpoint)?.statuses }),
+  'mobile.viewing': (p, { viewer }) => { viewer.view?.(p.robot); return {}; },
   'browser.open': (p, { fleet }) => fleet.openTab(p.id, p.url, p.tab),
   'browser.close': (p, { fleet }) => { fleet.closeTab(p.id, p.tab); return {}; },
   'browser.activate': (p, { fleet }) => { fleet.activateTab(p.id, p.tab); return {}; },

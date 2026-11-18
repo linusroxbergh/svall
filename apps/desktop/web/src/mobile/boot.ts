@@ -3,9 +3,11 @@ import { Api, type Status } from '../api.js';
 import { setAppStore } from '../hooks.js';
 import type { Via } from '../placement.js';
 import { createAppStore, localAppStorage, type AppStore } from '../store/index.js';
+import { waiting } from './list.js';
 import type { TermEvent } from './term.js';
 
-export type PhoneContext = { store: AppStore; api(): Api; onTermEvent(h: (e: TermEvent) => void): () => void };
+// view: names the robot whose view is open, or none
+export type PhoneContext = { store: AppStore; api(): Api; onTermEvent(h: (e: TermEvent) => void): () => void; view(robot: string | undefined): void };
 
 const isTermEvent = (e: Event): e is TermEvent => e.event.startsWith('term.');
 
@@ -106,11 +108,34 @@ function createPhone(): PhoneContext {
       const api = new Api({ url: `wss://${host}`, protocols: ['svall', `svall.pass.${w.pass}`] }, { connectTimeout: CONNECT_MS });
       const s = source(api, { machine: w.machine, home: kept.home });
       s.api.onStatus = (status) => { s.status = status; pick(); };
+      s.api.onOpen = () => tell(api);
       s.api.start();
       return [s];
     });
   };
   const stopWorkers = () => { for (const w of workers) w.api.stop(); workers = []; };
+
+  // the robot whose view is open, and what the sockets were last told: it while the page is in view, else none. A daemon
+  // pushes nothing of that robot to this login meanwhile, and a socket that opens starts at none
+  let viewed: string | undefined;
+  let shown: string | undefined;
+  const tell = (api: Api) => { if (shown) api.call('mobile.viewing', { robot: shown }).catch(() => {}); };
+  const show = () => {
+    const next = document.hidden ? undefined : viewed;
+    if (next === shown) return;
+    shown = next;
+    for (const s of [mac, ...workers]) s.api.call('mobile.viewing', next ? { robot: next } : {}).catch(() => {});
+  };
+  document.addEventListener('visibilitychange', show);
+
+  // the Home Screen icon counts the robots that need the user, as the list does, once a fleet has come
+  let badge: number | undefined;
+  store.subscribe((st) => {
+    const n = st.loaded ? waiting(st.fleet, st.via) : undefined;
+    if (n === undefined || n === badge) return;
+    badge = n;
+    void navigator.setAppBadge?.(n).catch(() => {});
+  });
 
   mac.api.onStatus = (s) => {
     mac.status = s;
@@ -119,7 +144,7 @@ function createPhone(): PhoneContext {
     else if (s === 'offline') startWorkers();
     pick();
   };
-  mac.api.onOpen = () => { mac.api.call('mobile.fallbacks', {}).then(keepFallbacks, () => {}); };
+  mac.api.onOpen = () => { mac.api.call('mobile.fallbacks', {}).then(keepFallbacks, () => {}); tell(mac.api); };
   // the service worker opened its kept page because the Mac did not answer, so the workers start without waiting on it;
   // a kept page was paired before it was kept, so the Mac's socket waits on no pairing either
   if (document.documentElement.hasAttribute('data-kept')) { startWorkers(); mac.api.start(); pair(() => {}); }
@@ -151,6 +176,7 @@ function createPhone(): PhoneContext {
     api: () => (active ?? mac).api,
     // terminal frames go to whichever robot is open; there is only ever one on a phone
     onTermEvent: (h) => { termHandlers.add(h); return () => { termHandlers.delete(h); }; },
+    view: (robot) => { viewed = robot; show(); },
   };
 }
 
@@ -167,4 +193,5 @@ export const phone: PhoneContext = {
   get store() { return need().store; },
   api: () => need().api(),
   onTermEvent: (h) => need().onTermEvent(h),
+  view: (robot) => need().view(robot),
 };

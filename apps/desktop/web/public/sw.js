@@ -48,6 +48,7 @@ self.addEventListener('push', (e) => {
   let p = {};
   try { p = e.data ? e.data.json() : {}; } catch { /* not ours */ }
   if (!p || !p.id) return;
+  if (typeof p.badge === 'number' && self.navigator.setAppBadge) e.waitUntil(self.navigator.setAppBadge(p.badge).catch(() => {}));
   const blocked = p.status === 'blocked';
   const name = p.name || 'Agent';
   e.waitUntil(self.registration.showNotification(blocked ? `${name} needs you` : `${name} is done`, {

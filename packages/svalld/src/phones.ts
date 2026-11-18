@@ -1,20 +1,31 @@
 import type { PhoneSession } from '@svall/protocol';
 
+type Socket = { login: string; since: number; viewing?: string };
+
 /** The phone sockets open right now: the serve mapping says the door is open, this says who came through it and when. */
 export class Phones {
-  private open: { login: string; since: number }[] = [];
+  private open: Socket[] = [];
   private watchers = new Set<(phones: PhoneSession[]) => void>();
 
-  add(login: string): () => void {
-    const socket = { login, since: Date.now() };
+  /** A socket from `login` until it leaves; `view` names the robot its page shows while in view, or none. */
+  add(login: string): { leave(): void; view(robot: string | undefined): void } {
+    const socket: Socket = { login, since: Date.now() };
     this.open.push(socket);
     this.changed();
-    return () => {
-      const i = this.open.indexOf(socket);
-      if (i === -1) return;
-      this.open.splice(i, 1);
-      this.changed();
+    return {
+      leave: () => {
+        const i = this.open.indexOf(socket);
+        if (i === -1) return;
+        this.open.splice(i, 1);
+        this.changed();
+      },
+      view: (robot) => { socket.viewing = robot; },
     };
+  }
+
+  /** Whether a page of `login` shows `robot` in view now. */
+  viewing(login: string, robot: string): boolean {
+    return this.open.some((s) => s.login === login && s.viewing === robot);
   }
 
   /** One row per login: a phone with two tabs is one phone, there since the tab that has been open longest. */
