@@ -2,6 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { app, deps } from '../boot.js';
 import { useApp } from '../hooks.js';
 import { Caret, Return } from '../icons.js';
+import { fileMenu } from '../menus.js';
 import { accountHome, basename } from '../paths.js';
 import { useWidthGrip } from '../widthGrip.js';
 import { Editor } from './Editor.js';
@@ -71,7 +72,7 @@ export function FilesArea({ id }: { id: string }) {
       {tree.open && (
         <div className="ide-side" data-testid="files-tree">
           <Crumbs id={id} root={root} top={top} />
-          <Tree key={top} id={id} root={root} dir={top} depth={0} tick={tick} onOpen={open} />
+          <Tree key={top} id={id} root={root} dir={top} depth={0} tick={tick} onOpen={open} onMenu={(e, path) => fileMenu(e, id, path)} />
         </div>
       )}
       {tree.open && <TreeGrip />}

@@ -12,6 +12,7 @@ vi.mock('../../src/boot.js', async () => {
 
 const { FilesArea } = await import('../../src/ide/FilesArea.js');
 const { ContextMenu } = await import('../../src/ContextMenu.js');
+const { Tree } = await import('../../src/ide/Tree.js');
 const { openFile } = await import('../../src/ide/files.js');
 const { deps } = await import('../../src/boot.js');
 
@@ -39,11 +40,19 @@ test('a right-click on a file or folder in the tree shows it in Finder', async (
   expect(reveals()).toEqual([{ type: 'reveal', path: '/tmp/README' }, { type: 'reveal', path: '/tmp/docs' }]);
 });
 
-test('the open file shows in Finder from the tab strip', async () => {
+test('the open file shows in Finder from the tab strip, on the machine its robot runs on', async () => {
+  store.getState().setVia(VIA);
+  store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VIA.machine }]);
   render(<FilesArea id="c0" />);
   await act(() => openFile(deps(), 'c0', 'README'));
   fireEvent.click(screen.getByTestId('files-finder'));
-  expect(reveals()).toEqual([{ type: 'reveal', path: '/tmp/README' }]);
+  expect(reveals()).toEqual([{ type: 'reveal', path: '/tmp/README', machine: VIA.machine }]);
+});
+
+test("the shelf's tree keeps the default right-click", async () => {
+  render(<><Tree id="r:/tmp" root="/tmp" dir="" depth={0} tick={0} onOpen={() => {}} /><ContextMenu /></>);
+  expect(fireEvent.contextMenu(await screen.findByTestId('tree-README'))).toBe(true);
+  expect(screen.queryByTestId('context-menu')).toBeNull();
 });
 
 test('a robot on another machine offers no Finder', async () => {
