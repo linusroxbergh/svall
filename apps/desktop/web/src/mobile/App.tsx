@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { commitFocused } from '../Field.js';
 import { useApp } from '../hooks.js';
 import { phone } from './boot.js';
@@ -34,8 +34,12 @@ export function App(): JSX.Element {
   useEffect(() => { phone.view(shown); }, [shown]);
 
   const go = (r: Route) => { history.pushState({ pushed: true, ...(route.view === 'waiting' && { from: 'waiting' }) } satisfies Entry, '', routePath(r)); setRoute(r); };
-  // a view this session opened is popped; one opened cold from a notification has no entry behind it
+  // a view this session opened is popped; one opened cold from a notification has no entry behind it. A robot closed from
+  // its own menu asks twice, by its close and by its going
+  const left = useRef<Route>(undefined);
   function back() {
+    if (left.current === route) return;
+    left.current = route;
     if (entry().pushed) { history.back(); return; }
     history.replaceState(null, '', '/');
     setRoute({ view: 'fleet' });
@@ -46,6 +50,8 @@ export function App(): JSX.Element {
 
   if (openId && !gone) return <RobotView key={openId} id={openId} backTo={entry().from ?? 'fleet'} onBack={back} onNext={swap} />;
   const open = (id: string) => go({ view: 'robot', id });
-  if (route.view === 'waiting' && !listOnly) return <Waiting onOpen={open} onBack={back} />;
+  // a robot gone shows the page back leads to while the pop is on its way
+  const page = route.view === 'robot' ? entry().from ?? 'fleet' : route.view;
+  if (page === 'waiting' && !listOnly) return <Waiting onOpen={open} onBack={back} />;
   return <><Fleet onOpen={open} onWaiting={() => go({ view: 'waiting' })} /><MissionBar onOpen={open} /></>;
 }

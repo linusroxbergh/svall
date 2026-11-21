@@ -51,6 +51,7 @@ export function Waiting({ onOpen, onBack }: { onOpen(id: string): void; onBack()
   const via = useApp((s) => s.via);
   const { asks, unread } = waitingOn(fleet, via);
   const status = useApp((s) => s.status);
+  const loaded = useApp((s) => s.loaded);
   const [revealed, setRevealed] = useState<string>();
   const [closing, setClosing] = useState<string>();
   return (
@@ -60,7 +61,7 @@ export function Waiting({ onOpen, onBack }: { onOpen(id: string): void; onBack()
         <h1>Waiting</h1>
         {status !== 'online' && <span className="conn" data-status={status}>{status}</span>}
       </header>
-      {asks.length === 0 && unread.length === 0 && <p className="empty">Nothing waits on you.</p>}
+      {loaded && asks.length === 0 && unread.length === 0 && <p className="empty">Nothing waits on you.</p>}
       {asks.length > 0 && (
         <section aria-label="Needs you">
           <h2>Needs you · {asks.length}</h2>

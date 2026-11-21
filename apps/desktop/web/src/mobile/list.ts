@@ -53,8 +53,12 @@ const QUESTIONS = new Set(['AskUserQuestion', 'request_user_input']);
 
 /** Whether a card answers the ask: a yes or no on the main terminal, the one robot.answer reaches, from a machine that takes it.
  *  A worker refuses robot messages held for the user, which only the home lets in. */
-export const answersInline = (c: Robot, ask: Ask, via?: Via): boolean =>
-  ask.term === 1 && !QUESTIONS.has(ask.agent.askedTool ?? '') && !elsewhere(c, via) && !(via && c.relayed?.held !== undefined && ask.agent.promptId === c.relayed.held);
+export const answersInline = (c: Robot, ask: Ask, via?: Via): boolean => {
+  if (ask.term !== 1 || elsewhere(c, via)) return false;
+  if (c.relayed?.held !== undefined && ask.agent.promptId === c.relayed.held) return !via;
+  // a permission names its tool; OpenCode's asks and Claude Code's forms name none, and may be questions
+  return ask.agent.askedTool !== undefined && !QUESTIONS.has(ask.agent.askedTool);
+};
 
 const LABEL: Record<DisplayStatus, string> = {
   working: 'working', idle: 'idle', blocked: 'needs you', done: 'done', shell: 'shell', moving: 'moving', unknown: 'unknown',

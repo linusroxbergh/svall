@@ -450,6 +450,31 @@ test('a robot closed while it is open takes its view back to the list', () => {
   expect(screen.getByRole('button', { name: 'beta' })).toBeTruthy();
 });
 
+test('a robot closed from its own menu goes back once, to the page it was opened from', async () => {
+  history.replaceState(null, '', '/waiting');
+  history.pushState({ pushed: true, from: 'waiting' }, '', '/robot/c0');
+  store.getState().setFleet(fleet());
+  const back = vi.spyOn(history, 'back').mockImplementation(() => {});
+  let replied!: () => void;
+  call.mockImplementationOnce(() => new Promise((r) => { replied = () => r({}); }));
+  try {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'context' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close robot' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close c0' }));
+    // the robot leaves the fleet before the close replies
+    const f = fleet();
+    delete f.robots.c0;
+    act(() => store.getState().setFleet(f));
+    expect(screen.getByRole('heading', { name: 'Waiting' })).toBeTruthy();
+    await act(async () => { replied(); await Promise.resolve(); });
+    expect(back).toHaveBeenCalledOnce();
+  } finally {
+    back.mockRestore();
+    history.replaceState(null, '', '/');
+  }
+});
+
 // the list's portraits are in the page before the path goes back to the root, and keep the URL they resolved to then
 test('a portrait resolves from the root on a page opened at a robot', () => {
   const page = fs.readFileSync(path.join(__dirname, '../../mobile.html'), 'utf8');

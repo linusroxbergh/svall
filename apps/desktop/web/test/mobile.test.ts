@@ -238,6 +238,8 @@ describe('phone waiting page', () => {
       const question = { ...permission, agent: agent('blocked', { askedTool: tool }) };
       expect(answersInline(question, ask(question))).toBe(false);
     }
+    const unnamed = { ...permission, agent: agent('blocked', { promptId: 'p2' }) };
+    expect(answersInline(unnamed, ask(unnamed))).toBe(false);
     const second = chr('c', 'i_b', { x: 0, y: 0 }, { agent: agent('working'), second: { ...term2, agent: agent('blocked', { askedTool: 'Bash' }) } });
     expect(answersInline(second, ask(second))).toBe(false);
     // through a worker, a robot on another machine takes no answer, and held robot messages only the home's

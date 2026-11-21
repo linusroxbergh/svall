@@ -82,7 +82,7 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2xs); }
 .row-name { display: flex; align-items: center; gap: var(--sp-sm); font-weight: var(--w-medium); }
 .row-sub { font-size: var(--text-md); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pip { width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--blocked); }
+.pip { flex: none; width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--blocked); }
 .row-status { flex: none; padding: var(--sp-lg) var(--sp-2xl); font-size: var(--text-sm); color: var(--idle); }
 .row[data-status='working'] .row-status { color: var(--working); }
 .row[data-status='blocked'] .row-status { color: var(--blocked); }
@@ -103,6 +103,8 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 
 .waiting-open { display: flex; align-items: center; gap: var(--sp-2xs); color: var(--blocked); }
 .conn + .waiting-open { margin-left: 0; }
+/* through a worker its line gives way to the count */
+.conn:has(+ .waiting-open) { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .waiting h2 { min-height: 40px; }
 .ask-card {
   display: flex; flex-direction: column; gap: var(--sp-md); margin: 0 var(--sp-lg) var(--sp-md); padding: var(--sp-lg) var(--sp-xl);

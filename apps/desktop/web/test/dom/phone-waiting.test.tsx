@@ -88,3 +88,10 @@ test('unread work waits apart from the asks, and with nothing left the page says
   act(() => store.getState().setFleet(fleet()));
   expect(screen.getByText('Nothing waits on you.')).toBeTruthy();
 });
+
+test('before the fleet loads, the page claims nothing', () => {
+  render(<Waiting onOpen={() => {}} onBack={() => {}} />);
+  expect(screen.queryByText('Nothing waits on you.')).toBeNull();
+  act(() => store.getState().setFleet(fleet()));
+  expect(screen.getByText('Nothing waits on you.')).toBeTruthy();
+});
