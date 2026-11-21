@@ -1,6 +1,6 @@
-import { shownAgent, type Robot, type FleetState, type Island } from '@svall/protocol';
-import type { Via } from '../placement.js';
-import { robotsByPriority, islandsSorted, slotStatus, wantsUser, type DisplayStatus } from '../selectors.js';
+import { shownAgent, type Agent, type Robot, type FleetState, type Island } from '@svall/protocol';
+import { elsewhere, type Via } from '../placement.js';
+import { robotsByPriority, islandsSorted, slotStatus, statusOf, wantsUser, type DisplayStatus } from '../selectors.js';
 
 export type Section = { island: Island; robots: Robot[] };
 
@@ -31,6 +31,30 @@ export function nextWaiting(f: FleetState, id: string, via?: Via): Robot | undef
   const at = order.findIndex((c) => c.id === id);
   return [...order.slice(at + 1), ...order.slice(0, Math.max(at, 0))].find((c) => wantsUser(c, f, via));
 }
+
+/** What waits on the user, in the list's order: robots blocked on an answer, and apart from them those with unread work. */
+export function waitingOn(f: FleetState, via?: Via): { asks: Robot[]; unread: Robot[] } {
+  const all = sections(f, via).flatMap((s) => s.robots).filter((c) => wantsUser(c, f, via));
+  const asks = all.filter((c) => statusOf(c, f, via) === 'blocked');
+  return { asks, unread: all.filter((c) => !asks.includes(c)) };
+}
+
+export type Ask = { term: 1 | 2; agent: Agent };
+
+/** The terminal a robot is blocked in, the main one first, and what its agent asks there. */
+export function blockedAsk(c: Robot): Ask | undefined {
+  if (slotStatus(c, 1) === 'blocked') return { term: 1, agent: shownAgent(c)! };
+  if (slotStatus(c, 2) === 'blocked') return { term: 2, agent: c.second!.agent! };
+  return undefined;
+}
+
+// answering sends Enter or Esc, which in a question picks the highlighted option
+const QUESTIONS = new Set(['AskUserQuestion', 'request_user_input']);
+
+/** Whether a card answers the ask: a yes or no on the main terminal, the one robot.answer reaches, from a machine that takes it.
+ *  A worker refuses robot messages held for the user, which only the home lets in. */
+export const answersInline = (c: Robot, ask: Ask, via?: Via): boolean =>
+  ask.term === 1 && !QUESTIONS.has(ask.agent.askedTool ?? '') && !elsewhere(c, via) && !(via && c.relayed?.held !== undefined && ask.agent.promptId === c.relayed.held);
 
 const LABEL: Record<DisplayStatus, string> = {
   working: 'working', idle: 'idle', blocked: 'needs you', done: 'done', shell: 'shell', moving: 'moving', unknown: 'unknown',

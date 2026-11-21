@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { needingUser, type Event, type MachineId, type PushStatus, type Robot } from '@svall/protocol';
 import type { Api } from '../src/api.js';
-import { nextWaiting, sections, subtitle, waiting } from '../src/mobile/list.js';
+import { answersInline, blockedAsk, nextWaiting, sections, subtitle, waiting, waitingOn } from '../src/mobile/list.js';
 import { linkText } from '../src/mobile/urls.js';
 import { encode, linkTerminal, type Screen } from '../src/mobile/term.js';
 import { parseRoute, routePath } from '../src/mobile/route.js';
@@ -199,6 +199,57 @@ describe('phone fleet list', () => {
   });
 });
 
+describe('phone waiting page', () => {
+  const agent = (status: 'working' | 'idle' | 'blocked' | 'done', extra = {}) => ({ kind: 'claude' as const, sessionId: 's', transcriptPath: '/t', status, lastActivityAt: 0, ...extra });
+  const term2 = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false };
+
+  it('lists robots blocked on an answer apart from those with unread work, in the list\'s order', () => {
+    const f = fleet();
+    f.islands.i_z = isl('i_z', 'zulu', 24);
+    f.robots.c3 = chr('c3', 'i_z', { x: 1, y: 1 }, { agent: agent('blocked') });
+    f.robots.c4 = chr('c4', 'i_z', { x: 2, y: 1 }, { agent: agent('done'), unread: true });
+    f.robots.c5 = chr('c5', 'i_a', { x: 2, y: 1 }, { agent: agent('done') });
+    f.robots.c6 = chr('c6', 'i_b', { x: 2, y: 2 }, { agent: agent('blocked') });
+    // its window gone, nothing waits on the user, whatever the agent last said
+    f.robots.c7 = chr('c7', 'i_b', { x: 3, y: 2 }, { agent: agent('blocked'), tmux: undefined });
+    f.robots.c8 = chr('c8', 'i_b', { x: 4, y: 2 }, { agent: agent('working'), second: { ...term2, agent: agent('blocked') } });
+    const { asks, unread } = waitingOn(f);
+    expect(asks.map((c) => c.id)).toEqual(['c6', 'c8', 'c3']);
+    expect(unread.map((c) => c.id)).toEqual(['c4']);
+    expect(asks.length + unread.length).toBe(waiting(f));
+  });
+
+  it('reads the ask from the terminal that is blocked, the main one first', () => {
+    const main = agent('blocked', { prompt: 'Allow Bash?', askedTool: 'Bash', askedFor: 'pnpm test', promptId: 'p1' });
+    const second = agent('blocked', { prompt: 'Allow Edit?', askedTool: 'Edit', askedFor: 'a.ts', promptId: 'p2' });
+    expect(blockedAsk(chr('c', 'i_b', { x: 0, y: 0 }, { agent: main, second: { ...term2, agent: second } }))).toEqual({ term: 1, agent: main });
+    expect(blockedAsk(chr('c', 'i_b', { x: 0, y: 0 }, { agent: agent('working'), second: { ...term2, agent: second } }))).toEqual({ term: 2, agent: second });
+    expect(blockedAsk(chr('c', 'i_b', { x: 0, y: 0 }, { agent: agent('done') }))).toBeUndefined();
+  });
+
+  it('answers on the card only a yes or no the main terminal asks, which the machine the page reaches takes', () => {
+    const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+    const mac = '11111111-1111-4111-8111-111111111111' as MachineId;
+    const via = { machine: vault, home: mac };
+    const ask = (c: Robot) => blockedAsk(c)!;
+    const permission = chr('c', 'i_b', { x: 0, y: 0 }, { agent: agent('blocked', { askedTool: 'Bash', promptId: 'p1' }) });
+    expect(answersInline(permission, ask(permission))).toBe(true);
+    for (const tool of ['AskUserQuestion', 'request_user_input']) {
+      const question = { ...permission, agent: agent('blocked', { askedTool: tool }) };
+      expect(answersInline(question, ask(question))).toBe(false);
+    }
+    const second = chr('c', 'i_b', { x: 0, y: 0 }, { agent: agent('working'), second: { ...term2, agent: agent('blocked', { askedTool: 'Bash' }) } });
+    expect(answersInline(second, ask(second))).toBe(false);
+    // through a worker, a robot on another machine takes no answer, and held robot messages only the home's
+    expect(answersInline(permission, ask(permission), via)).toBe(false);
+    const own = { ...permission, machine: vault };
+    expect(answersInline(own, ask(own), via)).toBe(true);
+    const held = chr('c', 'i_b', { x: 0, y: 0 }, { machine: vault, agent: agent('idle'), relayed: { n: 3, held: 'h1' } });
+    expect(answersInline(held, ask(held))).toBe(true);
+    expect(answersInline(held, ask(held), via)).toBe(false);
+  });
+});
+
 describe('links in the long-press text', () => {
   it('links each URL, leaving its closing punctuation out, and merges the plain text between', () => {
     expect(linkText([
@@ -236,6 +287,8 @@ describe('phone routes', () => {
     expect(parseRoute('/robot/%')).toEqual({ view: 'fleet' });
     expect(routePath({ view: 'robot', id: 'c_ab12' })).toBe('/robot/c_ab12');
     expect(routePath({ view: 'fleet' })).toBe('/');
+    expect(parseRoute('/waiting')).toEqual({ view: 'waiting' });
+    expect(routePath({ view: 'waiting' })).toBe('/waiting');
   });
 });
 
