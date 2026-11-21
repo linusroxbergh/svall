@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import type { MachineId } from '@svall/protocol';
 import { freshStore, shell, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
@@ -93,15 +94,15 @@ test('a press outside the bubble, on the page or on a terminal, goes to the next
   const { getByTestId } = render(<><Tour /><div data-testid="sea" /></>);
   const kicker = () => getByTestId('tour').querySelector('.kicker')!.textContent;
   fireEvent.pointerDown(getByTestId('tour').querySelector('.tour-body')!);
-  expect(kicker()).toBe('1 of 6');
+  expect(kicker()).toBe('1 of 7');
   fireEvent.pointerDown(getByTestId('sea'));
-  expect(kicker()).toBe('2 of 6');
+  expect(kicker()).toBe('2 of 7');
   act(() => shell({ type: 'shell.pressedAway' }));
-  expect(kicker()).toBe('3 of 6');
+  expect(kicker()).toBe('3 of 7');
   // a dialog over the page takes its own presses
   act(() => store.getState().setMissionPrompt(true));
   fireEvent.pointerDown(getByTestId('sea'));
-  expect(kicker()).toBe('3 of 6');
+  expect(kicker()).toBe('3 of 7');
 });
 
 test('a tour with nothing to point at stays mid-window as the window resizes', async () => {
@@ -136,11 +137,30 @@ test('an anchor outside the window is out of sight: the bubble stands mid-window
 
 
 test('the final key list uses rebound keys and omits unbound actions', () => {
-  localStorage.setItem('svall.tour', '5');
+  localStorage.setItem('svall.tour', '6');
   act(() => store.getState().setSettings({ bindings: { newRobot: 'cmd+n', missionControl: null } }));
   const { getByTestId, queryByText } = render(<Tour />);
   expect(getByTestId('tour').textContent).toContain('Keys worth knowing');
   expect(getByTestId('tour').textContent).toContain('⌘N');
   expect(queryByText('Ask mission control')).toBeNull();
   expect(getByTestId('tour').dataset.side).toBeUndefined();
+});
+
+test('a fleet whose home is a server skips the step that offers one', () => {
+  const titles = () => {
+    localStorage.clear();
+    const { getByTestId, queryByTestId, unmount } = render(<Tour />);
+    const out: string[] = [];
+    while (queryByTestId('tour')) {
+      out.push(getByTestId('tour').querySelector('.tour-title')!.textContent!);
+      fireEvent.click(getByTestId('tour-next'));
+    }
+    unmount();
+    return out;
+  };
+  expect(titles()).toContain('Keep working while your Mac sleeps');
+  act(() => store.getState().setVia({ machine: 'mac' as MachineId, home: 'studio' as MachineId, name: 'studio' }));
+  const far = titles();
+  expect(far).not.toContain('Keep working while your Mac sleeps');
+  expect(far.at(-1)).toBe('Keys worth knowing');
 });
