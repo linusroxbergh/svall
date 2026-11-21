@@ -1,0 +1,4 @@
+- On the phone, one text box and a dock of keys, tappable links in the terminal, a next button and terminal colours.
+- The phone's approve bar and its notification show what a blocked agent wants to run; the robot you're looking at no longer notifies you, and the Home Screen icon shows a badge.
+- Show in Finder from the Files tree's right-click menu and beside the file tabs.
+- Robot names on the map's cards use a new font, Jost.
