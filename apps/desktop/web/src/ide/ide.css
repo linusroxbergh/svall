@@ -31,7 +31,10 @@
 .tree-name { overflow: hidden; text-overflow: ellipsis; }
 .tree-err { padding: var(--sp-xs) var(--sp-md); font-size: var(--text-sm); color: var(--danger); }
 /* the ask hangs out of the strip, so only the strip may clip */
-.ftabs { flex: none; position: relative; }
+.ftabs { flex: none; position: relative; display: flex; }
+.ftabs > .dtabs { flex: 1; min-width: 0; }
+/* outside the scrolling strip, so it stays in view; it carries the strip's line on */
+.ftabs > .btn.ftab-finder { flex: none; padding: var(--sp-xs) var(--sp-lg) 0; border-bottom: 1px solid var(--line-soft); border-radius: 0; white-space: nowrap; }
 .ftab-ask { position: absolute; right: 8px; top: 4px; display: flex; align-items: center; gap: var(--sp-md); padding: var(--sp-sm) var(--sp-lg); border-radius: var(--r-md); background: var(--panel-hi); font-size: var(--text-md); z-index: 2; }
 .editor { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
 .editor-host { flex: 1; min-height: 0; }

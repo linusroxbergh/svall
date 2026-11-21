@@ -1,5 +1,5 @@
 import type { Api } from '../api.js';
-import type { Bridge } from '../bridge.js';
+import { revealFile, type Bridge } from '../bridge.js';
 import { pick, shows, type Surface } from '../panes.js';
 import { accountHome, basename, shortPath } from '../paths.js';
 import { panesOf } from '../selectors.js';
@@ -147,6 +147,14 @@ export async function reloadFile(d: FilesDeps, id: string, path: string): Promis
   } catch (e) {
     d.store.getState().showToast(`${path}: ${(e as Error).message}`);
   }
+}
+
+/** Shows a Files path selected in Finder; a robot on another machine has nothing here to show. */
+export function revealPath(d: FilesDeps & { bridge: Bridge }, id: string, path: string): void {
+  const s = d.store.getState();
+  const c = s.fleet.robots[id];
+  if (!c || readsOn(s.fleet, id, s.via)) return;
+  revealFile(d.bridge, absOf(path, rootOf(c)), robotMachine(c, s));
 }
 
 export function overwriteFile(d: FilesDeps, id: string, path: string): Promise<void> {
