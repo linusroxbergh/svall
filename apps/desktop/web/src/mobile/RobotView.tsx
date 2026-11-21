@@ -5,8 +5,10 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { shownAgent } from '@svall/protocol';
 import { useApp, useFitHeight } from '../hooks.js';
 import { Arrow, Backspace, Caret, Enter, Keyboard, More, ShiftTab, Tab } from '../icons.js';
-import { awayLine, elsewhere } from '../placement.js';
+import { MachineLine } from '../indicators.js';
+import { awayLine, elsewhere, machineOf } from '../placement.js';
 import { statusOf } from '../selectors.js';
+import { useAnswer } from './answer.js';
 import { phone } from './boot.js';
 import { readDraft, writeDraft } from './draft.js';
 import { KEY_ROW, keepFocus } from './keys.js';
@@ -51,10 +53,11 @@ const readSize = (): number => {
   } catch { return 11; }
 };
 
-export function RobotView({ id, onBack, onNext }: { id: string; onBack(): void; onNext(id: string): void }): JSX.Element {
+export function RobotView({ id, backTo, onBack, onNext }: { id: string; backTo: string; onBack(): void; onNext(id: string): void }): JSX.Element {
   const robot = useApp((s) => s.fleet.robots[id]);
   const robotStatus = useApp((s) => (s.fleet.robots[id] ? statusOf(s.fleet.robots[id], s.fleet, s.via) : undefined));
   const island = useApp((s) => s.fleet.islands[s.fleet.robots[id]?.islandId ?? '']);
+  const on = useApp((s) => { const r = s.fleet.robots[id]; return r && machineOf(s.fleet, r, s.via); });
   const next = useApp((s) => nextWaiting(s.fleet, id, s.via));
   // what stands over the terminal while the machine it runs on is out of reach; the terminal holds the last screen it showed
   const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && awayLine(s.fleet, r, s.via); });
@@ -79,8 +82,6 @@ export function RobotView({ id, onBack, onNext }: { id: string; onBack(): void; 
   const [prompt, setPrompt] = useState(() => readDraft(id));
   const [menu, setMenu] = useState(false);
   const [keys, setKeys] = useState(false);
-  const [answering, setAnswering] = useState(false);
-  const [answerError, setAnswerError] = useState<string>();
   const [sendError, setSendError] = useState<string>();
   const [frozen, setFrozen] = useState<Frozen>();
   const frozenText = useRef<HTMLPreElement>(null);
@@ -207,14 +208,12 @@ export function RobotView({ id, onBack, onNext }: { id: string; onBack(): void; 
     return () => setFailed('The terminal closed.');
   }, [windowId]);
 
-  // an answer stays in flight until the daemon reports the agent unblocked or on another question, so one tap answers once
   const shown = robot && shownAgent(robot);
   const blocked = shown?.status === 'blocked';
   const promptId = shown?.promptId;
   // a question dialog's Enter picks the highlighted option, one question at a time
   const question = shown?.askedTool === 'AskUserQuestion';
-  const asking = useRef(promptId);
-  useEffect(() => { asking.current = promptId; setAnswering(false); setAnswerError(undefined); }, [blocked, promptId]);
+  const { answering, error: answerError, answer } = useAnswer(id, promptId, blocked);
 
   useEffect(() => writeDraft(id, prompt), [id, prompt]);
 
@@ -243,20 +242,6 @@ export function RobotView({ id, onBack, onNext }: { id: string; onBack(): void; 
     input.focus();
   };
 
-  const answer = async (a: 'approve' | 'deny') => {
-    if (answering) return;
-    setAnswering(true);
-    setAnswerError(undefined);
-    try {
-      await phone.api().call('robot.answer', { id, answer: a, promptId });
-    } catch (e) {
-      // a refusal that comes back after a newer question is up is not that question's
-      if (asking.current !== promptId) return;
-      setAnswerError((e as Error).message);
-      setAnswering(false);
-    }
-  };
-
   // a prompt the fleet does not take comes back to the field, unless something new was typed meanwhile
   const send = () => {
     const text = prompt;
@@ -272,10 +257,10 @@ export function RobotView({ id, onBack, onNext }: { id: string; onBack(): void; 
   return (
     <div className="robot">
       <header className="top">
-        <button className="back" onClick={onBack}><Caret dir="left" /> fleet</button>
+        <button className="back" onClick={onBack}><Caret dir="left" /> {backTo}</button>
         <span className="title">
           <span>{robot?.name ?? 'gone'}</span>
-          {island && <small>{island.name}</small>}
+          {(island || on) && <small>{island && <span>{island.name}</span>}{on && <MachineLine name={on} short className="title-on" testid="phone-machine" />}</small>}
         </span>
         {/* without svalld the robot's status is stale, so the header says so instead */}
         <span className="conn" data-status={!online ? status : robotStatus ?? 'gone'}>

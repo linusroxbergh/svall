@@ -3,7 +3,8 @@ import { starredOf, type Robot, type Island } from '@svall/protocol';
 import { createRobot } from '../actions.js';
 import { memoByValue, useApp } from '../hooks.js';
 import { Caret, Check, Gear, More, Plus } from '../icons.js';
-import { elsewhere, homeName, machineName } from '../placement.js';
+import { MachineLine } from '../indicators.js';
+import { elsewhere, homeName, machineName, machineOf } from '../placement.js';
 import { figureOf, figureUrl } from '../portraits.js';
 import { islandCwd, startCwds, startOf, statusOf, wantsUser } from '../selectors.js';
 import { phone } from './boot.js';
@@ -17,11 +18,12 @@ import { Settings } from './Settings.js';
 
 type RowProps = { c: Robot; revealed: boolean; onOpen(id: string): void; onReveal(id?: string): void; onClose(id: string): void };
 
-const Row = memoByValue(function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element {
+export const Row = memoByValue(function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element {
   const status = useApp((s) => statusOf(c, s.fleet, s.via));
   const asks = useApp((s) => wantsUser(c, s.fleet, s.via));
   // a worker closes and marks read only its own robots
   const here = useApp((s) => !elsewhere(c, s.via));
+  const machine = useApp((s) => machineOf(s.fleet, c, s.via));
   const sub = subtitle(c, status === 'blocked');
   const [drag, setDrag] = useState<number>();
   const touch = useRef<{ x: number; y: number; from: number; swiping: boolean }>(undefined);
@@ -64,7 +66,7 @@ const Row = memoByValue(function Row({ c, revealed, onOpen, onReveal, onClose }:
         <button type="button" className="row-main" onClick={tap}>
           <span className="face figure"><img src={figureUrl(figureOf(c))} alt="" /></span>
           <span className="row-text">
-            <span className="row-name">{c.name}{asks && <i className="pip" />}</span>
+            <span className="row-name"><span>{c.name}</span>{asks && <i className="pip" />}{machine && <MachineLine name={machine} short className="row-on" testid={`phone-machine-${c.id}`} />}</span>
             {sub && <span className="row-sub">{sub}</span>}
           </span>
         </button>
@@ -82,7 +84,7 @@ const Row = memoByValue(function Row({ c, revealed, onOpen, onReveal, onClose }:
 
 type Open = { kind: 'island' } | { kind: 'robot'; islandId: string } | { kind: 'islandMenu'; islandId: string } | { kind: 'settings' } | { kind: 'close'; id: string };
 
-export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
+export function Fleet({ onOpen, onWaiting }: { onOpen(id: string): void; onWaiting(): void }): JSX.Element {
   const fleet = useApp((s) => s.fleet);
   const loaded = useApp((s) => s.loaded);
   const status = useApp((s) => s.status);
@@ -124,15 +126,16 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
   const moved = movedTo(fleet, via, status);
   // a phone the fleet does not take changes nothing in it
   const shut = status === 'unpaired' || status === 'refused';
+  const queue = status === 'online' && !moved && need > 0;
+  const conn = status !== 'online' ? status : moved ? `moved to ${moved}` : via ? `on ${machineName(fleet, via.machine)} · ${homeName(fleet, via)} asleep` : queue ? undefined : 'all quiet';
   return (
     <div className="fleet">
       <header className="top">
         <h1>{document.title}</h1>
         {!moved && !shut && <button type="button" className="ib touch" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}><Plus size="lg" /></button>}
         {!via && <button type="button" className="ib touch" aria-label="Settings" onClick={() => setSheet({ kind: 'settings' })}><Gear /></button>}
-        <span className="conn" data-status={status}>
-          {status !== 'online' ? status : moved ? `moved to ${moved}` : via ? `on ${machineName(fleet, via.machine)} · ${homeName(fleet, via)} asleep` : need ? `${need} waiting` : 'all quiet'}
-        </span>
+        {conn && <span className="conn" data-status={status}>{conn}</span>}
+        {queue && <button type="button" className="conn waiting-open" onClick={onWaiting}>{need} waiting<Caret dir="right" size="sm" /></button>}
       </header>
       {moved && <p className="empty" data-testid="phone-moved">This fleet runs on {moved} now. Scan its new QR code: on your Mac, Settings&nbsp;→&nbsp;Phone.</p>}
       {status === 'refused' && <p className="empty">This tailnet login can't open this fleet. On the Mac, add it to mobile.logins in fleet.json, then quit and reopen Svall.</p>}
