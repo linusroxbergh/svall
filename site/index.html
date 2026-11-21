@@ -229,6 +229,14 @@ span.src { color: var(--ink-3); }
 [data-tier="global"] { --c: var(--ink-cool); } [data-tier="fleet"] { --c: var(--pt-coral); } [data-tier="repo"] { --c: var(--pt-sky); }
 [data-tier="island"] { --c: var(--pt-moss); } [data-tier="robot"] { --c: var(--pt-sun); }
 .tier i { color: var(--c); }
+/* the two ways to use a server, as cards on the sea */
+.ways { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-xl); max-width: 880px; }
+.way { padding: 22px 24px; border-radius: var(--r-lg); background: var(--surface-1); border: 1px solid var(--line-soft); box-shadow: 0 24px 48px -24px var(--shade-2); }
+.way h3 { display: flex; align-items: center; gap: var(--sp-md); margin: 0 0 var(--sp-md); font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; }
+.way p { margin: 0; color: var(--body); line-height: 1.5; text-wrap: pretty; }
+.way b { font-weight: 600; color: var(--ink); }
+/* the app's badge, as on its first-run screen */
+.badge { padding: var(--sp-2xs) var(--sp-sm); border-radius: var(--r-xs); font-size: .625rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: var(--sand-fill); color: var(--sand); }
 
 .close { text-align: center; }
 .close .install { margin-left: auto; margin-right: auto; text-align: left; }
@@ -239,6 +247,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   .ctx { grid-template-columns: minmax(0, 1fr); gap: 32px; }
   .shelf { width: auto; justify-self: stretch; }
 }
+@media (max-width: 760px) { .ways { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 760px) {
   .lede, .sub { font-size: .9375rem; }
   .dl { margin-top: 22px; }
@@ -292,10 +301,10 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
       <li><b>Clear overview:</b> the map and board keep track of your work</li>
       <li><b>Shared context:</b> give notes and links to a whole repo, island or agent</li>
       <li><b>Persistence:</b> each agent runs in tmux and resumes after quit or reboot</li>
+      <li><b>Optional server:</b> agents keep working on Linux while your Mac sleeps</li>
       <li><b>Built-in browser:</b> PRs, previews and docs beside the terminal</li>
       <li><b>Built-in editor:</b> edit files and review the diff in place</li>
       <li><b>On your phone:</b> every agent and terminal, over Tailscale</li>
-      <li><b>Remote machines:</b> move a robot to a Linux server over ssh (experimental)</li>
     </ul>
   </section>
 </div>
@@ -333,6 +342,24 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     <p class="sub">Press ⌘G and ask mission control, or ask any agent. It makes the island and its robots with the <code>svall</code> CLI, and each one starts your own Claude Code, Codex or OpenCode.</p>
   </div>
   <div class="scene" role="img" aria-label="Pressing Command G opens mission control's prompt. The prompt asks for an island to review three open PRs. A new island appears and three review robots land on it and start working."><div class="scene-map" inert></div></div>
+</section>
+
+<section class="sec wrap" aria-labelledby="server-h">
+  <div class="sec-head">
+    <h2 id="server-h">Close the lid. Your agents keep working.</h2>
+    <p class="sub">Your Mac is all Svall needs. Give it an always-on Linux server too, and robots keep working while the Mac sleeps, on the same map as the rest.</p>
+  </div>
+  <div class="ways">
+    <div class="way">
+      <h3>The whole fleet on a server<span class="badge">recommended</span></h3>
+      <p>Svall installs itself there over ssh, and your Mac and phone connect to it over Tailscale. The first run offers it, or move your fleet later in Settings → Machines.</p>
+    </div>
+    <div class="way">
+      <h3>One robot at a time</h3>
+      <p><b>Move to</b> on a robot’s card takes its conversation, branch and uncommitted changes to the server, and <b>Move to this Mac</b> brings it back.</p>
+    </div>
+  </div>
+  <p class="meta">Needs Ubuntu 22.04 or newer at an account you reach with ssh. <a href="https://github.com/linusroxbergh/svall/blob/main/docs/remote-machines/README.md">Setting up a server</a></p>
 </section>
 
 <section class="sec wrap ctx" aria-labelledby="ctx-h">
@@ -394,8 +421,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   <ul>
     <li>Claude Code, Codex and OpenCode report to Svall through hooks, so a card changes the moment its agent starts, asks or finishes.</li>
     <li>Each agent runs in its own tmux window, on a separate tmux server that leaves yours alone. The app, your phone and the <code>svall</code> CLI all reach that window.</li>
-    <li>A robot moves to a Linux machine you reach over ssh, and back, with its conversation, branch and uncommitted changes. There it keeps working in tmux while your Mac sleeps.</li>
-    <li>Quitting stops the agents on your Mac. Opening a robot again resumes its conversation with <code>claude --resume</code>, <code>codex resume</code> or <code>opencode -s</code>.</li>
+    <li>Quitting stops the agents on your Mac; those on a server keep going. Opening a robot again resumes its conversation with <code>claude --resume</code>, <code>codex resume</code> or <code>opencode -s</code>.</li>
     <li>No account and no telemetry. Setup adds Svall’s hook to Claude Code and Codex and its plugin to OpenCode, and <code>svall uninstall</code> takes them out.</li>
     <li>Coming from Herdr? <a href="https://github.com/linusroxbergh/svall#migrating-from-herdr">Ask an agent</a> to move your workspaces over, conversations included.</li>
     <li>Setup, the <code>svall</code> CLI and every file Svall writes are covered in the README on <a href="https://github.com/linusroxbergh/svall">GitHub</a>.</li>

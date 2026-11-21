@@ -14,7 +14,8 @@ type Side = 'top' | 'bottom' | 'left' | 'right';
 type Anchor = { id?: string; islandId?: string; cardOpen: boolean };
 // the sentence a key starts, which goes with the key when the user leaves it unbound
 type Hint = (id: Parameters<typeof keyLabel>[0], rest: string) => string;
-type Step = { at: (a: Anchor) => { sel: string; side: Side }; title: string; body: (k: Hint, cwd: string, agent: string, bindings: Parameters<typeof keyLabel>[1]) => ReactNode };
+// local: shown only while the fleet's home is this Mac
+type Step = { at: (a: Anchor) => { sel: string; side: Side }; title: string; body: (k: Hint, cwd: string, agent: string, bindings: Parameters<typeof keyLabel>[1]) => ReactNode; local?: true };
 
 const STEPS: Step[] = [
   {
@@ -49,6 +50,12 @@ const STEPS: Step[] = [
   },
   {
     at: () => ({ sel: '', side: 'bottom' }),
+    title: 'Keep working while your Mac sleeps',
+    body: (k) => <>Svall works best with an always-on Linux server you reach with ssh. Add one in Settings → Machines, and <b>Move to</b> on a robot&apos;s card takes it there with its conversation and changes.{k('toggleSettings', 'opens Settings.')}</>,
+    local: true,
+  },
+  {
+    at: () => ({ sel: '', side: 'bottom' }),
     title: 'Keys worth knowing',
     body: (_k, _cwd, _agent, bindings) => {
       const next = keyLabel('nextRobot', bindings), previous = keyLabel('prevRobot', bindings);
@@ -61,6 +68,7 @@ const STEPS: Step[] = [
     },
   },
 ];
+const FAR_STEPS = STEPS.filter((s) => !s.local);
 
 // a machine with settings of its own, under its fleet's key or the unscoped one, is past its first run, so
 // the tour is only ever offered on the first; a store switched off offers it never
@@ -120,11 +128,12 @@ export function Tour() {
   const [view, setView] = useState({ w: innerWidth, h: innerHeight });
   const bubble = useRef<HTMLDivElement>(null);
   const cardOpen = useApp((s) => s.card !== undefined);
-  const cur = ready ? STEPS[step] : undefined;
+  const steps = useApp((s) => (s.via ? FAR_STEPS : STEPS));
+  const cur = ready ? steps[step] : undefined;
   const at = cur?.at({ id: first, islandId, cardOpen });
   const selector = at?.sel;
   const go = (next: number) => {
-    try { localStorage.setItem(TOUR_KEY, next >= STEPS.length ? 'done' : String(next)); } catch { /* remembered, not required */ }
+    try { localStorage.setItem(TOUR_KEY, next >= steps.length ? 'done' : String(next)); } catch { /* remembered, not required */ }
     setStep(next);
   };
 
@@ -171,7 +180,7 @@ export function Tour() {
       if (e.key !== 'Escape' || e.defaultPrevented || isVeiled(app.store.getState())) return;
       if ((e.target as Element | null)?.closest?.('.cm-editor') || document.querySelector('.map[data-dragging="true"]')) return;
       e.stopPropagation();
-      go(STEPS.length);
+      go(steps.length);
     };
     document.addEventListener('keydown', key);
     return () => document.removeEventListener('keydown', key);
@@ -189,18 +198,18 @@ export function Tour() {
 
   if (!cur || !at) return null;
   const k: Hint = (id, rest) => { const key = keyLabel(id, bindings); return key ? ` ${key} ${rest}` : ''; };
-  const last = step === STEPS.length - 1;
+  const last = step === steps.length - 1;
   const z = zoom(), vw = view.w / z, vh = view.h / z;
   const ring = box && { left: Math.max(box.left - 6, 3), top: Math.max(box.top - 6, 3), right: Math.min(box.right + 6, vw - 3), bottom: Math.min(box.bottom + 6, vh - 3), radius: (box.radius ?? 12) + 6 };
   return (
     <>
       {ring && <div className="tour-ring" style={{ left: ring.left, top: ring.top, width: ring.right - ring.left, height: ring.bottom - ring.top, borderRadius: clamp(ring.radius, 10, (ring.bottom - ring.top) / 2) }} />}
       <div key={`tour-${step}`} ref={bubble} className="tour dialog" data-testid="tour" data-side={box ? at.side : undefined} style={place(at.side, box, size.w, size.h, vw, vh)} role="dialog" aria-label={cur.title}>
-        <div className="kicker">{step + 1} of {STEPS.length}</div>
+        <div className="kicker">{step + 1} of {steps.length}</div>
         <div className="tour-title">{cur.title}</div>
         <div className="tour-body">{cur.body(k, cwd, agent, bindings)}</div>
         <div className="tour-acts">
-          {!last && <button className="btn ghost" data-testid="tour-skip" onClick={() => go(STEPS.length)}>Skip tour</button>}
+          {!last && <button className="btn ghost" data-testid="tour-skip" onClick={() => go(steps.length)}>Skip tour</button>}
           <button className="btn pri" data-testid="tour-next" onClick={() => go(step + 1)}>{last ? 'Done' : 'Next'}</button>
         </div>
       </div>

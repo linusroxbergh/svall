@@ -12,16 +12,16 @@ test('the first open starts the tour on the first robot without setup dialogs, a
   await expect(page.getByTestId('settings')).toHaveCount(0);
   await expect(page.getByTestId('fleet-name-ask')).toHaveCount(0);
   await expect(page.getByTestId('scribe-ask')).toHaveCount(0);
-  await expect(tour).toContainText('1 of 6');
+  await expect(tour).toContainText('1 of 7');
   await expect(tour).toContainText('Claude Code, started in /tmp');
   await expect.poll(() => tour.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
   await expect.poll(() => ringsOn(page, page.getByTestId(`token-${c.id}`))).toBe(true);
   await page.screenshot({ path: test.info().outputPath('first-open.png') });
   // selected, so Enter opens it, with its side card open for the next step
   await expect(page.getByTestId('side-name')).toHaveValue(c.name);
-  for (const [i, title] of ['What the robot knows', 'Resources', 'Robots make robots', 'Mission control', 'Keys worth knowing'].entries()) {
+  for (const [i, title] of ['What the robot knows', 'Resources', 'Robots make robots', 'Mission control', 'Keep working while your Mac sleeps', 'Keys worth knowing'].entries()) {
     await page.getByTestId('tour-next').click();
-    await expect(tour).toContainText(`${i + 2} of 6`);
+    await expect(tour).toContainText(`${i + 2} of 7`);
     await expect(tour).toContainText(title);
   }
   await expect(page.getByTestId('tour-skip')).toHaveCount(0);
@@ -57,7 +57,7 @@ test('Escape ends the tour for good and leaves the robot it showed selected', as
   const island = await svall.api.call('island.create', { name: svall.uniq('first') });
   const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp' });
   await svall.open('map', { firstRun: true, tour: true });
-  await expect(page.getByTestId('tour')).toContainText('1 of 6');
+  await expect(page.getByTestId('tour')).toContainText('1 of 7');
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('tour')).toHaveCount(0);
   await expect(page.getByTestId('side-name')).toHaveValue(c.name);
@@ -80,7 +80,7 @@ test('over an open terminal the tour rings what is in sight, and the terminal gi
   const { sent } = await svall.nativeShell();
   await svall.open('map', { firstRun: true, tour: true });
   const tour = page.getByTestId('tour');
-  await expect(tour).toContainText('1 of 6');
+  await expect(tour).toContainText('1 of 7');
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-settled', 'true');
   const held = async () => {
@@ -90,7 +90,7 @@ test('over an open terminal the tour rings what is in sight, and the terminal gi
   };
   const targets = [page.getByTestId(`sb-robot-${c.id}`), page.getByTestId('side-card'), page.getByTestId('side-resources'), page.getByTestId(`sb-folder-${island.id}`)];
   for (const [i, target] of targets.entries()) {
-    await expect(tour).toContainText(`${i + 1} of 6`);
+    await expect(tour).toContainText(`${i + 1} of 7`);
     await expect.poll(() => ringsOn(page, target)).toBe(true);
     await expect.poll(held).toBe(true);
     await page.getByTestId('tour-next').click();
@@ -103,7 +103,7 @@ test('under the page zoom a browser applies, the ring stands on its target', asy
   await svall.open('map', { firstRun: true, tour: true });
   // a first run's default zoom, which a browser takes as CSS
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).zoom)).toBe('0.9');
-  await expect(page.getByTestId('tour')).toContainText('1 of 6');
+  await expect(page.getByTestId('tour')).toContainText('1 of 7');
   await expect.poll(() => ringsOn(page, page.getByTestId(`token-${c.id}`))).toBe(true);
   await page.getByTestId('tour-next').click();
   await expect.poll(() => ringsOn(page, page.getByTestId('side-card'))).toBe(true);
@@ -114,7 +114,7 @@ test('a rename and a map drag keep their own Escape while the tour shows', async
   const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp' });
   await svall.open('map', { firstRun: true, tour: true });
   const tour = page.getByTestId('tour');
-  await expect(tour).toContainText('1 of 6');
+  await expect(tour).toContainText('1 of 7');
   await page.getByTestId(`sb-island-${island.id}`).dblclick();
   const input = page.getByTestId('island-name-input');
   await input.fill(svall.uniq('renamed'));
