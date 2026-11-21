@@ -5,6 +5,8 @@ import { placeTip, TIP_GAP } from './settings.js';
 
 // long enough for the pointer to cross the gap from the mark onto the tip it opened
 const TIP_LINGER = 400;
+// a pointer only passing over the mark opens nothing
+const TIP_REST = 300;
 
 type Room = { top: number; bottom: number };
 // where a tip's far edge lands: on an edge of a row it would cut, covering that row whole, or short of it where the room ends first
@@ -25,6 +27,7 @@ export function Info({ id, children }: { id: string; children: ReactNode }) {
   const tip = useRef<HTMLSpanElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const show = () => { clearTimeout(timer.current); setOpen(true); };
+  const rest = () => { clearTimeout(timer.current); if (!open) timer.current = setTimeout(() => setOpen(true), TIP_REST); };
   const hide = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(false), TIP_LINGER); };
   useEffect(() => () => clearTimeout(timer.current), []);
 
@@ -47,7 +50,7 @@ export function Info({ id, children }: { id: string; children: ReactNode }) {
   });
 
   return (
-    <span className="set-info" onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide}>
+    <span className="set-info" onPointerEnter={rest} onPointerLeave={hide} onFocus={show} onBlur={hide}>
       <button type="button" className="ib xs" aria-label="What this does" aria-describedby={`set-tip-${id}`} data-testid={`set-info-${id}`}><Hint /></button>
       <span ref={tip} className="set-tip popover" role="tooltip" id={`set-tip-${id}`}
         data-open={open} data-place={place.above ? 'up' : 'down'}

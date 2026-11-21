@@ -607,6 +607,23 @@ test('an Info tip that would reach the next group\'s heading opens upward over i
   } finally { rect.mockRestore(); }
 });
 
+test('an Info tip opens once the pointer rests on its mark, not as it passes over', () => {
+  vi.useFakeTimers();
+  try {
+    render(<SettingsCard />);
+    const mark = screen.getByTestId('set-info-keep-awake');
+    const tip = document.getElementById('set-tip-keep-awake')!;
+    fireEvent.pointerEnter(mark);
+    act(() => { vi.advanceTimersByTime(200); });
+    fireEvent.pointerLeave(mark);
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(tip.dataset.open).toBe('false');
+    fireEvent.pointerEnter(mark);
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(tip.dataset.open).toBe('true');
+  } finally { vi.useRealTimers(); }
+});
+
 test('an Info tip that would cut a row covers it whole, so no control shows half', () => {
   render(<SettingsCard />);
   const mark = screen.getByTestId('set-info-keep-awake');
