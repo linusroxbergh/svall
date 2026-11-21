@@ -1,7 +1,8 @@
 import { columnOf } from '@svall/protocol';
 import { deleteEmptyColumn, placeNow, placeRobot, releaseRobot, setPlacing, setStar } from './actions.js';
 import { app, deps } from './boot.js';
-import { frozenLine } from './placement.js';
+import { revealPath } from './ide/files.js';
+import { frozenLine, readsOn } from './placement.js';
 import { scribePlaces } from './selectors.js';
 import type { MenuEntry } from './store/ui.js';
 
@@ -63,6 +64,13 @@ export const columnMenu = (e: Press, id: string, o: { rename(): void; collapse()
     { title: 'Collapse', run: o.collapse },
     { title: 'Delete', danger: true, run: f.columns.length > 1 ? remove : undefined },
   ]);
+};
+
+// a robot on another machine has no folder here for Finder to show
+export const fileMenu = (e: Press, id: string, path: string): void => {
+  const s = app.store.getState();
+  const on = readsOn(s.fleet, id, s.via);
+  showMenu(e, [{ title: 'Show in Finder', ...(on ? { tip: `On ${on}` } : { run: () => revealPath(deps(), id, path) }) }]);
 };
 
 // the board's Auto-place chip: a placing pass now, then who places robots; both need the scribe running

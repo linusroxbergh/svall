@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { app } from '../boot.js';
+import { app, deps } from '../boot.js';
 import { useApp } from '../hooks.js';
 import { Close } from '../icons.js';
 import { basename } from '../paths.js';
-import { closeFile } from './files.js';
+import { readsOn } from '../placement.js';
+import { closeFile, revealPath } from './files.js';
 
 export function FileTabs({ id }: { id: string }) {
   const ide = useApp((s) => s.ide[id]);
+  const away = useApp((s) => readsOn(s.fleet, id, s.via));
   const [closing, setClosing] = useState<string>();
   if (!ide || ide.open.length === 0) return null;
   const close = (path: string) => { closeFile(app, id, path); setClosing(undefined); };
@@ -23,6 +25,8 @@ export function FileTabs({ id }: { id: string }) {
           </div>
         ))}
       </div>
+      {ide.active && !away && <button className="btn ghost ftab-finder" data-testid="files-finder" data-tip={`Reveal ${ide.active} in Finder`}
+        onClick={() => revealPath(deps(), id, ide.active!)}>Show in Finder</button>}
       {closing && (
         <div className="ftab-ask" data-testid="discard-ask">
           Discard changes to {basename(closing)}?
