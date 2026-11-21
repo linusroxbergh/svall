@@ -74,6 +74,8 @@
   --pt-slate: #779498;
 
   --sans: 'Funnel Sans', ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
+  /* robot names on the map's cards */
+  --display: 'Jost', Futura, var(--sans);
   --mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
 
   /* type: every size in the app is one of these rungs */

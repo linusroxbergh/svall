@@ -1,5 +1,6 @@
 Copyright 2024 The Funnel Project Authors (https://github.com/Dicotype/Funnel)
 Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
+Copyright 2020 The Jost Project Authors (https://github.com/indestructible-type)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
