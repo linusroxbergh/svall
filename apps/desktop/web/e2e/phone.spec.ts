@@ -266,6 +266,38 @@ test('the phone page says over a placed robot\'s terminal that its worker is not
   await expect(page.getByRole('status')).toHaveText('linus-vault is not reachable');
 });
 
+test('the waiting page answers a yes or no on its card, and a robot opened from it goes back to it', async ({ page }) => {
+  const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+  const f = fleet();
+  f.machines = { [vault]: { name: 'linus-vault', reachable: true, since: Date.now() } };
+  const blocked = (extra: object) => ({ kind: 'claude' as const, sessionId: 's', transcriptPath: '/t', status: 'blocked' as const, lastActivityAt: 0, ...extra });
+  Object.assign(f.robots.c0, { name: 'ada', machine: vault, agent: blocked({ prompt: 'Allow Bash?', askedTool: 'Bash', askedFor: 'pnpm test', promptId: 'p1' }) });
+  Object.assign(f.robots.c1, { name: 'bob', agent: blocked({ prompt: 'Which auth flow?', askedTool: 'AskUserQuestion', promptId: 'q1' }) });
+  const answers: unknown[] = [];
+  await page.routeWebSocket((url) => !url.searchParams.has('token'), (ws) => {
+    ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }));
+    ws.onMessage((raw) => {
+      const m = JSON.parse(String(raw)) as { id: number; method: string; params: unknown };
+      if (m.method === 'robot.answer') answers.push(m.params);
+      ws.send(JSON.stringify({ id: m.id, result: m.method === 'state.get' ? f : {} }));
+    });
+  });
+  await page.goto('/mobile.html');
+  await expect(page.getByTestId('phone-machine-c0')).toHaveText('on linus-vault');
+  await expect(page.getByTestId('phone-machine-c1')).toHaveCount(0);
+  await page.getByRole('button', { name: '2 waiting' }).click();
+  await expect(page).toHaveURL(/\/waiting$/);
+  await page.getByRole('article', { name: 'ada' }).getByRole('button', { name: 'approve' }).click();
+  await expect.poll(() => answers).toEqual([{ id: 'c0', answer: 'approve', promptId: 'p1' }]);
+
+  await page.getByRole('article', { name: 'bob' }).getByRole('button', { name: /open/ }).click();
+  await expect(page).toHaveURL(/\/robot\/c1$/);
+  await page.getByRole('button', { name: 'waiting', exact: true }).click();
+  await expect(page).toHaveURL(/\/waiting$/);
+  await page.getByRole('button', { name: 'fleet' }).click();
+  await expect(page.getByRole('button', { name: '2 waiting' })).toBeVisible();
+});
+
 test.describe('on a touch screen', () => {
   test.use({ hasTouch: true, viewport: { width: 390, height: 700 } });
 

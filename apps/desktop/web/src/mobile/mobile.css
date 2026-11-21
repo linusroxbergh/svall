@@ -90,6 +90,38 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .row[data-status='shell'] .row-status { color: var(--shell); }
 .row[data-status='moving'] .row-status { color: var(--moving); }
 .row[data-status='unknown'] .row-status { color: var(--unknown); }
+.row-name > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* a robot on another machine, after its name; the machine's name gives way first */
+.mline { display: flex; align-items: center; gap: var(--sp-xs); min-width: 0; color: var(--away); font-weight: var(--w-medium); white-space: nowrap; }
+.mline > span { overflow: hidden; text-overflow: ellipsis; }
+.mline b { font-weight: inherit; }
+.mline svg { flex: none; width: 1em; height: 1em; }
+.row-on, .title-on { flex: 0 100 auto; font-size: var(--text-sm); }
+
+/* ---- what waits on the user */
+
+.waiting-open { display: flex; align-items: center; gap: var(--sp-2xs); color: var(--blocked); }
+.conn + .waiting-open { margin-left: 0; }
+.waiting h2 { min-height: 40px; }
+.ask-card {
+  display: flex; flex-direction: column; gap: var(--sp-md); margin: 0 var(--sp-lg) var(--sp-md); padding: var(--sp-lg) var(--sp-xl);
+  border-radius: var(--r-lg); background: var(--surface-2); border: 1px solid color-mix(in srgb, var(--blocked) 55%, transparent);
+}
+.ask-head { display: flex; align-items: center; gap: var(--sp-xl); padding: 0; text-align: left; }
+.ask-go { flex: none; display: flex; align-items: center; gap: var(--sp-2xs); font-size: var(--text-sm); color: var(--ink-2); }
+.ask-text {
+  margin: 0; font-size: var(--text-md); white-space: pre-line; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden;
+}
+.ask-card code {
+  padding: var(--sp-xs) var(--sp-md); border-radius: var(--r-sm); background: var(--fill-1);
+  font: var(--text-sm)/var(--lh) var(--mono); color: var(--ink-2); overflow-wrap: anywhere;
+}
+.ask-acts { display: flex; justify-content: flex-end; gap: var(--sp-xs); }
+.ask-acts button { min-height: 40px; padding: 0 var(--sp-2xl); border-radius: var(--r-pill); background: var(--fill-2); }
+.ask-acts .ask-yes { background: var(--sand); color: var(--ink-sand); font-weight: var(--w-semibold); }
+.ask-acts button:disabled { opacity: var(--disabled); }
 
 /* ---- one robot */
 
@@ -98,7 +130,8 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .ahead { flex: none; padding: var(--sp-xs) 0 var(--sp-xs) var(--sp-sm); color: var(--ink-2); }
 .next { flex: none; display: flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-sm); color: var(--ink-2); }
 .title { display: flex; flex-direction: column; min-width: 0; font-weight: var(--w-medium); }
-.title small { font-size: var(--text-sm); color: var(--ink-3); }
+.title small { display: flex; align-items: center; gap: var(--sp-md); font-size: var(--text-sm); color: var(--ink-3); }
+.title small > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* one line each, so the header keeps its height as the next control comes and goes */
 .title > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
