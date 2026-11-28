@@ -7,9 +7,10 @@ import { readTail } from '../agent/transcript.js';
 import { underCodexServer } from '../codex/server.js';
 import type { Config } from '../config.js';
 import { briefReply } from '../context/brief.js';
+import { expandPointers } from '../context/launch.js';
 import type { Proc } from '../dormancy.js';
 import type { RefreshLinks } from '../fleet.js';
-import type { HookEvent, SocketEvent } from '../hooks/receiver.js';
+import { MAX_PROMPT, type HookEvent, type SocketEvent } from '../hooks/receiver.js';
 import { resolveRepo } from '../links/git.js';
 import type { Logger } from '../log.js';
 import { appendSessions, currentLines, readSessions, sessionLines, type SessionLine } from '../retro/sessions.js';
@@ -20,6 +21,8 @@ type Deps = {
   track: (work: Promise<unknown>, what: string) => void; processes: () => Promise<Proc[]>;
   // the retro's record of each session a robot takes; absent, none is kept
   sessions?: string;
+  // where svalld leaves the prompts agents read from a file
+  tasks?: string;
 };
 
 // a pid is looked at again after this long, as one an ended server freed may come back as an agent
@@ -49,6 +52,9 @@ export class AgentEvents {
 
   private async run(e: SocketEvent): Promise<string | undefined> {
     if ('hook' in e && e.hook.pid && await this.fromServer(e.hook.pid)) { this.letGo(e.hook.robotId, e.hook.pid); return undefined; }
+    // a prompt the agent was pointed to is the one svalld sent, which reports and relays match on
+    const { tasks } = this.deps;
+    if ('hook' in e && e.hook.prompt && tasks) e = { hook: { ...e.hook, prompt: { ...e.hook.prompt, text: expandPointers(e.hook.prompt.text, tasks).trim().slice(0, MAX_PROMPT) } } };
     const ev = 'hook' in e ? e.hook : e.status;
     const before = this.deps.store.state.robots[ev.robotId];
     let reply: string | undefined;

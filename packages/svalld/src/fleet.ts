@@ -13,7 +13,7 @@ import { codexPaths } from './codex/install.js';
 import { codexZshEnv } from './codex/zsh.js';
 import { initConfig, modelPicks, patchFleetConfig, readFleetConfig, saveConfig, saveMainAgent, type Config } from './config.js';
 import { renderBrief } from './context/brief.js';
-import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
+import { expandTranscript, isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { setContext, settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
 import { agentProc, endAll, endIdleAgents, exited, freshCommand, keepResting, loseSecond, markDormant, processes, rememberFlags, restFrom, resumeHere, resumeNote, sleepFlags, startFlags, unsaved, type Proc, type Sleep } from './dormancy.js';
@@ -132,7 +132,7 @@ export class Fleet extends EventEmitter<Events> {
     const run = deps.runScribe ?? perPass(() => this.scribeRunner());
     const runsHere = (c: Robot) => this.runsHere(c);
     const far = remote && ((id: string, only?: Only, columns?: Column[], sweep?: true) => remote.scribe(id, only, columns, sweep));
-    this.scribe = new Scribe({ store, log, run, awake: fullWake, brief: (island, c) => this.render(island, c), runsHere, far });
+    this.scribe = new Scribe({ store, log, run, awake: fullWake, brief: (island, c) => this.render(island, c), runsHere, far, tasks: deps.paths.tasks });
     this.sleep = { store, tmux: deps.tmux, log, processes: deps.processes ?? processes, ending: this.ending, runsHere };
     const track = (work: Promise<unknown>, what: string) => this.track(work, what);
     this.link = new ControlLink({ store, tmux: deps.tmux, log, events: this, reconcile: () => this.reconcileNow(), track, atShell: (key) => this.poll.atShell(key), runsHere });
@@ -142,7 +142,7 @@ export class Fleet extends EventEmitter<Events> {
     });
     this.agentEvents = new AgentEvents({
       store, config, log, render: (island, c) => this.render(island, c), refreshLinks: deps.refreshLinks ?? refreshLinks,
-      track, processes: this.sleep.processes, sessions: deps.paths.retroSessions,
+      track, processes: this.sleep.processes, sessions: deps.paths.retroSessions, tasks: deps.paths.tasks,
     });
     this.prompts = new Prompts({ fleet: this, store, tmux: deps.tmux, config, log, reviving: this.reviving });
     this.on('control-reset', () => { this.tmuxPid = undefined; });
@@ -629,7 +629,7 @@ export class Fleet extends EventEmitter<Events> {
       this.deps.created?.(this.deps.store.state.robots[id], p);
     } catch (e) {
       // the island filled up while the window was being created, or the start command never reached the pane
-      if (prompt) fs.rmSync(this.promptFile(id), { force: true });
+      if (prompt) { fs.rmSync(this.promptFile(id), { force: true }); this.removeTasks(id); }
       this.deps.store.update((d) => { delete d.robots[id]; });
       await this.deps.tmux.killWindow(w.windowId);
       throw e;
@@ -682,9 +682,22 @@ export class Fleet extends EventEmitter<Events> {
     // a prompt file an OpenCode plugin never took must not reach the next resume
     if (!prompt) fs.rmSync(this.promptFile(id), { force: true });
     if (!prompt || !isAgentCommand(command)) return command;
-    const { text, line } = withPromptFile(command, promptText(command, prompt), this.promptFile(id));
+    // a file of its own each launch, so each pointer in a transcript reads back its own prompt
+    const taskFile = path.join(this.deps.paths.tasks, `${id}-${Date.now().toString(36)}.md`);
+    const { text, line, task } = withPromptFile(command, promptText(command, prompt), this.promptFile(id), taskFile);
+    if (task !== undefined) {
+      fs.mkdirSync(this.deps.paths.tasks, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(taskFile, task, { mode: 0o600 });
+    }
     fs.writeFileSync(this.promptFile(id), text, { mode: 0o600 });
     return line;
+  }
+
+  // the task files of a robot's launches, its second terminal's too, kept while their transcripts may be read
+  private removeTasks(id: string): void {
+    let names: string[];
+    try { names = fs.readdirSync(this.deps.paths.tasks); } catch { return; }
+    for (const n of names) if (n.startsWith(`${id}-`)) fs.rmSync(path.join(this.deps.paths.tasks, n), { force: true });
   }
 
   renameAgentProfile(from: string, to: string): void {
@@ -789,6 +802,7 @@ export class Fleet extends EventEmitter<Events> {
     this.looked.delete(id);
     for (const m of [this.link, this.poll, this.agentEvents, this.prompts, this.scribe]) m.forget(id);
     removeDocs(this.deps.paths.docs, 'robot', id, this.deps.log);
+    this.removeTasks(id);
   }
 
   /** Ends the agent and everything it started, closes the second terminal, dormant if it ran an agent, and leaves the
@@ -1215,7 +1229,7 @@ export class Fleet extends EventEmitter<Events> {
     const agent = term === 2 ? c.second?.agent : c.agent;
     if (!agent) throw new Invalid(`${c.name} has no agent${term === 2 ? ' in its second terminal' : ''}`);
     if (!agent.transcriptPath) return '';
-    return condenseTurns(agent.kind, readTail(agent.transcriptPath, TRANSCRIPT_TAIL), turns);
+    return condenseTurns(agent.kind, expandTranscript(readTail(agent.transcriptPath, TRANSCRIPT_TAIL), this.deps.paths.tasks), turns);
   }
 
   /** What the agent said last, in full, or why its turn has nothing to show. */
@@ -1235,7 +1249,7 @@ export class Fleet extends EventEmitter<Events> {
   readPrompts(id: string, limit: number): string[] {
     const c = this.robot(id);
     if (!c.agent) return [];
-    const text = c.agent.transcriptPath ? readTail(c.agent.transcriptPath, TRANSCRIPT_TAIL) : '';
+    const text = c.agent.transcriptPath ? expandTranscript(readTail(c.agent.transcriptPath, TRANSCRIPT_TAIL), this.deps.paths.tasks) : '';
     return userPrompts(c.agent.kind, text, limit, c.agent.lastPrompt);
   }
 

@@ -683,7 +683,7 @@ runIf('Fleet prompts', () => {
     expect(await fleet.readScreen(c.id, 20)).not.toContain('hello');
   });
 
-  it('hands claude its prompt as an argument rather than typing it into a booting composer', async () => {
+  it('hands claude a pointer to its prompt as an argument rather than typing it into a booting composer', async () => {
     const bin = makeHome();
     // a stand-in claude that keeps its arguments and never reports in; the prompt is renamed into `got`, so it appears whole
     fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\nprintf "%s " "$1" "$2" "$3" > "$SVALL_HOME/argv"\nfor a; do last=$a; done\nprintf "%s" "$last" > "$SVALL_HOME/got.part"\nmv "$SVALL_HOME/got.part" "$SVALL_HOME/got"\n', { mode: 0o755 });
@@ -697,12 +697,18 @@ runIf('Fleet prompts', () => {
     expect(c.runSent).toBe(true);
     await waitFor(() => fs.existsSync(`${home}/got`));
     expect(fs.readFileSync(`${home}/argv`, 'utf8')).toBe('--model sonnet -- ');
-    expect(fs.readFileSync(`${home}/got`, 'utf8')).toBe(prompt);
+    // the prompt is in no argument `pkill -f` could match, only in the file the agent is pointed to
+    const task = /^Read and follow your prompt in @"(.+)"$/.exec(fs.readFileSync(`${home}/got`, 'utf8'))?.[1];
+    expect(path.dirname(task!)).toBe(path.join(home, 'tasks'));
+    expect(fs.readFileSync(task!, 'utf8')).toBe(prompt);
+    expect(fs.statSync(task!).mode & 0o777).toBe(0o600);
     expect(fs.existsSync(`${home}/${c.id}.prompt`)).toBe(false);
     expect(run).not.toHaveBeenCalled();
+    await fleet.closeRobot(c.id);
+    expect(fs.existsSync(task!)).toBe(false);
   });
 
-  it('hands codex its first prompt as an argument and follows its hooks', async () => {
+  it('hands codex a pointer to its first prompt as an argument and follows its hooks', async () => {
     // the fake codex, for this test's own tmux server and the shell in its pane
     vi.stubEnv('PATH', `${path.join(import.meta.dirname, 'fixtures/bin')}:${process.env.PATH}`);
     cleanup.push(async () => { vi.unstubAllEnvs(); });
@@ -711,11 +717,13 @@ runIf('Fleet prompts', () => {
     expect(c.runSent).toBe(true);
     await waitFor(() => b.store.state.robots[c.id].agent?.status === 'done');
     expect(b.store.state.robots[c.id].agent).toMatchObject({ kind: 'codex', model: 'gpt-fake' });
+    // the pointer the agent reports reads back as the prompt
     expect(b.fleet.readPrompts(c.id, 5)).toEqual(['fix the flaky test']);
-    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-codex', `${c.id}.argv`), 'utf8'))).toEqual(['--no-daemon', '-c', 'check_for_update_on_startup=false', '--', 'fix the flaky test']);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-codex', `${c.id}.argv`), 'utf8')))
+      .toEqual(['--no-daemon', '-c', 'check_for_update_on_startup=false', '--', expect.stringMatching(new RegExp(`^Read and follow your prompt in ${b.home}/tasks/${c.id}-\\w+\\.md$`))]);
   });
 
-  it('hands opencode its first prompt with --prompt= and follows its plugin', async () => {
+  it('hands opencode a pointer to its first prompt with --prompt= and follows its plugin', async () => {
     vi.stubEnv('PATH', `${path.join(import.meta.dirname, 'fixtures/bin')}:${process.env.PATH}`);
     cleanup.push(async () => { vi.unstubAllEnvs(); });
     const b = await boot();
@@ -725,7 +733,9 @@ runIf('Fleet prompts', () => {
     const agent = b.store.state.robots[c.id].agent!;
     expect(agent).toMatchObject({ kind: 'opencode', sessionId: OSID, contextPct: 10, model: 'big-pickle' });
     expect(b.fleet.readPrompts(c.id, 5)).toEqual(['fix the flaky test']);
-    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.argv`), 'utf8'))).toEqual(['--standalone', '--prompt=fix the flaky test']);
+    expect(agent.lastPrompt?.text).toBe('fix the flaky test');
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.argv`), 'utf8')))
+      .toEqual(['--standalone', expect.stringMatching(new RegExp(`^--prompt=Read and follow your prompt in ${b.home}/tasks/${c.id}-\\w+\\.md$`))]);
     expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.system`), 'utf8'))).toEqual([agent.brief]);
   });
 

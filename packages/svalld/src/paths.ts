@@ -71,6 +71,7 @@ export function resolvePaths(home: string = svallHome()) {
     // the home's, of this machine alone: each worker's phone link and pass
     phoneFallbacks: path.join(home, 'phone-fallbacks.json'),
     docs: path.join(home, 'docs'),
+    tasks: path.join(home, 'tasks'),
     agentProfiles: path.join(home, 'agent-profiles'),
     // a worker's own settings and files, in the mirror's layout, over what the home's agent configuration brings
     mirrorOverrides: path.join(home, 'mirror-overrides'),

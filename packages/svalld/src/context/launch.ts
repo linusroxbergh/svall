@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import type { AgentKind, ContextItem } from '@svall/protocol';
 import { opencodeSvallRules } from '../svall-permissions.js';
@@ -58,13 +59,42 @@ export const promptText = (command: string, prompt: string): string =>
 const anyShq = (s: string): string =>
   s.split(/(['\\])/).map((p, i) => (i % 2 ? `\\${p}` : p && `'${p}'`)).join('') || "''";
 
+const POINTER = 'Read and follow your prompt in ';
+// Claude attaches an @ file unasked, where its Read tool asks outside the project; Codex and OpenCode read it unasked
+const pointer = (kind: AgentKind | undefined, task: string): string => `${POINTER}${kind === 'claude' ? `@${JSON.stringify(task)}` : task}`;
+
 // an agent submits a prompt given as its argument once it is up. The shell sources the line from `file`, as a line typed
 // in before the shell is reading is cut past 1024 bytes, and the line has no "$(…)", which fish before 3.4 refuses.
 // OpenCode reads none on a resume, so its plugin takes the prompt from the file then
-export function withPromptFile(command: string, prompt: string, file: string): { text: string; line: string } {
-  const opencode = agentKindOf(command) === 'opencode';
-  if (opencode && /\s(-s|--session)(\s|=)/.test(unquoted(command.replace(ACCESS, '')))) return { text: prompt, line: command };
+export function withPromptFile(command: string, prompt: string, file: string, taskFile: string): { text: string; line: string; task?: string } {
+  const kind = agentKindOf(command);
+  if (kind === 'opencode' && /\s(-s|--session)(\s|=)/.test(unquoted(command.replace(ACCESS, '')))) return { text: prompt, line: command };
+  // the prompt waits in `taskFile`, as `pkill -f` matches any word of an argv; a /command runs only as one submitted
+  const task = /^\s*\//.test(prompt) ? undefined : prompt;
   // `.` and not `source`, which dash lacks; fish has kept `.` as its deprecated name for source. OpenCode takes a word
   // starting with - after a bare --prompt for a flag
-  return { text: `rm -f ${anyShq(file)}; ${command} ${opencode ? '--prompt=' : '-- '}${anyShq(prompt)}\n`, line: `. ${anyShq(file)}` };
+  const arg = task === undefined ? prompt : pointer(kind, taskFile);
+  return { text: `rm -f ${anyShq(file)}; ${command} ${kind === 'opencode' ? '--prompt=' : '-- '}${anyShq(arg)}\n`, line: `. ${anyShq(file)}`, ...(task !== undefined && { task }) };
+}
+
+const escaped = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** `text` with each pointer to a task file in `dir` read back as the prompt it holds, while the file is there. */
+export function expandPointers(text: string, dir: string): string {
+  if (!text.includes(POINTER)) return text;
+  const files = new RegExp(`${escaped(POINTER)}@?"?(${escaped(dir)}/[^"\\s/]+\\.md)"?`, 'g');
+  return text.replace(files, (all, file: string) => { try { return fs.readFileSync(file, 'utf8'); } catch { return all; } });
+}
+
+const eachString = (v: unknown, f: (s: string) => string): unknown => (typeof v === 'string' ? f(v)
+  : Array.isArray(v) ? v.map((x) => eachString(x, f))
+  : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, eachString(x, f)])) : v);
+
+/** A transcript's JSON lines with their pointers read back, before a reader clips them or matches the hook's prompt. */
+export function expandTranscript(text: string, dir: string): string {
+  if (!text.includes(POINTER)) return text;
+  return text.split('\n').map((l) => {
+    if (!l.includes(POINTER)) return l;
+    try { return JSON.stringify(eachString(JSON.parse(l), (s) => expandPointers(s, dir))); } catch { return l; }
+  }).join('\n');
 }

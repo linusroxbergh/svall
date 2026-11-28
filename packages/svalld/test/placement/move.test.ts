@@ -364,7 +364,10 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(there.agent?.status).toBe('idle');
     expect(there.revive).toBeUndefined();
     const promptFile = w.vault.lines.map((l) => /^\. '([^']+)'$/.exec(l.text)?.[1]).find((f) => f !== undefined)!;
-    expect(fs.readFileSync(promptFile, 'utf8')).toBe(`rm -f '${promptFile}'; claude --resume ${SID} -- '${RESUME_NOTE}'\n`);
+    const launch = fs.readFileSync(promptFile, 'utf8');
+    const task = /^rm -f '[^']+'; claude --resume \S+ -- 'Read and follow your prompt in @"([^"]+)"'\n$/.exec(launch)?.[1];
+    expect(launch).toBe(`rm -f '${promptFile}'; claude --resume ${SID} -- 'Read and follow your prompt in @"${task}"'\n`);
+    expect(fs.readFileSync(task!, 'utf8')).toBe(RESUME_NOTE);
   });
 
   it('an activation that fails stalls the move with its error on the card, and Retry starts the robot without moving it again', async () => {

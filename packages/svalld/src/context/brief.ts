@@ -104,6 +104,7 @@ const crewLines = (island: Island, c: Robot): string[] => [
   '- How: `svall robot new --help`. Name it PR or ticket id, area, task: "#472 auth review", not "#472 deep review".',
   '- To the user, name a robot or island as a link to its id, which selects it on click: `[bob](svall://robot/c_abc123)`, `[review](svall://island/i_abc123)`.',
   "- $TMUX is the fleet's tmux server, which runs every robot: use `tmux -L <a name of your own>` for your own tmux, and never kill-server or kill-session on the fleet's.",
+  '- Stop a process you started by its pid, never by name with `pkill -f` or `killall`: a name also matches other robots.',
 ];
 
 // the path sentence keeps an agent, OpenCode's most of all, from reading a main-checkout path in its task as leave to edit there
