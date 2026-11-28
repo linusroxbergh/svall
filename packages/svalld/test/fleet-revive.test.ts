@@ -12,8 +12,13 @@ import { cleanHomes, hasTmux, waitFor, waitForPolls } from './helpers.js';
 const runIf = hasTmux() ? describe : describe.skip;
 
 // the prompt a launch file hands its agent: its last word, as bash, zsh and fish read it
-const promptOf = (file: string): string => /(?:-- |--prompt=)((?:'[^']*'|\\.)+)\n$/.exec(fs.readFileSync(file, 'utf8'))![1]
+const argOf = (file: string): string => /(?:-- |--prompt=)((?:'[^']*'|\\.)+)\n$/.exec(fs.readFileSync(file, 'utf8'))![1]
   .replace(/'([^']*)'|\\(.)/g, (_, quoted: string | undefined, escaped: string) => quoted ?? escaped);
+// the prompt a launch line hands its agent, through the pointer to its task file
+const promptOf = (file: string): string => {
+  const task = /^Read and follow your prompt in @?"?(.+?)"?$/.exec(argOf(file))?.[1];
+  return task ? fs.readFileSync(task, 'utf8') : argOf(file);
+};
 
 runIf('Fleet revive', () => {
   afterEach(async () => { await stopFleets(); cleanHomes(); });

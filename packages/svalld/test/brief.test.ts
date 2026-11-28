@@ -14,6 +14,7 @@ const CREW = [
   '- How: `svall robot new --help`. Name it PR or ticket id, area, task: "#472 auth review", not "#472 deep review".',
   '- To the user, name a robot or island as a link to its id, which selects it on click: `[bob](svall://robot/c_abc123)`, `[review](svall://island/i_abc123)`.',
   "- $TMUX is the fleet's tmux server, which runs every robot: use `tmux -L <a name of your own>` for your own tmux, and never kill-server or kill-session on the fleet's.",
+  '- Stop a process you started by its pid, never by name with `pkill -f` or `killall`: a name also matches other robots.',
 ];
 
 describe('renderBrief', () => {
@@ -130,7 +131,7 @@ describe('renderBrief', () => {
   it('tells a robot to work in a worktree after the hand-on lines, even with nothing else to say', () => {
     const rule = '- In a git repo, start every task and review in a new worktree inside the main checkout, before you edit or check out anything; reuse one only when its branch is the work and no other agent is in it. A path in the task names a file; change it in your worktree. Change the main checkout only when the user says so.';
     const lines = renderBrief(island(), robot(), [], undefined, true).split('\n');
-    expect(lines.slice(3, 10)).toEqual([...CREW, rule]);
+    expect(lines.slice(3, 3 + CREW.length + 1)).toEqual([...CREW, rule]);
     expect(renderBrief(island(), robot({ note: 'x' }))).not.toContain(rule);
     expect(renderBrief(island({ kind: 'home', instructions: 'x' }), robot(), [], undefined, true)).not.toContain(rule);
     expect(renderBrief(island({ instructions: 'x' }), undefined, [], undefined, true)).not.toContain(rule);

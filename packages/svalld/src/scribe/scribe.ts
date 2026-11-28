@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ApiError, bareUrl, columnOf, placingOn, type Column, type Robot, type ContextItem, type Island } from '@svall/protocol';
 import { condenseTurns, readTail } from '../agent/transcript.js';
 import { carryBrief } from '../context/brief.js';
+import { expandTranscript } from '../context/launch.js';
 import { prFirst } from '../context/items.js';
 import { Invalid } from '../errors.js';
 import type { Logger } from '../log.js';
@@ -37,6 +38,8 @@ type Deps = {
   runsHere?: (c: Robot) => boolean;
   // the pass the machine a robot runs on makes over its transcript, when that is another one; undefined when it made none
   far?: (id: string, only?: Only, columns?: Column[], sweep?: true) => Promise<FarPass | undefined>;
+  // where svalld leaves the prompts agents read from a file
+  tasks?: string;
 };
 type Job = { kind: 'robot' | 'island'; id: string };
 export type SweepOptions = { names?: boolean; columns?: boolean; islands?: boolean };
@@ -267,7 +270,7 @@ export class Scribe {
   private async read(c: Robot, only?: Only, columns?: Column[]): Promise<FarPass | undefined> {
     const path = c.agent!.transcriptPath!;
     const bytes = transcriptSize(c);
-    const tail = readTail(path);
+    const tail = this.deps.tasks ? expandTranscript(readTail(path), this.deps.tasks) : readTail(path);
     const transcript = condenseTurns(c.agent!.kind, tail, TURNS, { toolLinks: true }).slice(-TRANSCRIPT_MAX);
     if (!transcript.trim()) { this.seen.set(c.id, { lastPassAt: this.now(), path, bytes }); return undefined; }
     const others = Object.values(this.deps.store.state.robots).filter((o) => o.id !== c.id).map((o) => o.name);

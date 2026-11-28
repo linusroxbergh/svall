@@ -646,7 +646,9 @@ runIf('Fleet dormancy', () => {
     expect(store.state.robots[c.id].tmux).toBeDefined();
     const file = path.join(home, `${c.id}.prompt`);
     expect(typed).toEqual([`. '${file}'`]);
-    expect(fs.readFileSync(file, 'utf8')).toBe(`rm -f '${file}'; claude --resume ${SID} -- 'run the tests again'\n`);
+    const task = path.join(home, 'tasks', fs.readdirSync(path.join(home, 'tasks')).find((n) => n.startsWith(`${c.id}-`))!);
+    expect(fs.readFileSync(file, 'utf8')).toBe(`rm -f '${file}'; claude --resume ${SID} -- 'Read and follow your prompt in @"${task}"'\n`);
+    expect(fs.readFileSync(task, 'utf8')).toBe('run the tests again');
   });
 
   it('wakes a dormant codex with a prompt run into it, as its launch prompt', async () => {
@@ -660,6 +662,8 @@ runIf('Fleet dormancy', () => {
     await fleet.run(c.id, 'run the tests again', true);
     const file = path.join(home, `${c.id}.prompt`);
     expect(typed).toEqual([`. '${file}'`]);
-    expect(fs.readFileSync(file, 'utf8')).toBe(`rm -f '${file}'; codex resume --no-daemon -c check_for_update_on_startup=false -c tui.resume_cwd=session ${SID} -- 'run the tests again'\n`);
+    const task = path.join(home, 'tasks', fs.readdirSync(path.join(home, 'tasks')).find((n) => n.startsWith(`${c.id}-`))!);
+    expect(fs.readFileSync(file, 'utf8')).toBe(`rm -f '${file}'; codex resume --no-daemon -c check_for_update_on_startup=false -c tui.resume_cwd=session ${SID} -- 'Read and follow your prompt in ${task}'\n`);
+    expect(fs.readFileSync(task, 'utf8')).toBe('run the tests again');
   });
 });

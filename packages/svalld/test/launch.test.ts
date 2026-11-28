@@ -5,7 +5,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '@svall/protocol';
 import { AGENTS, onPath } from '../src/agents.js';
-import { agentKindOf, isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from '../src/context/launch.js';
+import { agentKindOf, expandPointers, expandTranscript, isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from '../src/context/launch.js';
 
 const item = (kind: ContextItem['kind'], ref: string): ContextItem => ({ kind, ref, label: '', source: 'manual' });
 
@@ -33,14 +33,14 @@ describe('withAddDirs for opencode', () => {
     expect(cmd).toBe(`OPENCODE_CONFIG_CONTENT='{"permissions":[${rule('/a/b/*')},${rule("/c'\\''d/*")}]}' opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn`);
     expect(agentKindOf(cmd)).toBe('opencode');
     expect(withAddDirs('opencode', [])).toBe('opencode');
-    expect(withPromptFile(withAddDirs('opencode', [item('folder', '/a')]), 'go', '/h/p').text).toMatch(/ opencode --prompt='go'\n$/);
+    expect(withPromptFile(withAddDirs('opencode', [item('folder', '/a')]), 'go', '/h/p', '/h/t.md').text).toMatch(/ opencode --prompt='Read and follow your prompt in \/h\/t\.md'\n$/);
   });
   it('allows a folder by its resolved path, leaves one named with a wildcard to ask, and reads no flag in a folder name', () => {
     expect(withAddDirs('opencode', [item('folder', '/a/b/'), item('folder', '/c/*'), item('folder', '/d/e?')]))
       .toBe(`OPENCODE_CONFIG_CONTENT='{"permissions":[${rule('/a/b/*')}]}' opencode`);
     expect(withAddDirs('opencode', [item('folder', '/c/*')])).toBe('opencode');
-    expect(withPromptFile(withAddDirs('opencode', [item('folder', '/notes -s draft')]), 'go', '/h/p').text).toMatch(/ opencode --prompt='go'\n$/);
-    expect(withPromptFile("opencode '/notes -s draft'", 'go', '/h/p').text).toMatch(/ '\/notes -s draft' --prompt='go'\n$/);
+    expect(withPromptFile(withAddDirs('opencode', [item('folder', '/notes -s draft')]), 'go', '/h/p', '/h/t.md').text).toMatch(/ opencode --prompt='Read and follow your prompt in \/h\/t\.md'\n$/);
+    expect(withPromptFile("opencode '/notes -s draft'", 'go', '/h/p', '/h/t.md').text).toMatch(/ '\/notes -s draft' --prompt='Read and follow your prompt in \/h\/t\.md'\n$/);
   });
 });
 
@@ -63,8 +63,8 @@ describe('withStandalone', () => {
     expect(withStandalone(' opencode')).toBe('FORCE_HYPERLINK=1 opencode --standalone');
     expect(agentKindOf(withStandalone(access))).toBe('opencode');
     expect(agentKindOf('FORCE_HYPERLINK=1 codex')).toBeUndefined();
-    expect(withPromptFile(withStandalone('opencode'), 'go', '/h/p').text).toMatch(/; FORCE_HYPERLINK=1 opencode --standalone --prompt='go'\n$/);
-    expect(withPromptFile(withStandalone('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn'), 'go', '/h/p').line).toBe(withStandalone('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn'));
+    expect(withPromptFile(withStandalone('opencode'), 'go', '/h/p', '/h/t.md').text).toMatch(/; FORCE_HYPERLINK=1 opencode --standalone --prompt='Read and follow your prompt in \/h\/t\.md'\n$/);
+    expect(withPromptFile(withStandalone('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn'), 'go', '/h/p', '/h/t.md').line).toBe(withStandalone('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn'));
   });
 
   it('runs codex off the shared app-server daemon and its update check, after the subcommand that resumes or forks', () => {
@@ -114,19 +114,27 @@ describe('withPromptFile', () => {
     expect(isAgentCommand('codexx')).toBe(false);
     expect(isAgentCommand('node fake.mjs')).toBe(false);
   });
-  it('hands opencode its prompt with --prompt=, and leaves the file to the plugin on a resume', () => {
+  it('hands opencode a pointer to its prompt with --prompt=, and leaves the prompt file to the plugin on a resume', () => {
     expect(isAgentCommand('opencode')).toBe(true);
     expect(isAgentCommand('opencodex')).toBe(false);
-    expect(withPromptFile('opencode -m opencode/big-pickle', 'fix it', '/h/c_1.prompt'))
-      .toEqual({ text: "rm -f '/h/c_1.prompt'; opencode -m opencode/big-pickle --prompt='fix it'\n", line: ". '/h/c_1.prompt'" });
-    expect(withPromptFile('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn', 'fix it', '/h/c_1.prompt'))
+    expect(withPromptFile('opencode -m opencode/big-pickle', 'fix it', '/h/c_1.prompt', '/h/tasks/c_1-a.md')).toEqual({
+      text: "rm -f '/h/c_1.prompt'; opencode -m opencode/big-pickle --prompt='Read and follow your prompt in /h/tasks/c_1-a.md'\n",
+      line: ". '/h/c_1.prompt'", task: 'fix it',
+    });
+    expect(withPromptFile('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn', 'fix it', '/h/c_1.prompt', '/h/tasks/c_1-a.md'))
       .toEqual({ text: 'fix it', line: 'opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn' });
   });
-  it('passes the prompt as the last argument, after the options, from a file that removes itself', () => {
-    expect(withPromptFile("claude --add-dir '/a'", 'fix it', "/h/it's.prompt"))
-      .toEqual({ text: "rm -f '/h/it'\\''s.prompt'; claude --add-dir '/a' -- 'fix it'\n", line: ". '/h/it'\\''s.prompt'" });
+  it('passes a pointer to the prompt as the last argument, after the options, from a file that removes itself', () => {
+    expect(withPromptFile("claude --add-dir '/a'", 'fix it', "/h/it's.prompt", '/h/tasks/c_1-a.md')).toEqual({
+      text: `rm -f '/h/it'\\''s.prompt'; claude --add-dir '/a' -- 'Read and follow your prompt in @"/h/tasks/c_1-a.md"'\n`,
+      line: ". '/h/it'\\''s.prompt'", task: 'fix it',
+    });
+    expect(withPromptFile('codex', 'fix it', '/h/p', '/h/tasks/c_1-a.md').text).toBe("rm -f '/h/p'; codex -- 'Read and follow your prompt in /h/tasks/c_1-a.md'\n");
+  });
+  it('keeps a /command an argument, as only one submitted runs', () => {
     // fish reads \\ and \' inside single quotes, so neither is left inside them
-    expect(withPromptFile('claude', "a\\b\\\\c'd\\", '/h/p').text).toBe(String.raw`rm -f '/h/p'; claude -- 'a'\\'b'\\\\'c'\''d'\\` + '\n');
+    expect(withPromptFile('claude', "/x a\\b\\\\c'd\\", '/h/p', '/h/t.md'))
+      .toEqual({ text: String.raw`rm -f '/h/p'; claude -- '/x a'\\'b'\\\\'c'\''d'\\` + '\n', line: ". '/h/p'" });
   });
   // ' and \ are what fish reads differently inside single quotes; $ ( { * ~ are its own; the agent's name is a function
   const PROMPT = "it's a \\ and a \\\\ in\n$HOME $(id) (id) `id` {a,b} *.ts ~ \"q\" ; & | # ! ends in \\";
@@ -142,25 +150,61 @@ describe('withPromptFile', () => {
       const argv = path.join(dir, 'argv');
       fs.writeFileSync(path.join(dir, 'claude'), `#!/bin/sh\nfor a in "$@"; do printf '%s\\0' "$a"; done > '${argv}'\n`, { mode: 0o755 });
       const file = path.join(dir, "c_1 it's.prompt");
-      const { text, line } = withPromptFile("claude --add-dir '/a b'", PROMPT, file);
-      fs.writeFileSync(file, text);
-      const r = spawnSync(sh, [...args, `${fn}; ${line}`], { env: { ...process.env, PATH: `${dir}:${process.env.PATH}` }, encoding: 'utf8' });
-      expect({ status: r.status, stderr: r.stderr }).toEqual({ status: 0, stderr: '' });
-      expect(fs.readFileSync(argv, 'utf8').split('\0').slice(0, -1)).toEqual(['--via-function', '--add-dir', '/a b', '--', PROMPT]);
-      expect(fs.existsSync(file)).toBe(false);
+      const task = path.join(dir, "tasks it's", 'c_1-a.md');
+      for (const [prompt, last] of [[PROMPT, `Read and follow your prompt in @"${task}"`], [`/${PROMPT}`, `/${PROMPT}`]]) {
+        const { text, line } = withPromptFile("claude --add-dir '/a b'", prompt, file, task);
+        fs.writeFileSync(file, text);
+        const r = spawnSync(sh, [...args, `${fn}; ${line}`], { env: { ...process.env, PATH: `${dir}:${process.env.PATH}` }, encoding: 'utf8' });
+        expect({ status: r.status, stderr: r.stderr }).toEqual({ status: 0, stderr: '' });
+        expect(fs.readFileSync(argv, 'utf8').split('\0').slice(0, -1)).toEqual(['--via-function', '--add-dir', '/a b', '--', last]);
+        expect(fs.existsSync(file)).toBe(false);
+      }
       fs.rmSync(dir, { recursive: true, force: true });
     });
-    it.skipIf(!onPath(sh, process.env.PATH ?? ''))(`hands opencode in ${sh} a prompt that starts with - or holds = as one --prompt= argument`, () => {
+    it.skipIf(!onPath(sh, process.env.PATH ?? ''))(`hands opencode in ${sh} a /command that holds = as one --prompt= argument`, () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'launch-'));
       const argv = path.join(dir, 'argv');
       fs.writeFileSync(path.join(dir, 'opencode'), `#!/bin/sh\nfor a in "$@"; do printf '%s\\0' "$a"; done > '${argv}'\n`, { mode: 0o755 });
       const file = path.join(dir, 'c_1.prompt');
-      const { text, line } = withPromptFile('opencode --standalone', "- fix it's ~/x a=b", file);
+      const { text, line } = withPromptFile('opencode --standalone', "/fix it's ~/x a=b", file, path.join(dir, 'c_1-a.md'));
       fs.writeFileSync(file, text);
       const r = spawnSync(sh, [...args, line], { env: { ...process.env, PATH: `${dir}:${process.env.PATH}` }, encoding: 'utf8' });
       expect({ status: r.status, stderr: r.stderr }).toEqual({ status: 0, stderr: '' });
-      expect(fs.readFileSync(argv, 'utf8').split('\0').slice(0, -1)).toEqual(['--standalone', "--prompt=- fix it's ~/x a=b"]);
+      expect(fs.readFileSync(argv, 'utf8').split('\0').slice(0, -1)).toEqual(['--standalone', "--prompt=/fix it's ~/x a=b"]);
       fs.rmSync(dir, { recursive: true, force: true });
     });
   }
+});
+
+describe('expandPointers', () => {
+  it('reads each pointer to a task file in its folder back as the prompt it holds, and leaves other text be', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks '));
+    const task = path.join(dir, 'c_1-a.md');
+    fs.writeFileSync(task, 'fix the "login" bug');
+    const { text } = withPromptFile('claude', 'fix the "login" bug', '/h/p', task);
+    const told = /-- '(.*)'\n$/.exec(text)![1];
+    expect(expandPointers(told, dir)).toBe('fix the "login" bug');
+    expect(expandPointers(`user: Read and follow your prompt in ${task}\nagent: done`, dir)).toBe('user: fix the "login" bug\nagent: done');
+    // a file gone, or one outside the folder, leaves the pointer
+    expect(expandPointers(`Read and follow your prompt in ${path.join(dir, 'c_1-b.md')}`, dir)).toBe(`Read and follow your prompt in ${path.join(dir, 'c_1-b.md')}`);
+    expect(expandPointers(`Read and follow your prompt in ${task}`, path.join(dir, 'other'))).toBe(`Read and follow your prompt in ${task}`);
+    expect(expandPointers('fix it', dir)).toBe('fix it');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('expandTranscript', () => {
+  it('reads a pointer back inside a JSON line, and leaves other and cut lines be', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-'));
+    const task = path.join(dir, 'c_1-a.md');
+    fs.writeFileSync(task, 'fix the "login" bug\nand ship it');
+    const said = JSON.stringify({ type: 'user', message: { content: `Read and follow your prompt in @"${task}"` } });
+    const cut = said.slice(10);
+    const other = JSON.stringify({ type: 'assistant', message: { content: 'ok' } });
+    const out = expandTranscript([cut, said, other].join('\n'), dir).split('\n');
+    expect(out[0]).toBe(cut);
+    expect(JSON.parse(out[1]).message.content).toBe('fix the "login" bug\nand ship it');
+    expect(out[2]).toBe(other);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });
